@@ -1,8 +1,7 @@
 use crate::{
     config::{Config, NetworkType},
-    tcp::FramedStream,
     udp::FramedSocket,
-    ResultType,
+    ResultType, Stream,
 };
 use anyhow::Context;
 use std::net::SocketAddr;
@@ -45,11 +44,11 @@ pub async fn connect_tcp<'t, T: IntoTargetAddr<'t>>(
     target: T,
     local: SocketAddr,
     ms_timeout: u64,
-) -> ResultType<FramedStream> {
+) -> ResultType<Stream> {
     let target_addr = target.into_target_addr()?;
 
     if let Some(conf) = Config::get_socks() {
-        FramedStream::connect(
+        Stream::connect(
             conf.proxy.as_str(),
             target_addr,
             local,
@@ -62,7 +61,7 @@ pub async fn connect_tcp<'t, T: IntoTargetAddr<'t>>(
         let addr = std::net::ToSocketAddrs::to_socket_addrs(&target_addr)?
             .next()
             .context("Invalid target addr")?;
-        Ok(FramedStream::new(addr, local, ms_timeout).await?)
+        Ok(Stream::new(addr, local, ms_timeout).await?)
     }
 }
 

@@ -15,6 +15,8 @@ use std::{
 };
 pub use tokio;
 pub use tokio_util;
+// #[cfg(feature = "kcp")]
+pub mod kcp;
 pub mod socket_client;
 pub mod tcp;
 pub mod udp;
@@ -27,18 +29,20 @@ pub use anyhow::{self, bail};
 pub use futures_util;
 pub mod config;
 pub mod fs;
+pub use mac_address;
 pub use rand;
 pub use regex;
 pub use sodiumoxide;
 pub use tokio_socks;
 pub use tokio_socks::IntoTargetAddr;
 pub use tokio_socks::TargetAddr;
-pub use mac_address;
 
-#[cfg(feature = "quic")]
-pub type Stream = quic::Connection;
-#[cfg(not(feature = "quic"))]
-pub type Stream = tcp::FramedStream;
+// #[cfg(feature = "quic")]
+// pub type Stream = quic::Connection;
+// #[cfg(feature = "kcp")]
+pub type Stream = kcp::FramedStream;
+// #[cfg(not(any(feature = "quic", feature = "kcp")))]
+// pub type Stream = tcp::FramedStream;
 
 #[inline]
 pub async fn sleep(sec: f32) {

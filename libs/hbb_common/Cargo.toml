@@ -30,12 +30,17 @@ filetime = "0.2"
 sodiumoxide = "0.2"
 regex = "1.4"
 tokio-socks = { git = "https://github.com/open-trade/tokio-socks" }
+#kcp = {version = "0.4", optional = true }
+kcp = "0.4"
+#tokio_kcp = { git = "https://github.com/21pages/tokio_kcp", branch = "expose", optional = true }
+tokio_kcp = { git = "https://github.com/21pages/tokio_kcp", branch = "expose" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 mac_address = "1.1"
 
 [features]
 quic = ["quinn"]
+#kcp = ["kcp", "tokio_kcp"]
 
 [build-dependencies]
 protobuf-codegen-pure = "3.0.0-alpha.2"
