@@ -31,7 +31,10 @@ fn main() {
     #[cfg(not(feature = "inline"))]
     {
         use hbb_common::env_logger::*;
-        init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
+        init_from_env(Env::default().filter_or(
+            DEFAULT_FILTER_ENV,
+            "trace,tokio_util::codec::framed_impl=off,rustdesk::lang=off",
+        ));
     }
     #[cfg(feature = "inline")]
     {

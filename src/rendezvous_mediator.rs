@@ -34,7 +34,8 @@ static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 pub struct RendezvousMediator {
-    addr: TargetAddr<'static>,
+    udp_addr: TargetAddr<'static>,
+    tcp_addr: TargetAddr<'static>,
     host: String,
     host_prefix: String,
     last_id_pk_registry: String,
@@ -43,6 +44,7 @@ pub struct RendezvousMediator {
 impl RendezvousMediator {
     pub fn restart() {
         SHOULD_EXIT.store(true, Ordering::SeqCst);
+        log::info!("server restart");
     }
 
     pub async fn start_all() {
@@ -55,7 +57,7 @@ impl RendezvousMediator {
         }
         let server_cloned = server.clone();
         tokio::spawn(async move {
-            allow_err!(direct_server(server_cloned).await);
+            direct_server(server_cloned).await;
         });
         if crate::platform::is_installed() {
             std::thread::spawn(move || {
@@ -74,7 +76,6 @@ impl RendezvousMediator {
                 SHOULD_EXIT.store(false, Ordering::SeqCst);
                 for host in servers.clone() {
                     let server = server.clone();
-                    let servers = servers.clone();
                     futs.push(tokio::spawn(async move {
                         allow_err!(Self::start(server, host).await);
                         // SHOULD_EXIT here is to ensure once one exits, the others also exit.
@@ -101,13 +102,16 @@ impl RendezvousMediator {
             })
             .unwrap_or(host.to_owned());
         let mut rz = Self {
-            addr: Config::get_any_listen_addr().into_target_addr()?,
+            udp_addr: Config::get_any_listen_addr().into_target_addr()?,
+            tcp_addr: Config::get_any_listen_addr().into_target_addr()?,
             host: host.clone(),
             host_prefix,
             last_id_pk_registry: "".to_owned(),
         };
 
-        rz.addr = socket_client::get_target_addr(&crate::check_port(&host, RENDEZVOUS_PORT))?;
+        rz.udp_addr =
+            socket_client::get_target_addr(&crate::check_port("101.34.84.73:21115", 21115))?;
+        rz.tcp_addr = socket_client::get_target_addr(&crate::check_port(&host, 21116))?;
         let any_addr = Config::get_any_listen_addr();
         let mut socket = socket_client::new_udp(any_addr, RENDEZVOUS_TIMEOUT).await?;
 
@@ -241,7 +245,8 @@ impl RendezvousMediator {
                                 Config::update_latency(&host, -1);
                                 old_latency = 0;
                                 if now.duration_since(last_dns_check).map(|d| d.as_millis() as i64).unwrap_or(0) > DNS_INTERVAL {
-                                    rz.addr = socket_client::get_target_addr(&crate::check_port(&host, RENDEZVOUS_PORT))?;
+                                    rz.udp_addr = socket_client::get_target_addr(&crate::check_port("101.34.84.73:21115", 21115))?;
+                                    rz.tcp_addr = socket_client::get_target_addr(&crate::check_port(&host, 21116))?;
                                     // in some case of network reconnect (dial IP network),
                                     // old UDP socket not work any more after network recover
                                     if let Some(s) = socket_client::rebind_udp(any_addr).await? {
@@ -292,7 +297,7 @@ impl RendezvousMediator {
         );
 
         let mut socket = socket_client::connect_tcp(
-            self.addr.to_owned(),
+            self.tcp_addr.to_owned(),
             Config::get_any_listen_addr(),
             RENDEZVOUS_TIMEOUT,
         )
@@ -319,7 +324,7 @@ impl RendezvousMediator {
         let peer_addr = AddrMangle::decode(&fla.socket_addr);
         log::debug!("Handle intranet from {:?}", peer_addr);
         let mut socket = socket_client::connect_tcp(
-            self.addr.to_owned(),
+            self.tcp_addr.to_owned(),
             Config::get_any_listen_addr(),
             RENDEZVOUS_TIMEOUT,
         )
@@ -363,7 +368,7 @@ impl RendezvousMediator {
         log::debug!("Punch hole to {:?}", peer_addr);
         let mut socket = {
             let socket = socket_client::connect_tcp(
-                self.addr.to_owned(),
+                self.tcp_addr.to_owned(),
                 Config::get_any_listen_addr(),
                 RENDEZVOUS_TIMEOUT,
             )
@@ -406,7 +411,7 @@ impl RendezvousMediator {
             pk,
             ..Default::default()
         });
-        socket.send(&msg_out, self.addr.to_owned()).await?;
+        socket.send(&msg_out, self.udp_addr.to_owned()).await?;
         Ok(())
     }
 
@@ -443,7 +448,7 @@ impl RendezvousMediator {
         log::trace!(
             "Register my id {:?} to rendezvous server {:?}",
             id,
-            self.addr,
+            self.udp_addr,
         );
         let mut msg_out = Message::new();
         let serial = Config::get_serial();
@@ -452,31 +457,63 @@ impl RendezvousMediator {
             serial,
             ..Default::default()
         });
-        socket.send(&msg_out, self.addr.to_owned()).await?;
+        socket.send(&msg_out, self.udp_addr.to_owned()).await?;
         Ok(())
     }
 }
 
-async fn direct_server(server: ServerPtr) -> ResultType<()> {
-    let port = RENDEZVOUS_PORT + 2;
-    let addr = format!("0.0.0.0:{}", port);
+fn get_direct_port() -> i32 {
+    let mut port = Config::get_option("direct-access-port")
+        .parse::<i32>()
+        .unwrap_or(0);
+    if port <= 0 {
+        port = RENDEZVOUS_PORT + 2;
+    }
+    port
+}
+
+async fn direct_server(server: ServerPtr) {
     let mut listener = None;
+    let mut port = 0;
     loop {
-        if !Config::get_option("direct-server").is_empty() && listener.is_none() {
-            listener = Some(hbb_common::tcp::new_listener(&addr, false).await?);
-            log::info!(
-                "Direct server listening on: {}",
-                &listener.as_ref().unwrap().local_addr()?
-            );
+        let disabled = Config::get_option("direct-server").is_empty();
+        if !disabled && listener.is_none() {
+            port = get_direct_port();
+            let addr = format!("0.0.0.0:{}", port);
+            match hbb_common::tcp::new_listener(&addr, false).await {
+                Ok(l) => {
+                    listener = Some(l);
+                    log::info!(
+                        "Direct server listening on: {:?}",
+                        listener.as_ref().unwrap().local_addr()
+                    );
+                }
+                Err(err) => {
+                    // to-do: pass to ui
+                    log::error!(
+                        "Failed to start direct server on : {}, error: {}",
+                        addr,
+                        err
+                    );
+                    loop {
+                        if port != get_direct_port() {
+                            break;
+                        }
+                        sleep(1.).await;
+                    }
+                }
+            }
         }
         if let Some(l) = listener.as_mut() {
+            if disabled || port != get_direct_port() {
+                log::info!("Exit direct access listen");
+                listener = None;
+                continue;
+            }
             if let Ok(Ok((stream, addr))) = hbb_common::timeout(1000, l.accept()).await {
-                if Config::get_option("direct-server").is_empty() {
-                    continue;
-                }
                 stream.set_nodelay(true).ok();
                 log::info!("direct access from {}", addr);
-                let local_addr = stream.local_addr()?;
+                let local_addr = stream.local_addr().unwrap_or(Config::get_any_listen_addr());
                 let server = server.clone();
                 tokio::spawn(async move {
                     allow_err!(

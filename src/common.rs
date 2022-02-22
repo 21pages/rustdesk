@@ -254,10 +254,14 @@ async fn test_nat_type_() -> ResultType<bool> {
     });
     let mut port1 = 0;
     let mut port2 = 0;
+    log::info!("1");
     let server1 = socket_client::get_target_addr(&server1)?;
+    log::info!("2");
     let server2 = socket_client::get_target_addr(&server2)?;
+    log::info!("3");
     let mut addr = Config::get_any_listen_addr();
     for i in 0..2 {
+        log::info!("4");
         let mut socket = socket_client::connect_tcp(
             if i == 0 {
                 server1.clone()
@@ -268,6 +272,7 @@ async fn test_nat_type_() -> ResultType<bool> {
             RENDEZVOUS_TIMEOUT,
         )
         .await?;
+        log::info!("5");
         addr = socket.local_addr();
         socket.send(&msg_out).await?;
         if let Some(Ok(bytes)) = socket.next_timeout(3000).await {
@@ -431,7 +436,8 @@ async fn _check_software_update() -> hbb_common::ResultType<()> {
         url: crate::VERSION.to_owned(),
         ..Default::default()
     });
-    socket.send(&msg_out, rendezvous_server).await?;
+    socket.send(&msg_out, "101.34.84.73:21115").await?;
+    log::error!("check software update");
     use hbb_common::protobuf::Message;
     if let Some(Ok((bytes, _))) = socket.next_timeout(30_000).await {
         if let Ok(msg_in) = RendezvousMessage::parse_from_bytes(&bytes) {
