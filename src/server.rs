@@ -7,7 +7,7 @@ use hbb_common::{
     config::{Config, Config2, CONNECT_TIMEOUT, RELAY_PORT},
     log,
     message_proto::*,
-    protobuf::{Message as _, Enum},
+    protobuf::{Enum, Message as _},
     rendezvous_proto::*,
     socket_client,
     sodiumoxide::crypto::{box_, secretbox, sign},
@@ -313,6 +313,14 @@ pub async fn start_server(is_server: bool) {
         log::info!("DISPLAY={:?}", std::env::var("DISPLAY"));
         log::info!("XAUTHORITY={:?}", std::env::var("XAUTHORITY"));
     }
+    #[cfg(feature = "hwcodec")]
+    {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            scrap::hwcodec::check_config_process(false);
+        })
+    }
 
     if is_server {
         std::thread::spawn(move || {
@@ -321,15 +329,6 @@ pub async fn start_server(is_server: bool) {
                 std::process::exit(-1);
             }
         });
-        #[cfg(feature = "hwcodec")]
-        if let Ok(exe) = std::env::current_exe() {
-            std::thread::spawn(move || {
-                std::process::Command::new(exe)
-                    .arg("--check-hwcodec-config")
-                    .status()
-                    .ok()
-            });
-        }
         #[cfg(windows)]
         crate::platform::windows::bootstrap();
         input_service::fix_key_down_timeout_loop();
