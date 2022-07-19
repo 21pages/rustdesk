@@ -23,6 +23,8 @@ use hbb_common::tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     Mutex as TokioMutex,
 };
+#[cfg(feature = "hwcodec")]
+use scrap::hwcodec::HwEncoder;
 use scrap::{
     codec::{Encoder, EncoderCfg, HwEncoderConfig},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
@@ -398,8 +400,8 @@ fn run(sp: GenericService) -> ResultType<()> {
             display: current as _,
             x: origin.0 as _,
             y: origin.1 as _,
-            width: width as _,
-            height: height as _,
+            width: adjust_display_width(width) as _,
+            height: adjust_display_height(height) as _,
             ..Default::default()
         });
         let mut msg_out = Message::new();
@@ -417,6 +419,8 @@ fn run(sp: GenericService) -> ResultType<()> {
     #[cfg(windows)]
     log::info!("gdi: {}", c.is_gdi());
     let codec_name = Encoder::current_hw_encoder_name();
+    #[cfg(feature = "hwcodec")]
+    let mut odd_align_checked = false;
 
     while sp.ok() {
         #[cfg(windows)]
@@ -443,6 +447,7 @@ fn run(sp: GenericService) -> ResultType<()> {
             bail!("SWITCH");
         }
         if codec_name != Encoder::current_hw_encoder_name() {
+            *SWITCH.lock().unwrap() = width % 2 != 0 || height % 2 != 0;
             bail!("SWITCH");
         }
         check_privacy_mode_changed(&sp, privacy_mode_id)?;
@@ -494,6 +499,16 @@ fn run(sp: GenericService) -> ResultType<()> {
             Ok(frame) => {
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
+                #[cfg(feature = "hwcodec")]
+                if width % 2 != 0
+                    && !odd_align_checked
+                    && Encoder::current_hw_encoder_name().is_some()
+                {
+                    odd_align_checked = true;
+                    if HwEncoder::should_try_new_odd_width_align(width, height, frame.len()) {
+                        bail!("try new align");
+                    }
+                }
                 let send_conn_ids = handle_one_frame(&sp, &frame, ms, &mut encoder)?;
                 frame_controller.set_send(now, send_conn_ids);
                 #[cfg(windows)]
@@ -644,6 +659,24 @@ fn get_display_num() -> usize {
     }
 }
 
+#[inline]
+fn adjust_display_width(width: usize) -> usize {
+    #[cfg(feature = "hwcodec")]
+    if Encoder::current_hw_encoder_name().is_some() {
+        return HwEncoder::align_width(width);
+    }
+    width
+}
+
+#[inline]
+fn adjust_display_height(height: usize) -> usize {
+    #[cfg(feature = "hwcodec")]
+    if Encoder::current_hw_encoder_name().is_some() {
+        return HwEncoder::align_height(height);
+    }
+    height
+}
+
 pub fn get_displays() -> ResultType<(usize, Vec<DisplayInfo>)> {
     // switch to primary display if long time (30 seconds) no users
     if LAST_ACTIVE.lock().unwrap().elapsed().as_secs() >= 30 {
@@ -658,8 +691,8 @@ pub fn get_displays() -> ResultType<(usize, Vec<DisplayInfo>)> {
         displays.push(DisplayInfo {
             x: d.origin().0 as _,
             y: d.origin().1 as _,
-            width: d.width() as _,
-            height: d.height() as _,
+            width: adjust_display_width(d.width()) as _,
+            height: adjust_display_height(d.height()) as _,
             name: d.name(),
             online: d.is_online(),
             ..Default::default()
