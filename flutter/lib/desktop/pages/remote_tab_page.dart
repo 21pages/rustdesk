@@ -51,6 +51,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
                 tabBarHeight:
                     fullscreen.isTrue ? 0 : kDesktopRemoteTabBarHeight,
                 windowBorderWidth: fullscreen.isTrue ? 0 : kWindowBorderWidth,
+                switchUuid: params['switch_uuid'],
               ))));
       _update_remote_count();
     }
@@ -71,6 +72,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
       if (call.method == "new_remote_desktop") {
         final args = jsonDecode(call.arguments);
         final id = args['id'];
+        final switchUuid = args['switch_uuid'];
         ConnectionTypeState.init(id);
         window_on_top(windowId());
         ConnectionTypeState.init(id);
@@ -87,6 +89,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
                   tabBarHeight:
                       fullscreen.isTrue ? 0 : kDesktopRemoteTabBarHeight,
                   windowBorderWidth: fullscreen.isTrue ? 0 : kWindowBorderWidth,
+                  switchUuid: switchUuid,
                 ))));
       } else if (call.method == "onDestroy") {
         tabController.clear();

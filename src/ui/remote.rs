@@ -233,7 +233,10 @@ impl InvokeUiSession for SciterHandler {
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str, retry: bool) {
-        self.call2("msgbox_retry", &make_args!(msgtype, title, text, link, retry));
+        self.call2(
+            "msgbox_retry",
+            &make_args!(msgtype, title, text, link, retry),
+        );
     }
 
     fn new_message(&self, msg: String) {
@@ -247,6 +250,8 @@ impl InvokeUiSession for SciterHandler {
     fn update_block_input_state(&self, on: bool) {
         self.call("updateBlockInputState", &make_args!(on));
     }
+
+    fn switch_back(&self, _id: &str) {}
 }
 
 pub struct SciterSession(Session<SciterHandler>);
@@ -423,7 +428,7 @@ impl SciterSession {
             ConnType::DEFAULT_CONN
         };
 
-        session.lc.write().unwrap().initialize(id, conn_type);
+        session.lc.write().unwrap().initialize(id, conn_type, None);
 
         Self(session)
     }

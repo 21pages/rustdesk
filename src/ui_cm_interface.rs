@@ -47,6 +47,7 @@ pub struct Client {
     pub file: bool,
     pub restart: bool,
     pub recording: bool,
+    pub from_switch: bool,
     #[serde(skip)]
     tx: UnboundedSender<Data>,
 }
@@ -113,6 +114,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         file: bool,
         restart: bool,
         recording: bool,
+        from_switch: bool,
         tx: mpsc::UnboundedSender<Data>,
     ) {
         let client = Client {
@@ -129,6 +131,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             file,
             restart,
             recording,
+            from_switch,
             tx,
         };
         CLIENTS
@@ -200,6 +203,13 @@ pub fn close(id: i32) {
 #[inline]
 pub fn remove(id: i32) {
     CLIENTS.write().unwrap().remove(&id);
+}
+
+#[inline]
+pub fn switch_back(id: i32) {
+    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
+        allow_err!(client.tx.send(Data::SwitchBack));
+    };
 }
 
 // server mode send chat to peer
@@ -297,9 +307,9 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                         }
                         Ok(Some(data)) => {
                             match data {
-                                Data::Login{id, is_file_transfer, port_forward, peer_id, name, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, restart, recording} => {
+                                Data::Login{id, is_file_transfer, port_forward, peer_id, name, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, restart, recording, from_switch} => {
                                     log::debug!("conn_id: {}", id);
-                                    self.cm.add_connection(id, is_file_transfer, port_forward, peer_id, name, authorized, keyboard, clipboard, audio, file, restart, recording, self.tx.clone());
+                                    self.cm.add_connection(id, is_file_transfer, port_forward, peer_id, name, authorized, keyboard, clipboard, audio, file, restart, recording, from_switch, self.tx.clone());
                                     self.conn_id = id;
                                     #[cfg(windows)]
                                     {

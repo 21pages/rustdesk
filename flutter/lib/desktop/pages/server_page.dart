@@ -481,8 +481,31 @@ class _CmControlPanel extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        Offstage(
+          offstage: !client.fromSwitch,
+          child: InkWell(
+            onTap: () =>
+                checkClickTime(client.id, () => handleSwitchBack(context)),
+            child: Container(
+              width: 100,
+              height: 40,
+              decoration: BoxDecoration(
+                  color: Colors.green[700],
+                  borderRadius: BorderRadius.circular(10)),
+              child: Tooltip(
+                  message: translate("Switch Sides"),
+                  child: Icon(Icons.reply, color: Colors.white)),
+            ),
+          ),
+        ),
+        Offstage(
+          offstage: !client.fromSwitch,
+          child: SizedBox(
+            width: 30,
+          ),
+        ),
         Ink(
-          width: 200,
+          width: client.fromSwitch ? 100 : 200,
           height: 40,
           decoration: BoxDecoration(
               color: Colors.redAccent, borderRadius: BorderRadius.circular(10)),
@@ -581,6 +604,10 @@ class _CmControlPanel extends StatelessWidget {
 
   void handleDisconnect(BuildContext context) {
     bind.cmCloseConnection(connId: client.id);
+  }
+
+  void handleSwitchBack(BuildContext context) {
+    bind.cmSwitchBack(connId: client.id);
   }
 
   void handleAccept(BuildContext context) {

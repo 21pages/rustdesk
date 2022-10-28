@@ -188,6 +188,16 @@ class FfiModel with ChangeNotifier {
             rustDeskWinManager.newRemoteDesktop(arg);
           });
         }
+      } else if (name == 'switch_sides') {
+        final peer_id = evt['peer_id'].toString();
+        final uuid = evt['uuid'].toString();
+        Future.delayed(Duration.zero, () {
+          rustDeskWinManager.newRemoteDesktop(peer_id, switch_uuid: uuid);
+        });
+      } else if (name == 'switch_back') {
+        final peer_id = evt['peer_id'].toString();
+        await bind.sesssionSwitchSides(id: peer_id);
+        closeConnection(id: peer_id);
       }
     };
   }
@@ -1074,7 +1084,9 @@ class FFI {
 
   /// Start with the given [id]. Only transfer file if [isFileTransfer], only port forward if [isPortForward].
   void start(String id,
-      {bool isFileTransfer = false, bool isPortForward = false}) {
+      {bool isFileTransfer = false,
+      bool isPortForward = false,
+      String? switchUuid}) {
     assert(!(isFileTransfer && isPortForward), 'more than one connect type');
     if (isFileTransfer) {
       connType = ConnType.fileTransfer;
@@ -1090,7 +1102,11 @@ class FFI {
     }
     // ignore: unused_local_variable
     final addRes = bind.sessionAddSync(
-        id: id, isFileTransfer: isFileTransfer, isPortForward: isPortForward);
+      id: id,
+      isFileTransfer: isFileTransfer,
+      isPortForward: isPortForward,
+      switchUuid: switchUuid ?? "",
+    );
     final stream = bind.sessionStart(id: id);
     final cb = ffiModel.startEventListener(id);
     () async {

@@ -18,11 +18,12 @@ use rdev::Keyboard as RdevKeyboard;
 use rdev::{Event, EventType, EventType::*, Key as RdevKey, KeyboardState};
 
 use hbb_common::{allow_err, message_proto::*};
-use hbb_common::{fs, get_version_number, log, Stream};
+use hbb_common::{bytes::Bytes, fs, get_version_number, log, Stream};
 use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
+use uuid::Uuid;
 
 /// IS_IN KEYBOARD_HOOKED sciter only
 pub static IS_IN: AtomicBool = AtomicBool::new(false);
@@ -113,6 +114,22 @@ impl<T: InvokeUiSession> Session<T> {
 
     pub fn refresh_video(&self) {
         self.send(Data::Message(LoginConfigHandler::refresh()));
+    }
+
+    pub fn switch_sides(&self) {
+        let uuid = Uuid::new_v4();
+        crate::server::SWITCH_SIDES_UUID
+            .lock()
+            .unwrap()
+            .insert(self.id.clone(), (tokio::time::Instant::now(), uuid.clone()));
+        let mut misc = Misc::new();
+        misc.set_switch_sides_request(SwitchSidesRequest {
+            uuid: Bytes::from(uuid.as_bytes().to_vec()),
+            ..Default::default()
+        });
+        let mut msg_out = Message::new();
+        msg_out.set_misc(misc);
+        self.send(Data::Message(msg_out));
     }
 
     pub fn record_screen(&self, start: bool, w: i32, h: i32) {
@@ -1096,6 +1113,7 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn adapt_size(&self);
     fn on_rgba(&self, data: &[u8]);
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str, retry: bool);
+    fn switch_back(&self, id: &str);
     #[cfg(any(target_os = "android", target_os = "ios"))]
     fn clipboard(&self, content: String);
 }

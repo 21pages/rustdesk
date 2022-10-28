@@ -80,8 +80,9 @@ pub fn session_add_sync(
     id: String,
     is_file_transfer: bool,
     is_port_forward: bool,
+    switch_uuid: String,
 ) -> SyncReturn<String> {
-    if let Err(e) = session_add(&id, is_file_transfer, is_port_forward) {
+    if let Err(e) = session_add(&id, is_file_transfer, is_port_forward, &switch_uuid) {
         SyncReturn(format!("Failed to add session with id {}, {}", &id, e))
     } else {
         SyncReturn("".to_owned())
@@ -207,6 +208,12 @@ pub fn session_ctrl_alt_del(id: String) {
 pub fn session_switch_display(id: String, value: i32) {
     if let Some(session) = SESSIONS.read().unwrap().get(&id) {
         session.switch_display(value);
+    }
+}
+
+pub fn sesssion_switch_sides(id: String) {
+    if let Some(session) = SESSIONS.read().unwrap().get(&id) {
+        session.switch_sides();
     }
 }
 
@@ -956,6 +963,10 @@ pub fn cm_remove_disconnected_connection(conn_id: i32) {
     crate::ui_cm_interface::remove(conn_id);
 }
 
+pub fn cm_switch_back(conn_id: i32) {
+    crate::ui_cm_interface::switch_back(conn_id);
+}
+
 pub fn cm_check_click_time(conn_id: i32) {
     crate::ui_cm_interface::check_click_time(conn_id)
 }
@@ -1004,10 +1015,6 @@ fn handle_query_onlines(onlines: Vec<String>, offlines: Vec<String>) {
 
 pub fn query_onlines(ids: Vec<String>) {
     crate::rendezvous_mediator::query_online_states(ids, handle_query_onlines)
-}
-
-pub fn version_to_number(v: String) -> i64 {
-    hbb_common::get_version_number(&v)
 }
 
 pub fn main_is_installed() -> SyncReturn<bool> {

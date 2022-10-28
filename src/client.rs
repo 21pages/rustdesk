@@ -6,13 +6,13 @@ use cpal::{
 };
 use magnum_opus::{Channels::*, Decoder as AudioDecoder};
 use sha2::{Digest, Sha256};
-use std::sync::atomic::Ordering;
 use std::{
     collections::HashMap,
     net::SocketAddr,
     ops::{Deref, Not},
     sync::{atomic::AtomicBool, mpsc, Arc, Mutex, RwLock},
 };
+use std::{str::FromStr, sync::atomic::Ordering};
 use uuid::Uuid;
 
 pub use file_trait::FileManager;
@@ -20,6 +20,7 @@ use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
     bail,
+    bytes::Bytes,
     config::{
         Config, PeerConfig, PeerInfoSerde, CONNECT_TIMEOUT, READ_TIMEOUT, RELAY_PORT,
         RENDEZVOUS_TIMEOUT,
@@ -894,6 +895,7 @@ pub struct LoginConfigHandler {
     pub supported_encoding: Option<(bool, bool)>,
     pub restarting_remote_device: bool,
     pub force_relay: bool,
+    switch_uuid: Option<String>,
 }
 
 impl Deref for LoginConfigHandler {
@@ -921,7 +923,7 @@ impl LoginConfigHandler {
     ///
     /// * `id` - id of peer
     /// * `conn_type` - Connection type enum.
-    pub fn initialize(&mut self, id: String, conn_type: ConnType) {
+    pub fn initialize(&mut self, id: String, conn_type: ConnType, switch_uuid: Option<String>) {
         self.id = id;
         self.conn_type = conn_type;
         let config = self.load_config();
@@ -931,6 +933,7 @@ impl LoginConfigHandler {
         self.supported_encoding = None;
         self.restarting_remote_device = false;
         self.force_relay = !self.get_option("force-always-relay").is_empty();
+        self.switch_uuid = switch_uuid;
     }
 
     /// Check if the client should auto login.
@@ -1653,6 +1656,15 @@ pub async fn handle_hash(
     interface: &impl Interface,
     peer: &mut Stream,
 ) {
+    lc.write().unwrap().hash = hash.clone();
+    let uuid = lc.read().unwrap().switch_uuid.clone();
+    if let Some(uuid) = uuid {
+        if let Ok(uuid) = uuid::Uuid::from_str(&uuid) {
+            send_switch_login_request(lc.clone(), peer, uuid).await;
+            return;
+        }
+    }
+
     let mut password = lc.read().unwrap().password.clone();
     if password.is_empty() {
         if !password_preset.is_empty() {
@@ -1676,7 +1688,6 @@ pub async fn handle_hash(
         hasher.update(&hash.challenge);
         send_login(lc.clone(), hasher.finalize()[..].into(), peer).await;
     }
-    lc.write().unwrap().hash = hash;
 }
 
 /// Send login message to peer.
@@ -1688,6 +1699,26 @@ pub async fn handle_hash(
 /// * `peer` - [`Stream`] for communicating with peer.
 async fn send_login(lc: Arc<RwLock<LoginConfigHandler>>, password: Vec<u8>, peer: &mut Stream) {
     let msg_out = lc.read().unwrap().create_login_msg(password);
+    allow_err!(peer.send(&msg_out).await);
+}
+
+async fn send_switch_login_request(
+    lc: Arc<RwLock<LoginConfigHandler>>,
+    peer: &mut Stream,
+    uuid: Uuid,
+) {
+    let mut msg_out = Message::new();
+    msg_out.set_switch_sides_response(SwitchSidesResponse {
+        uuid: Bytes::from(uuid.as_bytes().to_vec()),
+        lr: hbb_common::protobuf::MessageField::some(
+            lc.read()
+                .unwrap()
+                .create_login_msg(vec![])
+                .login_request()
+                .to_owned(),
+        ),
+        ..Default::default()
+    });
     allow_err!(peer.send(&msg_out).await);
 }
 

@@ -38,6 +38,7 @@ pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: Arc::<Mutex<HashMap<String, (i32, i32, i32)>>> = Default::default();
     static ref SESSIONS: Arc::<Mutex<HashMap<String, Session>>> = Default::default();
+    pub static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
 }
 pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 pub static MOUSE_MOVE_TIME: AtomicI64 = AtomicI64::new(0);
@@ -97,6 +98,7 @@ pub struct Connection {
     last_recv_time: Arc<Mutex<Instant>>,
     chat_unanswered: bool,
     close_manually: bool,
+    from_switch: bool,
 }
 
 impl Subscriber for ConnInner {
@@ -129,6 +131,7 @@ const MILLI1: Duration = Duration::from_millis(1);
 const SEND_TIMEOUT_VIDEO: u64 = 12_000;
 const SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO * 10;
 const SESSION_TIMEOUT: Duration = Duration::from_secs(30);
+const SWITCH_SIDES_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl Connection {
     pub async fn start(
@@ -188,6 +191,7 @@ impl Connection {
             last_recv_time: Arc::new(Mutex::new(Instant::now())),
             chat_unanswered: false,
             close_manually: false,
+            from_switch: false,
         };
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         tokio::spawn(async move {
@@ -345,6 +349,13 @@ impl Connection {
                                 }
                             };
                             conn.send(msg_out).await;
+                        }
+                        ipc::Data::SwitchBack => {
+                            let mut misc = Misc::new();
+                            misc.set_switch_back(SwitchBack::default());
+                            let mut msg = Message::new();
+                            msg.set_misc(misc);
+                            conn.send(msg).await;
                         }
                         _ => {}
                     }
@@ -818,6 +829,7 @@ impl Connection {
             file_transfer_enabled: self.file_transfer_enabled(),
             restart: self.restart,
             recording: self.recording,
+            from_switch: self.from_switch,
         });
     }
 
@@ -939,29 +951,33 @@ impl Connection {
         return Config::get_option(enable_prefix_option).is_empty();
     }
 
-    async fn on_message(&mut self, msg: Message) -> bool {
-        if let Some(message::Union::LoginRequest(lr)) = msg.union {
-            self.lr = lr.clone();
-            if let Some(o) = lr.option.as_ref() {
-                self.update_option(o).await;
-                if let Some(q) = o.video_codec_state.clone().take() {
-                    scrap::codec::Encoder::update_video_encoder(
-                        self.inner.id(),
-                        scrap::codec::EncoderUpdate::State(q),
-                    );
-                } else {
-                    scrap::codec::Encoder::update_video_encoder(
-                        self.inner.id(),
-                        scrap::codec::EncoderUpdate::DisableHwIfNotExist,
-                    );
-                }
+    async fn handle_login_request_without_validation(&mut self, lr: &LoginRequest) {
+        self.lr = lr.clone();
+        if let Some(o) = lr.option.as_ref() {
+            self.update_option(o).await;
+            if let Some(q) = o.video_codec_state.clone().take() {
+                scrap::codec::Encoder::update_video_encoder(
+                    self.inner.id(),
+                    scrap::codec::EncoderUpdate::State(q),
+                );
             } else {
                 scrap::codec::Encoder::update_video_encoder(
                     self.inner.id(),
                     scrap::codec::EncoderUpdate::DisableHwIfNotExist,
                 );
             }
-            self.video_ack_required = lr.video_ack_required;
+        } else {
+            scrap::codec::Encoder::update_video_encoder(
+                self.inner.id(),
+                scrap::codec::EncoderUpdate::DisableHwIfNotExist,
+            );
+        }
+        self.video_ack_required = lr.video_ack_required;
+    }
+
+    async fn on_message(&mut self, msg: Message) -> bool {
+        if let Some(message::Union::LoginRequest(lr)) = msg.union {
+            self.handle_login_request_without_validation(&lr).await;
             if self.authorized {
                 return true;
             }
@@ -1067,6 +1083,21 @@ impl Connection {
                     self.send_logon_response().await;
                     if self.port_forward_socket.is_some() {
                         return false;
+                    }
+                }
+            }
+        } else if let Some(message::Union::SwitchSidesResponse(s)) = msg.union {
+            #[cfg(feature = "flutter")]
+            if let Some(lr) = s.lr.clone().take() {
+                self.handle_login_request_without_validation(&lr).await;
+                let uuid_old = SWITCH_SIDES_UUID.lock().unwrap().remove(&lr.my_id);
+                if let Ok(uuid) = uuid::Uuid::from_slice(s.uuid.to_vec().as_ref()) {
+                    if let Some((instant, uuid_old)) = uuid_old {
+                        if instant.elapsed() < SWITCH_SIDES_TIMEOUT && uuid == uuid_old {
+                            self.from_switch = true;
+                            self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), true);
+                            self.send_logon_response().await;
+                        }
                     }
                 }
             }
@@ -1299,6 +1330,11 @@ impl Connection {
                                 Err(e) => log::error!("Failed to restart:{}", e),
                             }
                         }
+                    }
+                    #[cfg(feature = "flutter")]
+                    Some(misc::Union::SwitchSidesRequest(s)) => {
+                        crate::flutter::switch_sides(&self.lr.my_id, &s.uuid);
+                        return false;
                     }
                     _ => {}
                 },

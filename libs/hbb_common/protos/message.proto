@@ -550,6 +550,18 @@ message BackNotification {
   }
 }
 
+message SwitchSidesRequest {
+  bytes uuid = 1;
+}
+
+message SwitchSidesResponse {
+  bytes uuid = 1;
+  LoginRequest lr = 2;
+}
+
+message SwitchBack {
+}
+
 message Misc {
   oneof union {
     ChatMessage chat_message = 4;
@@ -564,6 +576,8 @@ message Misc {
     bool restart_remote_device = 14;
     bool uac = 15;
     bool foreground_window_elevated = 16;
+    SwitchSidesRequest switch_sides_request = 17;
+    SwitchBack switch_back = 18;
   }
 }
 
@@ -588,5 +602,6 @@ message Message {
     Misc misc = 19;
     Cliprdr cliprdr = 20;
     MessageBox message_box = 21;
+    SwitchSidesResponse switch_sides_response = 22;
   }
 }

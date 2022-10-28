@@ -31,12 +31,14 @@ class RemotePage extends StatefulWidget {
     required this.windowId,
     required this.tabBarHeight,
     required this.windowBorderWidth,
+    this.switchUuid,
   }) : super(key: key);
 
   final String id;
   final int windowId;
   final double tabBarHeight;
   final double windowBorderWidth;
+  final String? switchUuid;
 
   @override
   State<RemotePage> createState() => _RemotePageState();
@@ -93,7 +95,10 @@ class _RemotePageState extends State<RemotePage>
 
     _updateTabBarHeight();
     Get.put(_ffi, tag: widget.id);
-    _ffi.start(widget.id);
+    _ffi.start(
+      widget.id,
+      switchUuid: widget.switchUuid,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       _ffi.dialogManager

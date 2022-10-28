@@ -386,5 +386,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Wayland requires higher version of linux distro. Please try X11 desktop or change your OS.", "Wayland 需要更高版本的 linux 發行版。 請嘗試 X11 桌面或更改您的操作系統。"),
         ("JumpLink", "查看"),
         ("Please Select the screen to be shared(Operate on the peer side).", "請選擇要分享的畫面（在對端操作）。"),
+        ("Switch Sides", "反轉訪問方向"),
+        ("Please confirm if you want to share your desktop ?", "請確認要讓對方訪問你的桌面?"),
     ].iter().cloned().collect();
 }
