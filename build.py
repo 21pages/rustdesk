@@ -82,6 +82,11 @@ def make_parser():
         help='Build windows portable'
     )
     parser.add_argument(
+        '--background',
+        action='store_true',
+        help='Run background portable service at startup'
+    )
+    parser.add_argument(
         '--flatpak',
         action='store_true',
         help='Build rustdesk libs with the flatpak feature enabled'
@@ -195,6 +200,8 @@ def get_features(args):
         features.append('flutter')
     if args.flatpak:
         features.append('flatpak')
+    if args.background:
+        features.append('background')
     print("features:", features)
     return features
 
