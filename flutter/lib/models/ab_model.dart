@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -21,10 +22,8 @@ class AbModel {
 
   AbModel(this.parent);
 
-  FFI? get _ffi => parent.target;
-
   Future<dynamic> pullAb() async {
-    if (_ffi!.userModel.userName.isEmpty) return;
+    if (gFFI.userModel.userName.isEmpty) return;
     abLoading.value = true;
     abError.value = "";
     final api = "${await bind.mainGetApiServer()}/api/ab/get";
@@ -101,6 +100,7 @@ class AbModel {
   }
 
   Future<void> pushAb() async {
+    if (gFFI.userModel.userName.isEmpty) return;
     abLoading.value = true;
     final api = "${await bind.mainGetApiServer()}/api/ab";
     var authHeaders = await getHttpHeaders();
@@ -186,6 +186,25 @@ class AbModel {
       it.first.rdpPort = port;
       it.first.rdpUsername = username;
       await pushAb();
+    }
+  }
+
+  Future<void> setPortForwards(Map<String, dynamic> evt) async {
+    try {
+      dynamic id = evt['id'];
+      dynamic pfs = evt['pfs'];
+      if (id is String && pfs is String) {
+        final it = peers.where((p0) => p0.id == id);
+        if (it.isNotEmpty) {
+          List<dynamic> list = jsonDecode(pfs);
+          List<PortForward> portForwards =
+              list.map((item) => PortForward.fromJson(item)).toList();
+          it.first.portForwards = portForwards;
+          await pushAb();
+        }
+      }
+    } catch (e) {
+      debugPrint('$e');
     }
   }
 

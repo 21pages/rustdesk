@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/models/model.dart';
+import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
 import 'package:wakelock/wakelock.dart';
@@ -13,17 +14,6 @@ const double _kColumn1Width = 30;
 const double _kColumn4Width = 100;
 const double _kRowHeight = 50;
 const double _kTextLeftMargin = 20;
-
-class _PortForward {
-  int localPort;
-  String remoteHost;
-  int remotePort;
-
-  _PortForward.fromJson(List<dynamic> json)
-      : localPort = json[0] as int,
-        remoteHost = json[1] as String,
-        remotePort = json[2] as int;
-}
 
 class PortForwardPage extends StatefulWidget {
   const PortForwardPage({Key? key, required this.id, required this.isRDP})
@@ -40,8 +30,9 @@ class _PortForwardPageState extends State<PortForwardPage>
   final TextEditingController localPortController = TextEditingController();
   final TextEditingController remoteHostController = TextEditingController();
   final TextEditingController remotePortController = TextEditingController();
-  RxList<_PortForward> pfs = RxList.empty(growable: true);
+  RxList<PortForward> pfs = RxList.empty(growable: true);
   late FFI _ffi;
+  bool inited = false;
 
   @override
   void initState() {
@@ -72,8 +63,9 @@ class _PortForwardPageState extends State<PortForwardPage>
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: FutureBuilder(future: () async {
-        if (!widget.isRDP) {
-          refreshTunnelConfig();
+        if (!widget.isRDP && !inited) {
+          await initTunnelConfig();
+          inited = true;
         }
       }(), builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
@@ -191,17 +183,20 @@ class _PortForwardPageState extends State<PortForwardPage>
                   remotePort != null &&
                   (remoteHostController.text.isEmpty ||
                       remoteHostController.text.trim().isNotEmpty)) {
-                await bind.sessionAddPortForward(
-                    id: 'pf_${widget.id}',
-                    localPort: localPort,
-                    remoteHost: remoteHostController.text.trim().isEmpty
-                        ? 'localhost'
-                        : remoteHostController.text.trim(),
-                    remotePort: remotePort);
                 localPortController.clear();
                 remoteHostController.clear();
                 remotePortController.clear();
-                refreshTunnelConfig();
+                String remoteHost = remoteHostController.text.trim().isEmpty
+                    ? 'localhost'
+                    : remoteHostController.text.trim();
+                await bind.sessionAddPortForward(
+                    id: 'pf_${widget.id}',
+                    localPort: localPort,
+                    remoteHost: remoteHost,
+                    remotePort: remotePort);
+                pfs.add(PortForward(localPort, remoteHost, remotePort));
+                await bind.sessionSetAddressBookPortForwards(
+                    id: widget.id, pfs: jsonEncode(pfs));
               }
             },
             child: Text(
@@ -240,7 +235,7 @@ class _PortForwardPageState extends State<PortForwardPage>
     );
   }
 
-  Widget buildTunnelDataRow(BuildContext context, _PortForward pf, int index) {
+  Widget buildTunnelDataRow(BuildContext context, PortForward pf, int index) {
     text(String lable) => Expanded(
         child: Text(lable, style: const TextStyle(fontSize: 20))
             .marginOnly(left: _kTextLeftMargin));
@@ -265,7 +260,9 @@ class _PortForwardPageState extends State<PortForwardPage>
             onPressed: () async {
               await bind.sessionRemovePortForward(
                   id: 'pf_${widget.id}', localPort: pf.localPort);
-              refreshTunnelConfig();
+              pfs.removeWhere((e) => e.localPort == pf.localPort);
+              await bind.sessionSetAddressBookPortForwards(
+                  id: widget.id, pfs: jsonEncode(pfs));
             },
           ),
         ),
@@ -273,15 +270,44 @@ class _PortForwardPageState extends State<PortForwardPage>
     );
   }
 
-  void refreshTunnelConfig() async {
-    String peer = await bind.mainGetPeer(id: widget.id);
-    Map<String, dynamic> config = jsonDecode(peer);
-    List<dynamic> infos = config['port_forwards'] as List;
-    List<_PortForward> result = List.empty(growable: true);
-    for (var e in infos) {
-      result.add(_PortForward.fromJson(e));
+  Future<void> initTunnelConfig() async {
+    try {
+      String peer = await bind.mainGetPeer(id: widget.id);
+      Map<String, dynamic> config = jsonDecode(peer);
+      List<dynamic> infos = config['port_forwards'] as List;
+      List<PortForward> result = List.empty(growable: true);
+      for (var e in infos) {
+        result.add(PortForward.fromJson(e));
+      }
+      await gFFI.abModel.pullAb();
+      Peer? peer2 = gFFI.abModel.find(widget.id);
+      if (peer2 != null && peer2.portForwards.isNotEmpty) {
+        for (var e2 in peer2.portForwards) {
+          bool contains = false;
+          for (var e in result) {
+            if (e.localPort == e2.localPort &&
+                e.remoteHost == e2.remoteHost &&
+                e.remotePort == e2.remotePort) {
+              contains = true;
+              break;
+            }
+          }
+          if (!contains) {
+            result.add(e2);
+            bind.sessionAddPortForward(
+                id: 'pf_${widget.id}',
+                localPort: e2.localPort,
+                remoteHost: e2.remoteHost,
+                remotePort: e2.remotePort);
+          }
+        }
+      }
+      pfs.value = result;
+      await bind.sessionSetAddressBookPortForwards(
+          id: widget.id, pfs: jsonEncode(pfs));
+    } catch (e) {
+      debugPrint('$e');
     }
-    pfs.value = result;
   }
 
   buildRdp(BuildContext context) {

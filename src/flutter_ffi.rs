@@ -756,6 +756,22 @@ pub fn session_remove_port_forward(id: String, local_port: i32) {
     }
 }
 
+pub fn session_set_address_book_port_forwards(id: String, pfs: String) {
+    // set address book in main gui
+    if let Some(s) = flutter::GLOBAL_EVENT_STREAM
+        .read()
+        .unwrap()
+        .get(flutter::APP_TYPE_MAIN)
+    {
+        let data = HashMap::from([
+            ("name", "set_address_book_port_forwards".to_owned()),
+            ("id", id),
+            ("pfs", pfs),
+        ]);
+        s.add(serde_json::ser::to_string(&data).unwrap_or("".to_owned()));
+    };
+}
+
 pub fn session_new_rdp(id: String) {
     if let Some(session) = SESSIONS.write().unwrap().get_mut(&id) {
         session.new_rdp();
