@@ -197,6 +197,8 @@ class FfiModel with ChangeNotifier {
         parent.target?.serverModel.setShowElevation(show);
       } else if (name == 'cancel_msgbox') {
         cancelMsgBox(evt, peerId);
+      } else if (name == 'set_address_book_port_forwards') {
+        gFFI.abModel.setPortForwards(evt);
       }
     };
   }

@@ -12,6 +12,7 @@ class Peer {
   bool forceAlwaysRelay = false;
   String rdpPort;
   String rdpUsername;
+  late List<PortForward> portForwards;
   bool online = false;
 
   Peer.fromJson(Map<String, dynamic> json)
@@ -23,7 +24,17 @@ class Peer {
         tags = json['tags'] ?? [],
         forceAlwaysRelay = json['forceAlwaysRelay'] == 'true',
         rdpPort = json['rdpPort'] ?? '',
-        rdpUsername = json['rdpUsername'] ?? '';
+        rdpUsername = json['rdpUsername'] ?? '' {
+    try {
+      if (json['portForwards'] != null && json['portForwards'] is List) {
+        portForwards = (json['portForwards'] as List)
+            .map((e) => PortForward.fromJson(e))
+            .toList();
+      }
+    } catch (e) {
+      portForwards = [];
+    }
+  }
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -36,6 +47,7 @@ class Peer {
       "forceAlwaysRelay": forceAlwaysRelay.toString(),
       "rdpPort": rdpPort,
       "rdpUsername": rdpUsername,
+      "portForwards": portForwards,
     };
   }
 
@@ -49,6 +61,7 @@ class Peer {
     required this.forceAlwaysRelay,
     required this.rdpPort,
     required this.rdpUsername,
+    required this.portForwards,
   });
 
   Peer.loading()
@@ -62,6 +75,7 @@ class Peer {
           forceAlwaysRelay: false,
           rdpPort: '',
           rdpUsername: '',
+          portForwards: [],
         );
 }
 
@@ -148,5 +162,31 @@ class Peers extends ChangeNotifier {
       debugPrint('peers(): $e');
     }
     return [];
+  }
+}
+
+class PortForward {
+  late int localPort;
+  late String remoteHost;
+  late int remotePort;
+
+  PortForward(this.localPort, this.remoteHost, this.remotePort);
+
+  PortForward.fromJson(List<dynamic> json) {
+    try {
+      if (json.length == 3 &&
+          json[0] is int &&
+          json[1] is String &&
+          json[2] is int) {
+        localPort = json[0] as int;
+        remoteHost = json[1] as String;
+        remotePort = json[2] as int;
+      }
+    } catch (e) {
+      debugPrint('$e');
+    }
+  }
+  List<dynamic> toJson() {
+    return [localPort, remoteHost, remotePort].toList();
   }
 }
