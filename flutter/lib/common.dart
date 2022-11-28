@@ -920,7 +920,8 @@ bool option2bool(String option, String value) {
   } else if (option.startsWith("allow-") ||
       option == "stop-service" ||
       option == "direct-server" ||
-      option == "stop-rendezvous-service") {
+      option == "stop-rendezvous-service" ||
+      option == "force-always-relay") {
     res = value == "Y";
   } else {
     assert(false);
@@ -936,7 +937,8 @@ String bool2option(String option, bool b) {
   } else if (option.startsWith('allow-') ||
       option == "stop-service" ||
       option == "direct-server" ||
-      option == "stop-rendezvous-service") {
+      option == "stop-rendezvous-service" ||
+      option == "force-always-relay") {
     res = b ? 'Y' : '';
   } else {
     assert(false);
