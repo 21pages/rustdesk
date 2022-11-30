@@ -81,7 +81,6 @@ class _PeerTabPageState extends State<PeerTabPage>
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(child: _createSwitchBar(context)),
-                  const SizedBox(width: 10),
                   const PeerSearchBar(),
                   Offstage(
                       offstage: !isDesktop,
@@ -97,35 +96,40 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   Widget _createSwitchBar(BuildContext context) {
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
-    return ListView(
-        scrollDirection: Axis.horizontal,
-        shrinkWrap: true,
-        controller: ScrollController(),
+    return Row(
+        mainAxisSize: MainAxisSize.min,
         children: super.widget.tabs.asMap().entries.map((t) {
-          return Obx(() => InkWell(
-                child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: _tabIndex.value == t.key
-                          ? Theme.of(context).backgroundColor
-                          : null,
-                      borderRadius: BorderRadius.circular(isDesktop ? 2 : 6),
-                    ),
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: Text(
-                        t.value,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            height: 1,
-                            fontSize: 14,
-                            color:
-                                _tabIndex.value == t.key ? textColor : textColor
-                                  ?..withOpacity(0.5)),
-                      ),
-                    )),
-                onTap: () async => await _handleTabSelection(t.key),
-              ));
+          return Flexible(
+              //expensive
+              child: IntrinsicWidth(
+                  child: Obx(() => InkWell(
+                        child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: _tabIndex.value == t.key
+                                  ? Theme.of(context).backgroundColor
+                                  : null,
+                              borderRadius:
+                                  BorderRadius.circular(isDesktop ? 2 : 6),
+                            ),
+                            child: Align(
+                              alignment: Alignment.center,
+                              child: Text(
+                                // to-do: ellipsis too early when tab texts are different.
+                                t.value,
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    height: 1,
+                                    fontSize: 14,
+                                    color: _tabIndex.value == t.key
+                                        ? textColor
+                                        : textColor
+                                      ?..withOpacity(0.5)),
+                              ),
+                            )),
+                        onTap: () async => await _handleTabSelection(t.key),
+                      ))));
         }).toList());
   }
 
