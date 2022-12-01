@@ -315,6 +315,7 @@ enum CardType {
   fav,
   lan,
   ab,
+  my,
 }
 
 abstract class BasePeerCard extends StatelessWidget {
@@ -928,6 +929,42 @@ class AddressBookPeerCard extends BasePeerCard {
         onCancel: close,
       );
     });
+  }
+}
+
+class MyDevicesPeerCard extends BasePeerCard {
+  MyDevicesPeerCard({required Peer peer, EdgeInsets? menuPadding, Key? key})
+      : super(
+            peer: peer,
+            cardType: CardType.ab,
+            menuPadding: menuPadding,
+            key: key);
+
+  @override
+  Future<List<MenuEntryBase<String>>> _buildMenuItems(
+      BuildContext context) async {
+    final List<MenuEntryBase<String>> menuItems = [
+      _connectAction(context, peer),
+      _transferFileAction(context, peer.id),
+    ];
+    if (isDesktop && peer.platform != 'Android') {
+      menuItems.add(_tcpTunnelingAction(context, peer.id));
+    }
+    menuItems.add(await _forceAlwaysRelayAction(peer.id));
+    if (peer.platform == 'Windows') {
+      menuItems.add(_rdpAction(context, peer.id));
+    }
+    menuItems.add(_wolAction(peer.id));
+    if (Platform.isWindows) {
+      menuItems.add(_createShortCutAction(peer.id));
+    }
+    menuItems.add(MenuEntryDivider());
+    menuItems.add(_renameAction(peer.id));
+    menuItems.add(_removeAction(peer.id, () async {}));
+    if (await bind.mainPeerHasPassword(id: peer.id)) {
+      menuItems.add(_unrememberPasswordAction(peer.id));
+    }
+    return menuItems;
   }
 }
 

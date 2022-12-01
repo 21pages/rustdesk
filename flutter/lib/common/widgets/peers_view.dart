@@ -326,3 +326,18 @@ class AddressBookPeersView extends BasePeersView {
     return true;
   }
 }
+
+class MyDevicesView extends BasePeersView {
+  MyDevicesView(
+      {Key? key, EdgeInsets? menuPadding, ScrollController? scrollController})
+      : super(
+          key: key,
+          name: 'my device peer',
+          loadEvent: 'load_my_device_peers',
+          peerCardBuilder: (Peer peer) => MyDevicesPeerCard(
+            peer: peer,
+            menuPadding: menuPadding,
+          ),
+          initPeers: [],
+        );
+}

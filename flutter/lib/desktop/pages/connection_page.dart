@@ -128,7 +128,8 @@ class _ConnectionPageState extends State<ConnectionPage>
                       translate('Recent Sessions'),
                       translate('Favorites'),
                       translate('Discovered'),
-                      translate('Address Book')
+                      translate('Address Book'),
+                      translate('My Device'),
                     ],
                     children: [
                       RecentPeersView(
@@ -141,6 +142,9 @@ class _ConnectionPageState extends State<ConnectionPage>
                         menuPadding: kDesktopMenuPadding,
                       ),
                       const AddressBook(
+                        menuPadding: kDesktopMenuPadding,
+                      ),
+                      MyDevicesView(
                         menuPadding: kDesktopMenuPadding,
                       ),
                     ],
