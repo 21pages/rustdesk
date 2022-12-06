@@ -15,6 +15,7 @@ class AbModel {
   var abError = "".obs;
   var tags = [].obs;
   var peers = List<Peer>.empty(growable: true).obs;
+  var myDevices = List<Peer>.empty(growable: true).obs;
 
   var selectedTags = List<String>.empty(growable: true).obs;
 
@@ -46,6 +47,40 @@ class AbModel {
               for (final peer in data['peers']) {
                 peers.add(Peer.fromJson(peer));
               }
+            }
+          }
+        }
+        return resp.body;
+      } else {
+        return "";
+      }
+    } catch (err) {
+      err.printError();
+      abError.value = err.toString();
+    } finally {
+      abLoading.value = false;
+    }
+    return null;
+  }
+
+  Future<dynamic> pullMd() async {
+    if (gFFI.userModel.userName.isEmpty) return;
+    abLoading.value = true;
+    abError.value = "";
+    final api = "${await bind.mainGetApiServer()}/api/md";
+    try {
+      final resp =
+          await http.get(Uri.parse(api), headers: await getHttpHeaders());
+      if (resp.body.isNotEmpty && resp.body.toLowerCase() != "null") {
+        Map<String, dynamic> json = jsonDecode(resp.body);
+        if (json.containsKey('error')) {
+          abError.value = json['error'];
+        } else if (json.containsKey('data')) {
+          final data = jsonDecode(json['data']);
+          myDevices.clear();
+          if (data is List) {
+            for (final peer in data) {
+              myDevices.add(Peer.fromJson(peer));
             }
           }
         }
@@ -114,6 +149,29 @@ class AbModel {
           await http.post(Uri.parse(api), headers: authHeaders, body: body);
       abError.value = "";
       await pullAb();
+      debugPrint("resp: ${resp.body}");
+    } catch (e) {
+      abError.value = e.toString();
+    } finally {
+      abLoading.value = false;
+    }
+  }
+
+  Future<void> pushMd() async {
+    if (gFFI.userModel.userName.isEmpty) return;
+    abLoading.value = true;
+    final api = "${await bind.mainGetApiServer()}/api/md/update";
+    var authHeaders = await getHttpHeaders();
+    authHeaders['Content-Type'] = "application/json";
+    final myDevicesJsonData = myDevices.map((e) => e.toJson()).toList();
+    final body = jsonEncode({
+      "data": jsonEncode({myDevicesJsonData})
+    });
+    try {
+      final resp =
+          await http.post(Uri.parse(api), headers: authHeaders, body: body);
+      abError.value = "";
+      await pullMd();
       debugPrint("resp: ${resp.body}");
     } catch (e) {
       abError.value = e.toString();
