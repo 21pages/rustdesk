@@ -39,6 +39,7 @@ pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: Arc::<Mutex<HashMap<String, (i32, i32, i32)>>> = Default::default();
     static ref SESSIONS: Arc::<Mutex<HashMap<String, Session>>> = Default::default();
+    static ref CONNECTIONS: Arc::<Mutex<HashMap<i32, LoginRequest>>> = Default::default();
 }
 pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 pub static MOUSE_MOVE_TIME: AtomicI64 = AtomicI64::new(0);
@@ -496,6 +497,7 @@ impl Connection {
         if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
             conn.on_close(&err.to_string(), false).await;
         }
+        CONNECTIONS.lock().unwrap().remove(&conn.inner.id);
 
         conn.post_audit(json!({
             "action": "close",
@@ -696,6 +698,10 @@ impl Connection {
             0
         };
         self.post_audit(json!({"peer": self.peer_info, "Type": conn_type}));
+        CONNECTIONS
+            .lock()
+            .unwrap()
+            .insert(self.inner.id, self.lr.clone());
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
         let mut res = LoginResponse::new();
@@ -1720,4 +1726,13 @@ mod privacy_mode {
             Ok(true)
         }
     }
+}
+
+pub fn get_connection_infos() -> Vec<LoginRequest> {
+    CONNECTIONS
+        .lock()
+        .unwrap()
+        .values()
+        .map(|l| l.to_owned())
+        .collect()
 }

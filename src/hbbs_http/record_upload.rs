@@ -1,9 +1,13 @@
 use bytes::Bytes;
-use hbb_common::{bail, config::Config, lazy_static, log, ResultType};
+use hbb_common::{
+    bail,
+    config::{Config, LocalConfig},
+    lazy_static, log, ResultType,
+};
 use reqwest::blocking::{Body, Client};
 use scrap::record::RecordState;
 use serde::Serialize;
-use serde_json::Map;
+use serde_json::{json, Map};
 use std::{
     fs::File,
     io::{prelude::*, SeekFrom},
@@ -20,6 +24,9 @@ lazy_static::lazy_static! {
 }
 
 pub fn is_enable() -> bool {
+    if LocalConfig::get_option("access_token").is_empty() {
+        return false;
+    }
     ENABLE.lock().unwrap().clone()
 }
 
@@ -30,6 +37,7 @@ pub fn run(rx: Receiver<RecordState>) {
             Config::get_option("api-server"),
             Config::get_option("custom-rendezvous-server"),
         ),
+        access_token: LocalConfig::get_option("access_token"),
         filepath: Default::default(),
         filename: Default::default(),
         upload_size: Default::default(),
@@ -76,6 +84,7 @@ pub fn run(rx: Receiver<RecordState>) {
 struct RecordUploader {
     client: Client,
     api_server: String,
+    access_token: String,
     filepath: String,
     filename: String,
     upload_size: u64,
@@ -91,6 +100,7 @@ impl RecordUploader {
         match self
             .client
             .post(format!("{}/api/record", self.api_server))
+            .header("Authorization", format!("Bearer {}", self.access_token))
             .query(query)
             .body(body)
             .send()
@@ -111,12 +121,19 @@ impl RecordUploader {
         match std::path::PathBuf::from(&filepath).file_name() {
             Some(filename) => match filename.to_owned().into_string() {
                 Ok(filename) => {
-                    self.filename = filename.clone();
-                    self.filepath = filepath.clone();
+                    self.send(
+                        &[
+                            ("type", "new"),
+                            ("file", &filename),
+                            ("ids", &Self::get_ids()),
+                        ],
+                        Bytes::new(),
+                    )?;
+                    self.filename = filename;
+                    self.filepath = filepath;
                     self.upload_size = 0;
                     self.running = true;
                     self.last_send = Instant::now();
-                    self.send(&[("type", "new"), ("file", &filename)], Bytes::new())?;
                     Ok(())
                 }
                 Err(_) => bail!("can't parse filename:{:?}", filename),
@@ -181,6 +198,7 @@ impl RecordUploader {
                                 ("file", &self.filename),
                                 ("offset", "0"),
                                 ("length", &length.to_string()),
+                                ("ids", &Self::get_ids()),
                             ],
                             buf,
                         )?;
@@ -194,11 +212,19 @@ impl RecordUploader {
         }
     }
 
-    fn handle_remove(&mut self) -> ResultType<()> {
+    fn handle_remove(&self) -> ResultType<()> {
         self.send(
             &[("type", "remove"), ("file", &self.filename)],
             Bytes::new(),
         )?;
         Ok(())
+    }
+
+    fn get_ids() -> String {
+        let ids: Vec<String> = crate::get_connection_infos()
+            .iter()
+            .map(|lr| lr.my_id.to_owned())
+            .collect();
+        json!(ids).to_string()
     }
 }
