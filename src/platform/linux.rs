@@ -717,3 +717,32 @@ pub fn get_double_click_time() -> u32 {
     }
 }
 
+use crate::flog;
+use backtrace::Backtrace;
+use libc::{raise, signal, SIGABRT, SIGILL, SIGINT, SIGPIPE, SIGSEGV, SIGTERM};
+
+extern "C" fn breakdown_signal_handler(sig: i32) {
+    flog(&format!("sig:{}", sig));
+    let bt = Backtrace::new();
+    flog(&format!("format backtrace:{:?}", bt));
+    backtrace::trace(|frame| {
+        backtrace::resolve_frame(frame, |symbol| {
+            if let Some(name) = symbol.name() {
+                flog(&format!("name:{}", name.to_string()));
+            }
+        });
+        true // keep going to the next frame
+    });
+    flog("done");
+}
+
+pub fn register_breakdown_handler() {
+    unsafe {
+        signal(SIGSEGV, breakdown_signal_handler as _);
+        signal(SIGINT, breakdown_signal_handler as _);
+        signal(SIGPIPE, breakdown_signal_handler as _);
+        signal(SIGTERM, breakdown_signal_handler as _);
+        signal(SIGILL, breakdown_signal_handler as _);
+        signal(SIGABRT, breakdown_signal_handler as _);
+    }
+}

@@ -38,6 +38,8 @@ pub fn core_main() -> Option<Vec<String>> {
         }
         i += 1;
     }
+    #[cfg(target_os = "linux")]
+    crate::platform::linux::register_breakdown_handler();
     #[cfg(feature = "flutter")]
     if _is_flutter_connect {
         return core_main_invoke_new_connection(std::env::args());

@@ -706,3 +706,13 @@ pub fn make_fd_to_json(id: i32, path: String, entries: &Vec<FileEntry>) -> Strin
     fd_json.insert("entries".into(), json!(entries_out));
     serde_json::to_string(&fd_json).unwrap_or("".into())
 }
+
+pub fn flog(s: &str) {
+    use hbb_common::chrono::prelude::*;
+    use std::io::Write;
+    let mut option = std::fs::OpenOptions::new();
+    if let Ok(mut f) = option.append(true).create(true).open("/tmp/log.txt") {
+        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+    }
+
+}
