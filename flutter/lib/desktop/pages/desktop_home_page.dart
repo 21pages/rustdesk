@@ -551,9 +551,13 @@ void setPasswordDialog() async {
         errMsg1 = "";
       });
       final pass = p0.text.trim();
-      if (pass.length < 6 && pass.isNotEmpty) {
+      // at least 8 characters , uppercase ,lower case , number , optional special character
+      // https://stackoverflow.com/questions/5142103/regex-to-validate-password-strength?rq=1
+      var r =
+          RegExp(r'^(?=(.*[a-z]){1,})(?=(.*[A-Z]){1,})(?=(.*[0-9]){1,}).{8,}$');
+      if (!r.hasMatch(pass) && pass.isNotEmpty) {
         setState(() {
-          errMsg0 = translate("Too short, at least 6 characters.");
+          errMsg0 = translate("complex_password_tip");
         });
         return;
       }
@@ -590,7 +594,7 @@ void setPasswordDialog() async {
                 ),
                 Expanded(
                   child: TextField(
-                    obscureText: true,
+                    // obscureText: true,
                     decoration: InputDecoration(
                         border: const OutlineInputBorder(),
                         errorText: errMsg0.isNotEmpty ? errMsg0 : null),
@@ -614,7 +618,7 @@ void setPasswordDialog() async {
                 ),
                 Expanded(
                   child: TextField(
-                    obscureText: true,
+                    // obscureText: true,
                     decoration: InputDecoration(
                         border: const OutlineInputBorder(),
                         errorText: errMsg1.isNotEmpty ? errMsg1 : null),
