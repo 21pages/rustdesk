@@ -424,7 +424,9 @@ fn run(sp: GenericService) -> ResultType<()> {
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     video_qos.set_size(c.width as _, c.height as _);
     let mut spf = video_qos.spf();
-    let bitrate = video_qos.generate_bitrate()?;
+    // let bitrate = video_qos.generate_bitrate()?;
+    // let spf = Duration::from_secs_f32(1. / 30.0);
+    let bitrate = 10000;
     let abr = video_qos.check_abr_config();
     drop(video_qos);
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
@@ -644,9 +646,9 @@ fn run(sp: GenericService) -> ResultType<()> {
         let elapsed = now.elapsed();
         // may need to enable frame(timeout)
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
-        if elapsed < spf {
-            std::thread::sleep(spf - elapsed);
-        }
+        // if elapsed < spf {
+        //     std::thread::sleep(spf - elapsed);
+        // }
     }
 
     #[cfg(target_os = "linux")]

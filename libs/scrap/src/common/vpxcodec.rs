@@ -224,9 +224,9 @@ impl EncoderApi for VpxEncoder {
     }
 
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {
-        let mut new_enc_cfg = unsafe { *self.ctx.config.enc.to_owned() };
-        new_enc_cfg.rc_target_bitrate = bitrate;
-        call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &new_enc_cfg));
+        // let mut new_enc_cfg = unsafe { *self.ctx.config.enc.to_owned() };
+        // new_enc_cfg.rc_target_bitrate = bitrate;
+        // call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &new_enc_cfg));
         return Ok(());
     }
 }
