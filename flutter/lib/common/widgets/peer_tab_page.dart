@@ -13,6 +13,8 @@ import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/desktop/widgets/material_mod_popup_menu.dart'
     as mod_menu;
 import 'package:get/get.dart';
+import 'package:scroll_pos/scroll_pos.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../common.dart';
 import '../../models/platform_model.dart';
@@ -25,6 +27,9 @@ class StatePeerTab {
   final RxList<int> visibleOrderedTabs = RxList.empty(growable: true);
   List<int> tabOrder = List.from([0, 1, 2, 3, 4]); // constant length
   final RxInt tabHiddenFlag = 0.obs;
+  final List<bool> fullyVisible = List.filled(5, false);
+  final RxBool showScrollBtn = false.obs;
+  final ScrollPosController sc = ScrollPosController();
   final RxList<String> tabNames = [
     'Recent Sessions',
     'Favorites',
@@ -60,9 +65,7 @@ class StatePeerTab {
       debugPrintStack(label: '$e');
     }
     // init visibleOrderedTabs
-    var tempList = tabOrder.toList();
-    tempList.removeWhere((e) => !tabs.contains(e));
-    visibleOrderedTabs.value = tempList;
+    tabOrder2visibleOrderedTabs();
     // init currentTab
     currentTab.value =
         int.tryParse(bind.getLocalFlutterConfig(k: 'peer-tab-index')) ?? 0;
@@ -73,16 +76,17 @@ class StatePeerTab {
         currentTab.value = 0;
       }
     }
+    statePeerTab.setScrollPos();
   }
   static final StatePeerTab instance = StatePeerTab._();
 
-  // check dynamic tabs
-  check() {
+  checkDynamicTabs() {
     tabOrder2visibleOrderedTabs();
     if (visibleOrderedTabs.contains(groupTabIndex) &&
         int.tryParse(bind.getLocalFlutterConfig(k: 'peer-tab-index')) ==
             groupTabIndex) {
       currentTab.value = groupTabIndex;
+      setScrollPos();
     }
     if (gFFI.userModel.isAdmin.isFalse && gFFI.userModel.groupName.isNotEmpty) {
       tabNames[groupTabIndex] = gFFI.userModel.groupName.value;
@@ -97,14 +101,14 @@ class StatePeerTab {
     for (var t in left) {
       _addTabInOrder(tmpTabOrder, t);
     }
-    statePeerTab.tabOrder = tmpTabOrder;
+    tabOrder = tmpTabOrder;
     bind.setLocalFlutterConfig(k: 'peer-tab-order', v: jsonEncode(tmpTabOrder));
   }
 
   tabOrder2visibleOrderedTabs() {
-    var visible = statePeerTab.visibleTabs();
-    statePeerTab.visibleOrderedTabs.value =
-        statePeerTab.tabOrder.where((e) => visible.contains(e)).toList();
+    visibleOrderedTabs.value =
+        tabOrder.where((e) => visibleTabs().contains(e)).toList();
+    sc.itemCount = visibleOrderedTabs.length;
   }
 
   // return true if hide group card
@@ -126,6 +130,15 @@ class StatePeerTab {
       }
     }
     return v;
+  }
+
+  void setScrollPos() {
+    if (showScrollBtn.value) {
+      int pos = currentTab.value;
+      if (sc.canScroll && sc.itemCount > pos) {
+        sc.scrollToItem(pos);
+      }
+    }
   }
 
   bool _isTabHidden(int tabindex) {
@@ -249,6 +262,7 @@ class _PeerTabPageState extends State<PeerTabPage>
   Future<void> handleTabSelection(int tabIndex) async {
     if (tabIndex < entries.length) {
       statePeerTab.currentTab.value = tabIndex;
+      statePeerTab.setScrollPos();
       entries[tabIndex].load();
     }
   }
@@ -270,6 +284,7 @@ class _PeerTabPageState extends State<PeerTabPage>
                   Expanded(
                       child: visibleContextMenuListener(
                           _createSwitchBar(context))),
+                  buildScrollJumper(),
                   const PeerSearchBar(),
                   Offstage(
                       offstage: !isDesktop,
@@ -287,58 +302,96 @@ class _PeerTabPageState extends State<PeerTabPage>
     return Obx(() {
       var tabs = statePeerTab.visibleOrderedTabs;
       int indexCounter = -1;
-      return ReorderableListView(
-          buildDefaultDragHandles: false,
-          onReorder: (oldIndex, newIndex) {
-            if (oldIndex < newIndex) {
-              newIndex -= 1;
-            }
-            var list = tabs.toList();
-            final int item = list.removeAt(oldIndex);
-            list.insert(newIndex, item);
-            tabs.value = list;
-            statePeerTab.visibleOrderedTabs2TabOrder();
-          },
+      return ListView(
+          // buildDefaultDragHandles: false,
+          // onReorder: (oldIndex, newIndex) {
+          //   if (oldIndex < newIndex) {
+          //     newIndex -= 1;
+          //   }
+          //   var list = tabs.toList();
+          //   final int item = list.removeAt(oldIndex);
+          //   list.insert(newIndex, item);
+          //   tabs.value = list;
+          //   statePeerTab.visibleOrderedTabs2TabOrder();
+          // },
           scrollDirection: Axis.horizontal,
-          physics: NeverScrollableScrollPhysics(),
-          scrollController: ScrollController(),
+          // physics: NeverScrollableScrollPhysics(),
+          physics: const BouncingScrollPhysics(),
+          // scrollController: sc,
+          controller: statePeerTab.sc,
           children: tabs.map((t) {
             indexCounter++;
             return ReorderableDragStartListener(
               key: ValueKey(t),
               index: indexCounter,
-              child: InkWell(
-                child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: statePeerTab.currentTab.value == t
-                          ? Theme.of(context).backgroundColor
-                          : null,
-                      borderRadius: BorderRadius.circular(isDesktop ? 2 : 6),
-                    ),
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: Text(
-                        translatedTabname(t),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            height: 1,
-                            fontSize: 14,
-                            color: statePeerTab.currentTab.value == t
-                                ? MyTheme.tabbar(context).selectedTextColor
-                                : MyTheme.tabbar(context).unSelectedTextColor
-                              ?..withOpacity(0.5)),
-                      ),
-                    )),
-                onTap: () async {
-                  await handleTabSelection(t);
-                  await bind.setLocalFlutterConfig(
-                      k: 'peer-tab-index', v: t.toString());
+              child: VisibilityDetector(
+                key: ValueKey(t),
+                onVisibilityChanged: (info) {
+                  final id = (info.key as ValueKey).value;
+                  if (info.visibleFraction > 0.99) {
+                    statePeerTab.fullyVisible[id] = true;
+                  } else {
+                    statePeerTab.fullyVisible[id] = false;
+                  }
+                  statePeerTab.showScrollBtn.value = statePeerTab
+                      .visibleOrderedTabs
+                      .any((e) => !statePeerTab.fullyVisible[e]);
+                  print(
+                      "${statePeerTab.fullyVisible}, ${statePeerTab.showScrollBtn.value}");
                 },
+                child: InkWell(
+                  child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: statePeerTab.currentTab.value == t
+                            ? Theme.of(context).backgroundColor
+                            : null,
+                        borderRadius: BorderRadius.circular(isDesktop ? 2 : 6),
+                      ),
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: Text(
+                          translatedTabname(t),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              height: 1,
+                              fontSize: 14,
+                              color: statePeerTab.currentTab.value == t
+                                  ? MyTheme.tabbar(context).selectedTextColor
+                                  : MyTheme.tabbar(context).unSelectedTextColor
+                                ?..withOpacity(0.5)),
+                        ),
+                      )),
+                  onTap: () async {
+                    await handleTabSelection(t);
+                    await bind.setLocalFlutterConfig(
+                        k: 'peer-tab-index', v: t.toString());
+                  },
+                ),
               ),
             );
           }).toList());
     });
+  }
+
+  Widget buildScrollJumper() {
+    return Obx(() => Offstage(
+        offstage: !statePeerTab.showScrollBtn.value,
+        child: Row(
+          children: [
+            ActionIcon(
+                icon: Icons.arrow_left,
+                iconSize: 22,
+                onTap: () {
+                  print("left");
+                  statePeerTab.sc.backward();
+                }),
+            ActionIcon(
+                icon: Icons.arrow_right,
+                iconSize: 22,
+                onTap: statePeerTab.sc.forward),
+          ],
+        )));
   }
 
   translatedTabname(int index) {
@@ -372,6 +425,7 @@ class _PeerTabPageState extends State<PeerTabPage>
           return entries[statePeerTab.currentTab.value].widget;
         } else {
           statePeerTab.currentTab.value = tabs[0];
+          statePeerTab.setScrollPos();
           return entries[statePeerTab.currentTab.value].widget;
         }
       }
@@ -412,6 +466,7 @@ class _PeerTabPageState extends State<PeerTabPage>
     var tabs = statePeerTab.visibleOrderedTabs;
     if (tabs.isNotEmpty && !tabs.contains(statePeerTab.currentTab.value)) {
       statePeerTab.currentTab.value = tabs[0];
+      statePeerTab.setScrollPos();
     }
   }
 

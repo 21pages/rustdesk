@@ -62,7 +62,7 @@ class UserModel {
     await gFFI.groupModel.reset();
     userName.value = '';
     groupName.value = '';
-    statePeerTab.check();
+    statePeerTab.checkDynamicTabs();
   }
 
   Future<void> _parseAndUpdateUser(UserPayload user) async {
