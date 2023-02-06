@@ -1776,6 +1776,10 @@ impl Connection {
         if self.authorized {
             let p = &mut self.portable;
             if running != p.last_running {
+                crate::flog(&format!(
+                    "running != p.last_running:{}!={}",
+                    running, p.last_running
+                ));
                 p.last_running = running;
                 if running && p.elevation_requested {
                     let mut misc = Misc::new();
@@ -1783,10 +1787,12 @@ impl Connection {
                     let mut msg = Message::new();
                     msg.set_misc(misc);
                     self.inner.send(msg.into());
+                    crate::flog(&format!("portable_check send running"));
                 }
             }
             let uac = crate::video_service::IS_UAC_RUNNING.lock().unwrap().clone();
             if p.last_uac != uac {
+                crate::flog(&format!("p.last_uac != uac:{}!={}", p.last_uac, uac));
                 p.last_uac = uac;
                 if !uac || !running {
                     let mut misc = Misc::new();
@@ -1794,6 +1800,7 @@ impl Connection {
                     let mut msg = Message::new();
                     msg.set_misc(misc);
                     self.inner.send(msg.into());
+                    crate::flog(&format!("portable_check send uac"));
                 }
             }
             let foreground_window_elevated = crate::video_service::IS_FOREGROUND_WINDOW_ELEVATED
@@ -1801,6 +1808,11 @@ impl Connection {
                 .unwrap()
                 .clone();
             if p.last_foreground_window_elevated != foreground_window_elevated {
+                crate::flog(&format!(
+                    " p.last_foreground_window_elevated != foreground_window_elevated:{}!={}",
+                    p.last_foreground_window_elevated, foreground_window_elevated
+                ));
+
                 p.last_foreground_window_elevated = foreground_window_elevated;
                 if !foreground_window_elevated || !running {
                     let mut misc = Misc::new();
@@ -1808,6 +1820,7 @@ impl Connection {
                     let mut msg = Message::new();
                     msg.set_misc(misc);
                     self.inner.send(msg.into());
+                    crate::flog(&format!("portable_check send elevation"));
                 }
             }
         }

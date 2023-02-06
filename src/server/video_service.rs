@@ -958,6 +958,7 @@ fn start_uac_elevation_check() {
             && !crate::platform::is_root()
             && !crate::portable_service::client::running()
         {
+            crate::flog("start_uac_elevation_check");
             std::thread::spawn(|| loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
                 if let Ok(uac) = crate::ui::win_privacy::is_process_consent_running() {

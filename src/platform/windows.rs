@@ -1554,6 +1554,13 @@ pub fn elevate_or_run_as_system(is_setup: bool, is_elevate: bool, is_run_as_syst
         is_run_as_system,
         crate::username(),
     );
+    crate::flog(&format!(
+        "elevate:{}->{:?}, run_as_system:{}->{}",
+        is_elevate,
+        is_elevated(None),
+        is_run_as_system,
+        crate::username(),
+    ));
     let arg_elevate = if is_setup {
         "--noinstall --elevate"
     } else {
@@ -1567,6 +1574,7 @@ pub fn elevate_or_run_as_system(is_setup: bool, is_elevate: bool, is_run_as_syst
     if is_root() {
         if is_run_as_system {
             log::info!("run portable service");
+            crate::flog(&format!("run portable service"));
             crate::portable_service::server::run_portable_service();
         }
     } else {
@@ -1578,7 +1586,11 @@ pub fn elevate_or_run_as_system(is_setup: bool, is_elevate: bool, is_run_as_syst
                             std::process::exit(0);
                         } else {
                             unsafe {
-                                log::error!("Failed to run as system, errno={}", GetLastError());
+                                // log::error!("Failed to run as system, errno={}", GetLastError());
+                                crate::flog(&format!(
+                                    "Failed to run as system, errno={}",
+                                    GetLastError()
+                                ));
                             }
                         }
                     }
@@ -1588,14 +1600,22 @@ pub fn elevate_or_run_as_system(is_setup: bool, is_elevate: bool, is_run_as_syst
                             std::process::exit(0);
                         } else {
                             unsafe {
-                                log::error!("Failed to elevate, errno={}", GetLastError());
+                                crate::flog(&format!(
+                                    "Failed to elevate, errno={}",
+                                    GetLastError()
+                                ));
+                                // log::error!("Failed to elevate, errno={}", GetLastError());
                             }
                         }
                     }
                 }
             }
             Err(_) => unsafe {
-                log::error!("Failed to get elevation status, errno={}", GetLastError());
+                // log::error!("Failed to get elevation status, errno={}", GetLastError());
+                crate::flog(&format!(
+                    "Failed to get elevation status, errno={}",
+                    GetLastError()
+                ));
             },
         }
     }

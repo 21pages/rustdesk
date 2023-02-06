@@ -81,16 +81,26 @@ impl SharedMemory {
         {
             Ok(m) => m,
             Err(ShmemError::LinkExists) => {
+                crate::flog(&format!(
+                    "Unable to force create shmem flink {}, which should not happen.",
+                    flink
+                ));
+
                 bail!(
                     "Unable to force create shmem flink {}, which should not happen.",
                     flink
                 )
             }
             Err(e) => {
+                crate::flog(&format!("Unable to create shmem flink {} : {}", flink, e));
                 bail!("Unable to create shmem flink {} : {}", flink, e);
             }
         };
         log::info!("Create shared memory, size:{}, flink:{}", size, flink);
+        crate::flog(&format!(
+            "Create shared memory, size:{}, flink:{}",
+            size, flink
+        ));
         set_path_permission(&PathBuf::from(flink), "F").ok();
         Ok(SharedMemory { inner: shmem })
     }
@@ -100,9 +110,14 @@ impl SharedMemory {
         let shmem = match ShmemConf::new().flink(&flink).allow_raw(true).open() {
             Ok(m) => m,
             Err(e) => {
+                crate::flog(&format!(
+                    "Unable to open existing shmem flink {} : {}",
+                    flink, e
+                ));
                 bail!("Unable to open existing shmem flink {} : {}", flink, e);
             }
         };
+        crate::flog(&format!("open existing shared memory, flink:{:?}", flink));
         log::info!("open existing shared memory, flink:{:?}", flink);
         Ok(SharedMemory { inner: shmem })
     }
@@ -118,18 +133,22 @@ impl SharedMemory {
 
     fn flink(name: String) -> ResultType<String> {
         let disk = std::env::var("SystemDrive").unwrap_or("C:".to_string());
-        let mut dir = PathBuf::from(disk);
-        let dir1 = dir.join("ProgramData");
-        let dir2 = std::env::var("TEMP")
-            .map(|d| PathBuf::from(d))
-            .unwrap_or(dir.join("Windows").join("Temp"));
+        crate::flog(&format!("disk:{}", disk));
+        // let mut dir = PathBuf::from(disk);
+        let dir1 = PathBuf::from(format!("{}\\ProgramData", disk));
+        crate::flog(&format!("dir1:{:?}, exists:{}", dir1, dir1.exists()));
+        // let dir2 = dir.join("Windows").join("Temp");
+        let dir2 = PathBuf::from(format!("{}\\Windows\\Temp", disk));
+        crate::flog(&format!("dir2:{:?},exists:{}", dir2, dir2.exists()));
+        let mut dir;
         if dir1.exists() {
             dir = dir1;
         } else if dir2.exists() {
             dir = dir2;
         } else {
+            crate::flog(&format!("no vaild flink directory"));
             bail!("no vaild flink directory");
-        }
+        };
         dir = dir.join(hbb_common::config::APP_NAME.read().unwrap().clone());
         if !dir.exists() {
             std::fs::create_dir(&dir)?;
@@ -211,7 +230,9 @@ pub mod server {
     }
 
     pub fn run_portable_service() {
+        crate::flog("run_portable_service in");
         let shmem = Arc::new(SharedMemory::open_existing(SHMEM_NAME).unwrap());
+        crate::flog("run_portable_service open_existing ok");
         let shmem1 = shmem.clone();
         let shmem2 = shmem.clone();
         let mut threads = vec![];
@@ -227,10 +248,12 @@ pub mod server {
         threads.push(std::thread::spawn(|| {
             run_exit_check();
         }));
+        crate::flog("run_portable_service all thread created");
         for th in threads.drain(..) {
             th.join().unwrap();
             log::info!("thread joined");
         }
+        crate::flog("run_portable_service finish");
     }
 
     fn run_exit_check() {
@@ -391,6 +414,11 @@ pub mod server {
                                         postfix,
                                         err
                                     );
+                                    crate::flog(&format!(
+                                        "ipc{} connection closed2: {}",
+                                        postfix,
+                                        err
+                                    ));
                                     break;
                                 }
                                 Ok(Some(Data::DataPortableService(data))) => match data {
@@ -407,6 +435,9 @@ pub mod server {
                                     ConnCount(Some(n)) => {
                                         if n == 0 {
                                             log::info!("Connection count equals 0, exit");
+                                            crate::flog(&format!(
+                                                "Connection count equals 0, exit"
+                                            ));
                                             stream.send(&Data::DataPortableService(WillClose)).await.ok();
                                             break;
                                         }
@@ -430,6 +461,9 @@ pub mod server {
                             nack+=1;
                             if nack > MAX_NACK {
                                 log::info!("max ping nack, exit");
+                                crate::flog(&format!(
+                                    "max ping nack, exit"
+                                ));
                                 break;
                             }
                             stream.send(&Data::DataPortableService(Ping)).await.ok();
@@ -440,8 +474,10 @@ pub mod server {
             }
             Err(e) => {
                 log::error!("Failed to connect portable service ipc:{:?}", e);
+                crate::flog(&format!("Failed to connect portable service ipc:{:?}", e));
             }
         }
+        crate::flog(&format!("ipc EXIT=true"));
 
         *EXIT.lock().unwrap() = true;
     }
@@ -466,13 +502,16 @@ pub mod client {
     }
 
     pub(crate) fn start_portable_service(para: StartPara) -> ResultType<()> {
+        crate::flog("start_portable_service");
         log::info!("start portable service");
         if RUNNING.lock().unwrap().clone() {
+            crate::flog("already running");
             bail!("already running");
         }
         if SHMEM.lock().unwrap().is_none() {
             let displays = scrap::Display::all()?;
             if displays.is_empty() {
+                crate::flog("no display available!");
                 bail!("no display available!");
             }
             let mut max_pixel = 0;
@@ -504,6 +543,7 @@ pub mod client {
                     "--portable-service",
                 ) {
                     *SHMEM.lock().unwrap() = None;
+                    crate::flog(&format!("Failed to run portable service process:{}", e));
                     bail!("Failed to run portable service process:{}", e);
                 }
             }
@@ -557,6 +597,7 @@ pub mod client {
 
     pub extern "C" fn drop_portable_service_shared_memory() {
         log::info!("drop shared memory");
+        crate::flog(&format!("drop shared memory"));
         *SHMEM.lock().unwrap() = None;
     }
 
@@ -688,6 +729,9 @@ pub mod client {
                             match result {
                                 Ok(stream) => {
                                     log::info!("Got portable service ipc connection");
+                                    crate::flog(&format!(
+                                        "Got portable service ipc connection"
+                                    ));
                                     let rx_clone = rx.clone();
                                     tokio::spawn(async move {
                                         let mut stream = Connection::new(stream);
@@ -705,6 +749,11 @@ pub mod client {
                                                                 postfix,
                                                                 err
                                                             );
+                                                            crate::flog(&format!(
+                                                                "ipc{} connection closed: {}",
+                                                                postfix,
+                                                                err
+                                                            ));
                                                             break;
                                                         }
                                                         Ok(Some(Data::DataPortableService(data))) => match data {
@@ -723,6 +772,9 @@ pub mod client {
                                                             },
                                                             WillClose => {
                                                                 log::info!("portable service will close");
+                                                                crate::flog(&format!(
+                                                                    "portable service will close"
+                                                                ));
                                                                 break;
                                                             }
                                                             _=>{}
@@ -735,6 +787,9 @@ pub mod client {
                                                     if nack > MAX_NACK {
                                                         // In fact, this will not happen, ipc will be closed before max nack.
                                                         log::error!("max ipc nack");
+                                                        crate::flog(&format!(
+                                                            "max ipc nack"
+                                                        ));
                                                         break;
                                                     }
                                                     stream.send(&Data::DataPortableService(Ping)).await.ok();
@@ -749,6 +804,9 @@ pub mod client {
                                 }
                                 Err(err) => {
                                     log::error!("Couldn't get portable client: {:?}", err);
+                                    crate::flog(&format!(
+                                        "Couldn't get portable client: {:?}", err
+                                    ));
                                 }
                             }
                         }
@@ -757,6 +815,10 @@ pub mod client {
             },
             Err(err) => {
                 log::error!("Failed to start portable service ipc server: {}", err);
+                crate::flog(&format!(
+                    "Failed to start portable service ipc server: {}",
+                    err
+                ));
             }
         }
     }

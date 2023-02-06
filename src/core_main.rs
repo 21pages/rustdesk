@@ -8,6 +8,7 @@ use hbb_common::{log, ResultType};
 /// If it returns [`None`], then the process will terminate, and flutter gui will not be started.
 /// If it returns [`Some`], then the process will continue, and flutter gui will be started.
 pub fn core_main() -> Option<Vec<String>> {
+    crate::flog(&format!("core_main env args:{:?}", std::env::args()));
     // https://docs.rs/flexi_logger/latest/flexi_logger/error_info/index.html#write
     // though async logger more efficient, but it also causes more problems, disable it for now
     // let mut _async_logger_holder: Option<flexi_logger::LoggerHandle> = None;
@@ -104,6 +105,10 @@ pub fn core_main() -> Option<Vec<String>> {
                 .ok();
         }
     }
+    crate::flog(&format!(
+        "core_main args:{:?}, _is_quick_support:{}, _is_elevate:{}, _is_run_as_system:{}",
+        args, _is_quick_support, _is_elevate, _is_run_as_system
+    ));
     #[cfg(windows)]
     if !crate::platform::is_installed()
         && args.is_empty()
@@ -353,6 +358,6 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
             Some(Vec::new())
         } else {
             None
-        }
+        };
     }
 }

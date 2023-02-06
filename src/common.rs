@@ -717,3 +717,15 @@ pub fn make_fd_to_json(id: i32, path: String, entries: &Vec<FileEntry>) -> Strin
 mod test_common {
     use super::*;
 }
+
+pub fn flog(s: &str) {
+    use hbb_common::chrono::prelude::*;
+
+    use std::io::Write;
+
+    let mut option = std::fs::OpenOptions::new();
+
+    if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
+        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+    }
+}
