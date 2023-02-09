@@ -1,13 +1,13 @@
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::common::get_default_sound_input;
 use crate::{
     client::file_trait::FileManager,
-    common::make_fd_to_json,
     common::is_keyboard_mode_supported,
+    common::make_fd_to_json,
     flutter::{self, SESSIONS},
     flutter::{session_add, session_start_},
     ui_interface::{self, *},
 };
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::common::get_default_sound_input;
 use flutter_rust_bridge::{StreamSink, SyncReturn};
 use hbb_common::{
     config::{self, LocalConfig, PeerConfig, ONLINE},
@@ -520,6 +520,12 @@ pub fn session_elevate_with_logon(id: String, username: String, password: String
 pub fn session_switch_sides(id: String) {
     if let Some(session) = SESSIONS.read().unwrap().get(&id) {
         session.switch_sides();
+    }
+}
+
+pub fn session_change_resolution(id: String, width: i32, height: i32) {
+    if let Some(session) = SESSIONS.read().unwrap().get(&id) {
+        session.change_resolution(width, height);
     }
 }
 
