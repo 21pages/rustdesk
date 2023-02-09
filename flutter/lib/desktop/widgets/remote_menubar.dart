@@ -125,6 +125,12 @@ class RemoteMenuEntry {
           dismissOnClicked: true,
           dismissCallback: dismissCallback,
         ),
+        MenuEntryRadioOption(
+          text: translate('Adjust Resolution'),
+          value: kRemoteViewStyleAdjustResolution,
+          dismissOnClicked: true,
+          dismissCallback: dismissCallback,
+        ),
       ],
       curOptionGetter: () async {
         // null means peer id is not found, which there's no need to care about

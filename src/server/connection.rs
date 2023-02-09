@@ -106,6 +106,8 @@ pub struct Connection {
     #[cfg(windows)]
     portable: PortableState,
     from_switch: bool,
+    origin_resolution: Option<Resolution>,
+    changed_resolution: Option<Resolution>,
 }
 
 impl Subscriber for ConnInner {
@@ -203,6 +205,8 @@ impl Connection {
             #[cfg(windows)]
             portable: Default::default(),
             from_switch: false,
+            origin_resolution: crate::platform::current_resolution().ok(),
+            changed_resolution: None,
         };
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         tokio::spawn(async move {
@@ -234,6 +238,7 @@ impl Connection {
         if !conn.recording {
             conn.send_permission(Permission::Recording, false).await;
         }
+        // conn.send_supported_resolutions().await;
         let mut test_delay_timer =
             time::interval_at(Instant::now() + TEST_DELAY_TIMEOUT, TEST_DELAY_TIMEOUT);
         let mut last_recv_time = Instant::now();
@@ -495,11 +500,22 @@ impl Connection {
         conn.post_conn_audit(json!({
             "action": "close",
         }));
+        conn.recover_resolution();
         ALIVE_CONNS.lock().unwrap().retain(|&c| c != id);
         if let Some(s) = conn.server.upgrade() {
             s.write().unwrap().remove_connection(&conn.inner);
         }
         log::info!("#{} connection loop exited", id);
+    }
+
+    fn recover_resolution(&self) {
+        if let Some(r) = self.origin_resolution.clone() {
+            if self.changed_resolution.is_some()
+                && self.changed_resolution != self.origin_resolution
+            {
+                crate::platform::change_resolution2(r.width as _, r.height as _).ok();
+            }
+        }
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -840,6 +856,12 @@ impl Connection {
         pi.sas_enabled = sas_enabled;
         pi.features = Some(Features {
             privacy_mode: video_service::is_privacy_mode_supported(),
+            ..Default::default()
+        })
+        .into();
+        pi.resolutions = Some(SupportedResolutions {
+            // resolutions: Self::supported_resolutions().await.unwrap_or(vec![]),
+            resolutions: crate::platform::resolutions(),
             ..Default::default()
         })
         .into();
@@ -1542,6 +1564,18 @@ impl Connection {
                             return false;
                         }
                     }
+                    Some(misc::Union::ChangeResolution(r)) => {
+                        println!("QQQQQQQQQQQQQQQQ ChangeResolution");
+                        self.changed_resolution = Some(r.clone());
+                        std::thread::spawn(move || {
+                            // std::thread::sleep(Duration::from_secs(1));
+                            let res =
+                                crate::platform::change_resolution2(r.width as _, r.height as _);
+                            println!(
+                            "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC connection change_resolution r:{:?}, res:{:?}"
+                       ,r, res );
+                        });
+                    }
                     _ => {}
                 },
                 _ => {}
@@ -1812,6 +1846,47 @@ impl Connection {
             }
         }
     }
+
+    async fn supported_resolutions() -> Option<Vec<Resolution>> {
+        if let Ok((_, mut displays)) = video_service::get_displays().await {
+            return Some(
+                displays
+                    .drain(..)
+                    .map(|d| Resolution {
+                        width: d.width,
+                        height: d.height,
+                        ..Default::default()
+                    })
+                    .collect(),
+            );
+        }
+        None
+    }
+
+    // async fn send_supported_resolutions(&mut self) {
+    //     if let Ok((_, mut displays)) = video_service::get_displays().await {
+    //         let resolutions = displays
+    //             .drain(..)
+    //             .map(|d| Resolution {
+    //                 width: d.width,
+    //                 height: d.height,
+    //                 ..Default::default()
+    //             })
+    //             .collect();
+    //         println!(
+    //             "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC connection send resolutions:{:?}",
+    //             resolutions
+    //         );
+    //         let mut misc = Misc::new();
+    //         misc.set_supported_resolutions(SupportedResolutions {
+    //             resolutions,
+    //             ..Default::default()
+    //         });
+    //         let mut msg = Message::new();
+    //         msg.set_misc(misc);
+    //         self.send(msg).await;
+    //     }
+    // }
 }
 
 pub fn insert_switch_sides_uuid(id: String, uuid: uuid::Uuid) {

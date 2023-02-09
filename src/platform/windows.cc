@@ -628,4 +628,15 @@ extern "C"
         return bSystem;
     }
 
+    LONG change_resolution(DWORD width, DWORD height) 
+    {
+        DEVMODE desiredMode = { 0 };
+        EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &desiredMode);
+        desiredMode.dmSize = sizeof(DEVMODE);
+        desiredMode.dmPelsWidth = width;
+        desiredMode.dmPelsHeight = height;
+        desiredMode.dmFields = DM_PELSHEIGHT | DM_PELSWIDTH;
+        return ChangeDisplaySettings(&desiredMode, CDS_UPDATEREGISTRY | CDS_GLOBAL | CDS_RESET);
+    }
+
 } // end of extern "C"

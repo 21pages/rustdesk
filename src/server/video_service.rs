@@ -184,6 +184,13 @@ fn check_display_changed(
                 return true;
             };
             if d.width() != last_width || d.height() != last_height {
+                println!(
+                    "====================== width:{}->{}, height:{}->{}",
+                    last_width,
+                    d.width(),
+                    last_height,
+                    d.height()
+                );
                 return true;
             };
         }
@@ -408,6 +415,7 @@ fn get_capturer(use_yuv: bool, portable_service_running: bool) -> ResultType<Cap
 }
 
 fn run(sp: GenericService) -> ResultType<()> {
+    println!("======================== video_service run");
     #[cfg(windows)]
     ensure_close_virtual_device()?;
 
@@ -456,6 +464,10 @@ fn run(sp: GenericService) -> ResultType<()> {
     if *SWITCH.lock().unwrap() {
         log::debug!("Broadcasting display switch");
         let mut misc = Misc::new();
+        println!(
+            "SSSSSSSSSSSSSSSSSSSSSSSSSSSSS video_service switch_display width:{}, height:{}",
+            c.width, c.height
+        );
         misc.set_switch_display(SwitchDisplay {
             display: c.current as _,
             x: c.origin.0 as _,
@@ -470,6 +482,10 @@ fn run(sp: GenericService) -> ResultType<()> {
         *SWITCH.lock().unwrap() = false;
         sp.send(msg_out);
     }
+    println!(
+        "=================================video_service2 width:{}, height:{}",
+        c.width, c.height
+    );
 
     let mut frame_controller = VideoFrameController::new();
 
@@ -567,6 +583,7 @@ fn run(sp: GenericService) -> ResultType<()> {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let res = match c.frame(spf) {
             Ok(frame) => {
+                // println!("one frame, {}", frame.0.len());
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
                 let send_conn_ids =
@@ -604,8 +621,10 @@ fn run(sp: GenericService) -> ResultType<()> {
                 }
             }
             Err(err) => {
+                println!("=============================================================== not WouldBlock error");
                 if check_display_changed(c.ndisplay, c.current, c.width, c.height) {
                     log::info!("Displays changed");
+                    println!("=============================================================== Displays changed");
                     *SWITCH.lock().unwrap() = true;
                     bail!("SWITCH");
                 }

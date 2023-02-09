@@ -203,6 +203,8 @@ class FfiModel with ChangeNotifier {
       } else if (name == "on_url_scheme_received") {
         final url = evt['url'].toString();
         parseRustdeskUri(url);
+      } else if (name == "resolutions") {
+        handleResolutions(peerId, evt["resolutions"]);
       }
     };
   }
@@ -228,6 +230,7 @@ class FfiModel with ChangeNotifier {
     _display.width = int.parse(evt['width']);
     _display.height = int.parse(evt['height']);
     _display.cursorEmbedded = int.parse(evt['cursor_embedded']) == 1;
+    print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX handleSwitchDisplay:$_display");
     if (old != _pi.currentDisplay) {
       parent.target?.cursorModel.updateDisplayOrigin(_display.x, _display.y);
     }
@@ -310,6 +313,7 @@ class FfiModel with ChangeNotifier {
   handlePeerInfo(Map<String, dynamic> evt, String peerId) async {
     // recent peer updated by handle_peer_info(ui_session_interface.rs) --> handle_peer_info(client.rs) --> save_config(client.rs)
     bind.mainLoadRecentPeers();
+    print("handlePeerInfo evt:$evt");
 
     parent.target?.dialogManager.dismissAll();
     _pi.version = evt['version'];
@@ -324,7 +328,6 @@ class FfiModel with ChangeNotifier {
     } catch (e) {
       //
     }
-
     if (isPeerAndroid) {
       _touchMode = true;
       if (parent.target != null &&
@@ -368,8 +371,29 @@ class FfiModel with ChangeNotifier {
       }
       Map<String, dynamic> features = json.decode(evt['features']);
       _pi.features.privacyMode = features['privacy_mode'] == 1;
+      handleResolutions(peerId, evt["resolutions"]);
+      print(
+        "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXxxx handlePeerInfo",
+      );
     }
     notifyListeners();
+  }
+
+  handleResolutions(String id, dynamic resolutions) {
+    try {
+      final List<dynamic> dynamicArray = jsonDecode(resolutions as String);
+      List<Resolution> arr = List.empty(growable: true);
+      for (int i = 0; i < dynamicArray.length; i++) {
+        var width = dynamicArray[i]["width"];
+        var height = dynamicArray[i]["height"];
+        if (width is int && width > 0 && height is int && height > 0) {
+          arr.add(Resolution(width, height));
+        }
+      }
+      _pi.resolutions = arr;
+    } catch (e) {
+      debugPrint("Failed to parse resolutions:$e");
+    }
   }
 
   updateBlockInputState(Map<String, dynamic> evt, String peerId) {
@@ -527,7 +551,8 @@ class ViewStyle {
 
   double get scale {
     double s = 1.0;
-    if (style == kRemoteViewStyleAdaptive) {
+    if (style == kRemoteViewStyleAdaptive ||
+        style == kRemoteViewStyleAdjustResolution) {
       final s1 = width / displayWidth;
       final s2 = height / displayHeight;
       s = s1 < s2 ? s1 : s2;
@@ -584,6 +609,7 @@ class CanvasModel with ChangeNotifier {
   double get scrollY => _scrollY;
 
   updateViewStyle() async {
+    print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXxxx updateViewStyle()");
     Size getSize() {
       final size = MediaQueryData.fromWindow(ui.window).size;
       // If minimized, w or h may be negative here.
@@ -625,6 +651,11 @@ class CanvasModel with ChangeNotifier {
     _imageOverflow.value = _x < 0 || y < 0;
     notifyListeners();
     parent.target?.inputModel.refreshMousePos();
+    print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXxxx updateViewStyle style:$style");
+    if (style == kRemoteViewStyleAdjustResolution) {
+      adjustResolution(_size);
+      // await bind.sessionSetScrollStyle(id: id, value: newValue);
+    }
   }
 
   updateScrollStyle() async {
@@ -643,6 +674,36 @@ class CanvasModel with ChangeNotifier {
     _y = y;
     _scale = scale;
     notifyListeners();
+  }
+
+  adjustResolution(Size paintSize) {
+    final paintRatio = paintSize.width / paintSize.height;
+    final resolutions = parent.target?.ffiModel._pi.resolutions;
+    if (resolutions == null) return;
+    final resolutionRatios =
+        resolutions.map((e) => (e.width * 1.0) / e.height).toList();
+    final ratioAbs =
+        resolutionRatios.map((e) => (e - paintRatio).abs()).toList();
+    int index = -1;
+    double minAbs = double.maxFinite;
+    for (int i = 0; i < ratioAbs.length; i++) {
+      if (ratioAbs[i] < minAbs) {
+        minAbs = ratioAbs[i];
+        index = i;
+      }
+    }
+    if (index >= 0 && index < resolutionRatios.length) {
+      final resolution = resolutions[index];
+      print(
+          "XXXXXXXXXXXXXXXXXXXXXXXXXXXXxxx adjustResolution ${resolution.width}, ${resolution.height}");
+      final displayWidth = getDisplayWidth();
+      final displayHeight = getDisplayHeight();
+      if (resolution.width != displayWidth ||
+          resolution.height != displayHeight) {
+        bind.sessionChangeResolution(
+            id: id, width: resolution.width, height: resolution.height);
+      }
+    }
   }
 
   bool get cursorEmbedded =>
@@ -1411,6 +1472,12 @@ class Display {
   }
 }
 
+class Resolution {
+  int width = 0;
+  int height = 0;
+  Resolution(this.width, this.height);
+}
+
 class Features {
   bool privacyMode = false;
 }
@@ -1424,6 +1491,7 @@ class PeerInfo {
   int currentDisplay = 0;
   List<Display> displays = [];
   Features features = Features();
+  List<Resolution> resolutions = [];
 }
 
 const canvasKey = 'canvas';

@@ -88,6 +88,9 @@ const kRemoteViewStyleOriginal = 'original';
 /// [kRemoteViewStyleAdaptive] Show remote image scaling by ratio factor.
 const kRemoteViewStyleAdaptive = 'adaptive';
 
+/// [kRemoteViewStyleAdjustResolution] Show remote image scaling by ratio factor.
+const kRemoteViewStyleAdjustResolution = 'adjust_resolution';
+
 /// [kRemoteScrollStyleAuto] Scroll image auto by position.
 const kRemoteScrollStyleAuto = 'scrollauto';
 

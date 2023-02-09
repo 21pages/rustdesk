@@ -5,6 +5,7 @@ use hbb_common::{
     bail, config::LocalConfig, get_version_number, message_proto::*, rendezvous_proto::ConnType,
     ResultType,
 };
+use serde::Serialize;
 use serde_json::json;
 use std::{
     collections::HashMap,
@@ -296,6 +297,7 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     fn set_peer_info(&self, pi: &PeerInfo) {
+        println!("=========================== set_peer_info:{:?}", pi);
         let mut displays = Vec::new();
         for ref d in pi.displays.iter() {
             let mut h: HashMap<&str, i32> = Default::default();
@@ -316,6 +318,7 @@ impl InvokeUiSession for FlutterHandler {
             features.insert("privacy_mode", 0);
         }
         let features = serde_json::ser::to_string(&features).unwrap_or("".to_owned());
+        let resolutions = serialize_resolutions(&pi.resolutions.resolutions);
         self.push_event(
             "peer_info",
             vec![
@@ -327,6 +330,7 @@ impl InvokeUiSession for FlutterHandler {
                 ("version", &pi.version),
                 ("features", &features),
                 ("current_display", &pi.current_display.to_string()),
+                ("resolutions", &resolutions),
             ],
         );
     }
@@ -376,6 +380,36 @@ impl InvokeUiSession for FlutterHandler {
                     .to_string(),
                 ),
             ],
+        );
+    }
+
+    fn handle_resolutions(&self, resolutions: Vec<Resolution>) {
+        #[derive(Debug, Serialize)]
+        struct ResolutionSerde {
+            width: i32,
+            height: i32,
+        }
+
+        let mut v = vec![];
+        // resolutions
+        //     .iter()
+        //     .map(|r| v.push((r.width.to_string(), r.height.to_string())))
+        //     .count();
+        resolutions
+            .iter()
+            .map(|r| {
+                v.push(ResolutionSerde {
+                    width: r.width,
+                    height: r.height,
+                })
+            })
+            .count();
+        self.push_event(
+            "resolutions",
+            vec![(
+                "resolutions",
+                &serde_json::ser::to_string(&v).unwrap_or("".to_string()),
+            )],
         );
     }
 
@@ -608,4 +642,25 @@ pub fn set_cur_session_id(id: String) {
     if get_cur_session_id() != id {
         *CUR_SESSION_ID.write().unwrap() = id;
     }
+}
+
+#[inline]
+fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
+    #[derive(Debug, serde::Serialize)]
+    struct ResolutionSerde {
+        width: i32,
+        height: i32,
+    }
+
+    let mut v = vec![];
+    resolutions
+        .iter()
+        .map(|r| {
+            v.push(ResolutionSerde {
+                width: r.width,
+                height: r.height,
+            })
+        })
+        .count();
+    serde_json::ser::to_string(&v).unwrap_or("".to_string())
 }

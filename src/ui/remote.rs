@@ -261,6 +261,8 @@ impl InvokeUiSession for SciterHandler {
         self.call("switchDisplay", &make_args!(display.display));
     }
 
+    fn handle_resolutions(&self, _resolutions: Vec<Resolution>) {}
+
     fn update_block_input_state(&self, on: bool) {
         self.call("updateBlockInputState", &make_args!(on));
     }

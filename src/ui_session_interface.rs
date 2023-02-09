@@ -32,6 +32,7 @@ pub struct Session<T: InvokeUiSession> {
     pub sender: Arc<RwLock<Option<mpsc::UnboundedSender<Data>>>>,
     pub thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     pub ui_handler: T,
+    pub supported_resolutions: Vec<Resolution>,
 }
 
 impl<T: InvokeUiSession> Session<T> {
@@ -350,6 +351,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn switch_display(&self, display: i32) {
+        println!("SSSSSSSSSSSSSSSSSSSSSSSSSSSSS ui_session_interface switch_display");
         let mut misc = Misc::new();
         misc.set_switch_display(SwitchDisplay {
             display,
@@ -653,6 +655,18 @@ impl<T: InvokeUiSession> Session<T> {
             }
         }
     }
+
+    pub fn change_resolution(&self, width: i32, height: i32) {
+        let mut misc = Misc::new();
+        misc.set_change_resolution(Resolution {
+            width,
+            height,
+            ..Default::default()
+        });
+        let mut msg = Message::new();
+        msg.set_misc(misc);
+        self.send(Data::Message(msg));
+    }
 }
 
 pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
@@ -661,6 +675,7 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn set_cursor_position(&self, cp: CursorPosition);
     fn set_display(&self, x: i32, y: i32, w: i32, h: i32, cursor_embedded: bool);
     fn switch_display(&self, display: &SwitchDisplay);
+    fn handle_resolutions(&self, resolutions: Vec<Resolution>);
     fn set_peer_info(&self, peer_info: &PeerInfo); // flutter
     fn on_connected(&self, conn_type: ConnType);
     fn update_privacy_mode(&self);
@@ -768,6 +783,19 @@ impl<T: InvokeUiSession> Interface for Session<T> {
                 current.height,
                 current.cursor_embedded,
             );
+            self.supported_resolutions = pi.resolutions.resolutions.clone();
+            // self.handle_resolutions(self.supported_resolutions.clone());
+
+            // let mut misc = Misc::new();
+            // misc.set_change_resolution(Resolution {
+            //     width: 1920,
+            //     height: 1080,
+            //     ..Default::default()
+            // });
+            // let mut msg = Message::new();
+            // msg.set_misc(misc);
+            // println!("SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSsvsend set_change_resolution");
+            // self.send(Data::Message(msg));
         }
         self.update_privacy_mode();
         // Save recent peers, then push event to flutter. So flutter can refresh peer page.

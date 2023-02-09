@@ -1,24 +1,29 @@
-use std::{collections::HashMap, ffi::{CStr, CString}, os::raw::c_char, thread};
 use std::str::FromStr;
+use std::{
+    collections::HashMap,
+    ffi::{CStr, CString},
+    os::raw::c_char,
+    thread,
+};
 
 use flutter_rust_bridge::{StreamSink, SyncReturn, ZeroCopyBuffer};
 use serde_json::json;
 
-use hbb_common::{
-    config::{self, LocalConfig, ONLINE, PeerConfig},
-    fs, log,
-};
 use hbb_common::message_proto::KeyboardMode;
 use hbb_common::ResultType;
+use hbb_common::{
+    config::{self, LocalConfig, PeerConfig, ONLINE},
+    fs, log,
+};
 
+use crate::common::is_keyboard_mode_supported;
+use crate::flutter::{self, SESSIONS};
+use crate::ui_interface::{self, *};
 use crate::{
     client::file_trait::FileManager,
     common::make_fd_to_json,
     flutter::{session_add, session_start_},
 };
-use crate::common::is_keyboard_mode_supported;
-use crate::flutter::{self, SESSIONS};
-use crate::ui_interface::{self, *};
 
 // use crate::hbbs_http::account::AuthResult;
 
@@ -510,6 +515,12 @@ pub fn session_elevate_with_logon(id: String, username: String, password: String
 pub fn session_switch_sides(id: String) {
     if let Some(session) = SESSIONS.read().unwrap().get(&id) {
         session.switch_sides();
+    }
+}
+
+pub fn session_change_resolution(id: String, width: i32, height: i32) {
+    if let Some(session) = SESSIONS.read().unwrap().get(&id) {
+        session.change_resolution(width, height);
     }
 }
 
@@ -1273,9 +1284,9 @@ pub fn send_url_scheme(url: String) {
 pub mod server_side {
     use hbb_common::log;
     use jni::{
-        JNIEnv,
         objects::{JClass, JString},
         sys::jstring,
+        JNIEnv,
     };
 
     use crate::start_server;

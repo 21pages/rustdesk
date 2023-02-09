@@ -2,6 +2,7 @@ use super::{CursorData, ResultType};
 use crate::common::PORTABLE_APPNAME_RUNTIME_ENV_KEY;
 use crate::ipc;
 use crate::license::*;
+use hbb_common::message_proto::Resolution;
 use hbb_common::{
     allow_err, bail,
     config::{self, Config},
@@ -444,6 +445,7 @@ extern "C" {
     fn win_stop_system_key_propagate(v: BOOL);
     fn is_win_down() -> BOOL;
     fn is_local_system() -> BOOL;
+    fn change_resolution(width: u32, height: u32) -> i64;
 }
 
 extern "system" {
@@ -1783,4 +1785,85 @@ pub fn set_path_permission(dir: &PathBuf, permission: &str) -> ResultType<()> {
         .arg("/T")
         .spawn()?;
     Ok(())
+}
+
+pub fn resolutions() -> Vec<Resolution> {
+    unsafe {
+        let mut dm: DEVMODEW = std::mem::zeroed();
+        dm.dmSize = std::mem::size_of::<DEVMODEW>() as _;
+        let mut v = vec![];
+        let mut num = 0;
+        loop {
+            if EnumDisplaySettingsW(NULL as _, num, &mut dm) == 0 {
+                break;
+            }
+            // if !v
+            //     .iter()
+            //     .any(|r| r.width == dm.dmPelsWidth as _ && r.height == dm.dmPelsHeight as _)
+            // {
+            // }
+            let r = Resolution {
+                width: dm.dmPelsWidth as _,
+                height: dm.dmPelsHeight as _,
+                ..Default::default()
+            };
+            if !v.contains(&r) {
+                v.push(r);
+            }
+            num += 1;
+        }
+        v
+    }
+}
+
+pub fn current_resolution() -> ResultType<Resolution> {
+    unsafe {
+        let mut dm: DEVMODEW = std::mem::zeroed();
+        dm.dmSize = std::mem::size_of::<DEVMODEW>() as _;
+        //? ENUM_REGISTRY_SETTINGS
+        if EnumDisplaySettingsW(NULL as _, ENUM_CURRENT_SETTINGS, &mut dm) == 0 {
+            bail!(
+                "failed to get currrent resolution, errno={}",
+                GetLastError()
+            );
+        }
+        let r = Resolution {
+            width: dm.dmPelsWidth as _,
+            height: dm.dmPelsHeight as _,
+            ..Default::default()
+        };
+        Ok(r)
+    }
+}
+
+pub fn change_resolution2(width: usize, height: usize) -> ResultType<()> {
+    unsafe {
+        // let mut desired_mode: DEVMODEW = std::mem::zeroed();
+        // if FALSE == EnumDisplaySettingsW(NULL as _, ENUM_CURRENT_SETTINGS, &mut desired_mode) {
+        //     bail!("EnumDisplaySettingsW failed, errno={}", GetLastError());
+        // }
+        // println!(
+        //     "DDDDDDDDDDDDDDDDDDDDDDDD dmSize:{}, dmPelsWidth:{}",
+        //     desired_mode.dmSize, desired_mode.dmPelsWidth
+        // );
+        // desired_mode.dmSize = std::mem::size_of::<DEVMODEW>() as _;
+        // desired_mode.dmPelsWidth = width as _;
+        // desired_mode.dmPanningHeight = height as _;
+        // desired_mode.dmFields = DM_PELSHEIGHT | DM_PELSWIDTH;
+        // let res = ChangeDisplaySettingsW(
+        //     &mut desired_mode,
+        //     CDS_UPDATEREGISTRY | CDS_GLOBAL | CDS_RESET,
+        // );
+        // if res != DISP_CHANGE_SUCCESSFUL {
+        //     bail!(
+        //         "ChangeDisplaySettingsW failed, res={}, errno={}",
+        //         res,
+        //         GetLastError()
+        //     );
+        // }
+
+        let res = change_resolution(width as _, height as _);
+        println!("RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR res:{}", res);
+        Ok(())
+    }
 }

@@ -52,6 +52,7 @@ pub struct Remote<T: InvokeUiSession> {
     data_count: Arc<AtomicUsize>,
     frame_count: Arc<AtomicUsize>,
     video_format: CodecFormat,
+    // supported_resolutions: Vec<Resolution>,
 }
 
 impl<T: InvokeUiSession> Remote<T> {
@@ -81,6 +82,7 @@ impl<T: InvokeUiSession> Remote<T> {
             data_count: Arc::new(AtomicUsize::new(0)),
             frame_count,
             video_format: CodecFormat::Unknown,
+            // supported_resolutions: vec![],
         }
     }
 
@@ -772,6 +774,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(login_response::Union::PeerInfo(pi)) => {
+                        println!("==================== IoLoop LoginResponse PeerInfo");
                         self.handler.handle_peer_info(pi);
                         self.check_clipboard_file_context();
                         if !(self.handler.is_file_transfer()
@@ -970,153 +973,170 @@ impl<T: InvokeUiSession> Remote<T> {
                         _ => {}
                     }
                 }
-                Some(message::Union::Misc(misc)) => match misc.union {
-                    Some(misc::Union::AudioFormat(f)) => {
-                        self.audio_sender.send(MediaData::AudioFormat(f)).ok();
-                    }
-                    Some(misc::Union::ChatMessage(c)) => {
-                        self.handler.new_message(c.text);
-                    }
-                    Some(misc::Union::PermissionInfo(p)) => {
-                        log::info!("Change permission {:?} -> {}", p.permission, p.enabled);
-                        match p.permission.enum_value_or_default() {
-                            Permission::Keyboard => {
-                                SERVER_KEYBOARD_ENABLED.store(p.enabled, Ordering::SeqCst);
-                                self.handler.set_permission("keyboard", p.enabled);
-                            }
-                            Permission::Clipboard => {
-                                SERVER_CLIPBOARD_ENABLED.store(p.enabled, Ordering::SeqCst);
-                                self.handler.set_permission("clipboard", p.enabled);
-                            }
-                            Permission::Audio => {
-                                self.handler.set_permission("audio", p.enabled);
-                            }
-                            Permission::File => {
-                                SERVER_FILE_TRANSFER_ENABLED.store(p.enabled, Ordering::SeqCst);
-                                if !p.enabled && self.handler.is_file_transfer() {
-                                    return true;
+                Some(message::Union::Misc(misc)) => {
+                    match misc.union {
+                        Some(misc::Union::AudioFormat(f)) => {
+                            self.audio_sender.send(MediaData::AudioFormat(f)).ok();
+                        }
+                        Some(misc::Union::ChatMessage(c)) => {
+                            self.handler.new_message(c.text);
+                        }
+                        Some(misc::Union::PermissionInfo(p)) => {
+                            log::info!("Change permission {:?} -> {}", p.permission, p.enabled);
+                            match p.permission.enum_value_or_default() {
+                                Permission::Keyboard => {
+                                    SERVER_KEYBOARD_ENABLED.store(p.enabled, Ordering::SeqCst);
+                                    self.handler.set_permission("keyboard", p.enabled);
                                 }
-                                self.check_clipboard_file_context();
-                                self.handler.set_permission("file", p.enabled);
-                            }
-                            Permission::Restart => {
-                                self.handler.set_permission("restart", p.enabled);
-                            }
-                            Permission::Recording => {
-                                self.handler.set_permission("recording", p.enabled);
+                                Permission::Clipboard => {
+                                    SERVER_CLIPBOARD_ENABLED.store(p.enabled, Ordering::SeqCst);
+                                    self.handler.set_permission("clipboard", p.enabled);
+                                }
+                                Permission::Audio => {
+                                    self.handler.set_permission("audio", p.enabled);
+                                }
+                                Permission::File => {
+                                    SERVER_FILE_TRANSFER_ENABLED.store(p.enabled, Ordering::SeqCst);
+                                    if !p.enabled && self.handler.is_file_transfer() {
+                                        return true;
+                                    }
+                                    self.check_clipboard_file_context();
+                                    self.handler.set_permission("file", p.enabled);
+                                }
+                                Permission::Restart => {
+                                    self.handler.set_permission("restart", p.enabled);
+                                }
+                                Permission::Recording => {
+                                    self.handler.set_permission("recording", p.enabled);
+                                }
                             }
                         }
-                    }
-                    Some(misc::Union::SwitchDisplay(s)) => {
-                        self.handler.ui_handler.switch_display(&s);
-                        self.video_sender.send(MediaData::Reset).ok();
-                        if s.width > 0 && s.height > 0 {
-                            self.handler.set_display(
-                                s.x,
-                                s.y,
-                                s.width,
-                                s.height,
-                                s.cursor_embedded,
-                            );
+                        Some(misc::Union::SwitchDisplay(s)) => {
+                            println!("===================io loop, recv:SwitchDisplay:{}", s);
+                            self.handler.ui_handler.switch_display(&s);
+                            self.video_sender.send(MediaData::Reset).ok();
+                            if s.width > 0 && s.height > 0 {
+                                self.handler.set_display(
+                                    s.x,
+                                    s.y,
+                                    s.width,
+                                    s.height,
+                                    s.cursor_embedded,
+                                );
+                            }
                         }
-                    }
-                    Some(misc::Union::CloseReason(c)) => {
-                        self.handler.msgbox("error", "Connection Error", &c, "");
-                        return false;
-                    }
-                    Some(misc::Union::BackNotification(notification)) => {
-                        if !self.handle_back_notification(notification).await {
+                        Some(misc::Union::CloseReason(c)) => {
+                            self.handler.msgbox("error", "Connection Error", &c, "");
                             return false;
                         }
-                    }
-                    Some(misc::Union::Uac(uac)) => {
-                        #[cfg(feature = "flutter")]
-                        {
-                            if uac {
+                        Some(misc::Union::BackNotification(notification)) => {
+                            if !self.handle_back_notification(notification).await {
+                                return false;
+                            }
+                        }
+                        Some(misc::Union::Uac(uac)) => {
+                            #[cfg(feature = "flutter")]
+                            {
+                                if uac {
+                                    self.handler.msgbox(
+                                        "on-uac",
+                                        "Prompt",
+                                        "Please wait for confirmation of UAC...",
+                                        "",
+                                    );
+                                } else {
+                                    self.handler.cancel_msgbox("on-uac");
+                                    self.handler.cancel_msgbox("wait-uac");
+                                    self.handler.cancel_msgbox("elevation-error");
+                                }
+                            }
+                            #[cfg(not(feature = "flutter"))]
+                            {
+                                let msgtype = "custom-uac-nocancel";
+                                let title = "Prompt";
+                                let text = "Please wait for confirmation of UAC...";
+                                let link = "";
+                                if uac {
+                                    self.handler.msgbox(msgtype, title, text, link);
+                                } else {
+                                    self.handler.cancel_msgbox(&format!(
+                                        "{}-{}-{}-{}",
+                                        msgtype, title, text, link,
+                                    ));
+                                }
+                            }
+                        }
+                        Some(misc::Union::ForegroundWindowElevated(elevated)) => {
+                            #[cfg(feature = "flutter")]
+                            {
+                                if elevated {
+                                    self.handler.msgbox(
+                                        "on-foreground-elevated",
+                                        "Prompt",
+                                        "elevated_foreground_window_tip",
+                                        "",
+                                    );
+                                } else {
+                                    self.handler.cancel_msgbox("on-foreground-elevated");
+                                    self.handler.cancel_msgbox("wait-uac");
+                                    self.handler.cancel_msgbox("elevation-error");
+                                }
+                            }
+                            #[cfg(not(feature = "flutter"))]
+                            {
+                                let msgtype = "custom-elevated-foreground-nocancel";
+                                let title = "Prompt";
+                                let text = "elevated_foreground_window_tip";
+                                let link = "";
+                                if elevated {
+                                    self.handler.msgbox(msgtype, title, text, link);
+                                } else {
+                                    self.handler.cancel_msgbox(&format!(
+                                        "{}-{}-{}-{}",
+                                        msgtype, title, text, link,
+                                    ));
+                                }
+                            }
+                        }
+                        Some(misc::Union::ElevationResponse(err)) => {
+                            if err.is_empty() {
+                                self.handler.msgbox("wait-uac", "", "", "");
+                            } else {
+                                self.handler
+                                    .msgbox("elevation-error", "Elevation Error", &err, "");
+                            }
+                        }
+                        Some(misc::Union::PortableServiceRunning(b)) => {
+                            if b {
                                 self.handler.msgbox(
-                                    "on-uac",
-                                    "Prompt",
-                                    "Please wait for confirmation of UAC...",
+                                    "custom-nocancel-success",
+                                    "Successful",
+                                    "Elevate successfully",
                                     "",
                                 );
-                            } else {
-                                self.handler.cancel_msgbox("on-uac");
-                                self.handler.cancel_msgbox("wait-uac");
-                                self.handler.cancel_msgbox("elevation-error");
                             }
                         }
-                        #[cfg(not(feature = "flutter"))]
-                        {
-                            let msgtype = "custom-uac-nocancel";
-                            let title = "Prompt";
-                            let text = "Please wait for confirmation of UAC...";
-                            let link = "";
-                            if uac {
-                                self.handler.msgbox(msgtype, title, text, link);
-                            } else {
-                                self.handler.cancel_msgbox(&format!(
-                                    "{}-{}-{}-{}",
-                                    msgtype, title, text, link,
-                                ));
-                            }
+                        Some(misc::Union::SwitchBack(_)) => {
+                            #[cfg(feature = "flutter")]
+                            self.handler.switch_back(&self.handler.id);
                         }
+                        // Some(misc::Union::SupportedResolutions(r)) => {
+                        // self.supported_resolutions = r.resolutions;
+                        // let resolutions = r.resolutions;
+                        // let mut misc = Misc::new();
+                        // misc.set_change_resolution(Resolution {
+                        //     width: 1920,
+                        //     height: 1080,
+                        //     ..Default::default()
+                        // });
+                        // let mut msg = Message::new();
+                        // msg.set_misc(misc);
+                        // println!("SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSsvsend set_change_resolution");
+                        // allow_err!(peer.send(&msg).await);
+                        // }
+                        _ => {}
                     }
-                    Some(misc::Union::ForegroundWindowElevated(elevated)) => {
-                        #[cfg(feature = "flutter")]
-                        {
-                            if elevated {
-                                self.handler.msgbox(
-                                    "on-foreground-elevated",
-                                    "Prompt",
-                                    "elevated_foreground_window_tip",
-                                    "",
-                                );
-                            } else {
-                                self.handler.cancel_msgbox("on-foreground-elevated");
-                                self.handler.cancel_msgbox("wait-uac");
-                                self.handler.cancel_msgbox("elevation-error");
-                            }
-                        }
-                        #[cfg(not(feature = "flutter"))]
-                        {
-                            let msgtype = "custom-elevated-foreground-nocancel";
-                            let title = "Prompt";
-                            let text = "elevated_foreground_window_tip";
-                            let link = "";
-                            if elevated {
-                                self.handler.msgbox(msgtype, title, text, link);
-                            } else {
-                                self.handler.cancel_msgbox(&format!(
-                                    "{}-{}-{}-{}",
-                                    msgtype, title, text, link,
-                                ));
-                            }
-                        }
-                    }
-                    Some(misc::Union::ElevationResponse(err)) => {
-                        if err.is_empty() {
-                            self.handler.msgbox("wait-uac", "", "", "");
-                        } else {
-                            self.handler
-                                .msgbox("elevation-error", "Elevation Error", &err, "");
-                        }
-                    }
-                    Some(misc::Union::PortableServiceRunning(b)) => {
-                        if b {
-                            self.handler.msgbox(
-                                "custom-nocancel-success",
-                                "Successful",
-                                "Elevate successfully",
-                                "",
-                            );
-                        }
-                    }
-                    Some(misc::Union::SwitchBack(_)) => {
-                        #[cfg(feature = "flutter")]
-                        self.handler.switch_back(&self.handler.id);
-                    }
-                    _ => {}
-                },
+                }
                 Some(message::Union::TestDelay(t)) => {
                     self.handler.handle_test_delay(t, peer).await;
                 }
