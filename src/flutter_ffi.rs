@@ -6,7 +6,7 @@ use crate::{
     flutter::{session_add, session_start_},
     ui_interface::{self, *},
 };
-use flutter_rust_bridge::{StreamSink, SyncReturn, ZeroCopyBuffer};
+use flutter_rust_bridge::{StreamSink, SyncReturn};
 use hbb_common::{
     config::{self, LocalConfig, PeerConfig, ONLINE},
     fs, log,
@@ -20,7 +20,6 @@ use std::{
     os::raw::c_char,
     str::FromStr,
 };
-use crate::ui_session_interface::InvokeUiSession;
 
 // use crate::hbbs_http::account::AuthResult;
 
@@ -512,6 +511,12 @@ pub fn session_elevate_with_logon(id: String, username: String, password: String
 pub fn session_switch_sides(id: String) {
     if let Some(session) = SESSIONS.read().unwrap().get(&id) {
         session.switch_sides();
+    }
+}
+
+pub fn session_change_resolution(id: String, width: i32, height: i32) {
+    if let Some(session) = SESSIONS.read().unwrap().get(&id) {
+        session.change_resolution(width, height);
     }
 }
 

@@ -3,19 +3,19 @@ use crate::{
     flutter_ffi::EventToUI,
     ui_session_interface::{io_loop, InvokeUiSession, Session},
 };
-use flutter_rust_bridge::{StreamSink};
+use flutter_rust_bridge::StreamSink;
 use hbb_common::{
     bail, config::LocalConfig, get_version_number, message_proto::*, rendezvous_proto::ConnType,
     ResultType,
 };
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     collections::HashMap,
     ffi::CString,
     os::raw::{c_char, c_int},
     sync::{Arc, RwLock},
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(super) const APP_TYPE_MAIN: &str = "main";
 pub(super) const APP_TYPE_CM: &str = "cm";
@@ -114,7 +114,7 @@ pub struct FlutterHandler {
     // SAFETY: [rgba] is guarded by [rgba_valid], and it's safe to reach [rgba] with `rgba_valid == true`.
     // We must check the `rgba_valid` before reading [rgba].
     pub rgba: Arc<RwLock<Vec<u8>>>,
-    pub rgba_valid: Arc<AtomicBool>
+    pub rgba_valid: Arc<AtomicBool>,
 }
 
 impl FlutterHandler {
@@ -328,6 +328,7 @@ impl InvokeUiSession for FlutterHandler {
             features.insert("privacy_mode", 0);
         }
         let features = serde_json::ser::to_string(&features).unwrap_or("".to_owned());
+        let resolutions = serialize_resolutions(&pi.resolutions.resolutions);
         self.push_event(
             "peer_info",
             vec![
@@ -339,6 +340,7 @@ impl InvokeUiSession for FlutterHandler {
                 ("version", &pi.version),
                 ("features", &features),
                 ("current_display", &pi.current_display.to_string()),
+                ("resolutions", &resolutions),
             ],
         );
     }
@@ -368,6 +370,7 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     fn switch_display(&self, display: &SwitchDisplay) {
+        let resolutions = serialize_resolutions(&display.resolutions.resolutions);
         self.push_event(
             "switch_display",
             vec![
@@ -387,6 +390,7 @@ impl InvokeUiSession for FlutterHandler {
                     }
                     .to_string(),
                 ),
+                ("resolutions", &resolutions),
             ],
         );
     }
@@ -662,12 +666,33 @@ pub fn set_cur_session_id(id: String) {
     }
 }
 
+#[inline]
+fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
+    #[derive(Debug, serde::Serialize)]
+    struct ResolutionSerde {
+        width: i32,
+        height: i32,
+    }
+
+    let mut v = vec![];
+    resolutions
+        .iter()
+        .map(|r| {
+            v.push(ResolutionSerde {
+                width: r.width,
+                height: r.height,
+            })
+        })
+        .count();
+    serde_json::ser::to_string(&v).unwrap_or("".to_string())
+}
+
 #[no_mangle]
 pub fn session_get_rgba_size(id: *const char) -> usize {
     let id = unsafe { std::ffi::CStr::from_ptr(id as _) };
     if let Ok(id) = id.to_str() {
         if let Some(session) = SESSIONS.write().unwrap().get_mut(id) {
-           return session.rgba.read().unwrap().len();
+            return session.rgba.read().unwrap().len();
         }
     }
     0

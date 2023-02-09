@@ -1,29 +1,29 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use rdev::{Event, EventType::*};
 use uuid::Uuid;
 
-use hbb_common::{allow_err, message_proto::*};
-use hbb_common::{fs, get_version_number, log, Stream};
 use hbb_common::config::{Config, LocalConfig, PeerConfig, RS_PUB_KEY};
 use hbb_common::rendezvous_proto::ConnType;
 use hbb_common::tokio::{self, sync::mpsc};
+use hbb_common::{allow_err, message_proto::*};
+use hbb_common::{fs, get_version_number, log, Stream};
 
-use crate::{client::Data, client::Interface};
-use crate::client::{
-    check_if_retry, FileManager, handle_hash, handle_login_error, handle_login_from_ui,
-    handle_test_delay, input_os_password, Key, KEY_MAP, load_config, LoginConfigHandler,
-    QualityStatus, send_mouse, start_video_audio_threads,
-};
 use crate::client::io_loop::Remote;
+use crate::client::{
+    check_if_retry, handle_hash, handle_login_error, handle_login_from_ui, handle_test_delay,
+    input_os_password, load_config, send_mouse, start_video_audio_threads, FileManager, Key,
+    LoginConfigHandler, QualityStatus, KEY_MAP,
+};
 use crate::common::{self, GrabState};
 use crate::keyboard;
+use crate::{client::Data, client::Interface};
 
 pub static IS_IN: AtomicBool = AtomicBool::new(false);
 
@@ -671,10 +671,22 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
+    pub fn change_resolution(&self, width: i32, height: i32) {
+        let mut misc = Misc::new();
+        misc.set_change_resolution(Resolution {
+            width,
+            height,
+            ..Default::default()
+        });
+        let mut msg = Message::new();
+        msg.set_misc(misc);
+        self.send(Data::Message(msg));
+    }
+
     pub fn request_voice_call(&self) {
         self.send(Data::NewVoiceCall);
     }
-    
+
     pub fn close_voice_call(&self) {
         self.send(Data::CloseVoiceCall);
     }
@@ -958,7 +970,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>) {
     let frame_count = Arc::new(AtomicUsize::new(0));
     let frame_count_cl = frame_count.clone();
     let ui_handler = handler.ui_handler.clone();
-    let (video_sender, audio_sender) = start_video_audio_threads(move |data: &mut Vec<u8> | {
+    let (video_sender, audio_sender) = start_video_audio_threads(move |data: &mut Vec<u8>| {
         frame_count_cl.fetch_add(1, Ordering::Relaxed);
         ui_handler.on_rgba(data);
     });
