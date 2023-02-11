@@ -1,6 +1,6 @@
 use super::{CursorData, ResultType};
 pub use hbb_common::platform::linux::*;
-use hbb_common::{allow_err, bail, log};
+use hbb_common::{allow_err, anyhow::anyhow, bail, log, message_proto::Resolution};
 use libc::{c_char, c_int, c_void};
 use std::{
     cell::RefCell,
@@ -11,6 +11,7 @@ use std::{
         Arc,
     },
 };
+use xrandr_parser::Parser;
 
 type Xdo = *const c_void;
 
@@ -724,4 +725,56 @@ pub fn register_breakdown_handler() {
     unsafe {
         libc::signal(libc::SIGSEGV, breakdown_signal_handler as _);
     }
+}
+
+pub fn resolutions(name: &str) -> Vec<Resolution> {
+    let mut v = vec![];
+    let mut parser = Parser::new();
+    if parser.parse().is_ok() {
+        if let Ok(connector) = parser.get_connector(name) {
+            if let Ok(resolutions) = &connector.available_resolutions() {
+                for r in resolutions {
+                    if let Ok(width) = r.horizontal.parse::<i32>() {
+                        if let Ok(height) = r.vertical.parse::<i32>() {
+                            let resolution = Resolution {
+                                width,
+                                height,
+                                ..Default::default()
+                            };
+                            if !v.contains(&resolution) {
+                                v.push(resolution);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    v
+}
+
+pub fn current_resolution(name: &str) -> ResultType<Resolution> {
+    let mut parser = Parser::new();
+    parser.parse().map_err(|e| anyhow!(e))?;
+    let connector = parser.get_connector(name).map_err(|e| anyhow!(e))?;
+    let r = connector.current_resolution();
+    let width = r.horizontal.parse::<i32>()?;
+    let height = r.vertical.parse::<i32>()?;
+    Ok(Resolution {
+        width,
+        height,
+        ..Default::default()
+    })
+}
+
+pub fn change_resolution(name: &str, width: usize, height: usize) -> ResultType<()> {
+    std::process::Command::new("xrandr")
+        .args(vec![
+            "--output",
+            name,
+            "--mode",
+            &format!("{}x{}", width, height),
+        ])
+        .spawn()?;
+    Ok(())
 }
