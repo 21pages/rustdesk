@@ -4,7 +4,8 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide SubmenuButton, MenuController;
+import 'package:flutter_hbb/desktop/widgets/menu_anchor_widgets.dart';
 
 // Examples can assume:
 // enum Commands { heroAndScholar, hurricaneCame }
@@ -1432,3 +1433,73 @@ class _EffectiveMouseCursor extends MaterialStateMouseCursor {
   @override
   String get debugDescription => 'MaterialStateMouseCursor(PopupMenuItemState)';
 }
+
+class PopupMenuSubMenu<T> extends PopupMenuEntry<T> {
+  final Widget child;
+  final List<Widget> children;
+  late final double _height;
+  late final MenuController menuController;
+
+  PopupMenuSubMenu({
+    Key? key,
+    double height = kMinInteractiveDimension,
+    required this.child,
+    required this.children,
+    required this.menuController,
+  }) : super(key: key) {
+    this._height = height;
+  }
+
+  @override
+  State<StatefulWidget> createState() => _PopupMenuSubMenuState();
+
+  @override
+  double get height => _height;
+
+  @override
+  bool represents(T? value) => false;
+}
+
+class _PopupMenuSubMenuState extends State<PopupMenuSubMenu> {
+  @override
+  Widget build(BuildContext context) {
+    return SubmenuButton(
+      menuController: widget.menuController,
+      menuChildren: widget.children,
+      child: widget.child,
+      // onHover: (value) => print("onHover $value"),
+      // onOpen: () => print("On open"),
+      // onClose: () => print("On close"),
+      // onFocusChange: (value) {
+      //   print("on focus change:$value");
+      // },
+    );
+  }
+}
+
+// class PopupMenuSubMenuItem<T> extends PopupMenuEntry<T> {
+//   final Widget child;
+//   late final double _height;
+
+//   PopupMenuSubMenuItem({
+//     Key? key,
+//     double height = kMinInteractiveDimension,
+//     required this.child,
+//   }) : super(key: key) {
+//     this._height = height;
+//   }
+
+//   @override
+//   State<StatefulWidget> createState() => _PopupMenuSubMenuItemState();
+
+//   @override
+//   double get height => _height;
+
+//   @override
+//   bool represents(T? value) => false;
+// }
+
+// class _PopupMenuSubMenuItemState extends State<PopupMenuSubMenuItem> {
+//   @override
+//   Widget build(BuildContext context) => widget.child;
+// }

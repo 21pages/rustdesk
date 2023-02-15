@@ -1,6 +1,7 @@
 import 'dart:core';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide MenuController;
+import 'package:flutter_hbb/desktop/widgets/menu_anchor_widgets.dart';
 import 'package:get/get.dart';
 
 import '../../common.dart';
@@ -651,6 +652,39 @@ class MenuEntrySubMenu<T> extends MenuEntryBase<T> {
     ];
   }
 }
+
+class MenuEntrySubmenu2<T> extends MenuEntryBase<T> {
+  final Widget widget;
+  final List<Widget> children;
+  late final MenuController menuController;
+  MenuEntrySubmenu2(
+      {required this.widget,
+      required this.children,
+      required this.menuController});
+
+  @override
+  List<mod_menu.PopupMenuEntry<T>> build(
+      BuildContext context, MenuConfig conf) {
+    return [
+      mod_menu.PopupMenuSubMenu<T>(
+          menuController: menuController,
+          child: widget,
+          children: children,
+          height: conf.height)
+    ].toList();
+  }
+}
+
+// class MenuEntrySubmenuItem<T> extends MenuEntryBase<T> {
+//   final Widget child;
+//   MenuEntrySubmenuItem({required this.child});
+
+//   @override
+//   List<mod_menu.PopupMenuEntry<T>> build(
+//       BuildContext context, MenuConfig conf) {
+//     return [mod_menu.PopupMenuSubMenuItem(child: child, height: conf.height)];
+//   }
+// }
 
 class MenuEntryButton<T> extends MenuEntryBase<T> {
   final Widget Function(TextStyle? style) childBuilder;

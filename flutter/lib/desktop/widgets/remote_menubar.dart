@@ -3,8 +3,9 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide MenuController;
 import 'package:flutter/services.dart';
+import 'package:flutter_hbb/desktop/widgets/menu_anchor_widgets.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -30,6 +31,8 @@ class MenubarState {
   late RxBool show;
   late RxBool _pin;
   RxString viewStyle = RxString(kRemoteViewStyleOriginal);
+  bool displayMenuHovered = false;
+  bool resolutionMenuHovered = false;
 
   MenubarState() {
     final s = bind.getLocalFlutterConfig(k: kStoreKey);
@@ -275,8 +278,9 @@ class RemoteMenubar extends StatefulWidget {
   final MenubarState state;
   final Function(Function(bool)) onEnterOrLeaveImageSetter;
   final Function() onEnterOrLeaveImageCleaner;
+  final MenuController resolutionMenuController = MenuController();
 
-  const RemoteMenubar({
+  RemoteMenubar({
     Key? key,
     required this.id,
     required this.ffi,
@@ -401,6 +405,27 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
     );
   }
 
+  Widget _buildDisplayMenuPointerTrackWidget(Widget child) {
+    return Listener(
+      onPointerHover: (PointerHoverEvent e) =>
+          widget.ffi.inputModel.lastMousePos = e.position,
+      child: MouseRegion(
+          child: child,
+          onEnter: (_) {
+            print("display enter");
+            widget.state.displayMenuHovered = true;
+            if (!widget.state.resolutionMenuHovered &&
+                widget.resolutionMenuController.isOpen) {
+              widget.resolutionMenuController.close();
+            }
+          },
+          onExit: (_) {
+            print("display exit");
+            widget.state.displayMenuHovered = false;
+          }),
+    );
+  }
+
   _menuDismissCallback() => widget.ffi.inputModel.refreshMousePos();
 
   Widget _buildMenubar(BuildContext context) {
@@ -440,7 +465,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
                 border: Border.all(color: MyTheme.border),
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
+                // mainAxisSize: MainAxisSize.min,
                 children: menubarItems,
               )),
           _buildDraggableShowHide(context),
@@ -602,7 +627,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
             ),
             tooltip: translate('Display Settings'),
             position: mod_menu.PopupMenuPosition.under,
-            menuWrapper: _buildPointerTrackWidget,
+            menuWrapper: _buildDisplayMenuPointerTrackWidget,
             itemBuilder: (BuildContext context) =>
                 _getDisplayMenu(snapshot.data!, remoteCount)
                     .map((entry) => entry.build(
@@ -1330,167 +1355,45 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
         );
       }
     }
-
-    /// Show Codec Preference
-    if (bind.mainHasHwcodec()) {
-      final List<bool> codecs = [];
-      try {
-        final Map codecsJson = jsonDecode(futureData['supportedHwcodec']);
-        final h264 = codecsJson['h264'] ?? false;
-        final h265 = codecsJson['h265'] ?? false;
-        codecs.add(h264);
-        codecs.add(h265);
-      } catch (e) {
-        debugPrint("Show Codec Preference err=$e");
-      }
-      if (codecs.length == 2 && (codecs[0] || codecs[1])) {
-        displayMenu.add(MenuEntryRadios<String>(
-          text: translate('Codec Preference'),
-          optionsGetter: () {
-            final list = [
-              MenuEntryRadioOption(
-                text: translate('Auto'),
-                value: 'auto',
-                dismissOnClicked: true,
-                dismissCallback: _menuDismissCallback,
-              ),
-              MenuEntryRadioOption(
-                text: 'VP9',
-                value: 'vp9',
-                dismissOnClicked: true,
-                dismissCallback: _menuDismissCallback,
-              ),
-            ];
-            if (codecs[0]) {
-              list.add(MenuEntryRadioOption(
-                text: 'H264',
-                value: 'h264',
-                dismissOnClicked: true,
-                dismissCallback: _menuDismissCallback,
-              ));
-            }
-            if (codecs[1]) {
-              list.add(MenuEntryRadioOption(
-                text: 'H265',
-                value: 'h265',
-                dismissOnClicked: true,
-                dismissCallback: _menuDismissCallback,
-              ));
-            }
-            return list;
-          },
-          curOptionGetter: () async =>
-              // null means peer id is not found, which there's no need to care about
-              await bind.sessionGetOption(
-                  id: widget.id, arg: 'codec-preference') ??
-              '',
-          optionSetter: (String oldValue, String newValue) async {
-            await bind.sessionPeerOption(
-                id: widget.id, name: 'codec-preference', value: newValue);
-            bind.sessionChangePreferCodec(id: widget.id);
-          },
-          padding: padding,
-          dismissOnClicked: true,
-          dismissCallback: _menuDismissCallback,
-        ));
-      }
-    }
-    displayMenu.add(MenuEntryDivider());
-
-    /// Show remote cursor
-    if (!widget.ffi.canvasModel.cursorEmbedded) {
-      displayMenu.add(RemoteMenuEntry.showRemoteCursor(
-        widget.id,
-        padding,
-        dismissCallback: _menuDismissCallback,
-      ));
+    final resolutions = widget.ffi.ffiModel.pi.resolutions;
+    if (resolutions.length > 1) {
+      displayMenu.add(MenuEntrySubmenu2<String>(
+          menuController: widget.resolutionMenuController,
+          widget: MouseRegion(
+              onEnter: (_) {
+                print("resoultion enter");
+                widget.state.resolutionMenuHovered = true;
+              },
+              onExit: (_) {
+                print("resoultion exit");
+                widget.state.resolutionMenuHovered = false;
+              },
+              child: Text("resolution")),
+          children: resolutions
+              .map((e) => PopupMenuItem(
+                  padding: EdgeInsets.zero,
+                  height: kMinInteractiveDimension,
+                  child: Text('${e.width}x${e.height}')))
+              .toList()));
     }
 
-    /// Show remote cursor scaling with image
-    if (widget.state.viewStyle.value != kRemoteViewStyleOriginal) {
-      displayMenu.add(() {
-        final opt = 'zoom-cursor';
-        final state = PeerBoolOption.find(widget.id, opt);
-        return MenuEntrySwitch2<String>(
-          switchType: SwitchType.scheckbox,
-          text: translate('Zoom cursor'),
-          getter: () {
-            return state;
-          },
-          setter: (bool v) async {
-            await bind.sessionToggleOption(id: widget.id, value: opt);
-            state.value =
-                bind.sessionGetToggleOptionSync(id: widget.id, arg: opt);
-          },
-          padding: padding,
-          dismissOnClicked: true,
-          dismissCallback: _menuDismissCallback,
-        );
-      }());
-    }
+    // if (resolutions.length > 1) {
+    //   displayMenu.add(MenuEntrySubRadios<String>(
+    //       text: "R",
+    //       padding: padding,
+    //       optionsGetter: () {
+    //         return resolutions
+    //             .map((e) => MenuEntryRadioOption(
+    //                 text: '${e.width}x${e.height}',
+    //                 value: '${e.width}x${e.height}'))
+    //             .toList();
+    //       },
+    //       curOptionGetter: () async {
+    //         return "1920x1080";
+    //       },
+    //       optionSetter: (old, cur) async {}));
+    // }
 
-    /// Show quality monitor
-    displayMenu.add(MenuEntrySwitch<String>(
-      switchType: SwitchType.scheckbox,
-      text: translate('Show quality monitor'),
-      getter: () async {
-        return bind.sessionGetToggleOptionSync(
-            id: widget.id, arg: 'show-quality-monitor');
-      },
-      setter: (bool v) async {
-        await bind.sessionToggleOption(
-            id: widget.id, value: 'show-quality-monitor');
-        widget.ffi.qualityMonitorModel.checkShowQualityMonitor(widget.id);
-      },
-      padding: padding,
-      dismissOnClicked: true,
-      dismissCallback: _menuDismissCallback,
-    ));
-
-    final perms = widget.ffi.ffiModel.permissions;
-    final pi = widget.ffi.ffiModel.pi;
-
-    if (perms['audio'] != false) {
-      displayMenu
-          .add(_createSwitchMenuEntry('Mute', 'disable-audio', padding, true));
-      displayMenu
-          .add(_createSwitchMenuEntry('Mute', 'disable-audio', padding, true));
-    }
-
-    if (Platform.isWindows &&
-        pi.platform == kPeerPlatformWindows &&
-        perms['file'] != false) {
-      displayMenu.add(_createSwitchMenuEntry(
-          'Allow file copy and paste', 'enable-file-transfer', padding, true));
-    }
-
-    if (perms['keyboard'] != false) {
-      if (perms['clipboard'] != false) {
-        displayMenu.add(RemoteMenuEntry.disableClipboard(
-          widget.id,
-          padding,
-          dismissCallback: _menuDismissCallback,
-        ));
-      }
-      displayMenu.add(_createSwitchMenuEntry(
-          'Lock after session end', 'lock-after-session-end', padding, true));
-      if (pi.features.privacyMode) {
-        displayMenu.add(MenuEntrySwitch2<String>(
-          switchType: SwitchType.scheckbox,
-          text: translate('Privacy mode'),
-          getter: () {
-            return PrivacyModeState.find(widget.id);
-          },
-          setter: (bool v) async {
-            await bind.sessionToggleOption(
-                id: widget.id, value: 'privacy-mode');
-          },
-          padding: padding,
-          dismissOnClicked: true,
-          dismissCallback: _menuDismissCallback,
-        ));
-      }
-    }
     return displayMenu;
   }
 
