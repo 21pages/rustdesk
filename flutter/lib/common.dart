@@ -217,9 +217,8 @@ class MyTheme {
             style: ButtonStyle(splashFactory: NoSplash.splashFactory),
           )
         : null,
-    checkboxTheme: const CheckboxThemeData(
-      checkColor: MaterialStatePropertyAll(dark)
-    ),
+    checkboxTheme:
+        const CheckboxThemeData(checkColor: MaterialStatePropertyAll(dark)),
   ).copyWith(
     extensions: <ThemeExtension<dynamic>>[
       ColorThemeExtension.dark,
@@ -1782,6 +1781,13 @@ Future<PermissionAuthorizeType> osxCanRecordAudio() async {
 
 Future<bool> osxRequestAudio() async {
   return await kMacOSPermChannel.invokeMethod("requestRecordAudio");
+}
+
+class CustomPopupMenuTheme {
+  static const Color commonColor = MyTheme.accent;
+  // kMinInteractiveDimension
+  static const double height = 20.0;
+  static const double dividerHeight = 3.0;
 }
 
 class DraggableNeverScrollableScrollPhysics extends ScrollPhysics {

@@ -447,6 +447,13 @@ class FfiModel with ChangeNotifier {
           arr.add(Resolution(width, height));
         }
       }
+      arr.sort((a, b) {
+        if (b.width != a.width) {
+          return b.width - a.width;
+        } else {
+          return b.height - a.height;
+        }
+      });
       _pi.resolutions = arr;
     } catch (e) {
       debugPrint("Failed to parse resolutions:$e");
@@ -470,6 +477,9 @@ class FfiModel with ChangeNotifier {
       }
       _pi.displays = newDisplays;
       stateGlobal.displaysCount.value = _pi.displays.length;
+      if (_pi.currentDisplay >= 0 && _pi.currentDisplay < _pi.displays.length) {
+        _display = _pi.displays[_pi.currentDisplay];
+      }
     }
     notifyListeners();
   }

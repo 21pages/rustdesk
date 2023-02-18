@@ -92,6 +92,10 @@ dependencies:
     password_strength: ^0.2.0
     flutter_launcher_icons: ^0.11.0
     flutter_keyboard_visibility: ^5.4.0
+    menu_anchor:
+        git:
+            url: https://github.com/21pages/menu_anchor.git
+            ref: 4709d15e7894b36a122a153385edb6cd09771b3a
 
 
 dev_dependencies:
