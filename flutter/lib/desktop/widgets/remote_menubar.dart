@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide MenuController;
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/desktop/widgets/menu_button.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
@@ -12,6 +12,7 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:menu_anchor/menu_anchor.dart';
 import 'package:provider/provider.dart';
 import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -31,6 +32,8 @@ class MenubarState {
   late RxBool show;
   late RxBool _pin;
   RxString viewStyle = RxString(kRemoteViewStyleOriginal);
+  bool displayMenuHovered = false;
+  bool resolutionMenuHovered = false;
 
   MenubarState() {
     final s = bind.getLocalFlutterConfig(k: kStoreKey);
@@ -114,6 +117,7 @@ class RemoteMenuEntry {
     DismissFunc? dismissFunc,
     DismissCallback? dismissCallback,
     RxString? rxViewStyle,
+    final HoverCallback onHover,
   }) {
     return MenuEntryRadios<String>(
       text: translate('Ratio'),
@@ -152,6 +156,7 @@ class RemoteMenuEntry {
       padding: padding,
       dismissOnClicked: true,
       dismissCallback: dismissCallback,
+      onHover: onHover,
     );
   }
 
@@ -279,8 +284,9 @@ class RemoteMenubar extends StatefulWidget {
   final MenubarState state;
   final Function(Function(bool)) onEnterOrLeaveImageSetter;
   final Function() onEnterOrLeaveImageCleaner;
+  final MenuController resolutionMenuController = MenuController();
 
-  const RemoteMenubar({
+  RemoteMenubar({
     Key? key,
     required this.id,
     required this.ffi,
@@ -1046,6 +1052,14 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
         selfHeight > (requiredHeight * scale);
   }
 
+  onDisplayHover(String key, bool value) {
+    widget.state.displayMenuHovered = value;
+    if (!widget.state.resolutionMenuHovered &&
+        widget.resolutionMenuController.isOpen) {
+      widget.resolutionMenuController.close();
+    }
+  }
+
   List<MenuEntryBase<String>> _getDisplayMenu(
       dynamic futureData, int remoteCount) {
     const EdgeInsets padding = EdgeInsets.only(left: 18.0, right: 8.0);
@@ -1087,6 +1101,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
             dismissCallback: _menuDismissCallback,
           ),
         ],
+        onHover: onDisplayHover,
         curOptionGetter: () async =>
             // null means peer id is not found, which there's no need to care about
             await bind.sessionGetImageQuality(id: widget.id) ?? '',
@@ -1271,6 +1286,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
             padding: padding,
             dismissOnClicked: true,
             dismissCallback: _menuDismissCallback,
+            onHover: onDisplayHover,
           ));
       displayMenu.insert(3, MenuEntryDivider<String>());
 
@@ -1346,6 +1362,51 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
         );
       }
     }
+    final resolutions = widget.ffi.ffiModel.pi.resolutions;
+    if (resolutions.length > 1) {
+      displayMenu.add(MenuEntrySubRadios<String>(
+        text: translate("Resolution"),
+        dismissOnClicked: true,
+        dismissCallback: _menuDismissCallback,
+        menuController: widget.resolutionMenuController,
+        onHover: (value) {
+          widget.state.resolutionMenuHovered = value;
+        },
+        optionsGetter: () {
+          return resolutions
+              .map((e) => MenuEntryRadioOption(
+                  dismissOnClicked: true,
+                  dismissCallback: _menuDismissCallback,
+                  text: '${e.width}x${e.height}',
+                  value: '${e.width}x${e.height}'))
+              .toList();
+        },
+        curOptionGetter: () async {
+          final pi = widget.ffi.ffiModel.pi;
+          if (pi.currentDisplay >= 0 &&
+              pi.currentDisplay < pi.displays.length) {
+            final w = pi.displays[pi.currentDisplay].width;
+            final h = pi.displays[pi.currentDisplay].height;
+            print("current:${w}x$h");
+            return '${w}x$h';
+          }
+          return "";
+        },
+        optionSetter: (oldVal, curVal) async {
+          final list = curVal.split('x');
+          print("set $curVal, list.length:${list.length}");
+          if (list.length == 2) {
+            final w = int.tryParse(list[0]);
+            final h = int.tryParse(list[1]);
+            if (w != null && h != null) {
+              print("setssion set");
+              await bind.sessionChangeResolution(
+                  id: widget.id, width: w, height: h);
+            }
+          }
+        },
+      ));
+    }
 
     /// Show Codec Preference
     if (bind.mainHasHwcodec()) {
@@ -1362,6 +1423,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
       if (codecs.length == 2 && (codecs[0] || codecs[1])) {
         displayMenu.add(MenuEntryRadios<String>(
           text: translate('Codec Preference'),
+          onHover: onDisplayHover,
           optionsGetter: () {
             final list = [
               MenuEntryRadioOption(
@@ -1428,6 +1490,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
         final opt = 'zoom-cursor';
         final state = PeerBoolOption.find(widget.id, opt);
         return MenuEntrySwitch2<String>(
+          onHover: onDisplayHover,
           switchType: SwitchType.scheckbox,
           text: translate('Zoom cursor'),
           getter: () {
@@ -1461,6 +1524,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
       padding: padding,
       dismissOnClicked: true,
       dismissCallback: _menuDismissCallback,
+      onHover: onDisplayHover,
     ));
 
     final perms = widget.ffi.ffiModel.permissions;
@@ -1490,6 +1554,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
           'Lock after session end', 'lock-after-session-end', padding, true));
       if (pi.features.privacyMode) {
         displayMenu.add(MenuEntrySwitch2<String>(
+          onHover: onDisplayHover,
           switchType: SwitchType.scheckbox,
           text: translate('Privacy mode'),
           getter: () {

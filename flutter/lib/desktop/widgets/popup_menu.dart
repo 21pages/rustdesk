@@ -1,9 +1,10 @@
 import 'dart:core';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide MenuController, SubmenuButton;
 import 'package:get/get.dart';
+import 'package:menu_anchor/menu_anchor.dart';
 
-import '../../common.dart';
+//import '../../common.dart';
 import './material_mod_popup_menu.dart' as mod_menu;
 
 // https://stackoverflow.com/questions/68318314/flutter-popup-menu-inside-popup-menu
@@ -19,6 +20,8 @@ class PopupMenuChildrenItem<T> extends mod_menu.PopupMenuEntry<T> {
     this.offset = Offset.zero,
     required this.itemBuilder,
     required this.child,
+    this.menuController,
+    this.onHover,
   }) : super(key: key);
 
   final mod_menu.PopupMenuPosition position;
@@ -29,6 +32,8 @@ class PopupMenuChildrenItem<T> extends mod_menu.PopupMenuEntry<T> {
   final void Function()? onTap;
   final List<mod_menu.PopupMenuEntry<T>> Function(BuildContext) itemBuilder;
   final Widget child;
+  final MenuController? menuController;
+  final ValueChanged<bool>? onHover;
 
   @override
   final double height;
@@ -53,12 +58,6 @@ class MyPopupMenuItemState<T, W extends PopupMenuChildrenItem<T>>
     }
   }
 
-  @protected
-  void handleTap(T value) {
-    widget.onTap?.call();
-    Navigator.pop<T>(context, value);
-  }
-
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -66,13 +65,21 @@ class MyPopupMenuItemState<T, W extends PopupMenuChildrenItem<T>>
     TextStyle style = widget.textStyle ??
         popupMenuTheme.textStyle ??
         theme.textTheme.subtitle1!;
-    return Obx(() => mod_menu.PopupMenuButton<T>(
-          enabled: enabled.value,
-          position: widget.position,
-          offset: widget.offset,
-          onSelected: handleTap,
-          itemBuilder: widget.itemBuilder,
-          padding: EdgeInsets.zero,
+    return Obx(() => SubmenuButton(
+          menuController: widget.menuController,
+          onHover: widget.onHover,
+          menuChildren: enabled.value ? widget.itemBuilder(context) : [],
+          menuStyle: MenuStyle(alignment: Alignment.centerRight),
+          style: ButtonStyle(
+            overlayColor:
+                MaterialStateColor.resolveWith((states) => Colors.transparent),
+            shadowColor:
+                MaterialStateColor.resolveWith((states) => Colors.transparent),
+            surfaceTintColor:
+                MaterialStateColor.resolveWith((states) => Colors.transparent),
+            splashFactory: NoSplash.splashFactory,
+          ),
+          alignmentOffset: widget.offset,
           child: AnimatedDefaultTextStyle(
             style: style,
             duration: kThemeChangeDuration,
@@ -175,6 +182,7 @@ class MenuEntryRadios<T> extends MenuEntryBase<T> {
   final RadioOptionSetter optionSetter;
   final RxString _curOption = "".obs;
   final EdgeInsets? padding;
+  final HoverCallback onHover;
 
   MenuEntryRadios({
     required this.text,
@@ -182,6 +190,7 @@ class MenuEntryRadios<T> extends MenuEntryBase<T> {
     required this.curOptionGetter,
     required this.optionSetter,
     this.padding,
+    this.onHover,
     dismissOnClicked = false,
     dismissCallback,
     RxBool? enabled,
@@ -276,9 +285,11 @@ class MenuEntryRadios<T> extends MenuEntryBase<T> {
             ? TextButton(
                 child: child,
                 onPressed: onPressed,
+                onHover: (v) => onHover?.call(opt.text, v),
               )
             : Obx(() => TextButton(
                   child: child,
+                  onHover: (v) => onHover?.call(opt.text, v),
                   onPressed: opt.enabled!.isTrue ? onPressed : null,
                 )),
       ),
@@ -299,6 +310,8 @@ class MenuEntrySubRadios<T> extends MenuEntryBase<T> {
   final RadioOptionSetter optionSetter;
   final RxString _curOption = "".obs;
   final EdgeInsets? padding;
+  final MenuController? menuController;
+  final ValueChanged<bool>? onHover;
 
   MenuEntrySubRadios({
     required this.text,
@@ -307,9 +320,13 @@ class MenuEntrySubRadios<T> extends MenuEntryBase<T> {
     required this.optionSetter,
     this.padding,
     dismissOnClicked = false,
+    DismissCallback? dismissCallback,
     RxBool? enabled,
+    this.menuController,
+    this.onHover,
   }) : super(
           dismissOnClicked: dismissOnClicked,
+          dismissCallback: dismissCallback,
           enabled: enabled,
         ) {
     () async {
@@ -378,9 +395,14 @@ class MenuEntrySubRadios<T> extends MenuEntryBase<T> {
                   opt.dismissCallback!();
                 }
               }
+              print("text btn on press");
+              menuController?.close();
               setOption(opt.value);
             },
           )),
+      onTap: () {
+        print("pop menu on tap");
+      },
     );
   }
 
@@ -392,25 +414,17 @@ class MenuEntrySubRadios<T> extends MenuEntryBase<T> {
         enabled: super.enabled,
         padding: padding,
         height: conf.height,
+        menuController: menuController,
+        onHover: onHover,
         itemBuilder: (BuildContext context) =>
             options.map((opt) => _buildSecondMenu(context, conf, opt)).toList(),
         child: Row(children: [
           const SizedBox(width: MenuConfig.midPadding),
-          Text(
-            text,
-            style: TextStyle(
-                color: Theme.of(context).textTheme.titleLarge?.color,
-                fontSize: MenuConfig.fontSize,
-                fontWeight: FontWeight.normal),
-          ),
-          Expanded(
-              child: Align(
-            alignment: Alignment.centerRight,
-            child: Icon(
-              Icons.keyboard_arrow_right,
-              color: conf.commonColor,
-            ),
-          ))
+          Text(text,
+              style: TextStyle(
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                  fontSize: MenuConfig.fontSize,
+                  fontWeight: FontWeight.normal)),
         ]),
       )
     ];
@@ -424,12 +438,14 @@ enum SwitchType {
 
 typedef SwitchGetter = Future<bool> Function();
 typedef SwitchSetter = Future<void> Function(bool);
+typedef HoverCallback = void Function(String, bool)?;
 
 abstract class MenuEntrySwitchBase<T> extends MenuEntryBase<T> {
   final SwitchType switchType;
   final String text;
   final EdgeInsets? padding;
   Rx<TextStyle>? textStyle;
+  HoverCallback onHover;
 
   MenuEntrySwitchBase({
     required this.switchType,
@@ -437,6 +453,7 @@ abstract class MenuEntrySwitchBase<T> extends MenuEntryBase<T> {
     required dismissOnClicked,
     this.textStyle,
     this.padding,
+    this.onHover,
     RxBool? enabled,
     dismissCallback,
   }) : super(
@@ -510,6 +527,7 @@ abstract class MenuEntrySwitchBase<T> extends MenuEntryBase<T> {
                           })),
                     ))
                   ])),
+              onHover: (v) => onHover?.call(text, v),
               onPressed: () {
                 if (super.dismissOnClicked && Navigator.canPop(context)) {
                   Navigator.pop(context);
@@ -535,6 +553,7 @@ class MenuEntrySwitch<T> extends MenuEntrySwitchBase<T> {
     required String text,
     required this.getter,
     required this.setter,
+    HoverCallback onHover,
     Rx<TextStyle>? textStyle,
     EdgeInsets? padding,
     dismissOnClicked = false,
@@ -548,6 +567,7 @@ class MenuEntrySwitch<T> extends MenuEntrySwitchBase<T> {
           dismissOnClicked: dismissOnClicked,
           enabled: enabled,
           dismissCallback: dismissCallback,
+          onHover: onHover,
         ) {
     () async {
       _curOption.value = await getter();
@@ -585,6 +605,7 @@ class MenuEntrySwitch2<T> extends MenuEntrySwitchBase<T> {
     dismissOnClicked = false,
     RxBool? enabled,
     dismissCallback,
+    HoverCallback onHover,
   }) : super(
           switchType: switchType,
           text: text,
@@ -592,6 +613,7 @@ class MenuEntrySwitch2<T> extends MenuEntrySwitchBase<T> {
           padding: padding,
           dismissOnClicked: dismissOnClicked,
           dismissCallback: dismissCallback,
+          onHover: onHover,
         );
 
   @override
@@ -708,11 +730,4 @@ class MenuEntryButton<T> extends MenuEntryBase<T> {
       )
     ];
   }
-}
-
-class CustomPopupMenuTheme {
-  static const Color commonColor = MyTheme.accent;
-  // kMinInteractiveDimension
-  static const double height = 20.0;
-  static const double dividerHeight = 3.0;
 }
