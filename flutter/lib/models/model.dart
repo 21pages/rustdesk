@@ -305,6 +305,7 @@ class FfiModel with ChangeNotifier {
       showRelayHintDialog(id, type, title, text, dialogManager);
     } else {
       var hasRetry = evt['hasRetry'] == 'true';
+      print("FFFFFFFFFFFFFFFFFFFFFFFFFFFF ${DateTime.now()} msgbox:$text");
       showMsgBox(id, type, title, text, link, hasRetry, dialogManager);
     }
   }

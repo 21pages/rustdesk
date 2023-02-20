@@ -998,6 +998,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>) {
                         }
                     }
                     Some(Data::Close) => {
+                        log::error!("================================ io_loop close");
                         break;
                     }
                     Some(d) => {
@@ -1039,6 +1040,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>) {
         ui_handler.on_rgba(data);
     });
 
+    let id = handler.id.clone();
     let mut remote = Remote::new(
         handler,
         video_sender,
@@ -1049,6 +1051,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>) {
     );
     remote.io_loop(&key, &token).await;
     remote.sync_jobs_status_to_local().await;
+    log::error!("======================== io_loop id:{} stop", id);
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

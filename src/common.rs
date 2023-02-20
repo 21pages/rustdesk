@@ -770,3 +770,8 @@ pub fn handle_url_scheme(url: String) {
         let _ = crate::run_me(vec![url]);
     }
 }
+
+pub fn cur_time() -> String {
+    use hbb_common::chrono::prelude::*;
+    Local::now().to_string()
+}

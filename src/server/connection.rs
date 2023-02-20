@@ -1593,7 +1593,10 @@ impl Connection {
                                 uuid.to_string().as_ref(),
                             ])
                             .ok();
-                            self.send_close_reason_no_retry("Closed as expected").await;
+                            let str =
+                                format!("send Closed as expected {}", crate::common::cur_time());
+                            log::error!("===================== {}", str);
+                            self.send_close_reason_no_retry(&str).await;
                             self.on_close("switch sides", false).await;
                             return false;
                         }

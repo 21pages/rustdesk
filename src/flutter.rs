@@ -5,8 +5,8 @@ use crate::{
 };
 use flutter_rust_bridge::StreamSink;
 use hbb_common::{
-    bail, config::LocalConfig, get_version_number, message_proto::*, rendezvous_proto::ConnType,
-    ResultType,
+    bail, config::LocalConfig, get_version_number, log, message_proto::*,
+    rendezvous_proto::ConnType, ResultType,
 };
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -365,6 +365,7 @@ impl InvokeUiSession for FlutterHandler {
     fn on_connected(&self, _conn_type: ConnType) {}
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str, retry: bool) {
+        log::error!("======================= msgbox: text{}", text);
         let has_retry = if retry { "true" } else { "" };
         self.push_event(
             "msgbox",
@@ -473,6 +474,7 @@ pub fn session_add(
     let session_id = get_session_id(id.to_owned());
     LocalConfig::set_remote_id(&session_id);
 
+    log::error!("======================= session_add: id{}", id);
     let session: Session<FlutterHandler> = Session {
         id: session_id.clone(),
         server_keyboard_enabled: Arc::new(RwLock::new(true)),
@@ -503,6 +505,7 @@ pub fn session_add(
         .initialize(session_id, conn_type, switch_uuid, force_relay);
 
     if let Some(same_id_session) = SESSIONS.write().unwrap().insert(id.to_owned(), session) {
+        log::error!("========================== remove old session id:{}", id,);
         same_id_session.close();
     }
 
@@ -516,6 +519,7 @@ pub fn session_add(
 /// * `id` - The identifier of the remote session with prefix. Regex: [\w]*[\_]*[\d]+
 /// * `events2ui` - The events channel to ui.
 pub fn session_start_(id: &str, event_stream: StreamSink<EventToUI>) -> ResultType<()> {
+    log::error!("================================ session_start_ id:{}", id);
     if let Some(session) = SESSIONS.write().unwrap().get_mut(id) {
         *session.event_stream.write().unwrap() = Some(event_stream);
         let session = session.clone();

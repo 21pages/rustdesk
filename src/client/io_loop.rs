@@ -342,6 +342,7 @@ impl<T: InvokeUiSession> Remote<T> {
     async fn handle_msg_from_ui(&mut self, data: Data, peer: &mut Stream) -> bool {
         match data {
             Data::Close => {
+                log::error!("================================ handle_msg_from_ui close");
                 let mut misc = Misc::new();
                 misc.set_close_reason("".to_owned());
                 let mut msg = Message::new();
@@ -1100,6 +1101,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(misc::Union::CloseReason(c)) => {
+                        log::error!("======================= CloseReason:{}", c);
                         self.handler.msgbox("error", "Connection Error", &c, "");
                         return false;
                     }
@@ -1253,14 +1255,12 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                 }
-                Some(message::Union::PeerInfo(pi)) => {
-                    match pi.conn_id {
-                        crate::SYNC_PEER_INFO_DISPLAYS => {
-                            self.handler.set_displays(&pi.displays);
-                        }
-                        _ => {}
+                Some(message::Union::PeerInfo(pi)) => match pi.conn_id {
+                    crate::SYNC_PEER_INFO_DISPLAYS => {
+                        self.handler.set_displays(&pi.displays);
                     }
-                }
+                    _ => {}
+                },
                 _ => {}
             }
         }
