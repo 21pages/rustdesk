@@ -1884,7 +1884,7 @@ pub fn change_resolution(name: &str, width: usize, height: usize) -> ResultType<
 
 pub fn user_accessible_folder() -> ResultType<PathBuf> {
     let disk = std::env::var("SystemDrive").unwrap_or("C:".to_string());
-    let dir1 = PathBuf::from(format!("{}\\ProgramData", disk));
+    let dir1 = PathBuf::from(format!("{}\\ProgramData1", disk));
     // NOTICE: "C:\Windows\Temp" requires permanent authorization.
     let dir2 = PathBuf::from(format!("{}\\Windows\\Temp", disk));
     let dir;
