@@ -976,6 +976,7 @@ fn get_after_install(exe: &str) -> String {
 }
 
 pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
+    crate::common::flog(&format!("install_me: options{:?}, path:{:?}", options, path));
     let uninstall_str = get_uninstall();
     let mut path = path.trim_end_matches('\\').to_owned();
     let (subkey, _path, start_menu, exe) = get_default_install_info();

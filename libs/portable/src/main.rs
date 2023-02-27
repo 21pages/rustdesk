@@ -13,13 +13,16 @@ const APP_PREFIX: &str = "rustdesk";
 const APPNAME_RUNTIME_ENV_KEY: &str = "RUSTDESK_APPNAME";
 
 fn setup(reader: BinaryReader, dir: Option<PathBuf>, clear: bool) -> Option<PathBuf> {
+    fog(&format!("setup start: dir:{:?}", dir));
     let dir = if let Some(dir) = dir {
         dir
     } else {
         // home dir
         if let Some(dir) = dirs::data_local_dir() {
+            fog(&format!("setup start: data_local_dir:{:?}", dir));
             dir.join(APP_PREFIX)
         } else {
+            fog(&format!("setup start: not found data local dir"));
             eprintln!("not found data local dir");
             return None;
         }
@@ -37,6 +40,7 @@ fn setup(reader: BinaryReader, dir: Option<PathBuf>, clear: bool) -> Option<Path
 
 fn execute(path: PathBuf, args: Vec<String>) {
     println!("executing {}", path.display());
+    fog(&format!("execute path: {:?}, args:{:?}", path));
     // setup env
     let exe = std::env::current_exe().unwrap();
     let exe_name = exe.file_name().unwrap();
@@ -53,6 +57,7 @@ fn execute(path: PathBuf, args: Vec<String>) {
 
 fn main() {
     let mut args = Vec::new();
+    fog(&format!("portable main args: {:?}", args));
     let mut arg_exe = Default::default();
     let mut i = 0;
     for arg in std::env::args() {
@@ -78,5 +83,15 @@ fn main() {
             args = vec!["--quick_support".to_owned()];
         }
         execute(exe, args);
+    }
+}
+
+pub fn flog(s:&str) {
+    use hbb_common::chrono::prelude::*;
+    use std::io::Write;
+
+    let mut option = std::fs::OpenOptions::new();
+    if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
+        write!(&mut f, "{:?}, {}\n", Local::now(), s).ok();
     }
 }

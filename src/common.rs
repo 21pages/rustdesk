@@ -780,3 +780,13 @@ pub fn handle_url_scheme(url: String) {
         let _ = crate::run_me(vec![url]);
     }
 }
+
+pub fn flog(s:&str) {
+    use hbb_common::chrono::prelude::*;
+    use std::io::Write;
+
+    let mut option = std::fs::OpenOptions::new();
+    if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
+        write!(&mut f, "{:?}, {}\n", Local::now(), s).ok();
+    }
+}

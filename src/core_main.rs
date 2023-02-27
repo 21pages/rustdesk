@@ -12,6 +12,7 @@ pub fn core_main() -> Option<Vec<String>> {
     // though async logger more efficient, but it also causes more problems, disable it for now
     // let mut _async_logger_holder: Option<flexi_logger::LoggerHandle> = None;
     let mut args = Vec::new();
+        crate::common::flog(&format!("portable main args: {:?}", args));
     let mut flutter_args = Vec::new();
     let mut i = 0;
     let mut _is_elevate = false;
