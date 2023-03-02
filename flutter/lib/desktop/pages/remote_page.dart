@@ -256,16 +256,16 @@ class _RemotePageState extends State<RemotePage>
                 inputModel: _ffi.inputModel,
                 child: getBodyForDesktop(context))),
         upperLayer: [
-          OverlayEntry(
-              builder: (context) => RemoteMenubar(
-                    id: widget.id,
-                    ffi: _ffi,
-                    state: widget.menubarState,
-                    onEnterOrLeaveImageSetter: (func) =>
-                        _onEnterOrLeaveImage4Menubar = func,
-                    onEnterOrLeaveImageCleaner: () =>
-                        _onEnterOrLeaveImage4Menubar = null,
-                  ))
+          // OverlayEntry(
+          //     builder: (context) => RemoteMenubar(
+          //           id: widget.id,
+          //           ffi: _ffi,
+          //           state: widget.menubarState,
+          //           onEnterOrLeaveImageSetter: (func) =>
+          //               _onEnterOrLeaveImage4Menubar = func,
+          //           onEnterOrLeaveImageCleaner: () =>
+          //               _onEnterOrLeaveImage4Menubar = null,
+          //         ))
         ],
       ),
     );
