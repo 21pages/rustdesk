@@ -1,0 +1,418 @@
+name: Benchmark
+
+on:
+  schedule:
+    # schedule build every night
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+env:
+  LLVM_VERSION: "15.0.6"
+  FLUTTER_VERSION: "3.7.0"
+  TAG_NAME: "nightly"
+  # vcpkg version: 2022.05.10
+  # for multiarch gcc compatibility
+  VCPKG_COMMIT_ID: "14e7bb4ae24616ec54ff6b2f6ef4e8659434ea44"
+  VERSION: "1.2.0"
+  #signing keys env variable checks
+  ANDROID_SIGNING_KEY: '${{ secrets.ANDROID_SIGNING_KEY }}'
+  MACOS_P12_BASE64: '${{ secrets.MACOS_P12_BASE64 }}'
+  # To make a custom build with your own servers set the below secret values
+  RS_PUB_KEY: '${{ secrets.RS_PUB_KEY }}'
+  RENDEZVOUS_SERVER: '${{ secrets.RENDEZVOUS_SERVER }}'
+
+jobs:
+  build-for-windows:
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          # - { target: i686-pc-windows-msvc        , os: windows-2019                  }
+          # - { target: x86_64-pc-windows-gnu       , os: windows-2019                  }
+          - { target: x86_64-pc-windows-msvc, os: windows-2019 }
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: ${{ env.LLVM_VERSION }}
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Replace engine with rustdesk custom flutter engine
+        run: |
+          flutter doctor -v
+          flutter precache --windows
+          Invoke-WebRequest -Uri https://github.com/Kingtous/engine/releases/download/v3.7.0-rustdesk/windows-x64-release-flutter.zip -OutFile windows-x64-flutter-release.zip
+          Expand-Archive windows-x64-flutter-release.zip -DestinationPath engine
+          mv -Force engine/*  C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.job.target }}
+          override: true
+          profile: minimal # minimal component installation (ie, no documentation)
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.job.os }}
+
+      - name: Install flutter rust bridge deps
+        run: |
+          cargo install flutter_rust_bridge_codegen
+          Push-Location flutter ; flutter pub get ; Pop-Location
+          ~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart
+
+      - name: Restore from cache and install vcpkg
+        uses: lukka/run-vcpkg@v7
+        with:
+          setupOnly: true
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+
+      - name: Install vcpkg dependencies
+        run: |
+          $VCPKG_ROOT/vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+        shell: bash
+
+      - name: Build rustdesk
+        run: cargo build --package scrap --example benchmark --release --features hwcodec
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            ./target/release/examples/benchmark.exe
+
+  build-vcpkg-deps-linux:
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          # - { arch: armv7, os: ubuntu-20.04 }
+          - { arch: x86_64, os: ubuntu-20.04 }
+          - { arch: aarch64, os: ubuntu-20.04 }
+    steps:
+      - name: Create vcpkg artifacts folder
+        run: mkdir -p /opt/artifacts
+
+      - name: Cache Vcpkg
+        id: cache-vcpkg
+        uses: actions/cache@v3
+        with:
+          path: /opt/artifacts
+          key: vcpkg-${{ matrix.job.arch }}
+
+      - uses: Kingtous/run-on-arch-action@amd64-support
+        name: Run vcpkg install on ${{ matrix.job.arch }}
+        id: vcpkg
+        with:
+          arch: ${{ matrix.job.arch }}
+          distro: ubuntu18.04
+          githubToken: ${{ github.token }}
+          setup: |
+            ls -l "/opt/artifacts"
+          dockerRunArgs: |
+            --volume "/opt/artifacts:/artifacts"
+          shell: /bin/bash
+          install: |
+            apt update -y
+            case "${{ matrix.job.arch }}" in
+              x86_64)
+                # CMake 3.15+
+                apt install -y gpg wget ca-certificates
+                echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main' | tee /etc/apt/sources.list.d/kitware.list >/dev/null
+                wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+                apt update -y
+                apt install -y curl zip unzip tar git cmake g++ gcc build-essential pkg-config wget nasm yasm ninja-build libjpeg8-dev
+                ;;
+              aarch64|armv7)
+                apt install -y curl zip unzip tar git cmake g++ gcc build-essential pkg-config wget nasm yasm ninja-build libjpeg8-dev automake libtool
+            esac
+            cmake --version
+            gcc -v
+          run: |
+            # disable git safe.directory
+            git config --global --add safe.directory "*"
+            case "${{ matrix.job.arch }}" in
+              x86_64)
+                export VCPKG_FORCE_SYSTEM_BINARIES=1
+                pushd /artifacts
+                git clone https://github.com/microsoft/vcpkg.git || true
+                pushd vcpkg
+                git reset --hard ${{ env.VCPKG_COMMIT_ID }}
+                ./bootstrap-vcpkg.sh
+                ./vcpkg install libvpx libyuv opus
+                ;;
+              aarch64|armv7)
+                pushd /artifacts
+                # libyuv
+                git clone https://chromium.googlesource.com/libyuv/libyuv || true
+                pushd libyuv
+                git pull
+                mkdir -p build
+                pushd build
+                mkdir -p /artifacts/vcpkg/installed
+                cmake .. -DCMAKE_INSTALL_PREFIX=/artifacts/vcpkg/installed
+                make -j4 && make install
+                popd
+                popd
+                # libopus, ubuntu 18.04 prebuilt is not be compiled with -fPIC
+                wget -O opus.tar.gz http://archive.ubuntu.com/ubuntu/pool/main/o/opus/opus_1.1.2.orig.tar.gz
+                tar -zxvf opus.tar.gz; ls -l
+                pushd opus-1.1.2
+                ./autogen.sh; ./configure --prefix=/artifacts/vcpkg/installed
+                make -j4; make install
+                ;;
+            esac
+      - name: Upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: vcpkg-artifact-${{ matrix.job.arch }}
+          path: |
+            /opt/artifacts/vcpkg/installed
+
+  generate-bridge-linux:
+    name: generate bridge
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - {
+              target: x86_64-unknown-linux-gnu,
+              os: ubuntu-18.04,
+              extra-build-args: "",
+            }
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Install prerequisites
+        run: |
+          sudo apt update -y
+          sudo apt install -y g++ gcc git curl wget nasm yasm libgtk-3-dev clang cmake libclang-dev ninja-build llvm-dev libclang-10-dev llvm-10-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.job.target }}
+          override: true
+          profile: minimal # minimal component installation (ie, no documentation)
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: bridge-${{ matrix.job.os }}
+          workspace: "/tmp/flutter_rust_bridge/frb_codegen"
+
+      - name: Cache Bridge
+        id: cache-bridge
+        uses: actions/cache@v3
+        with:
+          path: /tmp/flutter_rust_bridge
+          key: vcpkg-${{ matrix.job.arch }}
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install flutter rust bridge deps
+        shell: bash
+        run: |
+          cargo install flutter_rust_bridge_codegen
+          pushd flutter && flutter pub get && popd
+
+      - name: Run flutter rust bridge
+        run: |
+          ~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@master
+        with:
+          name: bridge-artifact
+          path: |
+            ./src/bridge_generated.rs
+            ./src/bridge_generated.io.rs
+            ./flutter/lib/generated_bridge.dart 
+            ./flutter/lib/generated_bridge.freezed.dart
+
+  build-rustdesk-lib-linux-amd64:
+    needs: [generate-bridge-linux, build-vcpkg-deps-linux]
+    name: build-rust-lib ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # use a high level qemu-user-static
+        job:
+          # - { target: i686-unknown-linux-gnu      , os: ubuntu-20.04, use-cross: true }
+          # - { target: i686-unknown-linux-musl     , os: ubuntu-20.04, use-cross: true }
+          - {
+              arch: x86_64,
+              target: x86_64-unknown-linux-gnu,
+              os: ubuntu-20.04,
+              extra-build-features: "",
+            }
+          - {
+              arch: x86_64,
+              target: x86_64-unknown-linux-gnu,
+              os: ubuntu-20.04,
+              extra-build-features: "flatpak",
+            }
+          - {
+              arch: x86_64,
+              target: x86_64-unknown-linux-gnu,
+              os: ubuntu-20.04,
+              extra-build-features: "appimage",
+            }
+          # - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04, use-cross: true }
+    steps:
+      - name: Maximize build space
+        run: |
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo apt update -y
+          sudo apt install qemu-user-static
+
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 12
+
+      - name: Free Space
+        run: |
+          df
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.job.target }}
+          override: true
+          profile: minimal # minimal component installation (ie, no documentation)
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rustdesk-lib-cache
+          key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
+          cache-directories: "/opt/rust-registry"
+
+      - name: Install local registry
+        run: |
+          mkdir -p /opt/rust-registry
+          cargo install cargo-local-registry
+
+      - name: Build local registry
+        uses: nick-fields/retry@v2
+        id: build-local-registry
+        continue-on-error: true
+        with:
+          max_attempts: 3
+          timeout_minutes: 15
+          retry_on: error
+          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+
+      - name: Disable rust bridge build
+        run: |
+          sed -i "s/gen_flutter_rust_bridge();/\/\//g" build.rs
+          # only build cdylib
+          sed -i  "s/\[\"cdylib\", \"staticlib\", \"rlib\"\]/\[\"cdylib\"\]/g" Cargo.toml
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@master
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Restore vcpkg files
+        uses: actions/download-artifact@master
+        with:
+          name: vcpkg-artifact-${{ matrix.job.arch }}
+          path: /opt/artifacts/vcpkg/installed
+
+      - uses: Kingtous/run-on-arch-action@amd64-support
+        name: Build rustdesk library for ${{ matrix.job.arch }}
+        id: vcpkg
+        with:
+          arch: ${{ matrix.job.arch }}
+          distro: ubuntu18.04
+          # not ready yet
+          # distro: ubuntu18.04-rustdesk
+          githubToken: ${{ github.token }}
+          setup: |
+            ls -l "${PWD}"
+            ls -l /opt/artifacts/vcpkg/installed
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+            --volume "/opt/artifacts:/opt/artifacts"
+            --volume "/opt/rust-registry:/opt/rust-registry"
+          shell: /bin/bash
+          install: |
+            apt update -y
+            echo -e "installing deps"
+            apt-get -qq install -y  git curl wget nasm yasm libgtk-3-dev clang libxcb-randr0-dev libxdo-dev libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libpulse-dev cmake libclang-dev ninja-build libappindicator3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libvdpau-dev libva-dev libclang-dev llvm-dev libclang-10-dev llvm-10-dev pkg-config tree g++ gcc libvpx-dev tree > /dev/null
+            # we have libopus compiled by us.
+            apt remove -y libopus-dev || true
+            # output devs
+            ls -l ./
+            tree -L 3 /opt/artifacts/vcpkg/installed
+          run: |
+            # disable git safe.directory
+            git config --global --add safe.directory "*"
+            # rust
+            pushd /opt
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.64.0-${{ matrix.job.target }}.tar.gz
+            tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
+            cd rust-1.64.0-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-1.64.0-${{ matrix.job.target }}
+            # edit config
+            mkdir -p ~/.cargo/
+            echo """
+              [source.crates-io]
+              registry = 'https://github.com/rust-lang/crates.io-index'
+              replace-with = 'local-registry'
+
+              [source.local-registry]
+              local-registry = '/opt/rust-registry/'
+            """ > ~/.cargo/config
+            cat ~/.cargo/config
+            # start build
+            pushd /workspace
+            # mock 
+            case "${{ matrix.job.arch }}" in
+              x86_64)
+                # no need mock on x86_64
+                export VCPKG_ROOT=/opt/artifacts/vcpkg
+                cargo build --package scrap --example benchmark --features hwcodec --release
+                ;;
+            esac
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            ./target/release/examples/benchmark*
+
