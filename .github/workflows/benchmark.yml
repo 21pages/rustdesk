@@ -5,6 +5,8 @@ on:
     # schedule build every night
     - cron: "0 0 * * *"
   workflow_dispatch:
+  push:
+  pull_request:
 
 env:
   LLVM_VERSION: "15.0.6"
@@ -267,20 +269,8 @@ jobs:
           - {
               arch: x86_64,
               target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
+              os: ubuntu-18.04,
               extra-build-features: "",
-            }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
-              extra-build-features: "flatpak",
-            }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
-              extra-build-features: "appimage",
             }
           # - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04, use-cross: true }
     steps:
