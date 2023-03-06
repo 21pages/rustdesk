@@ -206,7 +206,7 @@ pub fn i420_to_bgra(width: usize, height: usize, src: &[u8], dst: &mut Vec<u8>) 
             src_v,
             src_stride_uv as _,
             dst.as_mut_ptr(),
-            (width * 3) as _,
+            (width * 4) as _,
             width as _,
             height as _,
         );
