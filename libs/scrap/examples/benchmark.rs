@@ -27,7 +27,7 @@ Options:
   --dir=DIR             Video file save directory.
   --count=COUNT         Capture frame count [default: 100].
   --bitrate=KBS         Video bitrate in kilobits per second [default: 5000].
-  --hw-pixfmt=PIXFMT    Hardware codec pixfmt. [default: i420]
+  --hw-pixfmt=PIXFMT    Hardware codec pixfmt. [default: nv12]
                         Valid values: i420, nv12.
 ";
 
@@ -201,6 +201,7 @@ mod hw {
         let mut bgra = vec![0u8; width * height * 4];
         let mut yuv = vec![];
         for info in encoders {
+            let mut yuvfile = File::create(dir.join("nv12.yuv")).unwrap();
             let mut sum = Duration::ZERO;
             let mut ctx = ctx.clone();
             ctx.name = info.name.clone();
@@ -215,6 +216,8 @@ mod hw {
                 } else {
                     hw_bgra_to_nv12(width, height, &linesize, &offset, length, &bgra, &mut yuv);
                 }
+                yuvfile.write_all(&yuv).unwrap();
+                yuvfile.flush();
                 let start = Instant::now();
                 let frame = encoder.encode(&yuv).unwrap();
                 sum += start.elapsed();
