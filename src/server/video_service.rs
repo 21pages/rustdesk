@@ -28,7 +28,8 @@ use hbb_common::tokio::sync::{
 #[cfg(not(windows))]
 use scrap::Capturer;
 use scrap::{
-    codec::{Encoder, EncoderCfg, HwEncoderConfig},
+    codec::{Encoder, EncoderCfg},
+    codec_common::{DataFormat, EncodeContext},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     Display, TraitCapturer,
@@ -468,12 +469,11 @@ fn run(sp: GenericService) -> ResultType<()> {
     drop(video_qos);
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
 
-    let encoder_cfg = match Encoder::current_hw_encoder_name() {
-        Some(codec_name) => EncoderCfg::HW(HwEncoderConfig {
-            codec_name,
-            width: c.width,
-            height: c.height,
-            bitrate: bitrate as _,
+    let encoder_cfg = match Encoder::current_hw_encoder() {
+        Some(ctx) => EncoderCfg::HW(EncodeContext {
+            width: c.width as i32,
+            height: c.height as i32,
+            ..ctx
         }),
         None => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
@@ -526,8 +526,8 @@ fn run(sp: GenericService) -> ResultType<()> {
     let mut try_gdi = 1;
     #[cfg(windows)]
     log::info!("gdi: {}", c.is_gdi());
-    let codec_name = Encoder::current_hw_encoder_name();
-    let recorder = get_recorder(c.width, c.height, &codec_name);
+    let hw_encoder = Encoder::current_hw_encoder();
+    let recorder = get_recorder(c.width, c.height, &hw_encoder);
     #[cfg(windows)]
     start_uac_elevation_check();
 
@@ -557,7 +557,8 @@ fn run(sp: GenericService) -> ResultType<()> {
             *SWITCH.lock().unwrap() = true;
             bail!("SWITCH");
         }
-        if codec_name != Encoder::current_hw_encoder_name() {
+        // to-do: dynamic parameter need not switch
+        if hw_encoder != Encoder::current_hw_encoder() {
             bail!("SWITCH");
         }
         #[cfg(windows)]
@@ -717,7 +718,7 @@ fn run(sp: GenericService) -> ResultType<()> {
 fn get_recorder(
     width: usize,
     height: usize,
-    codec_name: &Option<String>,
+    ctx: &Option<EncodeContext>,
 ) -> Arc<Mutex<Option<Recorder>>> {
     #[cfg(not(target_os = "ios"))]
     let recorder = if !Config::get_option("allow-auto-record-incoming").is_empty() {
@@ -731,9 +732,9 @@ fn get_recorder(
         } else {
             None
         };
-        let codec_id = match codec_name {
-            Some(name) => {
-                if name.contains("264") {
+        let codec_id = match ctx {
+            Some(ctx) => {
+                if ctx.dataFormat == DataFormat::H264 {
                     H264
                 } else {
                     H265
