@@ -12,6 +12,7 @@ use crate::mediacodec::{
     MediaCodecDecoder, MediaCodecDecoders, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT,
 };
 use crate::{vpxcodec::*, ImageFormat};
+use codec_common::EncodeContext;
 
 use hbb_common::{
     anyhow::anyhow,
@@ -30,20 +31,11 @@ use hbb_common::{
 lazy_static::lazy_static! {
     static ref PEER_DECODER_STATES: Arc<Mutex<HashMap<i32, VideoCodecState>>> = Default::default();
 }
-const SCORE_VPX: i32 = 90;
-
-#[derive(Debug, Clone)]
-pub struct HwEncoderConfig {
-    pub codec_name: String,
-    pub width: usize,
-    pub height: usize,
-    pub bitrate: i32,
-}
 
 #[derive(Debug, Clone)]
 pub enum EncoderCfg {
     VPX(VpxEncoderConfig),
-    HW(HwEncoderConfig),
+    HW(EncodeContext),
 }
 
 pub trait EncoderApi {
@@ -138,7 +130,7 @@ impl Encoder {
                     }
                 }
             }
-            let name = HwEncoder::current_name();
+            let current = HwEncoder::current();
             if states.len() > 0 {
                 let best = HwEncoder::best();
                 let enabled_h264 = best.h264.is_some()
@@ -163,50 +155,21 @@ impl Encoder {
                     preference = preferences[0].enum_value_or(PreferCodec::Auto);
                 }
 
-                match preference {
-                    PreferCodec::VPX => *name.lock().unwrap() = None,
-                    PreferCodec::H264 => {
-                        *name.lock().unwrap() = best.h264.map_or(None, |c| Some(c.name))
-                    }
-                    PreferCodec::H265 => {
-                        *name.lock().unwrap() = best.h265.map_or(None, |c| Some(c.name))
-                    }
-                    PreferCodec::Auto => {
-                        // score encoder
-                        let mut score_vpx = SCORE_VPX;
-                        let mut score_h264 = best.h264.as_ref().map_or(0, |c| c.score);
-                        let mut score_h265 = best.h265.as_ref().map_or(0, |c| c.score);
-
-                        // score decoder
-                        score_vpx += states.iter().map(|s| s.1.score_vpx).sum::<i32>();
-                        if enabled_h264 {
-                            score_h264 += states.iter().map(|s| s.1.score_h264).sum::<i32>();
-                        }
-                        if enabled_h265 {
-                            score_h265 += states.iter().map(|s| s.1.score_h265).sum::<i32>();
-                        }
-
-                        if enabled_h265 && score_h265 >= score_vpx && score_h265 >= score_h264 {
-                            *name.lock().unwrap() = best.h265.map_or(None, |c| Some(c.name));
-                        } else if enabled_h264
-                            && score_h264 >= score_vpx
-                            && score_h264 >= score_h265
-                        {
-                            *name.lock().unwrap() = best.h264.map_or(None, |c| Some(c.name));
-                        } else {
-                            *name.lock().unwrap() = None;
-                        }
-                    }
-                }
+                *current.lock().unwrap() = match preference {
+                    PreferCodec::VPX => None,
+                    PreferCodec::H264 => best.h264,
+                    PreferCodec::H265 => best.h265,
+                    PreferCodec::Auto => None,
+                };
 
                 log::info!(
                     "connection count:{}, used preference:{:?}, encoder:{:?}",
                     states.len(),
                     preference,
-                    name.lock().unwrap()
+                    current.lock().unwrap()
                 )
             } else {
-                *name.lock().unwrap() = None;
+                *current.lock().unwrap() = None;
             }
         }
         #[cfg(not(feature = "hwcodec"))]
@@ -216,10 +179,10 @@ impl Encoder {
         }
     }
     #[inline]
-    pub fn current_hw_encoder_name() -> Option<String> {
+    pub fn current_hw_encoder() -> Option<EncodeContext> {
         #[cfg(feature = "hwcodec")]
         if enable_hwcodec_option() {
-            return HwEncoder::current_name().lock().unwrap().clone();
+            return HwEncoder::current().lock().unwrap().clone();
         } else {
             return None;
         }
@@ -231,10 +194,7 @@ impl Encoder {
         #[cfg(feature = "hwcodec")]
         if enable_hwcodec_option() {
             let best = HwEncoder::best();
-            (
-                best.h264.as_ref().map_or(false, |c| c.score > 0),
-                best.h265.as_ref().map_or(false, |c| c.score > 0),
-            )
+            (best.h264.is_some(), best.h265.is_some())
         } else {
             (false, false)
         }
@@ -248,10 +208,11 @@ impl Decoder {
         #[cfg(feature = "hwcodec")]
         if enable_hwcodec_option() {
             let best = HwDecoder::best();
+            // to-do: replace score
             return VideoCodecState {
-                score_vpx: SCORE_VPX,
-                score_h264: best.h264.map_or(0, |c| c.score),
-                score_h265: best.h265.map_or(0, |c| c.score),
+                score_vpx: 1,
+                score_h264: if best.h264.is_some() { 1 } else { 0 },
+                score_h265: if best.h265.is_some() { 1 } else { 0 },
                 prefer: Self::codec_preference(_id).into(),
                 ..Default::default()
             };
@@ -269,7 +230,7 @@ impl Decoder {
                 0
             };
             return VideoCodecState {
-                score_vpx: SCORE_VPX,
+                score_vpx: 1,
                 score_h264,
                 score_h265,
                 prefer: Self::codec_preference(_id).into(),
@@ -277,7 +238,7 @@ impl Decoder {
             };
         }
         VideoCodecState {
-            score_vpx: SCORE_VPX,
+            score_vpx: 1,
             ..Default::default()
         }
     }

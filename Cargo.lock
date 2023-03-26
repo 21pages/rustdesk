@@ -86,6 +86,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "amf"
+version = "0.1.0"
+source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "codec_common",
+ "log",
+]
+
+[[package]]
 name = "android_log-sys"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -860,6 +871,19 @@ dependencies = [
  "foreign-types",
  "libc",
  "objc",
+]
+
+[[package]]
+name = "codec_common"
+version = "0.1.0"
+source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "log",
+ "serde 1.0.154",
+ "serde_derive",
+ "serde_json 1.0.94",
 ]
 
 [[package]]
@@ -1878,6 +1902,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ffmpeg"
+version = "0.1.0"
+source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "log",
+]
+
+[[package]]
 name = "field-offset"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2826,11 +2860,14 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hwcodec"
 version = "0.1.0"
-source = "git+https://github.com/21pages/hwcodec#d55f7761ef692fae738259d8c14506d901eb824c"
+source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
 dependencies = [
+ "amf",
  "bindgen 0.59.2",
  "cc",
+ "codec_common",
  "log",
+ "nvidia",
  "serde 1.0.154",
  "serde_derive",
  "serde_json 1.0.94",
@@ -3891,6 +3928,17 @@ dependencies = [
  "proc-macro2 1.0.51",
  "quote 1.0.23",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "nvidia"
+version = "0.1.0"
+source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "codec_common",
+ "log",
 ]
 
 [[package]]
@@ -5157,8 +5205,10 @@ dependencies = [
  "bindgen 0.64.0",
  "block",
  "cfg-if 1.0.0",
+ "codec_common",
  "dbus",
  "docopt",
+ "ffmpeg",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",

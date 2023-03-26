@@ -12,6 +12,7 @@ edition = "2018"
 [features]
 wayland = ["gstreamer", "gstreamer-app", "gstreamer-video", "dbus", "tracing"]
 mediacodec = ["ndk"]
+hwcodec = ["dep:hwcodec", "ffmpeg"]
 
 [dependencies]
 block = "0.1"
@@ -20,6 +21,7 @@ num_cpus = "1.13"
 lazy_static = "1.4"
 hbb_common = { path = "../hbb_common" }
 webm = "1.0"
+codec_common = { git = "https://github.com/21pages/native_codec" }
 
 [dependencies.winapi]
 version = "0.3"
@@ -52,4 +54,5 @@ gstreamer-app = { version = "0.16", features = ["v1_10"], optional = true }
 gstreamer-video = { version = "0.16", optional = true }
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
-hwcodec = { git = "https://github.com/21pages/hwcodec", optional = true }
+hwcodec = { git = "https://github.com/21pages/native_codec", optional = true }
+ffmpeg = { git = "https://github.com/21pages/native_codec", optional = true }
