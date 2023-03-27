@@ -32,10 +32,17 @@ lazy_static::lazy_static! {
     static ref PEER_DECODER_STATES: Arc<Mutex<HashMap<i32, VideoCodecState>>> = Default::default();
 }
 
+#[derive(Clone, Debug)]
+pub struct HwEncoderConfig {
+    pub ctx: EncodeContext,
+    pub bitrate: i32,
+    pub framerate: i32,
+}
+
 #[derive(Debug, Clone)]
 pub enum EncoderCfg {
     VPX(VpxEncoderConfig),
-    HW(EncodeContext),
+    HW(HwEncoderConfig),
 }
 
 pub trait EncoderApi {

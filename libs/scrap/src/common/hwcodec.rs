@@ -36,12 +36,18 @@ impl EncoderApi for HwEncoder {
         Self: Sized,
     {
         match cfg {
-            EncoderCfg::HW(ctx) => match Encoder::new(ctx.clone()) {
-                Ok(encoder) => Ok(HwEncoder {
-                    encoder,
-                    ctx,
-                    yuv: vec![],
-                }),
+            EncoderCfg::HW(cfg) => match Encoder::new(cfg.ctx.clone()) {
+                Ok(mut encoder) => {
+                    encoder.set_bitrate(cfg.bitrate).map_err(|e| anyhow!(e))?;
+                    encoder
+                        .set_framerate(cfg.framerate)
+                        .map_err(|e| anyhow!(e))?;
+                    Ok(HwEncoder {
+                        encoder,
+                        ctx: cfg.ctx,
+                        yuv: vec![],
+                    })
+                }
                 Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
             },
             _ => Err(anyhow!("encoder type mismatch")),
@@ -85,8 +91,8 @@ impl EncoderApi for HwEncoder {
         false
     }
 
-    fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {
-        // self.encoder.set_bitrate((bitrate * 1000) as _).ok();
+    fn set_bitrate(&mut self, kbitrate: u32) -> ResultType<()> {
+        self.encoder.set_bitrate(kbitrate as i32).ok();
         Ok(())
     }
 }

@@ -88,7 +88,7 @@ dependencies = [
 [[package]]
 name = "amf"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+source = "git+https://github.com/21pages/native_codec#d05d59657a5e69b660f3ad26b8fad45e8cdfb37e"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -876,7 +876,7 @@ dependencies = [
 [[package]]
 name = "codec_common"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+source = "git+https://github.com/21pages/native_codec#d05d59657a5e69b660f3ad26b8fad45e8cdfb37e"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -1904,7 +1904,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+source = "git+https://github.com/21pages/native_codec#d05d59657a5e69b660f3ad26b8fad45e8cdfb37e"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -2860,7 +2860,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hwcodec"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+source = "git+https://github.com/21pages/native_codec#d05d59657a5e69b660f3ad26b8fad45e8cdfb37e"
 dependencies = [
  "amf",
  "bindgen 0.59.2",
@@ -3933,7 +3933,7 @@ dependencies = [
 [[package]]
 name = "nvidia"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#3e6c5c1cde1b848b33894d784366ce843f3afdb5"
+source = "git+https://github.com/21pages/native_codec#d05d59657a5e69b660f3ad26b8fad45e8cdfb37e"
 dependencies = [
  "bindgen 0.59.2",
  "cc",

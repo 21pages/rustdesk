@@ -28,7 +28,7 @@ use hbb_common::tokio::sync::{
 #[cfg(not(windows))]
 use scrap::Capturer;
 use scrap::{
-    codec::{Encoder, EncoderCfg},
+    codec::{Encoder, EncoderCfg, HwEncoderConfig},
     codec_common::{DataFormat, EncodeContext},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
@@ -464,16 +464,21 @@ fn run(sp: GenericService) -> ResultType<()> {
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     video_qos.set_size(c.width as _, c.height as _);
     let mut spf = video_qos.spf();
+    let fps = video_qos.fps;
     let bitrate = video_qos.generate_bitrate()?;
     let abr = video_qos.check_abr_config();
     drop(video_qos);
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
 
     let encoder_cfg = match Encoder::current_hw_encoder() {
-        Some(ctx) => EncoderCfg::HW(EncodeContext {
-            width: c.width as i32,
-            height: c.height as i32,
-            ..ctx
+        Some(ctx) => EncoderCfg::HW(HwEncoderConfig {
+            ctx: EncodeContext {
+                width: c.width as i32,
+                height: c.height as i32,
+                ..ctx
+            },
+            bitrate: bitrate as _,
+            framerate: fps as _,
         }),
         None => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
