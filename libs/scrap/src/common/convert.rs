@@ -296,17 +296,32 @@ pub mod hw {
     use codec_common::PixelFormat;
     use hbb_common::{anyhow::bail, ResultType};
 
+    fn align_size(size: i32, align: i32) -> i32 {
+        (size + align - 1) / align * align
+    }
+
+    // https://github.com/obsproject/obs-studio/blob/712a6c3b331e0826a2a050633e6540937d80fe1a/libobs/media-io/video-frame.c#L23
     pub fn linesize_offset_length(
         pixfmt: PixelFormat,
         width: i32,
         height: i32,
     ) -> (Vec<i32>, Vec<i32>, i32) {
         match pixfmt {
-            PixelFormat::NV12 => (
-                vec![width, width],
-                vec![width * height],
-                width * height * 3 / 2,
-            ),
+            PixelFormat::NV12 => {
+                let mut linesizes = vec![0, 0];
+                let mut offsets = vec![0];
+
+                let mut size = width * height;
+                size = align_size(size, 32);
+                offsets[0] = size;
+                let cbcr_width = width + 1;
+                size += cbcr_width * ((height + 1) / 2);
+                size = align_size(size, 32);
+                linesizes[0] = width;
+                linesizes[1] = cbcr_width;
+
+                (linesizes, offsets, size)
+            }
             PixelFormat::I420 => (
                 vec![width, width / 2, width / 2],
                 vec![width * height, width * height * 5 / 4],
