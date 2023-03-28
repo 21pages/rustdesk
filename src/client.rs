@@ -1668,6 +1668,7 @@ where
             if let Ok(data) = video_receiver.recv() {
                 match data {
                     MediaData::VideoFrame(vf) => {
+                        hbb_common::flogt("v channel", vf.timestamp);
                         if let Ok(true) = video_handler.handle_frame(vf) {
                             video_callback(&mut video_handler.rgb);
                         }
@@ -1700,6 +1701,7 @@ pub fn start_audio_thread() -> MediaSender {
             if let Ok(data) = audio_receiver.recv() {
                 match data {
                     MediaData::AudioFrame(af) => {
+                        hbb_common::flogt("a channel", af.timestamp);
                         audio_handler.handle_frame(af);
                     }
                     MediaData::AudioFormat(f) => {

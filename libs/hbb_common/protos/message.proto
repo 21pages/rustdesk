@@ -25,6 +25,7 @@ message VideoFrame {
     EncodedVideoFrames h264s = 10;
     EncodedVideoFrames h265s = 11;
   }
+  int64 timestamp = 9;
 }
 
 message IdPk {
@@ -511,7 +512,8 @@ message AudioFormat {
 }
 
 message AudioFrame { 
-  bytes data = 1; 
+  bytes data = 1;
+  int64 timestamp = 2;
 }
 
 // Notify peer to show message box.

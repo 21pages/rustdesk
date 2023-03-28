@@ -816,6 +816,7 @@ impl<T: InvokeUiSession> Remote<T> {
         if let Ok(msg_in) = Message::parse_from_bytes(&data) {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    hbb_common::flogt("v receive", vf.timestamp);
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();
@@ -1216,6 +1217,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     self.handler.handle_test_delay(t, peer).await;
                 }
                 Some(message::Union::AudioFrame(frame)) => {
+                    hbb_common::flogt("a receive", frame.timestamp);
                     if !self.handler.lc.read().unwrap().disable_audio.v {
                         self.audio_sender.send(MediaData::AudioFrame(frame)).ok();
                     }
