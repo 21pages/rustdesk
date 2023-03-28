@@ -242,6 +242,7 @@ mod cpal_impl {
             LowDelay,
         )?;
         let channels = config.channels();
+        let duration = None; //Some(std::time::Duration::from_millis(10));
         let stream = match config.sample_format() {
             cpal::SampleFormat::F32 => device.build_input_stream(
                 &config.into(),
@@ -256,37 +257,48 @@ mod cpal_impl {
                     );
                 },
                 err_fn,
+                duration,
             )?,
-            cpal::SampleFormat::I16 => device.build_input_stream(
-                &config.into(),
-                move |data: &[i16], _: &_| {
-                    let buffer: Vec<_> = data.iter().map(|s| cpal::Sample::to_f32(s)).collect();
-                    send(
-                        &buffer,
-                        sample_rate_0,
-                        sample_rate,
-                        channels,
-                        &mut encoder,
-                        &sp,
-                    );
-                },
-                err_fn,
-            )?,
-            cpal::SampleFormat::U16 => device.build_input_stream(
-                &config.into(),
-                move |data: &[u16], _: &_| {
-                    let buffer: Vec<_> = data.iter().map(|s| cpal::Sample::to_f32(s)).collect();
-                    send(
-                        &buffer,
-                        sample_rate_0,
-                        sample_rate,
-                        channels,
-                        &mut encoder,
-                        &sp,
-                    );
-                },
-                err_fn,
-            )?,
+            // cpal::SampleFormat::I16 => device.build_input_stream(
+            //     &config.into(),
+            //     move |data: &[i16], _: &_| {
+            //         let buffer: Vec<_> = data.iter().map(|s| cpal::Sample::to_f32(s)).collect();
+            //         send(
+            //             &buffer,
+            //             sample_rate_0,
+            //             sample_rate,
+            //             channels,
+            //             &mut encoder,
+            //             &sp,
+            //         );
+            //     },
+            //     err_fn,
+            //     duration,
+            // )?,
+            // cpal::SampleFormat::U16 => device.build_input_stream(
+            //     &config.into(),
+            //     move |data: &[u16], _: &_| {
+            //         let buffer: Vec<_> = data.iter().map(|s| cpal::Sample::to_f32(s)).collect();
+            //         send(
+            //             &buffer,
+            //             sample_rate_0,
+            //             sample_rate,
+            //             channels,
+            //             &mut encoder,
+            //             &sp,
+            //         );
+            //     },
+            //     err_fn,
+            //     duration,
+            // )?,
+            // cpal::SampleFormat::I8 => todo!(),
+            // cpal::SampleFormat::I32 => todo!(),
+            // cpal::SampleFormat::I64 => todo!(),
+            // cpal::SampleFormat::U8 => todo!(),
+            // cpal::SampleFormat::U32 => todo!(),
+            // cpal::SampleFormat::U64 => todo!(),
+            // cpal::SampleFormat::F64 => todo!(),
+            _ => bail!("unsupport"),
         };
         stream.play()?;
         Ok((

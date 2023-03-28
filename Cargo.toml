@@ -71,7 +71,8 @@ chrono = "0.4.23"
 cidr-utils = "0.5.9"
 
 [target.'cfg(not(any(target_os = "android", target_os = "linux")))'.dependencies]
-cpal = "0.14"
+#cpal = { path = "D:/rust/cpal" }
+cpal = "0.15.1"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 machine-uid = "0.2"

@@ -289,6 +289,7 @@ impl Connection {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         std::thread::spawn(move || Self::handle_input(_rx_input, tx_cloned));
         let mut second_timer = time::interval(Duration::from_secs(1));
+        let mut audio_format_tx_instant = None;
 
         loop {
             tokio::select! {
@@ -489,7 +490,18 @@ impl Connection {
                                     conn.on_close("stop service", true).await;
                                     break;
                                 }
+                                Some(misc::Union::AudioFormat(_)) => {
+                                    audio_format_tx_instant = Some(Instant::now());
+                                }
                                 _ => {},
+                            }
+                        }
+                        Some(message::Union::AudioFrame(_)) => {
+                            match &audio_format_tx_instant {
+                                Some(instant) => {if instant.elapsed() < Duration::from_secs(1){
+                                    continue;
+                                } }
+                                None => continue,
                             }
                         }
                         _ => {}

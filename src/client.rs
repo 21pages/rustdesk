@@ -765,11 +765,21 @@ impl AudioHandler {
         log::info!("Default output format: {:?}", config);
         log::info!("Remote input format: {:?}", format0);
         let mut config: StreamConfig = config.into();
+        config.buffer_size = cpal::BufferSize::Fixed(16);
+        let supported = device.supported_output_configs()?;
+        for sup in supported {
+            hbb_common::flog(&format!("=======sup.buffer_size():{:?}", sup.buffer_size()));
+        }
         config.channels = format0.channels as _;
+        // hbb_common::flog(&format!(
+        //     "======= sample_format:{:?}, config:{:?}",
+        //     sample_format, config,
+        // ));
         match sample_format {
             cpal::SampleFormat::F32 => self.build_output_stream::<f32>(&config, &device)?,
-            cpal::SampleFormat::I16 => self.build_output_stream::<i16>(&config, &device)?,
-            cpal::SampleFormat::U16 => self.build_output_stream::<u16>(&config, &device)?,
+            // cpal::SampleFormat::I16 => self.build_output_stream::<i16>(&config, &device)?,
+            // cpal::SampleFormat::U16 => self.build_output_stream::<u16>(&config, &device)?,
+            _ => bail!("unsupport"),
         }
         self.sample_rate = (format0.sample_rate, config.sample_rate.0);
         Ok(())
@@ -777,6 +787,7 @@ impl AudioHandler {
 
     /// Handle audio format and create an audio decoder.
     pub fn handle_format(&mut self, f: AudioFormat) {
+        hbb_common::flog("============ handle_format");
         match AudioDecoder::new(f.sample_rate, if f.channels > 1 { Stereo } else { Mono }) {
             Ok(d) => {
                 let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
@@ -795,6 +806,7 @@ impl AudioHandler {
     pub fn handle_frame(&mut self, frame: AudioFrame) {
         #[cfg(not(any(target_os = "android", target_os = "linux")))]
         if self.audio_stream.is_none() {
+            hbb_common::flogt("a block", frame.timestamp);
             return;
         }
         #[cfg(target_os = "linux")]
@@ -817,8 +829,18 @@ impl AudioHandler {
                     let audio_buffer = self.audio_buffer.clone();
                     // avoiding memory overflow if audio_buffer consumer side has problem
                     if audio_buffer.lock().unwrap().len() as u32 > sample_rate * 120 {
+                        hbb_common::flogt("a clear buffer", frame.timestamp);
                         *audio_buffer.lock().unwrap() = Default::default();
                     }
+                    hbb_common::flogt(
+                        &format!(
+                            "a decode len:{}, n:{}, alllen:{}",
+                            buffer.len(),
+                            n,
+                            audio_buffer.lock().unwrap().len()
+                        ),
+                        frame.timestamp,
+                    );
                     if sample_rate != sample_rate0 {
                         let buffer = crate::resample_channels(
                             &buffer[0..n],
@@ -826,8 +848,13 @@ impl AudioHandler {
                             sample_rate,
                             channels,
                         );
+                        hbb_common::flogt(
+                            &format!("a extend1 len:{}", buffer.len(),),
+                            frame.timestamp,
+                        );
                         audio_buffer.lock().unwrap().extend(buffer);
                     } else {
+                        hbb_common::flogt(&format!("a extend2 len:{}", n,), frame.timestamp);
                         audio_buffer
                             .lock()
                             .unwrap()
@@ -850,33 +877,42 @@ impl AudioHandler {
 
     /// Build audio output stream for current device.
     #[cfg(not(any(target_os = "android", target_os = "linux")))]
-    fn build_output_stream<T: cpal::Sample>(
+    fn build_output_stream<T: cpal::SizedSample + cpal::FromSample<f32>>(
         &mut self,
         config: &StreamConfig,
         device: &Device,
     ) -> ResultType<()> {
         let err_fn = move |err| {
             // too many errors, will improve later
+            hbb_common::flog(&format!("an error occurred on stream: {}", err));
             log::trace!("an error occurred on stream: {}", err);
         };
         let audio_buffer = self.audio_buffer.clone();
+        let timeout = Some(std::time::Duration::from_millis(100));
         let stream = device.build_output_stream(
             config,
             move |data: &mut [T], _: &_| {
                 let mut lock = audio_buffer.lock().unwrap();
                 let mut n = data.len();
+                hbb_common::flog(&format!(
+                    "build_output_stream n:{}, lock.len:{}",
+                    n,
+                    lock.len()
+                ));
                 if lock.len() < n {
                     n = lock.len();
                 }
                 let mut input = lock.drain(0..n);
                 for sample in data.iter_mut() {
+                    // hbb_common::flog(&format!("sample next"));
                     *sample = match input.next() {
-                        Some(x) => T::from(&x),
-                        _ => T::from(&0.),
+                        Some(x) => T::from_sample(x),
+                        _ => T::from_sample(0.0),
                     };
                 }
             },
             err_fn,
+            timeout,
         )?;
         stream.play()?;
         self.audio_stream = Some(Box::new(stream));
@@ -1697,6 +1733,11 @@ pub fn start_audio_thread() -> MediaSender {
     let (audio_sender, audio_receiver) = mpsc::channel::<MediaData>();
     std::thread::spawn(move || {
         let mut audio_handler = AudioHandler::default();
+        // audio_handler.handle_format(AudioFormat {
+        //     sample_rate: 48000,
+        //     channels: 2,
+        //     ..Default::default()
+        // });
         loop {
             if let Ok(data) = audio_receiver.recv() {
                 match data {
