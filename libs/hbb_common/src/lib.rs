@@ -442,7 +442,8 @@ pub fn flogt(tag: &str, server_time: i64) {
         get_time() - server_time
     );
     if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
-        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+        // write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+        write!(&mut f, " {}\n", s).ok();
     }
 }
 
@@ -451,6 +452,6 @@ pub fn flog(s: &str) {
     use std::io::Write;
     let mut option = std::fs::OpenOptions::new();
     if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
-        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+        write!(&mut f, " {}\n", s).ok();
     }
 }
