@@ -611,14 +611,8 @@ fn run(sp: GenericService) -> ResultType<()> {
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
                 match frame {
-                    scrap::Frame::VP8(data) => {
-                        let send_conn_ids =
-                            handle_one_frame_encoded(VpxVideoCodecId::VP8, &sp, data, ms)?;
-                        frame_controller.set_send(now, send_conn_ids);
-                    }
                     scrap::Frame::VP9(data) => {
-                        let send_conn_ids =
-                            handle_one_frame_encoded(VpxVideoCodecId::VP9, &sp, data, ms)?;
+                        let send_conn_ids = handle_one_frame_encoded(&sp, data, ms)?;
                         frame_controller.set_send(now, send_conn_ids);
                     }
                     scrap::Frame::RAW(data) => {
@@ -809,8 +803,20 @@ fn handle_one_frame(
 
 #[inline]
 #[cfg(any(target_os = "android", target_os = "ios"))]
+fn create_msg(vp9s: Vec<EncodedVideoFrame>) -> Message {
+    let mut msg_out = Message::new();
+    let mut vf = VideoFrame::new();
+    vf.set_vp9s(EncodedVideoFrames {
+        frames: vp9s.into(),
+        ..Default::default()
+    });
+    msg_out.set_video_frame(vf);
+    msg_out
+}
+
+#[inline]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn handle_one_frame_encoded(
-    codec: VpxVideoCodecId,
     sp: &GenericService,
     frame: &[u8],
     ms: i64,
@@ -822,13 +828,13 @@ pub fn handle_one_frame_encoded(
         }
         Ok(())
     })?;
-    let vpx_frame = EncodedVideoFrame {
+    let vp9_frame = EncodedVideoFrame {
         data: frame.to_vec().into(),
         key: true,
         pts: ms,
         ..Default::default()
     };
-    let send_conn_ids = sp.send_video_frame(scrap::VpxEncoder::create_msg(codec, vec![vpx_frame]));
+    let send_conn_ids = sp.send_video_frame(create_msg(vec![vp9_frame]));
     Ok(send_conn_ids)
 }
 
