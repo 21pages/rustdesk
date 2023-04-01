@@ -1043,16 +1043,18 @@ void showOptions(
       const Divider(color: MyTheme.border)
     ];
 
-    if (hasHwcodec && codecs.length == 2 && (codecs[0] || codecs[1])) {
+    if (codecs.length == 3 && (codecs[0] || codecs[1] || codecs[2])) {
       radios.addAll([
         getRadio(translate('Auto'), 'auto', codec, setCodec),
-        getRadio('VP8', 'vp8', codec, setCodec),
         getRadio('VP9', 'vp9', codec, setCodec),
       ]);
       if (codecs[0]) {
-        radios.add(getRadio('H264', 'h264', codec, setCodec));
+        radios.add(getRadio('VP8', 'vp8', codec, setCodec));
       }
       if (codecs[1]) {
+        radios.add(getRadio('H264', 'h264', codec, setCodec));
+      }
+      if (codecs[2]) {
         radios.add(getRadio('H265', 'h265', codec, setCodec));
       }
       radios.add(const Divider(color: MyTheme.border));
