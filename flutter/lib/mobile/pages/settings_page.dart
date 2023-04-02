@@ -48,6 +48,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
 
   @override
   void initState() {
+    flog("SettingsPage initState");
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
@@ -185,6 +186,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    flog("SettingsPage build");
     Provider.of<FfiModel>(context);
     final List<AbstractSettingsTile> enhancementsTiles = [];
     final List<AbstractSettingsTile> shareScreenTiles = [

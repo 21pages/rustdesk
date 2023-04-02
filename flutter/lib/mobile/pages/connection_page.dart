@@ -43,6 +43,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   @override
   void initState() {
+    flog("ConnectionPage initState");
     super.initState();
     if (_idController.text.isEmpty) {
       () async {
@@ -64,6 +65,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    flog("ConnectionPage build");
     Provider.of<FfiModel>(context);
     return CustomScrollView(
       slivers: [

@@ -42,6 +42,7 @@ class ChatPage extends StatelessWidget implements PageShape {
 
   @override
   Widget build(BuildContext context) {
+    flog("ChatPage build");
     return ChangeNotifierProvider.value(
         value: chatModel,
         child: Container(
@@ -72,8 +73,7 @@ class ChatPage extends StatelessWidget implements PageShape {
                           inputDecoration: isDesktop
                               ? InputDecoration(
                                   isDense: true,
-                                  hintText:
-                                      "${translate('Write a message')}",
+                                  hintText: "${translate('Write a message')}",
                                   filled: true,
                                   fillColor:
                                       Theme.of(context).colorScheme.background,
@@ -87,8 +87,7 @@ class ChatPage extends StatelessWidget implements PageShape {
                                   ),
                                 )
                               : defaultInputDecoration(
-                                  hintText:
-                                      "${translate('Write a message')}",
+                                  hintText: "${translate('Write a message')}",
                                   fillColor:
                                       Theme.of(context).colorScheme.background),
                           sendButtonBuilder: defaultSendButton(

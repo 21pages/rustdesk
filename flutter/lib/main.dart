@@ -39,6 +39,7 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint("launch args: $args");
   kBootArgs = List.from(args);
+  flog("main, args:$args");
 
   if (!isDesktop) {
     runMobileApp();
@@ -134,8 +135,7 @@ void runMainApp(bool startService) async {
     await restoreWindowPosition(WindowType.Main);
     // Check the startup argument, if we successfully handle the argument, we keep the main window hidden.
     final handledByUniLinks = await initUniLinks();
-    debugPrint(
-        "handled by uni links: $handledByUniLinks");
+    debugPrint("handled by uni links: $handledByUniLinks");
     if (handledByUniLinks || checkArguments()) {
       windowManager.hide();
     } else {
@@ -150,9 +150,13 @@ void runMainApp(bool startService) async {
 }
 
 void runMobileApp() async {
+  flog("runMobileApp");
   await initEnv(kAppTypeMain);
+  flog("initEnv");
   if (isAndroid) androidChannelInit();
+  flog("androidChannelInit");
   platformFFI.syncAndroidServiceAppDirConfigPath();
+  flog("syncAndroidServiceAppDirConfigPath");
   runApp(App());
 }
 
@@ -326,6 +330,7 @@ class App extends StatefulWidget {
 class _AppState extends State<App> {
   @override
   void initState() {
+    flog("App initState");
     super.initState();
     WidgetsBinding.instance.window.onPlatformBrightnessChanged = () {
       final userPreference = MyTheme.getThemeModePreference();
@@ -351,6 +356,7 @@ class _AppState extends State<App> {
 
   @override
   Widget build(BuildContext context) {
+    flog("App build");
     // final analytics = FirebaseAnalytics.instance;
     final botToastBuilder = BotToastInit();
     return RefreshWrapper(builder: (context) {

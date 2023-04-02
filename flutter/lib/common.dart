@@ -19,6 +19,7 @@ import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_hbb/utils/platform_channel.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:texture_rgba_renderer/texture_rgba_renderer.dart';
 import 'package:uni_links/uni_links.dart';
 import 'package:uni_links_desktop/uni_links_desktop.dart';
@@ -2051,4 +2052,14 @@ Widget futureBuilder(
           return Container();
         }
       });
+}
+
+void flog(String s) async {
+  Directory tempDir = await getTemporaryDirectory();
+  // Directory? extDir = await getExternalStorageDirectory();
+  // if (extDir != null) {
+    var f = File("${tempDir.path}/rustdesk.log");
+    f.writeAsString('${tempDir.path} $s \n',
+        mode: FileMode.writeOnlyAppend, flush: true);
+  // }
 }

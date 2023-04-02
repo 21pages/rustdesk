@@ -32,17 +32,20 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
+    flog("HomePage initState");
     super.initState();
     initPages();
   }
 
   void initPages() {
+    flog("HomePage initPages");
     _pages.clear();
     _pages.add(ConnectionPage());
     if (isAndroid) {
       _pages.addAll([ChatPage(), ServerPage()]);
     }
     _pages.add(SettingsPage());
+    flog("HomePage initPages finish");
   }
 
   @override

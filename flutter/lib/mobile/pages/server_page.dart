@@ -116,6 +116,7 @@ class _ServerPageState extends State<ServerPage> {
 
   @override
   void initState() {
+    flog("ServerPage initState");
     super.initState();
     _updateTimer = periodic_immediate(const Duration(seconds: 3), () async {
       await gFFI.serverModel.fetchID();
@@ -131,6 +132,7 @@ class _ServerPageState extends State<ServerPage> {
 
   @override
   Widget build(BuildContext context) {
+    flog("ServerPage build");
     checkService();
     return ChangeNotifierProvider.value(
         value: gFFI.serverModel,
