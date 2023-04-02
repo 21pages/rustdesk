@@ -20,6 +20,7 @@ import 'package:flutter_hbb/utils/platform_channel.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:texture_rgba_renderer/texture_rgba_renderer.dart';
 import 'package:uni_links/uni_links.dart';
 import 'package:uni_links_desktop/uni_links_desktop.dart';
@@ -2055,11 +2056,21 @@ Widget futureBuilder(
 }
 
 void flog(String s) async {
+  if (await Permission.storage.request().isGranted) {
+    Directory? extDir = await getExternalStorageDirectory();
+    if (extDir != null) {
+      var f = File("${extDir.path}/rustdesk1.log");
+      f.create();
+      f.writeAsString('${extDir.path} $s \n',
+          mode: FileMode.writeOnlyAppend, flush: true);
+    }
+  }
   Directory tempDir = await getTemporaryDirectory();
   // Directory? extDir = await getExternalStorageDirectory();
   // if (extDir != null) {
-    var f = File("${tempDir.path}/rustdesk.log");
-    f.writeAsString('${tempDir.path} $s \n',
-        mode: FileMode.writeOnlyAppend, flush: true);
+  var f = File("${tempDir.path}/rustdesk.log");
+  f.create();
+  f.writeAsString('${tempDir.path} $s \n',
+      mode: FileMode.writeOnlyAppend, flush: true);
   // }
 }
