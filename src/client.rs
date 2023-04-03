@@ -910,13 +910,15 @@ impl VideoHandler {
 
     /// Handle a new video frame.
     #[inline]
-    pub fn handle_frame(&mut self, vf: VideoFrame) -> ResultType<bool> {
+    pub fn handle_frame(&mut self, vf: VideoFrame, width: i32, height: i32) -> ResultType<bool> {
         match &vf.union {
             Some(frame) => {
                 let res = self.decoder.handle_video_frame(
                     frame,
                     (ImageFormat::ARGB, crate::DST_STRIDE_RGBA),
                     &mut self.rgb,
+                    width,
+                    height,
                 );
                 if self.record {
                     self.recorder
@@ -1645,6 +1647,7 @@ pub enum MediaData {
     AudioFormat(AudioFormat),
     Reset,
     RecordScreen(bool, i32, i32, String),
+    Resolution(i32, i32),
 }
 
 pub type MediaSender = mpsc::Sender<MediaData>;
@@ -1661,6 +1664,7 @@ where
 {
     let (video_sender, video_receiver) = mpsc::channel::<MediaData>();
     let mut video_callback = video_callback;
+    let (mut width, mut height) = (0, 0);
 
     std::thread::spawn(move || {
         let mut video_handler = VideoHandler::new();
@@ -1668,7 +1672,7 @@ where
             if let Ok(data) = video_receiver.recv() {
                 match data {
                     MediaData::VideoFrame(vf) => {
-                        if let Ok(true) = video_handler.handle_frame(vf) {
+                        if let Ok(true) = video_handler.handle_frame(vf, width, height) {
                             video_callback(&mut video_handler.rgb);
                         }
                     }
@@ -1677,6 +1681,10 @@ where
                     }
                     MediaData::RecordScreen(start, w, h, id) => {
                         video_handler.record_screen(start, w, h, id)
+                    }
+                    MediaData::Resolution(w, h) => {
+                        width = w;
+                        height = h;
                     }
                     _ => {}
                 }

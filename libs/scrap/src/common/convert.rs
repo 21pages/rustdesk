@@ -296,11 +296,17 @@ pub mod hw {
     use codec_common::PixelFormat;
     use hbb_common::{anyhow::bail, ResultType};
 
+    fn align(v: i32, align: i32) -> i32 {
+        (v + align - 1) / align * align
+    }
+
     pub fn linesize_offset_length(
         pixfmt: PixelFormat,
         width: i32,
         height: i32,
     ) -> (Vec<i32>, Vec<i32>, i32) {
+        let width = align(width, 2);
+        let height = align(height, 2);
         match pixfmt {
             PixelFormat::NV12 => (
                 vec![width, width],

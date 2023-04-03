@@ -48,3 +48,4 @@ lib/generated_bridge.dart
 .vscode-server/
 .ssh
 .devcontainer/.*
+output/

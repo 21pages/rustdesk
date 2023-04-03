@@ -195,7 +195,7 @@ impl HwDecoder {
 }
 
 pub struct HwDecoderImage<'a> {
-    frame: &'a DecodeFrame,
+    pub frame: &'a DecodeFrame,
 }
 
 impl HwDecoderImage<'_> {
@@ -205,6 +205,8 @@ impl HwDecoderImage<'_> {
         (fmt, dst_stride): (ImageFormat, usize),
         fmt_data: &mut Vec<u8>,
         i420: &mut Vec<u8>,
+        width: i32,
+        height: i32,
     ) -> ResultType<()> {
         let frame = self.frame;
         match frame.pixfmt {
@@ -219,31 +221,36 @@ impl HwDecoderImage<'_> {
                 fmt_data,
                 i420,
                 HW_STRIDE_ALIGN as i32,
+            )?,
+            PixelFormat::I420 => hw::hw_i420_to(
+                fmt,
+                frame.width as _,
+                frame.height as _,
+                frame.data[0].as_ptr(),
+                frame.data[1].as_ptr(),
+                frame.data[2].as_ptr(),
+                frame.linesize[0] as _,
+                frame.linesize[1] as _,
+                frame.linesize[2] as _,
+                fmt_data,
             ),
-            PixelFormat::I420 => {
-                hw::hw_i420_to(
-                    fmt,
-                    frame.width as _,
-                    frame.height as _,
-                    frame.data[0].as_ptr(),
-                    frame.data[1].as_ptr(),
-                    frame.data[2].as_ptr(),
-                    frame.linesize[0] as _,
-                    frame.linesize[1] as _,
-                    frame.linesize[2] as _,
-                    fmt_data,
-                );
-                return Ok(());
-            }
         }
-    }
-
-    pub fn bgra(&self, bgra: &mut Vec<u8>, i420: &mut Vec<u8>) -> ResultType<()> {
-        self.to_fmt((ImageFormat::ARGB, 1), bgra, i420)
-    }
-
-    pub fn rgba(&self, rgba: &mut Vec<u8>, i420: &mut Vec<u8>) -> ResultType<()> {
-        self.to_fmt((ImageFormat::ABGR, 1), rgba, i420)
+        if width > 0
+            && height > 0
+            && (width % 2 == 1 || height % 2 == 1)
+            && (frame.width != width || frame.height != height)
+            && frame.width >= width
+            && frame.height >= height
+        {
+            for h in 0..height {
+                let left = ((width * h + width) * 4) as usize;
+                let right = ((width * h + frame.width) * 4) as usize;
+                fmt_data.drain(left..right);
+            }
+            let len = (width * height * 4) as usize;
+            fmt_data.drain(len..);
+        }
+        Ok(())
     }
 }
 

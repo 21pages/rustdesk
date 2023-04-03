@@ -27,7 +27,7 @@ use_samplerate = ["samplerate"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge"]
-default = ["use_dasp"]
+default = ["use_dasp", "hwcodec"]
 hwcodec = ["scrap/hwcodec"]
 mediacodec = ["scrap/mediacodec"]
 

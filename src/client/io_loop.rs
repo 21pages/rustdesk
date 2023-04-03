@@ -837,7 +837,13 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(login_response::Union::PeerInfo(pi)) => {
-                        self.handler.handle_peer_info(pi);
+                        self.handler.handle_peer_info(pi.clone());
+                        self.video_sender
+                            .send(MediaData::Resolution(
+                                self.handler.width,
+                                self.handler.height,
+                            ))
+                            .ok();
                         self.check_clipboard_file_context();
                         if !(self.handler.is_file_transfer() || self.handler.is_port_forward()) {
                             let sender = self.sender.clone();

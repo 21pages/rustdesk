@@ -276,6 +276,8 @@ impl Decoder {
         frame: &video_frame::Union,
         fmt: (ImageFormat, usize),
         rgb: &mut Vec<u8>,
+        _width: i32,
+        _height: i32,
     ) -> ResultType<bool> {
         match frame {
             video_frame::Union::Vp9s(vp9s) => {
@@ -284,7 +286,15 @@ impl Decoder {
             #[cfg(feature = "hwcodec")]
             video_frame::Union::H264s(h264s) => {
                 if let Some(decoder) = &mut self.hw.h264 {
-                    Decoder::handle_hw_video_frame(decoder, h264s, fmt, rgb, &mut self.i420)
+                    Decoder::handle_hw_video_frame(
+                        decoder,
+                        h264s,
+                        fmt,
+                        rgb,
+                        &mut self.i420,
+                        _width,
+                        _height,
+                    )
                 } else {
                     Err(anyhow!("don't support h264!"))
                 }
@@ -292,7 +302,15 @@ impl Decoder {
             #[cfg(feature = "hwcodec")]
             video_frame::Union::H265s(h265s) => {
                 if let Some(decoder) = &mut self.hw.h265 {
-                    Decoder::handle_hw_video_frame(decoder, h265s, fmt, rgb, &mut self.i420)
+                    Decoder::handle_hw_video_frame(
+                        decoder,
+                        h265s,
+                        fmt,
+                        rgb,
+                        &mut self.i420,
+                        _width,
+                        _height,
+                    )
                 } else {
                     Err(anyhow!("don't support h265!"))
                 }
@@ -349,12 +367,14 @@ impl Decoder {
         fmt: (ImageFormat, usize),
         raw: &mut Vec<u8>,
         i420: &mut Vec<u8>,
+        width: i32,
+        height: i32,
     ) -> ResultType<bool> {
         let mut ret = false;
         for h264 in frames.frames.iter() {
             for image in decoder.decode(&h264.data)? {
                 // TODO: just process the last frame
-                if image.to_fmt(fmt, raw, i420).is_ok() {
+                if image.to_fmt(fmt, raw, i420, width, height).is_ok() {
                     ret = true;
                 }
             }

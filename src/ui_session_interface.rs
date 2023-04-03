@@ -43,6 +43,8 @@ pub struct Session<T: InvokeUiSession> {
     pub server_keyboard_enabled: Arc<RwLock<bool>>,
     pub server_file_transfer_enabled: Arc<RwLock<bool>>,
     pub server_clipboard_enabled: Arc<RwLock<bool>>,
+    pub width: i32,
+    pub height: i32,
 }
 
 #[derive(Clone)]
@@ -972,6 +974,8 @@ impl<T: InvokeUiSession> Interface for Session<T> {
                 current.height,
                 current.cursor_embedded,
             );
+            self.width = current.width;
+            self.height = current.height;
         }
         self.update_privacy_mode();
         // Save recent peers, then push event to flutter. So flutter can refresh peer page.

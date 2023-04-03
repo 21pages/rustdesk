@@ -113,6 +113,8 @@ mod hw {
         encode::{self, Encoder},
     };
     use scrap::convert::hw::{hw_bgra_to_nv12, linesize_offset_length, split_yuv};
+    use scrap::hwcodec::HwDecoderImage;
+    use scrap::ImageFormat;
 
     pub fn test(bgra: &Vec<u8>, width: i32, height: i32, pixfmt: PixelFormat, dir: &PathBuf) {
         let (linesize, offset, len) = linesize_offset_length(pixfmt, width as i32, height as i32);
@@ -150,7 +152,7 @@ mod hw {
                 &h265
             };
             if h26x.len() > 0 {
-                test_decoder(ctx.clone(), h26x);
+                test_decoder(ctx.clone(), h26x, width, height, dir);
             }
         }
     }
@@ -174,11 +176,24 @@ mod hw {
         file.write_all(&frames[0].data).unwrap();
     }
 
-    fn test_decoder(ctx: DecodeContext, h26x: &Vec<u8>) {
+    fn test_decoder(ctx: DecodeContext, h26x: &Vec<u8>, width: i32, height: i32, dir: &PathBuf) {
         print!("{:?} {:?} {:?}: ", ctx.driver, ctx.dataFormat, ctx.device,);
         let mut decoder = Decoder::new(ctx.clone()).unwrap();
-        for img in decoder.decode(h26x).unwrap() {
-            println!("w:{}, h:{}", img.width, img.height);
+        for frame in decoder.decode(h26x).unwrap() {
+            print!("w:{}, h:{}", frame.width, frame.height);
+            let img = HwDecoderImage { frame };
+            let mut i420 = vec![];
+            let mut raw = vec![];
+            img.to_fmt((ImageFormat::ARGB, 1), &mut raw, &mut i420, width, height)
+                .ok();
+            assert_eq!(width * height * 4, raw.len() as i32);
+            println!(" OK");
+            let filename = format!(
+                "{}x{}_{:?}_{:?}_{:?}.rgba",
+                width, height, ctx.driver, ctx.dataFormat, ctx.device
+            );
+            let mut file = std::fs::File::create(dir.join(filename)).unwrap();
+            file.write_all(&raw).unwrap();
         }
     }
 
