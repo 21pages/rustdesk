@@ -40,6 +40,7 @@ use hbb_common::{
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use scrap::android::call_main_service_mouse_input;
+use scrap::codec::EncodingUpdate;
 use serde_json::{json, value::Value};
 use sha2::{Digest, Sha256};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -580,7 +581,7 @@ impl Connection {
             let _ = privacy_mode::turn_off_privacy(0);
         }
         video_service::notify_video_frame_fetched(id, None);
-        scrap::codec::Encoder::update(id, scrap::codec::EncodingUpdate::Remove);
+        conn.update_encoder(EncodingUpdate::Remove);
         video_service::VIDEO_QOS.lock().unwrap().reset();
         if conn.authorized {
             password::update_temporary_password();
@@ -961,7 +962,12 @@ impl Connection {
         {
             pi.resolutions = Some(SupportedResolutions {
                 resolutions: video_service::get_current_display_name()
-                    .map(|name| crate::platform::resolutions(&name))
+                    .map(|name| {
+                        crate::platform::resolutions(&name)
+                            .drain(..)
+                            .filter(|r| r.width % 2 == 0 && r.height % 2 == 0)
+                            .collect()
+                    })
                     .unwrap_or(vec![]),
                 ..Default::default()
             })
@@ -1185,26 +1191,27 @@ impl Connection {
         return Config::get_option(enable_prefix_option).is_empty();
     }
 
+    fn update_encoder(&self, update: scrap::codec::EncodingUpdate) {
+        let mut resolution = None;
+        if let Ok(name) = video_service::get_current_display_name() {
+            if let Ok(current) = crate::platform::current_resolution(&name) {
+                resolution = Some(current);
+            }
+        }
+        scrap::codec::Encoder::update(self.inner.id(), update, resolution);
+    }
+
     async fn handle_login_request_without_validation(&mut self, lr: &LoginRequest) {
         self.lr = lr.clone();
         if let Some(o) = lr.option.as_ref() {
             self.options_in_login = Some(o.clone());
             if let Some(q) = o.supported_decoding.clone().take() {
-                scrap::codec::Encoder::update(
-                    self.inner.id(),
-                    scrap::codec::EncodingUpdate::New(q),
-                );
+                self.update_encoder(EncodingUpdate::New(q));
             } else {
-                scrap::codec::Encoder::update(
-                    self.inner.id(),
-                    scrap::codec::EncodingUpdate::NewOnlyVP9,
-                );
+                self.update_encoder(EncodingUpdate::NewOnlyVP9);
             }
         } else {
-            scrap::codec::Encoder::update(
-                self.inner.id(),
-                scrap::codec::EncodingUpdate::NewOnlyVP9,
-            );
+            self.update_encoder(EncodingUpdate::NewOnlyVP9);
         }
         self.video_ack_required = lr.video_ack_required;
     }
@@ -1911,7 +1918,7 @@ impl Connection {
                 .update_user_fps(o.custom_fps as _);
         }
         if let Some(q) = o.supported_decoding.clone().take() {
-            scrap::codec::Encoder::update(self.inner.id(), scrap::codec::EncodingUpdate::New(q));
+            self.update_encoder(EncodingUpdate::New(q));
         }
         if let Ok(q) = o.lock_after_session_end.enum_value() {
             if q != BoolOption::NotSet {

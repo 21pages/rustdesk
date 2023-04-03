@@ -469,12 +469,12 @@ fn run(sp: GenericService) -> ResultType<()> {
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
 
     let encoder_cfg = match Encoder::negotiated_codec() {
-        scrap::CodecName::H264(name) | scrap::CodecName::H265(name) => {
+        scrap::CodecName::H264(ctx) | scrap::CodecName::H265(ctx) => {
             EncoderCfg::HW(HwEncoderConfig {
-                name,
-                width: c.width,
-                height: c.height,
-                bitrate: bitrate as _,
+                f: ctx,
+                width: c.width as _,
+                height: c.height as _,
+                kbitrate: bitrate as _,
             })
         }
         name @ (scrap::CodecName::VP8 | scrap::CodecName::VP9) => {

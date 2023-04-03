@@ -11,6 +11,7 @@ use crate::mediacodec::{
     MediaCodecDecoder, MediaCodecDecoders, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT,
 };
 use crate::{vpxcodec::*, CodecName, ImageFormat};
+use hw_common::FeatureContext;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sysinfo::{System, SystemExt};
@@ -19,7 +20,7 @@ use hbb_common::{
     config::PeerConfig,
     log,
     message_proto::{
-        supported_decoding::PreferCodec, video_frame, EncodedVideoFrames, Message,
+        supported_decoding::PreferCodec, video_frame, EncodedVideoFrames, Message, Resolution,
         SupportedDecoding, SupportedEncoding,
     },
     ResultType,
@@ -32,12 +33,12 @@ lazy_static::lazy_static! {
     static ref CODEC_NAME: Arc<Mutex<CodecName>> = Arc::new(Mutex::new(CodecName::VP9));
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct HwEncoderConfig {
-    pub name: String,
-    pub width: usize,
-    pub height: usize,
-    pub bitrate: i32,
+    pub f: FeatureContext,
+    pub width: i32,
+    pub height: i32,
+    pub kbitrate: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -118,7 +119,7 @@ impl Encoder {
         }
     }
 
-    pub fn update(id: i32, update: EncodingUpdate) {
+    pub fn update(id: i32, update: EncodingUpdate, _resolution: Option<Resolution>) {
         let mut decodings = PEER_DECODINGS.lock().unwrap();
         match update {
             EncodingUpdate::New(decoding) => {
@@ -146,16 +147,21 @@ impl Encoder {
         #[cfg(feature = "hwcodec")]
         {
             if enable_hwcodec_option() {
-                let best = HwEncoder::best();
-                let h264_useable =
-                    decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h264 > 0);
-                let h265_useable =
-                    decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h265 > 0);
-                if h264_useable {
-                    h264_name = best.h264.map_or(None, |c| Some(c.name));
-                }
-                if h265_useable {
-                    h265_name = best.h265.map_or(None, |c| Some(c.name));
+                if let Some(r) = _resolution {
+                    // Odd resolutions are not supported, this will cause preferences not to work.
+                    if r.width % 2 != 1 && r.height != 1 {
+                        let best = HwEncoder::best();
+                        let h264_useable = decodings.len() > 0
+                            && decodings.iter().all(|(_, s)| s.ability_h264 > 0);
+                        let h265_useable = decodings.len() > 0
+                            && decodings.iter().all(|(_, s)| s.ability_h265 > 0);
+                        if h264_useable {
+                            h264_name = best.h264.map_or(None, |c| Some(c));
+                        }
+                        if h265_useable {
+                            h265_name = best.h265.map_or(None, |c| Some(c));
+                        }
+                    }
                 }
             }
         }

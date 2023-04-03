@@ -1,5 +1,6 @@
 pub use self::vpxcodec::*;
 use hbb_common::message_proto::{video_frame, VideoFrame};
+use hw_common::FeatureContext;
 
 cfg_if! {
     if #[cfg(quartz)] {
@@ -98,8 +99,8 @@ pub fn is_cursor_embedded() -> bool {
 pub enum CodecName {
     VP8,
     VP9,
-    H264(String),
-    H265(String),
+    H264(FeatureContext),
+    H265(FeatureContext),
 }
 
 #[derive(PartialEq, Debug, Clone)]
