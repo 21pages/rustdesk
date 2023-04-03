@@ -1,5 +1,6 @@
 pub use self::vpxcodec::*;
 use hbb_common::message_proto::{video_frame, VideoFrame};
+use hw_common::EncodeContext;
 
 cfg_if! {
     if #[cfg(quartz)] {
@@ -98,8 +99,21 @@ pub fn is_cursor_embedded() -> bool {
 pub enum CodecName {
     VP8,
     VP9,
-    H264(String),
-    H265(String),
+    H264(EncodeContext),
+    H265(EncodeContext),
+}
+
+impl CodecName {
+    pub fn should_switch(&self, other: CodecName) -> bool {
+        let eq = match self {
+            CodecName::VP8 | CodecName::VP9 => *self == other,
+            CodecName::H264(lhs) | CodecName::H265(lhs) => match other {
+                CodecName::H264(rhs) | CodecName::H265(rhs) => lhs.f == rhs.f && lhs.p == rhs.p,
+                _ => false,
+            },
+        };
+        !eq
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]

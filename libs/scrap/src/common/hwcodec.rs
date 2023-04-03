@@ -4,36 +4,28 @@ use crate::{
 };
 use hbb_common::{
     allow_err,
-    anyhow::{anyhow, Context},
+    anyhow::{anyhow, bail, Context},
     bytes::Bytes,
     config::HwCodecConfig,
     log,
     message_proto::{EncodedVideoFrame, EncodedVideoFrames, Message, VideoFrame},
     ResultType,
 };
+use hw_common::{
+    DataFormat, DecodeContext, DynamicContext, EncodeContext, PixelFormat, PresetContext,
+};
 use hwcodec::{
-    decode::{DecodeContext, DecodeFrame, Decoder},
-    encode::{EncodeContext, EncodeFrame, Encoder},
-    ffmpeg::{CodecInfo, CodecInfos, DataFormat},
-    AVPixelFormat,
-    Quality::{self, *},
-    RateControl::{self, *},
+    decode::{self, DecodeFrame, Decoder},
+    encode::{self, EncodeFrame, Encoder},
 };
 
 const CFG_KEY_ENCODER: &str = "bestHwEncoders";
 const CFG_KEY_DECODER: &str = "bestHwDecoders";
 
-const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_YUV420P;
-pub const DEFAULT_TIME_BASE: [i32; 2] = [1, 30];
-const DEFAULT_GOP: i32 = i32::MAX;
-const DEFAULT_HW_QUALITY: Quality = Quality_Default;
-const DEFAULT_RC: RateControl = RC_DEFAULT;
-
 pub struct HwEncoder {
     encoder: Encoder,
+    ctx: EncodeContext,
     yuv: Vec<u8>,
-    pub format: DataFormat,
-    pub pixfmt: AVPixelFormat,
 }
 
 impl EncoderApi for HwEncoder {
@@ -42,38 +34,22 @@ impl EncoderApi for HwEncoder {
         Self: Sized,
     {
         match cfg {
-            EncoderCfg::HW(config) => {
-                let ctx = EncodeContext {
-                    name: config.name.clone(),
-                    width: config.width as _,
-                    height: config.height as _,
-                    pixfmt: DEFAULT_PIXFMT,
-                    align: HW_STRIDE_ALIGN as _,
-                    bitrate: config.bitrate * 1000,
-                    timebase: DEFAULT_TIME_BASE,
-                    gop: DEFAULT_GOP,
-                    quality: DEFAULT_HW_QUALITY,
-                    rc: DEFAULT_RC,
-                };
-                let format = match Encoder::format_from_name(config.name.clone()) {
-                    Ok(format) => format,
-                    Err(_) => {
-                        return Err(anyhow!(format!(
-                            "failed to get format from name:{}",
-                            config.name
-                        )))
-                    }
-                };
-                match Encoder::new(ctx.clone()) {
-                    Ok(encoder) => Ok(HwEncoder {
+            EncoderCfg::HW(ctx) => match Encoder::new(ctx.clone()) {
+                Ok(mut encoder) => {
+                    encoder
+                        .set_bitrate(ctx.d.kbitrate)
+                        .map_err(|e| anyhow!(e))?;
+                    encoder
+                        .set_framerate(ctx.d.framerate)
+                        .map_err(|e| anyhow!(e))?;
+                    Ok(HwEncoder {
                         encoder,
+                        ctx,
                         yuv: vec![],
-                        format,
-                        pixfmt: ctx.pixfmt,
-                    }),
-                    Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
+                    })
                 }
-            }
+                Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
+            },
             _ => Err(anyhow!("encoder type mismatch")),
         }
     }
@@ -99,9 +75,10 @@ impl EncoderApi for HwEncoder {
                 frames: frames.into(),
                 ..Default::default()
             };
-            match self.format {
+            match self.ctx.f.dataFormat {
                 DataFormat::H264 => vf.set_h264s(frames),
                 DataFormat::H265 => vf.set_h265s(frames),
+                _ => bail!("unsupported data format: {:?}", self.ctx.f.dataFormat),
             }
             msg_out.set_video_frame(vf);
             Ok(msg_out)
@@ -114,43 +91,42 @@ impl EncoderApi for HwEncoder {
         false
     }
 
-    fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {
-        self.encoder.set_bitrate((bitrate * 1000) as _).ok();
+    fn set_bitrate(&mut self, kbitrate: u32) -> ResultType<()> {
+        self.encoder.set_bitrate(kbitrate as i32).ok();
         Ok(())
     }
 }
 
 impl HwEncoder {
-    pub fn best() -> CodecInfos {
-        get_config(CFG_KEY_ENCODER).unwrap_or(CodecInfos {
+    pub fn best() -> encode::Best {
+        get_encode_config().unwrap_or(encode::Best {
             h264: None,
             h265: None,
         })
     }
 
     pub fn encode(&mut self, bgra: &[u8]) -> ResultType<Vec<EncodeFrame>> {
-        match self.pixfmt {
-            AVPixelFormat::AV_PIX_FMT_YUV420P => hw::hw_bgra_to_i420(
-                self.encoder.ctx.width as _,
-                self.encoder.ctx.height as _,
-                &self.encoder.linesize,
-                &self.encoder.offset,
-                self.encoder.length,
+        let (linesizes, offsets, length) =
+            hw::linesize_offset_length(self.ctx.f.pixfmt, self.ctx.p.width, self.ctx.p.height);
+        match self.ctx.f.pixfmt {
+            PixelFormat::NV12 => hw::hw_bgra_to_nv12(
+                self.encoder.ctx.p.width as _,
+                self.encoder.ctx.p.height as _,
+                &linesizes,
+                &offsets,
+                length,
                 bgra,
                 &mut self.yuv,
             ),
-            AVPixelFormat::AV_PIX_FMT_NV12 => hw::hw_bgra_to_nv12(
-                self.encoder.ctx.width as _,
-                self.encoder.ctx.height as _,
-                &self.encoder.linesize,
-                &self.encoder.offset,
-                self.encoder.length,
-                bgra,
-                &mut self.yuv,
-            ),
+            _ => bail!("unsupported pixfmt: {:?}", self.ctx.f.pixfmt),
         }
-
-        match self.encoder.encode(&self.yuv) {
+        let (yuv, linesizes) = hw::split_yuv(
+            self.ctx.f.pixfmt,
+            self.ctx.p.width,
+            self.ctx.p.height,
+            &self.yuv,
+        );
+        match self.encoder.encode(yuv, linesizes) {
             Ok(v) => {
                 let mut data = Vec::<EncodeFrame>::new();
                 data.append(v);
@@ -163,7 +139,7 @@ impl HwEncoder {
 
 pub struct HwDecoder {
     decoder: Decoder,
-    pub info: CodecInfo,
+    pub ctx: DecodeContext,
 }
 
 #[derive(Default)]
@@ -173,8 +149,8 @@ pub struct HwDecoders {
 }
 
 impl HwDecoder {
-    pub fn best() -> CodecInfos {
-        get_config(CFG_KEY_DECODER).unwrap_or(CodecInfos {
+    pub fn best() -> decode::Best {
+        get_decode_config().unwrap_or(decode::Best {
             h264: None,
             h265: None,
         })
@@ -186,14 +162,14 @@ impl HwDecoder {
         let mut h265: Option<HwDecoder> = None;
         let mut fail = false;
 
-        if let Some(info) = best.h264 {
-            h264 = HwDecoder::new(info).ok();
+        if let Some(ctx) = best.h264 {
+            h264 = HwDecoder::new(ctx).ok();
             if h264.is_none() {
                 fail = true;
             }
         }
-        if let Some(info) = best.h265 {
-            h265 = HwDecoder::new(info).ok();
+        if let Some(ctx) = best.h265 {
+            h265 = HwDecoder::new(ctx).ok();
             if h265.is_none() {
                 fail = true;
             }
@@ -204,13 +180,9 @@ impl HwDecoder {
         HwDecoders { h264, h265 }
     }
 
-    pub fn new(info: CodecInfo) -> ResultType<Self> {
-        let ctx = DecodeContext {
-            name: info.name.clone(),
-            device_type: info.hwdevice.clone(),
-        };
-        match Decoder::new(ctx) {
-            Ok(decoder) => Ok(HwDecoder { decoder, info }),
+    pub fn new(ctx: DecodeContext) -> ResultType<Self> {
+        match Decoder::new(ctx.clone()) {
+            Ok(decoder) => Ok(HwDecoder { decoder, ctx }),
             Err(_) => Err(anyhow!(format!("Failed to create decoder"))),
         }
     }
@@ -236,26 +208,26 @@ impl HwDecoderImage<'_> {
     ) -> ResultType<()> {
         let frame = self.frame;
         match frame.pixfmt {
-            AVPixelFormat::AV_PIX_FMT_NV12 => hw::hw_nv12_to(
+            PixelFormat::NV12 => hw::hw_nv12_to(
                 fmt,
-                frame.width as _,
-                frame.height as _,
+                frame.width,
+                frame.height,
                 &frame.data[0],
                 &frame.data[1],
-                frame.linesize[0] as _,
-                frame.linesize[1] as _,
+                frame.linesize[0],
+                frame.linesize[1],
                 fmt_data,
                 i420,
-                HW_STRIDE_ALIGN,
+                HW_STRIDE_ALIGN as i32,
             ),
-            AVPixelFormat::AV_PIX_FMT_YUV420P => {
+            PixelFormat::I420 => {
                 hw::hw_i420_to(
                     fmt,
                     frame.width as _,
                     frame.height as _,
-                    &frame.data[0],
-                    &frame.data[1],
-                    &frame.data[2],
+                    frame.data[0].as_ptr(),
+                    frame.data[1].as_ptr(),
+                    frame.data[2].as_ptr(),
                     frame.linesize[0] as _,
                     frame.linesize[1] as _,
                     frame.linesize[2] as _,
@@ -275,36 +247,47 @@ impl HwDecoderImage<'_> {
     }
 }
 
-fn get_config(k: &str) -> ResultType<CodecInfos> {
+fn get_encode_config() -> ResultType<encode::Best> {
+    let k = CFG_KEY_ENCODER;
     let v = HwCodecConfig::get()
         .options
         .get(k)
         .unwrap_or(&"".to_owned())
         .to_owned();
-    match CodecInfos::deserialize(&v) {
+    match encode::Best::deserialize(&v) {
+        Ok(v) => Ok(v),
+        Err(_) => Err(anyhow!("Failed to get config:{}", k)),
+    }
+}
+
+fn get_decode_config() -> ResultType<decode::Best> {
+    let k = CFG_KEY_DECODER;
+    let v = HwCodecConfig::get()
+        .options
+        .get(k)
+        .unwrap_or(&"".to_owned())
+        .to_owned();
+    match decode::Best::deserialize(&v) {
         Ok(v) => Ok(v),
         Err(_) => Err(anyhow!("Failed to get config:{}", k)),
     }
 }
 
 pub fn check_config() {
-    let ctx = EncodeContext {
-        name: String::from(""),
-        width: 1920,
-        height: 1080,
-        pixfmt: DEFAULT_PIXFMT,
-        align: HW_STRIDE_ALIGN as _,
-        bitrate: 0,
-        timebase: DEFAULT_TIME_BASE,
-        gop: DEFAULT_GOP,
-        quality: DEFAULT_HW_QUALITY,
-        rc: DEFAULT_RC,
-    };
-    let encoders = CodecInfo::score(Encoder::available_encoders(ctx));
-    let decoders = CodecInfo::score(Decoder::available_decoders());
+    let encoders = encode::Best::new(encode::available(
+        PresetContext {
+            width: 1920,
+            height: 1080,
+        },
+        DynamicContext {
+            kbitrate: 5000,
+            framerate: 60,
+        },
+    ));
+    let decoders = decode::Best::new(decode::available());
 
-    if let Ok(old_encoders) = get_config(CFG_KEY_ENCODER) {
-        if let Ok(old_decoders) = get_config(CFG_KEY_DECODER) {
+    if let Ok(old_encoders) = get_encode_config() {
+        if let Ok(old_decoders) = get_decode_config() {
             if encoders == old_encoders && decoders == old_decoders {
                 return;
             }

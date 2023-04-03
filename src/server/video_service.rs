@@ -28,7 +28,8 @@ use hbb_common::tokio::sync::{
 #[cfg(not(windows))]
 use scrap::Capturer;
 use scrap::{
-    codec::{Encoder, EncoderCfg, HwEncoderConfig},
+    codec::{Encoder, EncoderCfg},
+    hw_common::{DynamicContext, EncodeContext, PresetContext},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecName, Display, TraitCapturer,
@@ -463,18 +464,24 @@ fn run(sp: GenericService) -> ResultType<()> {
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     video_qos.set_size(c.width as _, c.height as _);
     let mut spf = video_qos.spf();
+    let fps = video_qos.fps;
     let bitrate = video_qos.generate_bitrate()?;
     let abr = video_qos.check_abr_config();
     drop(video_qos);
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
 
     let encoder_cfg = match Encoder::negotiated_codec() {
-        scrap::CodecName::H264(name) | scrap::CodecName::H265(name) => {
-            EncoderCfg::HW(HwEncoderConfig {
-                name,
-                width: c.width,
-                height: c.height,
-                bitrate: bitrate as _,
+        scrap::CodecName::H264(ctx) | scrap::CodecName::H265(ctx) => {
+            EncoderCfg::HW(EncodeContext {
+                p: PresetContext {
+                    width: c.width as _,
+                    height: c.height as _,
+                },
+                d: DynamicContext {
+                    kbitrate: bitrate as _,
+                    framerate: fps as _,
+                },
+                ..ctx
             })
         }
         name @ (scrap::CodecName::VP8 | scrap::CodecName::VP9) => {
@@ -565,7 +572,7 @@ fn run(sp: GenericService) -> ResultType<()> {
             *SWITCH.lock().unwrap() = true;
             bail!("SWITCH");
         }
-        if codec_name != Encoder::negotiated_codec() {
+        if codec_name.should_switch(Encoder::negotiated_codec()) {
             bail!("SWITCH");
         }
         #[cfg(windows)]

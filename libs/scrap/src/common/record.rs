@@ -1,5 +1,7 @@
 use crate::CodecFormat;
 #[cfg(feature = "hwcodec")]
+use ffmpeg::mux::{MuxContext, Muxer};
+#[cfg(feature = "hwcodec")]
 use hbb_common::anyhow::anyhow;
 use hbb_common::{
     bail, chrono,
@@ -8,8 +10,6 @@ use hbb_common::{
     message_proto::{message, video_frame, EncodedVideoFrame, Message},
     ResultType,
 };
-#[cfg(feature = "hwcodec")]
-use hwcodec::mux::{MuxContext, Muxer};
 use std::{
     fs::{File, OpenOptions},
     io,
@@ -288,7 +288,7 @@ impl RecorderApi for HwRecorder {
             width: ctx.width,
             height: ctx.height,
             is265: ctx.format == CodecFormat::H265,
-            framerate: crate::hwcodec::DEFAULT_TIME_BASE[1] as _,
+            framerate: 30,
         })
         .map_err(|_| anyhow!("Failed to create hardware muxer"))?;
         Ok(HwRecorder {
