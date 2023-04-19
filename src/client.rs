@@ -53,7 +53,7 @@ use scrap::{
     ImageFormat,
 };
 
-use crate::common::{self, is_keyboard_mode_supported};
+use crate::common::{self, flog, is_keyboard_mode_supported};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::{check_clipboard, ClipboardContext, CLIPBOARD_INTERVAL};
@@ -827,6 +827,10 @@ impl AudioHandler {
         log::info!("Remote input format: {:?}", format0);
         let mut config: StreamConfig = config.into();
         config.channels = format0.channels as _;
+        flog(
+            "start_audio ",
+            &format!("device:{:?}, config:{:?}", device.name(), config),
+        );
         match sample_format {
             cpal::SampleFormat::I8 => self.build_output_stream::<i8>(&config, &device)?,
             cpal::SampleFormat::I16 => self.build_output_stream::<i16>(&config, &device)?,
@@ -862,8 +866,10 @@ impl AudioHandler {
     /// Handle audio frame and play it.
     #[inline]
     pub fn handle_frame(&mut self, frame: AudioFrame) {
+        flog("handle_frame recv auido frame ", &format!(""));
         #[cfg(not(any(target_os = "android", target_os = "linux")))]
         if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
+            flog("handle_frame not ready ", &format!(""));
             return;
         }
         #[cfg(target_os = "linux")]
@@ -876,38 +882,50 @@ impl AudioHandler {
             return;
         }
         self.audio_decoder.as_mut().map(|(d, buffer)| {
-            if let Ok(n) = d.decode_float(&frame.data, buffer, false) {
-                let channels = self.channels;
-                let n = n * (channels as usize);
-                #[cfg(not(any(target_os = "android", target_os = "linux")))]
-                {
-                    let sample_rate0 = self.sample_rate.0;
-                    let sample_rate = self.sample_rate.1;
-                    let audio_buffer = self.audio_buffer.0.clone();
-                    if sample_rate != sample_rate0 {
-                        let buffer = crate::resample_channels(
-                            &buffer[0..n],
-                            sample_rate0,
-                            sample_rate,
-                            channels,
-                        );
-                        audio_buffer.lock().unwrap().push_slice_overwrite(&buffer);
-                    } else {
-                        audio_buffer
-                            .lock()
-                            .unwrap()
-                            .push_slice_overwrite(&buffer[0..n]);
+            match d.decode_float(&frame.data, buffer, false) {
+                Ok(n) => {
+                    flog(
+                        "handle_frame decode_float success data size ",
+                        &format!("{}", n),
+                    );
+                    let channels = self.channels;
+                    let n = n * (channels as usize);
+                    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+                    {
+                        let sample_rate0 = self.sample_rate.0;
+                        let sample_rate = self.sample_rate.1;
+                        let audio_buffer = self.audio_buffer.0.clone();
+                        if sample_rate != sample_rate0 {
+                            flog("handle_frame resample_channels ", &format!(""));
+
+                            let buffer = crate::resample_channels(
+                                &buffer[0..n],
+                                sample_rate0,
+                                sample_rate,
+                                channels,
+                            );
+                            audio_buffer.lock().unwrap().push_slice_overwrite(&buffer);
+                        } else {
+                            audio_buffer
+                                .lock()
+                                .unwrap()
+                                .push_slice_overwrite(&buffer[0..n]);
+                        }
+                    }
+                    #[cfg(target_os = "android")]
+                    {
+                        self.oboe.as_mut().map(|x| x.push(&buffer[0..n]));
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        let data_u8 = unsafe {
+                            std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4)
+                        };
+                        self.simple.as_mut().map(|x| x.write(data_u8));
                     }
                 }
-                #[cfg(target_os = "android")]
-                {
-                    self.oboe.as_mut().map(|x| x.push(&buffer[0..n]));
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    let data_u8 =
-                        unsafe { std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4) };
-                    self.simple.as_mut().map(|x| x.write(data_u8));
+                Err(e) => {
+                    flog("handle_frame decode_float failed ", &format!("{}", e));
                 }
             }
         });
@@ -923,6 +941,10 @@ impl AudioHandler {
         let err_fn = move |err| {
             // too many errors, will improve later
             log::trace!("an error occurred on stream: {}", err);
+            flog(
+                "build_output_stream err callback ",
+                &format!("err:{:?}", err),
+            );
         };
         let audio_buffer = self.audio_buffer.0.clone();
         let ready = self.ready.clone();
@@ -938,6 +960,10 @@ impl AudioHandler {
                 if lock.occupied_len() < n {
                     n = lock.occupied_len();
                 }
+                flog(
+                    "build_output_stream data callback ",
+                    &format!("data len:{:?}, n:{}", data.len(), n),
+                );
                 let mut elems = vec![0.0f32; n];
                 lock.pop_slice(&mut elems);
                 drop(lock);
@@ -953,6 +979,7 @@ impl AudioHandler {
             timeout,
         )?;
         stream.play()?;
+        flog("build_output_stream play ok", "");
         self.audio_stream = Some(Box::new(stream));
         Ok(())
     }

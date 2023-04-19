@@ -12,6 +12,8 @@
 // https://wiki.debian.org/audio-loopback
 // https://github.com/krruzic/pulsectl
 
+use crate::common::flog;
+
 use super::*;
 use magnum_opus::{Application::*, Channels::*, Encoder};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -101,6 +103,8 @@ mod pa_impl {
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 mod cpal_impl {
+    use crate::common::flog;
+
     use super::*;
     use cpal::{
         traits::{DeviceTrait, HostTrait, StreamTrait},
@@ -230,6 +234,13 @@ mod cpal_impl {
         } else {
             48000
         };
+        flog(
+            "audio_service play",
+            &format!(
+                "sample_rate_0:{}, sample_rate:{}",
+                sample_rate_0, sample_rate
+            ),
+        );
         let stream = match config.sample_format() {
             I8 => build_input_stream::<i8>(device, &config, sp, sample_rate)?,
             I16 => build_input_stream::<i16>(device, &config, sp, sample_rate)?,
@@ -244,6 +255,10 @@ mod cpal_impl {
             f => bail!("unsupported audio format: {:?}", f),
         };
         stream.play()?;
+        flog(
+            "audio_service play ok",
+            &format!("sample_format: {:?}", config.sample_format()),
+        );
         Ok((
             Box::new(stream),
             Arc::new(create_format_msg(sample_rate, config.channels())),
@@ -259,9 +274,22 @@ mod cpal_impl {
     where
         T: cpal::SizedSample + dasp::sample::ToSample<f32>,
     {
+        flog(
+            "build_input_stream start",
+            &format!(
+                "config: {:?}, sample_rate:{}, channels:{}",
+                config,
+                sample_rate,
+                config.channels()
+            ),
+        );
         let err_fn = move |err| {
             // too many UnknownErrno, will improve later
             log::trace!("an error occurred on stream: {}", err);
+            flog(
+                "build_input_stream err callback",
+                &format!("err: {:?}", err),
+            );
         };
         let sample_rate_0 = config.sample_rate().0;
         log::debug!("Audio sample rate : {}", sample_rate);
@@ -290,6 +318,15 @@ mod cpal_impl {
                 let buffer: Vec<f32> = data.iter().map(|s| T::to_sample(*s)).collect();
                 let mut lock = INPUT_BUFFER.lock().unwrap();
                 lock.extend(buffer);
+                flog(
+                    "build_input_stream data callback",
+                    &format!(
+                        "data len: {:?}, lock len:{}, encode_len:{}",
+                        data.len(),
+                        lock.len(),
+                        encode_len
+                    ),
+                );
                 while lock.len() >= encode_len {
                     let frame: Vec<f32> = lock.drain(0..encode_len).collect();
                     send(
@@ -345,6 +382,12 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
             AUDIO_ZERO_COUNT += 1;
         }
     }
+    unsafe {
+        flog(
+            "send_f32 AUDIO_ZERO_COUNT",
+            &format!("{:?}", AUDIO_ZERO_COUNT),
+        );
+    }
     #[cfg(target_os = "android")]
     {
         // the permitted opus data size are 120, 240, 480, 960, 1920, and 2880
@@ -378,6 +421,10 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
     #[cfg(not(target_os = "android"))]
     match encoder.encode_vec_float(data, data.len() * 6) {
         Ok(data) => {
+            flog(
+                "send_f32 encode_vec_float success",
+                &format!(" data len {:?}", data.len()),
+            );
             let mut msg_out = Message::new();
             msg_out.set_audio_frame(AudioFrame {
                 data: data.into(),
@@ -385,6 +432,8 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
             });
             sp.send(msg_out);
         }
-        Err(_) => {}
+        Err(e) => {
+            flog("send_f32 encode_vec_float err", &format!("{:?}", e));
+        }
     }
 }
