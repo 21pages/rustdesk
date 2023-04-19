@@ -2033,3 +2033,12 @@ Widget futureBuilder(
         }
       });
 }
+
+void onCopyFingerprint(String value) {
+  if (value.isNotEmpty) {
+    Clipboard.setData(ClipboardData(text: value));
+    showToast('$value\n${translate("Copied")}');
+  } else {
+    showToast(translate("no fingerprints"));
+  }
+}
