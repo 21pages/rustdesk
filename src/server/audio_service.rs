@@ -12,6 +12,8 @@
 // https://wiki.debian.org/audio-loopback
 // https://github.com/krruzic/pulsectl
 
+use crate::common::flog;
+
 use super::*;
 use magnum_opus::{Application::*, Channels::*, Encoder};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -101,6 +103,8 @@ mod pa_impl {
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 mod cpal_impl {
+    use crate::common::flog;
+
     use super::*;
     use cpal::{
         traits::{DeviceTrait, HostTrait, StreamTrait},
@@ -148,9 +152,20 @@ mod cpal_impl {
         encoder: &mut Encoder,
         sp: &GenericService,
     ) {
+        let oldlen = data.len();
         let mut data = data;
         if sample_rate0 != sample_rate {
             data = crate::common::audio_resample(&data, sample_rate0, sample_rate, device_channel);
+            flog(
+                "audio servie send resample",
+                &format!(
+                    " {}-> {}, {} -> {}",
+                    sample_rate0,
+                    sample_rate,
+                    oldlen,
+                    data.len()
+                ),
+            );
         }
         if device_channel != encode_channel {
             data = crate::common::audio_rechannel(
@@ -159,7 +174,17 @@ mod cpal_impl {
                 sample_rate,
                 device_channel,
                 encode_channel,
-            )
+            );
+            flog(
+                "audio servie send rechannel",
+                &format!(
+                    "{}-> {}, {} -> {}",
+                    device_channel,
+                    encode_channel,
+                    oldlen,
+                    data.len()
+                ),
+            );
         }
         send_f32(&data, encoder, sp);
     }
@@ -271,6 +296,10 @@ mod cpal_impl {
         let err_fn = move |err| {
             // too many UnknownErrno, will improve later
             log::trace!("an error occurred on stream: {}", err);
+            flog(
+                "build_input_stream err callback",
+                &format!("err: {:?}", err),
+            );
         };
         let sample_rate_0 = config.sample_rate().0;
         log::debug!("Audio sample rate : {}", sample_rate);
@@ -284,6 +313,13 @@ mod cpal_impl {
         let frame_size = sample_rate as usize / 100; // 10 ms
         let encode_len = frame_size * encode_channel as usize;
         let rechannel_len = encode_len * device_channel as usize / encode_channel as usize;
+        flog(
+            "build_input_stream",
+            &format!(
+                "device_channel:{}, encode_channel:{}, encode_len:{}, rechannel_len:{}",
+                device_channel, encode_channel as u16, encode_len, rechannel_len
+            ),
+        );
         INPUT_BUFFER.lock().unwrap().clear();
         let timeout = None;
         let stream_config = StreamConfig {
@@ -299,6 +335,10 @@ mod cpal_impl {
                 lock.extend(buffer);
                 while lock.len() >= rechannel_len {
                     let frame: Vec<f32> = lock.drain(0..rechannel_len).collect();
+                    flog(
+                        "build_input_stream data callback",
+                        &format!("data len: {:?}, lock len:{}", data.len(), lock.len()),
+                    );
                     send(
                         frame,
                         sample_rate_0,
@@ -313,6 +353,7 @@ mod cpal_impl {
             err_fn,
             timeout,
         )?;
+        flog("build_input_stream ok", "");
         Ok(stream)
     }
 }
@@ -386,6 +427,10 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
     #[cfg(not(target_os = "android"))]
     match encoder.encode_vec_float(data, data.len() * 6) {
         Ok(data) => {
+            flog(
+                "send_f32 encode_vec_float success",
+                &format!(" data len {:?}", data.len()),
+            );
             let mut msg_out = Message::new();
             msg_out.set_audio_frame(AudioFrame {
                 data: data.into(),
@@ -393,6 +438,8 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
             });
             sp.send(msg_out);
         }
-        Err(_) => {}
+        Err(e) => {
+            flog("send_f32 encode_vec_float err", &format!("{:?}", e));
+        }
     }
 }

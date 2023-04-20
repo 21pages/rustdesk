@@ -1,6 +1,7 @@
 use std::{
     future::Future,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -1003,4 +1004,29 @@ pub fn pk_to_fingerprint(pk: Vec<u8>) -> String {
             }
         })
         .collect()
+}
+
+lazy_static::lazy_static! {
+    static ref INSTANTS: Arc::<Mutex<std::collections::HashMap<String,Instant>>> = Default::default();
+}
+
+pub fn flog(tag: &str, s: &str) {
+    use hbb_common::chrono::prelude::*;
+    use std::io::Write;
+    let mut lock = INSTANTS.lock().unwrap();
+    let log = if lock.contains_key(tag) {
+        lock.get(tag)
+            .map(|i| i.elapsed() > std::time::Duration::from_secs(1))
+            .unwrap_or(false)
+    } else {
+        true
+    };
+    if log {
+        let mut option = std::fs::OpenOptions::new();
+        if let Ok(mut f) = option.append(true).create(true).open("D:/log.txt") {
+            write!(&mut f, "{:?} {} {}\n", Local::now(), tag, s).ok();
+        }
+        println!("{} {}", tag, s);
+        lock.insert(tag.to_string(), Instant::now());
+    }
 }
