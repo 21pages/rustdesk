@@ -307,10 +307,10 @@ Future<List<TRadioMenu<String>>> toolbarCodec(
 
   return [
     radio('Auto', 'auto', true),
-    if (isDesktop || codecs[0]) radio('VP8', 'vp8', codecs[0]),
+    if (codecs[0]) radio('VP8', 'vp8', codecs[0]),
     radio('VP9', 'vp9', true),
-    if (isDesktop || codecs[1]) radio('H264', 'h264', codecs[1]),
-    if (isDesktop || codecs[2]) radio('H265', 'h265', codecs[2]),
+    if (codecs[1]) radio('H264', 'h264', codecs[1]),
+    if (codecs[2]) radio('H265', 'h265', codecs[2]),
   ];
 }
 
