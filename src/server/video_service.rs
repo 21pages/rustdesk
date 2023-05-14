@@ -42,15 +42,18 @@ use hbb_common::{
         Mutex as TokioMutex,
     },
 };
+#[cfg(feature = "gpucodec")]
+use scrap::gpucodec::{GpuEncoder, GpuEncoderConfig};
+#[cfg(feature = "hwcodec")]
+use scrap::hwcodec::{HwEncoder, HwEncoderConfig};
 #[cfg(not(windows))]
 use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
-    codec::{Encoder, EncoderCfg, HwEncoderConfig, Quality},
-    convert_to_yuv,
+    codec::{Encoder, EncoderCfg, EncodingUpdate, Quality},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
-    CodecName, Display, Frame, TraitCapturer, TraitFrame,
+    CodecName, Display, Frame, TraitCapturer,
 };
 #[cfg(windows)]
 use std::sync::Once;
@@ -72,6 +75,7 @@ lazy_static::lazy_static! {
     pub static ref VIDEO_QOS: Arc<Mutex<VideoQoS>> = Default::default();
     pub static ref IS_UAC_RUNNING: Arc<Mutex<bool>> = Default::default();
     pub static ref IS_FOREGROUND_WINDOW_ELEVATED: Arc<Mutex<bool>> = Default::default();
+    static ref RUNNING_DISPLAYS: Mutex<Vec<usize>> = Default::default();
 }
 
 #[inline]
@@ -363,6 +367,7 @@ fn get_capturer(current: usize, portable_service_running: bool) -> ResultType<Ca
 }
 
 fn run(vs: VideoService) -> ResultType<()> {
+    let _raii = Raii::new(vs.idx);
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
     // ensure_inited() is needed because clear() may be called.
@@ -393,18 +398,27 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut quality = video_qos.quality();
     let abr = VideoQoS::abr_enabled();
     log::info!("initial quality: {quality:?}, abr enabled: {abr}");
-    let codec_name = Encoder::negotiated_codec();
-    let recorder = get_recorder(c.width, c.height, &codec_name);
-    let last_recording = recorder.lock().unwrap().is_some() || video_qos.record();
+    let record_incoming = !Config::get_option("allow-auto-record-incoming").is_empty();
+    let client_record = video_qos.record();
     drop(video_qos);
-    let encoder_cfg = get_encoder_config(&c, quality, last_recording);
-
+    let encoder_cfg = get_encoder_config(
+        &c,
+        display_idx,
+        quality,
+        client_record || record_incoming,
+        last_portable_service_running,
+    );
+    Encoder::set_fallback(&encoder_cfg);
+    let codec_name = Encoder::negotiated_codec();
+    let recorder = get_recorder(c.width, c.height, &codec_name, record_incoming);
     let mut encoder;
     let use_i444 = Encoder::use_i444(&encoder_cfg);
     match Encoder::new(encoder_cfg.clone(), use_i444) {
         Ok(x) => encoder = x,
         Err(err) => bail!("Failed to create encoder: {}", err),
     }
+    #[cfg(feature = "gpucodec")]
+    c.set_output_texture(encoder.input_texture());
     VIDEO_QOS.lock().unwrap().store_bitrate(encoder.bitrate());
 
     if sp.is_option_true(OPTION_REFRESH) {
@@ -439,8 +453,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             allow_err!(encoder.set_quality(quality));
             video_qos.store_bitrate(encoder.bitrate());
         }
-        let recording = recorder.lock().unwrap().is_some() || video_qos.record();
-        if recording != last_recording {
+        if client_record != video_qos.record() {
             bail!("SWITCH");
         }
         drop(video_qos);
@@ -457,6 +470,11 @@ fn run(vs: VideoService) -> ResultType<()> {
             bail!("SWITCH");
         }
         if Encoder::use_i444(&encoder_cfg) != use_i444 {
+            bail!("SWITCH");
+        }
+        #[cfg(all(windows, feature = "gpucodec"))]
+        if c.is_gdi() && (codec_name == CodecName::H264GPU || codec_name == CodecName::H265GPU) {
+            log::info!("changed to gdi when using gpucodec");
             bail!("SWITCH");
         }
         check_privacy_mode_changed(&sp, c.privacy_mode_id)?;
@@ -482,7 +500,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             Ok(frame) => {
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
-                if frame.data().len() != 0 {
+                if frame.valid() {
                     let send_conn_ids = handle_one_frame(
                         display_idx,
                         &sp,
@@ -576,36 +594,185 @@ fn run(vs: VideoService) -> ResultType<()> {
     Ok(())
 }
 
-fn get_encoder_config(c: &CapturerInfo, quality: Quality, recording: bool) -> EncoderCfg {
+struct Raii(usize);
+
+impl Raii {
+    fn new(display_idx: usize) -> Self {
+        let mut displays = RUNNING_DISPLAYS.lock().unwrap();
+        if !displays.contains(&display_idx) {
+            displays.push(display_idx)
+        }
+        Raii(display_idx)
+    }
+}
+
+impl Drop for Raii {
+    fn drop(&mut self) {
+        RUNNING_DISPLAYS.lock().unwrap().retain(|i| *i != self.0);
+        #[cfg(feature = "gpucodec")]
+        if RUNNING_DISPLAYS.lock().unwrap().is_empty() {
+            GpuEncoder::set_adapter_luid(None);
+        }
+        #[cfg(feature = "gpucodec")]
+        GpuEncoder::set_not_use(self.0, false);
+    }
+}
+
+fn get_encoder_config(
+    c: &CapturerInfo,
+    display_idx: usize,
+    quality: Quality,
+    record: bool,
+    _portable_service: bool,
+) -> EncoderCfg {
+    #[cfg(all(windows, feature = "gpucodec"))]
+    if _portable_service || c.is_gdi() {
+        log::info!("gdi:{}, portable:{}", c.is_gdi(), _portable_service);
+        GpuEncoder::set_not_use(display_idx, true);
+    }
+    #[cfg(feature = "gpucodec")]
+    {
+        let mut gpucodec_luid = None;
+        if let Ok(displays) = Display::all() {
+            let capture_luid = Some(c.device().luid);
+            let all_running_displays_have_same_luid = displays
+                .iter()
+                .enumerate()
+                .filter(|(idx, _)| RUNNING_DISPLAYS.lock().unwrap().contains(idx))
+                .all(|(_, d)| d.adapter_luid() == capture_luid);
+            if all_running_displays_have_same_luid && !displays.is_empty() {
+                gpucodec_luid = capture_luid;
+            } else {
+                let luids: Vec<_> = displays.iter().map(|d| d.adapter_luid()).collect();
+                log::info!("Not all running displays have the same luid, capture:{capture_luid:?}, displays:{luids:?}");
+            }
+        }
+        GpuEncoder::set_adapter_luid(gpucodec_luid);
+        Encoder::update(EncodingUpdate::Check);
+    }
     // https://www.wowza.com/community/t/the-correct-keyframe-interval-in-obs-studio/95162
-    let keyframe_interval = if recording { Some(240) } else { None };
-    match Encoder::negotiated_codec() {
-        scrap::CodecName::H264(name) | scrap::CodecName::H265(name) => {
-            EncoderCfg::HW(HwEncoderConfig {
-                name,
-                width: c.width,
-                height: c.height,
-                quality,
+    let keyframe_interval = if record { Some(240) } else { None };
+    let negotiated_codec = Encoder::negotiated_codec();
+    match negotiated_codec.clone() {
+        CodecName::H264GPU | CodecName::H265GPU => {
+            #[cfg(feature = "gpucodec")]
+            if let Some(feature) = GpuEncoder::try_get(&c.device(), negotiated_codec.clone()) {
+                EncoderCfg::GPU(GpuEncoderConfig {
+                    device: c.device(),
+                    width: c.width,
+                    height: c.height,
+                    quality,
+                    feature,
+                    keyframe_interval,
+                })
+            } else {
+                handle_hw_encoder(
+                    negotiated_codec.clone(),
+                    c.width,
+                    c.height,
+                    quality as _,
+                    keyframe_interval,
+                )
+            }
+            #[cfg(not(feature = "gpucodec"))]
+            handle_hw_encoder(
+                negotiated_codec.clone(),
+                c.width,
+                c.height,
+                quality as _,
                 keyframe_interval,
-            })
+            )
         }
-        name @ (scrap::CodecName::VP8 | scrap::CodecName::VP9) => {
-            EncoderCfg::VPX(VpxEncoderConfig {
-                width: c.width as _,
-                height: c.height as _,
-                quality,
-                codec: if name == scrap::CodecName::VP8 {
-                    VpxVideoCodecId::VP8
-                } else {
-                    VpxVideoCodecId::VP9
-                },
-                keyframe_interval,
-            })
-        }
-        scrap::CodecName::AV1 => EncoderCfg::AOM(AomEncoderConfig {
+        CodecName::H264HW(_name) | CodecName::H265HW(_name) => handle_hw_encoder(
+            negotiated_codec.clone(),
+            c.width,
+            c.height,
+            quality as _,
+            keyframe_interval,
+        ),
+        name @ (CodecName::VP8 | CodecName::VP9) => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
             height: c.height as _,
             quality,
+            codec: if name == CodecName::VP8 {
+                VpxVideoCodecId::VP8
+            } else {
+                VpxVideoCodecId::VP9
+            },
+            keyframe_interval,
+        }),
+        CodecName::AV1 => EncoderCfg::AOM(AomEncoderConfig {
+            width: c.width as _,
+            height: c.height as _,
+            quality,
+            keyframe_interval,
+        }),
+    }
+}
+
+fn handle_hw_encoder(
+    _name: CodecName,
+    width: usize,
+    height: usize,
+    quality: Quality,
+    keyframe_interval: Option<usize>,
+) -> EncoderCfg {
+    let f = || {
+        #[cfg(feature = "hwcodec")]
+        match _name {
+            CodecName::H264GPU | CodecName::H265GPU => {
+                if !scrap::codec::enable_hwcodec_option() {
+                    return Err(());
+                }
+                let is_h265 = _name == CodecName::H265GPU;
+                let best = HwEncoder::best();
+                if let Some(h264) = best.h264 {
+                    if !is_h265 {
+                        return Ok(EncoderCfg::HW(HwEncoderConfig {
+                            name: h264.name,
+                            width,
+                            height,
+                            quality,
+                            keyframe_interval,
+                        }));
+                    }
+                }
+                if let Some(h265) = best.h265 {
+                    if is_h265 {
+                        return Ok(EncoderCfg::HW(HwEncoderConfig {
+                            name: h265.name,
+                            width,
+                            height,
+                            quality,
+                            keyframe_interval,
+                        }));
+                    }
+                }
+            }
+            CodecName::H264HW(name) | CodecName::H265HW(name) => {
+                return Ok(EncoderCfg::HW(HwEncoderConfig {
+                    name,
+                    width,
+                    height,
+                    quality,
+                    keyframe_interval,
+                }));
+            }
+            _ => {
+                return Err(());
+            }
+        };
+
+        Err(())
+    };
+
+    match f() {
+        Ok(cfg) => cfg,
+        _ => EncoderCfg::VPX(VpxEncoderConfig {
+            width: width as _,
+            height: height as _,
+            quality,
+            codec: VpxVideoCodecId::VP9,
             keyframe_interval,
         }),
     }
@@ -615,8 +782,9 @@ fn get_recorder(
     width: usize,
     height: usize,
     codec_name: &CodecName,
+    record_incoming: bool,
 ) -> Arc<Mutex<Option<Recorder>>> {
-    let recorder = if !Config::get_option("allow-auto-record-incoming").is_empty() {
+    let recorder = if record_incoming {
         use crate::hbbs_http::record_upload;
 
         let tx = if record_upload::is_enable() {
@@ -678,18 +846,26 @@ fn handle_one_frame(
         Ok(())
     })?;
 
+    let frame = frame.to(encoder.yuvfmt(), yuv, mid_data)?;
     let mut send_conn_ids: HashSet<i32> = Default::default();
-    convert_to_yuv(&frame, encoder.yuvfmt(), yuv, mid_data)?;
-    if let Ok(mut vf) = encoder.encode_to_message(yuv, ms) {
-        vf.display = display as _;
-        let mut msg = Message::new();
-        msg.set_video_frame(vf);
-        recorder
-            .lock()
-            .unwrap()
-            .as_mut()
-            .map(|r| r.write_message(&msg));
-        send_conn_ids = sp.send_video_frame(msg);
+    match encoder.encode_to_message(frame, ms) {
+        Ok(mut vf) => {
+            vf.display = display as _;
+            let mut msg = Message::new();
+            msg.set_video_frame(vf);
+            recorder
+                .lock()
+                .unwrap()
+                .as_mut()
+                .map(|r| r.write_message(&msg));
+            send_conn_ids = sp.send_video_frame(msg);
+        }
+        Err(e) => match e.to_string().as_str() {
+            scrap::codec::ENCODE_NEED_SWITCH => {
+                bail!("SWITCH");
+            }
+            _ => {}
+        },
     }
     Ok(send_conn_ids)
 }
