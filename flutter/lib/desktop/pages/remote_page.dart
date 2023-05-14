@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'dart:ui';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_custom_cursor/cursor_manager.dart'
     as custom_cursor_manager;
+import 'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock/wakelock.dart';
@@ -64,7 +66,8 @@ class _RemotePageState extends State<RemotePage>
   late RxBool _zoomCursor;
   late RxBool _remoteCursorMoved;
   late RxBool _keyboardEnabled;
-  late RxInt _textureId;
+  late RxInt _rgbaTextureId;
+  late RxInt _gpuTextureId;
   late int _textureKey;
   final useTextureRender = bind.mainUseTextureRender();
 
@@ -76,14 +79,17 @@ class _RemotePageState extends State<RemotePage>
 
   late FFI _ffi;
 
+  // late final FlutterGpuTextureRenderer gpuTextureRenderer;
+
   void _initStates(String id) {
     initSharedStates(id);
     _zoomCursor = PeerBoolOption.find(id, 'zoom-cursor');
     _showRemoteCursor = ShowRemoteCursorState.find(id);
     _keyboardEnabled = KeyboardEnabledState.find(id);
     _remoteCursorMoved = RemoteCursorMovedState.find(id);
-    _textureKey = newTextureId;
-    _textureId = RxInt(-1);
+    _textureKey = newRgbaTextureId;
+    _rgbaTextureId = RxInt(-1);
+    _gpuTextureId = RxInt(-1);
   }
 
   @override
@@ -96,6 +102,7 @@ class _RemotePageState extends State<RemotePage>
       showKBLayoutTypeChooserIfNeeded(
           _ffi.ffiModel.pi.platform, _ffi.dialogManager);
     });
+
     _ffi.start(
       widget.id,
       password: widget.password,
@@ -110,16 +117,29 @@ class _RemotePageState extends State<RemotePage>
     if (!Platform.isLinux) {
       Wakelock.enable();
     }
+
     // Register texture.
-    _textureId.value = -1;
+    _rgbaTextureId.value = -1;
     if (useTextureRender) {
-      textureRenderer.createTexture(_textureKey).then((id) async {
+      rgbaTextureRenderer.createTexture(_textureKey).then((id) async {
         debugPrint("id: $id, texture_key: $_textureKey");
         if (id != -1) {
-          final ptr = await textureRenderer.getTexturePtr(_textureKey);
-          platformFFI.registerTexture(widget.id, ptr);
-          _textureId.value = id;
+          final ptr = await rgbaTextureRenderer.getTexturePtr(_textureKey);
+          platformFFI.registerPixelbufferTexture(widget.id, ptr);
+          _rgbaTextureId.value = id;
         }
+      });
+      gpuTextureRenderer.registerTexture().then((id) async {
+        if (id != null) {
+          _gpuTextureId.value = id;
+          final output = await gpuTextureRenderer.output(id);
+
+          if (output != null) {
+            platformFFI.registerGpuTexture(widget.id, output);
+          }
+        }
+      }, onError: (err) {
+        print("========================err:$err");
       });
     }
     _ffi.ffiModel.updateEventListener(widget.id);
@@ -203,8 +223,10 @@ class _RemotePageState extends State<RemotePage>
   void dispose() {
     debugPrint("REMOTE PAGE dispose ${widget.id}");
     if (useTextureRender) {
-      platformFFI.registerTexture(widget.id, 0);
-      textureRenderer.closeTexture(_textureKey);
+      platformFFI.registerPixelbufferTexture(widget.id, 0);
+      rgbaTextureRenderer.closeTexture(_textureKey);
+      platformFFI.registerGpuTexture(widget.id, 0);
+      gpuTextureRenderer.unregisterTexture(_gpuTextureId.value);
     }
     // ensure we leave this session, this is a double check
     bind.sessionEnterOrLeave(id: widget.id, enter: false);
@@ -373,7 +395,7 @@ class _RemotePageState extends State<RemotePage>
           cursorOverImage: _cursorOverImage,
           keyboardEnabled: _keyboardEnabled,
           remoteCursorMoved: _remoteCursorMoved,
-          textureId: _textureId,
+          textureId: _gpuTextureId, //_rgbaTextureId,
           useTextureRender: useTextureRender,
           listenerBuilder: (child) =>
               _buildRawPointerMouseRegion(child, enterView, leaveView),

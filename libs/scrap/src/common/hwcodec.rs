@@ -1,6 +1,6 @@
 use crate::{
     codec::{EncoderApi, EncoderCfg},
-    hw, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
+    hw, CaptureOutputFormat, Frame, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
 };
 use hbb_common::{
     allow_err,
@@ -19,6 +19,7 @@ use hwcodec::{
     Quality::{self, *},
     RateControl::{self, *},
 };
+use std::ffi::c_void;
 
 const CFG_KEY_ENCODER: &str = "bestHwEncoders";
 const CFG_KEY_DECODER: &str = "bestHwDecoders";
@@ -80,9 +81,10 @@ impl EncoderApi for HwEncoder {
 
     fn encode_to_message(
         &mut self,
-        frame: &[u8],
+        frame: Frame,
         _ms: i64,
     ) -> ResultType<hbb_common::message_proto::Message> {
+        let frame = frame.pixelbuffer()?;
         let mut msg_out = Message::new();
         let mut vf = VideoFrame::new();
         let mut frames = Vec::new();
@@ -110,8 +112,8 @@ impl EncoderApi for HwEncoder {
         }
     }
 
-    fn use_yuv(&self) -> bool {
-        false
+    fn input_format(&self) -> CaptureOutputFormat {
+        CaptureOutputFormat::BGRA
     }
 
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {

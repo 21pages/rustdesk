@@ -6,12 +6,12 @@ use hbb_common::anyhow::{anyhow, Context};
 use hbb_common::message_proto::{EncodedVideoFrame, EncodedVideoFrames, Message, VideoFrame};
 use hbb_common::ResultType;
 
-use crate::STRIDE_ALIGN;
 use crate::{codec::EncoderApi, ImageFormat, ImageRgb};
+use crate::{CaptureOutputFormat, Frame, STRIDE_ALIGN};
 
 use super::vpx::{vp8e_enc_control_id::*, vpx_codec_err_t::*, *};
 use hbb_common::bytes::Bytes;
-use std::os::raw::{c_int, c_uint};
+use std::os::raw::{c_int, c_uint, c_void};
 use std::{ptr, slice};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -202,7 +202,8 @@ impl EncoderApi for VpxEncoder {
         }
     }
 
-    fn encode_to_message(&mut self, frame: &[u8], ms: i64) -> ResultType<Message> {
+    fn encode_to_message(&mut self, frame: Frame, ms: i64) -> ResultType<Message> {
+        let frame = frame.pixelbuffer()?;
         let mut frames = Vec::new();
         for ref frame in self
             .encode(ms, frame, STRIDE_ALIGN)
@@ -222,8 +223,8 @@ impl EncoderApi for VpxEncoder {
         }
     }
 
-    fn use_yuv(&self) -> bool {
-        true
+    fn input_format(&self) -> CaptureOutputFormat {
+        CaptureOutputFormat::I420
     }
 
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {

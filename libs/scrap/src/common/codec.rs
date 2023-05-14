@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::c_void,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
@@ -10,7 +11,9 @@ use crate::hwcodec::*;
 use crate::mediacodec::{
     MediaCodecDecoder, MediaCodecDecoders, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT,
 };
-use crate::{vpxcodec::*, CodecName, ImageRgb};
+#[cfg(feature = "texcodec")]
+use crate::texcodec::*;
+use crate::{vpxcodec::*, CaptureOutputFormat, CodecName, Frame, ImageRgb};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sysinfo::{System, SystemExt};
@@ -41,19 +44,33 @@ pub struct HwEncoderConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct TexEncoderConfig {
+    pub device: *mut c_void,
+    pub width: usize,
+    pub height: usize,
+    pub bitrate: i32,
+}
+
+#[derive(Debug)]
 pub enum EncoderCfg {
     VPX(VpxEncoderConfig),
     HW(HwEncoderConfig),
+    TEX(TexEncoderConfig),
 }
+
+// pub enum Frame<'a> {
+//     Frame(&'a u8),
+//     Texture(*mut c_void),
+// }
 
 pub trait EncoderApi {
     fn new(cfg: EncoderCfg) -> ResultType<Self>
     where
         Self: Sized;
 
-    fn encode_to_message(&mut self, frame: &[u8], ms: i64) -> ResultType<Message>;
+    fn encode_to_message(&mut self, frame: Frame, ms: i64) -> ResultType<Message>;
 
-    fn use_yuv(&self) -> bool;
+    fn input_format(&self) -> CaptureOutputFormat;
 
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()>;
 }
@@ -81,6 +98,8 @@ pub struct Decoder {
     vp9: VpxDecoder,
     #[cfg(feature = "hwcodec")]
     hw: HwDecoders,
+    #[cfg(feature = "texcodec")]
+    tex: TexDecoders,
     #[cfg(feature = "hwcodec")]
     i420: Vec<u8>,
     #[cfg(feature = "mediacodec")]
@@ -110,6 +129,16 @@ impl Encoder {
                 Err(e) => {
                     check_config_process();
                     *CODEC_NAME.lock().unwrap() = CodecName::VP9;
+                    Err(e)
+                }
+            },
+            #[cfg(feature = "texcodec")]
+            EncoderCfg::TEX(_) => match TexEncoder::new(config) {
+                Ok(tex) => Ok(Encoder {
+                    codec: Box::new(tex),
+                }),
+                Err(e) => {
+                    // todo
                     Err(e)
                 }
             },
@@ -256,7 +285,7 @@ impl Decoder {
         decoding
     }
 
-    pub fn new() -> Decoder {
+    pub fn new(device: *mut c_void) -> Decoder {
         let vp8 = VpxDecoder::new(VpxDecoderConfig {
             codec: VpxVideoCodecId::VP8,
             num_threads: (num_cpus::get() / 2) as _,
@@ -276,6 +305,8 @@ impl Decoder {
             } else {
                 HwDecoders::default()
             },
+            #[cfg(feature = "texcodec")]
+            tex: TexDecoder::new_decoders(device),
             #[cfg(feature = "hwcodec")]
             i420: vec![],
             #[cfg(feature = "mediacodec")]
@@ -292,6 +323,8 @@ impl Decoder {
         &mut self,
         frame: &video_frame::Union,
         rgb: &mut ImageRgb,
+        texture: &mut *mut c_void,
+        pixelbuffer: &mut bool,
     ) -> ResultType<bool> {
         match frame {
             video_frame::Union::Vp8s(vp8s) => {
@@ -300,18 +333,30 @@ impl Decoder {
             video_frame::Union::Vp9s(vp9s) => {
                 Decoder::handle_vpxs_video_frame(&mut self.vp9, vp9s, rgb)
             }
-            #[cfg(feature = "hwcodec")]
+            #[cfg(any(feature = "hwcodec", feature = "texcodec"))]
             video_frame::Union::H264s(h264s) => {
-                if let Some(decoder) = &mut self.hw.h264 {
-                    Decoder::handle_hw_video_frame(decoder, h264s, rgb, &mut self.i420)
+                // if let Some(decoder) = &mut self.hw.h264 {
+                //     Decoder::handle_hw_video_frame(decoder, h264s, rgb, &mut self.i420)
+                // } else {
+                //     Err(anyhow!("don't support h264!"))
+                // }
+                if let Some(decoder) = &mut self.tex.h264 {
+                    *pixelbuffer = false;
+                    Decoder::handle_tex_video_frame(decoder, h264s, texture)
                 } else {
                     Err(anyhow!("don't support h264!"))
                 }
             }
-            #[cfg(feature = "hwcodec")]
+            #[cfg(any(feature = "hwcodec", feature = "texcodec"))]
             video_frame::Union::H265s(h265s) => {
-                if let Some(decoder) = &mut self.hw.h265 {
-                    Decoder::handle_hw_video_frame(decoder, h265s, rgb, &mut self.i420)
+                // if let Some(decoder) = &mut self.hw.h265 {
+                //     Decoder::handle_hw_video_frame(decoder, h265s, rgb, &mut self.i420)
+                // } else {
+                //     Err(anyhow!("don't support h265!"))
+                // }
+                if let Some(decoder) = &mut self.tex.h265 {
+                    *pixelbuffer = false;
+                    Decoder::handle_tex_video_frame(decoder, h265s, texture)
                 } else {
                     Err(anyhow!("don't support h265!"))
                 }
@@ -376,6 +421,23 @@ impl Decoder {
                 if image.to_fmt(rgb, i420).is_ok() {
                     ret = true;
                 }
+            }
+        }
+        return Ok(ret);
+    }
+
+    #[cfg(feature = "hwcodec")]
+    fn handle_tex_video_frame(
+        decoder: &mut TexDecoder,
+        frames: &EncodedVideoFrames,
+        texture: &mut *mut c_void,
+    ) -> ResultType<bool> {
+        let mut ret = false;
+        for h26x in frames.frames.iter() {
+            for image in decoder.decode(&h26x.data)? {
+                *texture = image.frame.texture;
+                // log::info!("handle_tex_video_frame texture: {}", *texture as usize);
+                ret = true;
             }
         }
         return Ok(ret);
