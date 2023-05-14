@@ -63,6 +63,7 @@ pub fn stop_global_event_stream(app_type: String) {
 pub enum EventToUI {
     Event(String),
     Rgba,
+    Texture,
 }
 
 pub fn host_stop_system_key_propagate(_stopped: bool) {

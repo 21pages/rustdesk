@@ -53,3 +53,9 @@ gstreamer-video = { version = "0.16", optional = true }
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
 hwcodec = { git = "https://github.com/21pages/hwcodec", optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+#texcodec = { path = "D:/rustdesk/native_codec/texcodec", optional = true }
+#hw_common = { path = "D:/rustdesk/native_codec/hw_common" }
+texcodec = { git = "https://github.com/21pages/native_codec", optional = true }
+hw_common = { git = "https://github.com/21pages/native_codec" }

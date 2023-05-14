@@ -1,5 +1,10 @@
 pub use self::vpxcodec::*;
-use hbb_common::message_proto::{video_frame, VideoFrame};
+use hbb_common::{
+    anyhow::bail,
+    message_proto::{video_frame, VideoFrame},
+    ResultType,
+};
+use std::ffi::c_void;
 
 cfg_if! {
     if #[cfg(quartz)] {
@@ -36,6 +41,8 @@ pub mod convert;
 pub mod hwcodec;
 #[cfg(feature = "mediacodec")]
 pub mod mediacodec;
+#[cfg(feature = "texcodec")]
+pub mod texcodec;
 pub mod vpxcodec;
 pub use self::convert::*;
 pub const STRIDE_ALIGN: usize = 64; // commonly used in libvpx vpx_img_alloc caller
@@ -94,7 +101,7 @@ pub fn would_block_if_equal(old: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> 
 }
 
 pub trait TraitCapturer {
-    fn set_use_yuv(&mut self, use_yuv: bool);
+    fn set_output_format(&mut self, format: CaptureOutputFormat);
 
     // We doesn't support
     #[cfg(not(any(target_os = "ios")))]
@@ -104,6 +111,8 @@ pub trait TraitCapturer {
     fn is_gdi(&self) -> bool;
     #[cfg(windows)]
     fn set_gdi(&mut self) -> bool;
+
+    fn device(&self) -> *mut c_void;
 }
 
 #[cfg(x11)]
@@ -176,6 +185,29 @@ impl ToString for CodecFormat {
             CodecFormat::H264 => "H264".into(),
             CodecFormat::H265 => "H265".into(),
             CodecFormat::Unknown => "Unknow".into(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum CaptureOutputFormat {
+    I420,
+    BGRA,
+    Texture,
+}
+
+impl<'a> Frame<'a> {
+    pub fn pixelbuffer(&self) -> ResultType<&'a [u8]> {
+        match self {
+            Frame::PixelBuffer(f) => Ok(f.0),
+            _ => bail!("not pixelfbuffer frame"),
+        }
+    }
+
+    pub fn texture(&self) -> ResultType<*mut c_void> {
+        match self {
+            Frame::Texture(f) => Ok(*f),
+            _ => bail!("not texture frame"),
         }
     }
 }

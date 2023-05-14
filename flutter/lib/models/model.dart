@@ -1665,6 +1665,18 @@ class FFI {
               imageModel.onRgba(rgba);
             }
           }
+        } else if (message is EventToUI_Texture) {
+          if (useTextureRender) {
+            if (_waitForImage[id]!) {
+              _waitForImage[id] = false;
+              dialogManager.dismissAll();
+              for (final cb in imageModel.callbacksOnFirstImage) {
+                cb(id);
+              }
+              await canvasModel.updateViewStyle();
+              await canvasModel.updateScrollStyle();
+            }
+          }
         }
       }
       debugPrint('Exit session event loop');

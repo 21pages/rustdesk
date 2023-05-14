@@ -48,6 +48,7 @@ lazy_static::lazy_static! {
 #[cfg(all(target_os = "windows", feature = "flutter_texture_render"))]
 lazy_static::lazy_static! {
     pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> = Library::open("texture_rgba_renderer_plugin.dll");
+    pub static ref TEXTURE_GPU_RENDERER_PLUGIN: Result<Library, LibError> = Library::open("flutter_gpu_texture_renderer_plugin.dll");
 }
 
 #[cfg(all(target_os = "linux", feature = "flutter_texture_render"))]
@@ -173,15 +174,23 @@ pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
     dst_rgba_stride: c_int,
 );
 
+pub type FlutterGpuTextureRendererPluginCApiSetTexture =
+    unsafe extern "C" fn(output: *mut c_void, texture: *mut c_void);
+
+pub type FlutterGpuTextureRendererPluginCApiGetDevice = unsafe extern "C" fn() -> *mut c_void;
+
 // Video Texture Renderer in Flutter
 #[cfg(feature = "flutter_texture_render")]
 #[derive(Clone)]
 struct VideoRenderer {
     // TextureRgba pointer in flutter native.
-    ptr: usize,
+    rgba_ptr: usize,
     width: usize,
     height: usize,
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
+    gpu_output_ptr: usize,
+    gpu_device_ptr: usize,
+    on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
 }
 
 #[cfg(feature = "flutter_texture_render")]
@@ -205,11 +214,59 @@ impl Default for VideoRenderer {
                 None
             }
         };
+        let on_texture_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
+            Ok(lib) => {
+                let find_sym_res = unsafe {
+                    lib.symbol::<FlutterGpuTextureRendererPluginCApiSetTexture>(
+                        "FlutterGpuTextureRendererPluginCApiSetTexture",
+                    )
+                };
+                match find_sym_res {
+                    Ok(sym) => Some(sym),
+                    Err(e) => {
+                        log::error!("Failed to find symbol FlutterGpuTextureRendererPluginCApiSetTexture, {e}");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to load texture gpu renderer plugin, {e}");
+                None
+            }
+        };
+        let get_device_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
+            Ok(lib) => {
+                let find_sym_res = unsafe {
+                    lib.symbol::<FlutterGpuTextureRendererPluginCApiGetDevice>(
+                        "FlutterGpuTextureRendererPluginCApiGetDevice",
+                    )
+                };
+                match find_sym_res {
+                    Ok(sym) => Some(sym),
+                    Err(e) => {
+                        log::error!("Failed to find symbol FlutterGpuTextureRendererPluginCApiGetDevice, {e}");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to load texture gpu renderer plugin, {e}");
+                None
+            }
+        };
+        let gpu_device_ptr = match get_device_func {
+            Some(gpu_device_ptr) => unsafe { gpu_device_ptr() },
+            None => std::ptr::null_mut(),
+        };
+
         Self {
-            ptr: 0,
+            rgba_ptr: 0,
             width: 0,
             height: 0,
             on_rgba_func,
+            gpu_output_ptr: 0,
+            gpu_device_ptr: gpu_device_ptr as _,
+            on_texture_func,
         }
     }
 }
@@ -223,7 +280,7 @@ impl VideoRenderer {
     }
 
     pub fn on_rgba(&self, rgba: &mut scrap::ImageRgb) {
-        if self.ptr == usize::default() {
+        if self.rgba_ptr == usize::default() {
             return;
         }
 
@@ -235,7 +292,7 @@ impl VideoRenderer {
         if let Some(func) = &self.on_rgba_func {
             unsafe {
                 func(
-                    self.ptr as _,
+                    self.rgba_ptr as _,
                     rgba.raw.as_ptr() as _,
                     rgba.raw.len() as _,
                     rgba.w as _,
@@ -243,6 +300,15 @@ impl VideoRenderer {
                     rgba.stride() as _,
                 )
             };
+        }
+    }
+
+    pub fn on_texture(&self, texture: *mut c_void) {
+        if self.gpu_output_ptr == usize::default() {
+            return;
+        }
+        if let Some(func) = &self.on_texture_func {
+            unsafe { func(self.gpu_output_ptr as _, texture) };
         }
     }
 }
@@ -315,8 +381,16 @@ impl FlutterHandler {
 
     #[inline]
     #[cfg(feature = "flutter_texture_render")]
-    pub fn register_texture(&mut self, ptr: usize) {
-        self.renderer.write().unwrap().ptr = ptr;
+    pub fn register_pixelbuffer_texture(&mut self, ptr: usize) {
+        self.renderer.write().unwrap().rgba_ptr = ptr;
+    }
+
+    pub fn register_gpu_output(&mut self, output_ptr: usize) {
+        self.renderer.write().unwrap().gpu_output_ptr = output_ptr;
+    }
+
+    pub fn get_gpu_device(&self) -> *mut c_void {
+        self.renderer.read().unwrap().gpu_device_ptr as _
     }
 
     #[inline]
@@ -505,7 +579,7 @@ impl InvokeUiSession for FlutterHandler {
             match hook {
                 SessionHook::OnSessionRgba(cb) => {
                     cb(key.to_owned(), rgba);
-                },
+                }
             }
         }
         // If the current rgba is not fetched by flutter, i.e., is valid.
@@ -530,6 +604,19 @@ impl InvokeUiSession for FlutterHandler {
         }
         if let Some(stream) = &*self.event_stream.read().unwrap() {
             stream.add(EventToUI::Rgba);
+            *self.notify_rendered.write().unwrap() = true;
+        }
+    }
+
+    #[inline]
+    #[cfg(feature = "flutter_texture_render")]
+    fn on_texture(&self, texture: *mut c_void) {
+        self.renderer.read().unwrap().on_texture(texture);
+        // if *self.notify_rendered.read().unwrap() {
+        //     return;
+        // }
+        if let Some(stream) = &*self.event_stream.read().unwrap() {
+            stream.add(EventToUI::Texture);
             *self.notify_rendered.write().unwrap() = true;
         }
     }
@@ -725,7 +812,11 @@ pub fn session_add(
         .unwrap()
         .initialize(session_id, conn_type, switch_uuid, force_relay);
 
-    if let Some(same_id_session) = SESSIONS.write().unwrap().insert(id.to_owned(), session.clone()) {
+    if let Some(same_id_session) = SESSIONS
+        .write()
+        .unwrap()
+        .insert(id.to_owned(), session.clone())
+    {
         same_id_session.close();
     }
 
@@ -1019,11 +1110,11 @@ pub fn session_next_rgba(id: *const char) {
 #[inline]
 #[no_mangle]
 #[cfg(feature = "flutter_texture_render")]
-pub fn session_register_texture(id: *const char, ptr: usize) {
+pub fn session_register_pixelbuffer_texture(id: *const char, ptr: usize) {
     let id = unsafe { std::ffi::CStr::from_ptr(id as _) };
     if let Ok(id) = id.to_str() {
         if let Some(session) = SESSIONS.write().unwrap().get_mut(id) {
-            return session.register_texture(ptr);
+            return session.register_pixelbuffer_texture(ptr);
         }
     }
 }
@@ -1031,7 +1122,32 @@ pub fn session_register_texture(id: *const char, ptr: usize) {
 #[inline]
 #[no_mangle]
 #[cfg(not(feature = "flutter_texture_render"))]
-pub fn session_register_texture(_id: *const char, _ptr: usize) {}
+pub fn session_register_pixelbuffer_texture(_id: *const char, _ptr: usize, _pixelbuffer: bool) {}
+
+#[inline]
+#[no_mangle]
+#[cfg(feature = "flutter_texture_render")]
+pub fn session_register_gpu_texture(id: *const char, output_ptr: usize) {
+    let id = unsafe { std::ffi::CStr::from_ptr(id as _) };
+    if let Ok(id) = id.to_str() {
+        if let Some(session) = SESSIONS.write().unwrap().get_mut(id) {
+            return session.register_gpu_output(output_ptr);
+        }
+    }
+}
+
+#[inline]
+#[no_mangle]
+#[cfg(not(feature = "flutter_texture_render"))]
+pub fn session_register_gpu_texture(id: *const char, output_ptr: usize) {}
+
+pub fn session_get_gpu_device(id: &str) -> *mut c_void {
+    if let Some(session) = SESSIONS.write().unwrap().get_mut(id) {
+        return session.get_gpu_device();
+    }
+    log::error!("session_get_gpu_device failed");
+    return std::ptr::null_mut();
+}
 
 #[inline]
 pub fn push_session_event(peer: &str, name: &str, event: Vec<(&str, &str)>) -> Option<bool> {
