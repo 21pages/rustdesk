@@ -1492,6 +1492,26 @@ impl HwCodecConfig {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct GpucodecConfig {
+    #[serde(default, deserialize_with = "deserialize_string")]
+    pub available: String,
+}
+
+impl GpucodecConfig {
+    pub fn load() -> GpucodecConfig {
+        Config::load_::<GpucodecConfig>("_gpucodec")
+    }
+
+    pub fn store(&self) {
+        Config::store_(self, "_gpucodec");
+    }
+
+    pub fn clear() {
+        GpucodecConfig::default().store();
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct UserDefaultConfig {
     #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
     options: HashMap<String, String>,

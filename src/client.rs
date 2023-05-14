@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::c_void,
     net::SocketAddr,
     ops::Deref,
     str::FromStr,
@@ -156,7 +157,7 @@ pub fn get_key_state(key: enigo::Key) -> bool {
 cfg_if::cfg_if! {
     if #[cfg(target_os = "android")] {
 
-use hbb_common::libc::{c_float, c_int, c_void};
+use hbb_common::libc::{c_float, c_int};
 type Oboe = *mut c_void;
 extern "C" {
     fn create_oboe_player(channels: c_int, sample_rate: c_int) -> Oboe;
@@ -1021,6 +1022,7 @@ impl AudioHandler {
 pub struct VideoHandler {
     decoder: Decoder,
     pub rgb: ImageRgb,
+    pub texture: *mut c_void,
     recorder: Arc<Mutex<Option<Recorder>>>,
     record: bool,
     _display: usize, // useful for debug
@@ -1029,10 +1031,16 @@ pub struct VideoHandler {
 impl VideoHandler {
     /// Create a new video handler.
     pub fn new(_display: usize) -> Self {
+        #[cfg(all(feature = "gpucodec", feature = "flutter"))]
+        let luid = crate::flutter::get_adapter_luid();
+        #[cfg(not(all(feature = "gpucodec", feature = "flutter")))]
+        let luid = Default::default();
+        println!("new session_get_adapter_luid: {:?}", luid);
         log::info!("new video handler for display #{_display}");
         VideoHandler {
-            decoder: Decoder::new(),
+            decoder: Decoder::new(luid),
             rgb: ImageRgb::new(ImageFormat::ARGB, crate::DST_STRIDE_RGBA),
+            texture: std::ptr::null_mut(),
             recorder: Default::default(),
             record: false,
             _display,
@@ -1044,13 +1052,18 @@ impl VideoHandler {
     pub fn handle_frame(
         &mut self,
         vf: VideoFrame,
+        pixelbuffer: &mut bool,
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
         match &vf.union {
             Some(frame) => {
-                let res = self
-                    .decoder
-                    .handle_video_frame(frame, &mut self.rgb, chroma);
+                let res = self.decoder.handle_video_frame(
+                    frame,
+                    &mut self.rgb,
+                    &mut self.texture,
+                    pixelbuffer,
+                    chroma,
+                );
                 if self.record {
                     self.recorder
                         .lock()
@@ -1066,7 +1079,11 @@ impl VideoHandler {
 
     /// Reset the decoder.
     pub fn reset(&mut self) {
-        self.decoder = Decoder::new();
+        #[cfg(all(feature = "flutter", feature = "gpucodec"))]
+        let luid = crate::flutter::get_adapter_luid();
+        #[cfg(not(all(feature = "flutter", feature = "gpucodec")))]
+        let luid = None;
+        self.decoder = Decoder::new(luid);
     }
 
     /// Start or stop screen record.
@@ -1114,6 +1131,7 @@ pub struct LoginConfigHandler {
     pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub other_server: Option<(String, String, String)>,
     pub custom_fps: Arc<Mutex<Option<usize>>>,
+    pub adapter_luid: Option<i64>,
 }
 
 impl Deref for LoginConfigHandler {
@@ -1137,6 +1155,7 @@ impl LoginConfigHandler {
         conn_type: ConnType,
         switch_uuid: Option<String>,
         mut force_relay: bool,
+        adapter_luid: Option<i64>,
     ) {
         let mut id = id;
         if id.contains("@") {
@@ -1198,6 +1217,7 @@ impl LoginConfigHandler {
         self.direct = None;
         self.received = false;
         self.switch_uuid = switch_uuid;
+        self.adapter_luid = adapter_luid;
     }
 
     /// Check if the client should auto login.
@@ -1533,7 +1553,11 @@ impl LoginConfigHandler {
             n += 1;
         }
         msg.supported_decoding =
-            hbb_common::protobuf::MessageField::some(Decoder::supported_decodings(Some(&self.id)));
+            hbb_common::protobuf::MessageField::some(Decoder::supported_decodings(
+                Some(&self.id),
+                cfg!(feature = "flutter"),
+                self.adapter_luid,
+            ));
         n += 1;
 
         if n > 0 {
@@ -1839,6 +1863,7 @@ impl LoginConfigHandler {
         // no matter if change, for update file time
         self.save_config(config);
         self.supported_encoding = pi.encoding.clone().unwrap_or_default();
+        log::info!("peer info supported_encoding:{:?}", self.supported_encoding);
     }
 
     pub fn get_remote_dir(&self) -> String {
@@ -1913,7 +1938,11 @@ impl LoginConfigHandler {
     }
 
     pub fn change_prefer_codec(&self) -> Message {
-        let decoding = scrap::codec::Decoder::supported_decodings(Some(&self.id));
+        let decoding = scrap::codec::Decoder::supported_decodings(
+            Some(&self.id),
+            cfg!(feature = "flutter"),
+            self.adapter_luid,
+        );
         let mut misc = Misc::new();
         misc.set_option(OptionMessage {
             supported_decoding: hbb_common::protobuf::MessageField::some(decoding),
@@ -1969,13 +1998,14 @@ pub fn start_video_audio_threads<F, T>(
     Arc<RwLock<Option<Chroma>>>,
 )
 where
-    F: 'static + FnMut(usize, &mut scrap::ImageRgb) + Send,
+    F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool) + Send,
     T: InvokeUiSession,
 {
     let (video_sender, video_receiver) = mpsc::channel::<MediaData>();
     let video_queue_map: Arc<RwLock<HashMap<usize, ArrayQueue<VideoFrame>>>> = Default::default();
     let video_queue_map_cloned = video_queue_map.clone();
     let mut video_callback = video_callback;
+
     let fps_map = Arc::new(RwLock::new(HashMap::new()));
     let decode_fps_map = fps_map.clone();
     let chroma = Arc::new(RwLock::new(None));
@@ -2026,10 +2056,20 @@ where
                             }
                         }
                         if let Some(handler_controller) = handler_controller_map.get_mut(display) {
+                            let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
-                            match handler_controller.handler.handle_frame(vf, &mut tmp_chroma) {
+                            match handler_controller.handler.handle_frame(
+                                vf,
+                                &mut pixelbuffer,
+                                &mut tmp_chroma,
+                            ) {
                                 Ok(true) => {
-                                    video_callback(display, &mut handler_controller.handler.rgb);
+                                    video_callback(
+                                        display,
+                                        &mut handler_controller.handler.rgb,
+                                        handler_controller.handler.texture,
+                                        pixelbuffer,
+                                    );
 
                                     // chroma
                                     if tmp_chroma.is_some() && last_chroma != tmp_chroma {

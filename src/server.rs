@@ -89,16 +89,19 @@ pub type ServerPtr = Arc<RwLock<Server>>;
 pub type ServerPtrWeak = Weak<RwLock<Server>>;
 
 pub fn new() -> ServerPtr {
-    let mut server = Server {
+    let server = Server {
         connections: HashMap::new(),
         services: HashMap::new(),
         id_count: hbb_common::rand::random::<i32>() % 1000 + 1000, // ensure positive
     };
+    let server_ptr = Arc::new(RwLock::new(server));
+    let mut server = server_ptr.write().unwrap();
     server.add_service(Box::new(audio_service::new()));
     #[cfg(not(target_os = "ios"))]
     server.add_service(Box::new(display_service::new()));
     server.add_service(Box::new(video_service::new(
         *display_service::PRIMARY_DISPLAY_IDX,
+        Arc::downgrade(&server_ptr),
     )));
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -108,7 +111,8 @@ pub fn new() -> ServerPtr {
             server.add_service(Box::new(input_service::new_pos()));
         }
     }
-    Arc::new(RwLock::new(server))
+    drop(server);
+    server_ptr
 }
 
 async fn accept_connection_(server: ServerPtr, socket: Stream, secure: bool) -> ResultType<()> {
@@ -423,7 +427,9 @@ pub async fn start_server(is_server: bool) {
         log::info!("XAUTHORITY={:?}", std::env::var("XAUTHORITY"));
     }
     #[cfg(feature = "hwcodec")]
-    scrap::hwcodec::check_config_process();
+    scrap::hwcodec::hwcodec_new_check_process();
+    #[cfg(feature = "gpucodec")]
+    scrap::gpucodec::gpucodec_new_check_process();
     #[cfg(windows)]
     hbb_common::platform::windows::start_cpu_performance_monitor();
 

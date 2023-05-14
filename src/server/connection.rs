@@ -1115,7 +1115,9 @@ impl Connection {
             pi.platform_additions = serde_json::to_string(&platform_additions).unwrap_or("".into());
         }
 
-        pi.encoding = Some(scrap::codec::Encoder::supported_encoding()).into();
+        let supported_encoding = scrap::codec::Encoder::supported_encoding();
+        log::info!("peer info supported_encoding: {:?}", supported_encoding);
+        pi.encoding = Some(supported_encoding).into();
 
         if self.port_forward_socket.is_some() {
             let mut msg_out = Message::new();
@@ -1452,23 +1454,15 @@ impl Connection {
     }
 
     fn update_codec_on_login(&self) {
+        use scrap::codec::{Encoder, EncodingUpdate::*};
         if let Some(o) = self.lr.clone().option.as_ref() {
             if let Some(q) = o.supported_decoding.clone().take() {
-                scrap::codec::Encoder::update(
-                    self.inner.id(),
-                    scrap::codec::EncodingUpdate::New(q),
-                );
+                Encoder::update(New(self.inner.id(), q));
             } else {
-                scrap::codec::Encoder::update(
-                    self.inner.id(),
-                    scrap::codec::EncodingUpdate::NewOnlyVP9,
-                );
+                Encoder::update(NewOnlyVP9(self.inner.id()));
             }
         } else {
-            scrap::codec::Encoder::update(
-                self.inner.id(),
-                scrap::codec::EncodingUpdate::NewOnlyVP9,
-            );
+            Encoder::update(NewOnlyVP9(self.inner.id()));
         }
     }
 
@@ -2297,7 +2291,10 @@ impl Connection {
         let mut lock = server.write().unwrap();
         if display_idx != *display_service::PRIMARY_DISPLAY_IDX {
             if !lock.contains(&new_service_name) {
-                lock.add_service(Box::new(video_service::new(display_idx)));
+                lock.add_service(Box::new(video_service::new(
+                    display_idx,
+                    self.server.clone(),
+                )));
             }
         }
         // For versions greater than 1.2.4, a `CaptureDisplays` message will be sent immediately.
@@ -2337,13 +2334,13 @@ impl Connection {
             for display in add.iter() {
                 let service_name = video_service::get_service_name(*display);
                 if !lock.contains(&service_name) {
-                    lock.add_service(Box::new(video_service::new(*display)));
+                    lock.add_service(Box::new(video_service::new(*display, self.server.clone())));
                 }
             }
             for display in set.iter() {
                 let service_name = video_service::get_service_name(*display);
                 if !lock.contains(&service_name) {
-                    lock.add_service(Box::new(video_service::new(*display)));
+                    lock.add_service(Box::new(video_service::new(*display, self.server.clone())));
                 }
             }
             if !add.is_empty() {
@@ -2482,7 +2479,7 @@ impl Connection {
                 .user_custom_fps(self.inner.id(), o.custom_fps as _);
         }
         if let Some(q) = o.supported_decoding.clone().take() {
-            scrap::codec::Encoder::update(self.inner.id(), scrap::codec::EncodingUpdate::New(q));
+            scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::New(self.inner.id(), q));
         }
         if let Ok(q) = o.lock_after_session_end.enum_value() {
             if q != BoolOption::NotSet {
@@ -3228,7 +3225,7 @@ mod raii {
     impl Drop for AuthedConnID {
         fn drop(&mut self) {
             if self.1 == AuthConnType::Remote {
-                scrap::codec::Encoder::update(self.0, scrap::codec::EncodingUpdate::Remove);
+                scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::Remove(self.0));
             }
             let mut lock = AUTHED_CONNS.lock().unwrap();
             lock.retain(|&c| c.0 != self.0);
