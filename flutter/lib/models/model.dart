@@ -376,6 +376,7 @@ class FfiModel with ChangeNotifier {
 
   void reconnect(OverlayDialogManager dialogManager, SessionID sessionId,
       bool forceRelay) {
+    _waitForImage.remove(sessionId);
     bind.sessionReconnect(sessionId: sessionId, forceRelay: forceRelay);
     clearPermissions();
     dialogManager.showLoading(translate('Connecting...'),
@@ -478,10 +479,14 @@ class FfiModel with ChangeNotifier {
         _updateSessionWidthHeight(sessionId);
       }
       if (displays.isNotEmpty) {
-        parent.target?.dialogManager.showLoading(
-            translate('Connected, waiting for image...'),
-            onCancel: closeConnection);
-        _waitForImage[sessionId] = true;
+        if (_waitForImage[sessionId] == null) {
+          debugPrint("show waiting for image");
+          parent.target?.dialogManager.showLoading(
+              translate('Connected, waiting for image...'),
+              onCancel: closeConnection);
+          _waitForImage[sessionId] = true;
+          bind.sessionOnWaitingForImageDialogShow(sessionId: sessionId);
+        }
         _reconnects = 1;
       }
       Map<String, dynamic> features = json.decode(evt['features']);
@@ -706,6 +711,33 @@ class ImageModel with ChangeNotifier {
     final xscale = size.width / _image!.width;
     final yscale = size.height / _image!.height;
     return min(xscale, yscale) / 1.5;
+  }
+
+  RxInt textureID = (-1).obs;
+
+  int _rgbaTextureId = -1;
+  int get rgbaTextureId => _rgbaTextureId;
+  int _gpuTextureId = -1;
+  int get gpuTextureId => _gpuTextureId;
+  bool _isGpuTexture = false;
+  bool get isGpuTexture => _isGpuTexture;
+
+  setTextureType({bool gpuTexture = false}) {
+    debugPrint("setTextureType:isGpuTexture:$gpuTexture");
+    _isGpuTexture = gpuTexture;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
+  }
+
+  setRgbaTextureId(int id) {
+    debugPrint("setRgbaTextureId:$id");
+    _rgbaTextureId = id;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
+  }
+
+  setGpuTextureId(int id) {
+    debugPrint("setGpuTextureId:$id");
+    _gpuTextureId = id;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
   }
 }
 
@@ -1650,7 +1682,8 @@ class FFI {
     );
     final stream = bind.sessionStart(sessionId: sessionId, id: id);
     final cb = ffiModel.startEventListener(sessionId, id);
-    final useTextureRender = bind.mainUseTextureRender();
+    final hasPixelBufferTextureRender = bind.mainHasPixelbufferTextureRender();
+    final hasGpuTextureRender = bind.mainHasGpuTextureRender();
     // Preserved for the rgba data.
     stream.listen((message) {
       if (closed) return;
@@ -1672,8 +1705,9 @@ class FFI {
             await cb(event);
           }
         } else if (message is EventToUI_Rgba) {
-          if (useTextureRender) {
-            if (_waitForImage[sessionId]!) {
+          if (hasPixelBufferTextureRender) {
+            imageModel.setTextureType(gpuTexture: false);
+            if (_waitForImage[sessionId] != false) {
               _waitForImage[sessionId] = false;
               dialogManager.dismissAll();
               for (final cb in imageModel.callbacksOnFirstImage) {
@@ -1691,6 +1725,19 @@ class FFI {
             final rgba = platformFFI.getRgba(sessionId, sz);
             if (rgba != null) {
               imageModel.onRgba(rgba);
+            }
+          }
+        } else if (message is EventToUI_Texture) {
+          if (hasGpuTextureRender) {
+            imageModel.setTextureType(gpuTexture: true);
+            if (_waitForImage[sessionId] != false) {
+              _waitForImage[sessionId] = false;
+              dialogManager.dismissAll();
+              for (final cb in imageModel.callbacksOnFirstImage) {
+                cb(id);
+              }
+              await canvasModel.updateViewStyle();
+              await canvasModel.updateScrollStyle();
             }
           }
         }

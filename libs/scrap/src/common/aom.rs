@@ -7,8 +7,10 @@
 include!(concat!(env!("OUT_DIR"), "/aom_ffi.rs"));
 
 use crate::codec::{base_bitrate, codec_thread_num, Quality};
-use crate::{codec::EncoderApi, EncodeFrame, STRIDE_ALIGN};
-use crate::{common::GoogleImage, generate_call_macro, generate_call_ptr_macro, Error, Result};
+use crate::{
+    codec::EncoderApi, common::GoogleImage, generate_call_macro, generate_call_ptr_macro,
+    CaptureOutputFormat, EncodeFrame, Error, Frame, Result, STRIDE_ALIGN,
+};
 use hbb_common::{
     anyhow::{anyhow, Context},
     bytes::Bytes,
@@ -234,7 +236,8 @@ impl EncoderApi for AomEncoder {
         }
     }
 
-    fn encode_to_message(&mut self, frame: &[u8], ms: i64) -> ResultType<Message> {
+    fn encode_to_message(&mut self, frame: Frame, ms: i64) -> ResultType<Message> {
+        let frame = frame.pixelbuffer()?;
         let mut frames = Vec::new();
         for ref frame in self
             .encode(ms, frame, STRIDE_ALIGN)
@@ -249,8 +252,8 @@ impl EncoderApi for AomEncoder {
         }
     }
 
-    fn use_yuv(&self) -> bool {
-        true
+    fn input_format(&self) -> CaptureOutputFormat {
+        CaptureOutputFormat::I420
     }
 
     fn set_quality(&mut self, quality: Quality) -> ResultType<()> {

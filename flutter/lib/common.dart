@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/main.dart';
@@ -48,9 +49,11 @@ var version = "";
 int androidVersion = 0;
 
 /// Incriment count for textureId.
-int _textureId = 0;
-int get newTextureId => _textureId++;
-final textureRenderer = TextureRgbaRenderer();
+int _rgbaTextureId = 0;
+int get newRgbaTextureId => _rgbaTextureId++;
+final rgbaTextureRenderer = TextureRgbaRenderer();
+
+final gpuTextureRenderer = FlutterGpuTextureRenderer();
 
 /// only available for Windows target
 int windowsBuildNumber = 0;

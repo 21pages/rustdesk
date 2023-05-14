@@ -1,5 +1,8 @@
-use crate::{common::TraitCapturer, x11};
-use std::{io, ops, time::Duration};
+use crate::{
+    common::{CaptureOutputFormat, TraitCapturer},
+    x11,
+};
+use std::{ffi::c_void, io, ops, time::Duration};
 
 pub struct Capturer(x11::Capturer);
 
@@ -20,18 +23,24 @@ impl Capturer {
 }
 
 impl TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
+    fn set_output_format(&mut self, format: CaptureOutputFormat) {
+        let use_yuv = format == CaptureOutputFormat::I420;
         self.0.set_use_yuv(use_yuv);
     }
 
     fn frame<'a>(&'a mut self, _timeout: Duration) -> io::Result<Frame<'a>> {
-        Ok(Frame(self.0.frame()?))
+        Ok(Frame::PixelBuffer(PixelBuffer(self.0.frame()?)))
     }
 }
 
-pub struct Frame<'a>(pub &'a [u8]);
+pub enum Frame<'a> {
+    PixelBuffer(PixelBuffer<'a>),
+    Texture(*mut c_void),
+}
 
-impl<'a> ops::Deref for Frame<'a> {
+pub struct PixelBuffer<'a>(pub &'a [u8]);
+
+impl<'a> ops::Deref for PixelBuffer<'a> {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
         self.0

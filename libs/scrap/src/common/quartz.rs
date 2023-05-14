@@ -1,18 +1,18 @@
-use crate::quartz;
+use crate::{quartz, CaptureOutputFormat};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
-use std::{io, mem, ops};
+use std::{io, mem, ops, ffi::c_void};
 
 pub struct Capturer {
     inner: quartz::Capturer,
     frame: Arc<Mutex<Option<quartz::Frame>>>,
-    use_yuv: bool,
+    format: CaptureOutputFormat,
     i420: Vec<u8>,
     saved_raw_data: Vec<u8>, // for faster compare and copy
 }
 
 impl Capturer {
-    pub fn new(display: Display, use_yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, format: CaptureOutputFormat) -> io::Result<Capturer> {
         let frame = Arc::new(Mutex::new(None));
 
         let f = frame.clone();
@@ -20,7 +20,7 @@ impl Capturer {
             display.0,
             display.width(),
             display.height(),
-            if use_yuv {
+            if format == CaptureOutputFormat::I420 {
                 quartz::PixelFormat::YCbCr420Video
             } else {
                 quartz::PixelFormat::Argb8888
@@ -37,7 +37,7 @@ impl Capturer {
         Ok(Capturer {
             inner,
             frame,
-            use_yuv,
+            format,
             i420: Vec::new(),
             saved_raw_data: Vec::new(),
         })
@@ -53,8 +53,8 @@ impl Capturer {
 }
 
 impl crate::TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.use_yuv = use_yuv;
+    fn set_output_format(&mut self, format: CaptureOutputFormat) {
+        self.format = format;
     }
 
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
@@ -66,10 +66,10 @@ impl crate::TraitCapturer for Capturer {
                 match frame {
                     Some(mut frame) => {
                         crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())?;
-                        if self.use_yuv {
+                        if self.format == CaptureOutputFormat::I420 {
                             frame.nv12_to_i420(self.width(), self.height(), &mut self.i420);
                         }
-                        Ok(Frame(frame, PhantomData))
+                        Ok(Frame::PixelBuffer(PixelBuffer(frame, PhantomData)))
                     }
 
                     None => Err(io::ErrorKind::WouldBlock.into()),
@@ -83,9 +83,14 @@ impl crate::TraitCapturer for Capturer {
     }
 }
 
-pub struct Frame<'a>(pub quartz::Frame, PhantomData<&'a [u8]>);
+pub enum Frame<'a> {
+    PixelBuffer(PixelBuffer<'a>),
+    Texture(*mut c_void),
+}
 
-impl<'a> ops::Deref for Frame<'a> {
+pub struct PixelBuffer<'a>(pub quartz::Frame, PhantomData<&'a [u8]>);
+
+impl<'a> ops::Deref for PixelBuffer<'a> {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
         &*self.0

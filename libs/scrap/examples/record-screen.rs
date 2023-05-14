@@ -136,7 +136,7 @@ fn main() -> io::Result<()> {
     let spf = Duration::from_nanos(1_000_000_000 / args.flag_fps);
 
     // Capturer object is expensive, avoiding to create it frequently.
-    let mut c = Capturer::new(d, true).unwrap();
+    let mut c = Capturer::new(d, scrap::CaptureOutputFormat::I420).unwrap();
     while !stop.load(Ordering::Acquire) {
         let now = Instant::now();
         let time = now - start;
@@ -148,6 +148,7 @@ fn main() -> io::Result<()> {
         if let Ok(frame) = c.frame(Duration::from_millis(0)) {
             let ms = time.as_secs() * 1000 + time.subsec_millis() as u64;
 
+            let frame = frame.pixelbuffer().unwrap();
             for frame in vpx.encode(ms as i64, &frame, STRIDE_ALIGN).unwrap() {
                 vt.add_frame(frame.data, frame.pts as u64 * 1_000_000, frame.key);
             }

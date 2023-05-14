@@ -63,6 +63,7 @@ pub fn stop_global_event_stream(app_type: String) {
 pub enum EventToUI {
     Event(String),
     Rgba,
+    Texture,
 }
 
 pub fn host_stop_system_key_propagate(_stopped: bool) {
@@ -1172,6 +1173,12 @@ pub fn session_change_prefer_codec(session_id: SessionID) {
     }
 }
 
+pub fn session_on_waiting_for_image_dialog_show(session_id: SessionID) {
+    if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
+        session.ui_handler.on_waiting_for_image_dialog_show();
+    }
+}
+
 pub fn main_set_home_dir(_home: String) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
@@ -1463,12 +1470,23 @@ pub fn main_hide_docker() -> SyncReturn<bool> {
     SyncReturn(true)
 }
 
-pub fn main_use_texture_render() -> SyncReturn<bool> {
+pub fn main_has_pixelbuffer_texture_render() -> SyncReturn<bool> {
     #[cfg(not(feature = "flutter_texture_render"))]
     {
         SyncReturn(false)
     }
     #[cfg(feature = "flutter_texture_render")]
+    {
+        SyncReturn(true)
+    }
+}
+
+pub fn main_has_gpu_texture_render() -> SyncReturn<bool> {
+    #[cfg(not(feature = "gpu_video_codec"))]
+    {
+        SyncReturn(false)
+    }
+    #[cfg(feature = "gpu_video_codec")]
     {
         SyncReturn(true)
     }

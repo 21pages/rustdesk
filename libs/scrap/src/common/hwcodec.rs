@@ -1,6 +1,6 @@
 use crate::{
     codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg},
-    hw, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
+    hw, CaptureOutputFormat, Frame, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
 };
 use hbb_common::{
     allow_err,
@@ -93,9 +93,10 @@ impl EncoderApi for HwEncoder {
 
     fn encode_to_message(
         &mut self,
-        frame: &[u8],
+        frame: Frame,
         _ms: i64,
     ) -> ResultType<hbb_common::message_proto::Message> {
+        let frame = frame.pixelbuffer()?;
         let mut msg_out = Message::new();
         let mut vf = VideoFrame::new();
         let mut frames = Vec::new();
@@ -123,8 +124,8 @@ impl EncoderApi for HwEncoder {
         }
     }
 
-    fn use_yuv(&self) -> bool {
-        false
+    fn input_format(&self) -> CaptureOutputFormat {
+        CaptureOutputFormat::BGRA
     }
 
     fn set_quality(&mut self, quality: crate::codec::Quality) -> ResultType<()> {
@@ -231,7 +232,7 @@ impl HwDecoder {
             }
         }
         if fail {
-            check_config_process();
+            hwcodec_new_check_process();
         }
         HwDecoders { h264, h265 }
     }
@@ -325,7 +326,7 @@ fn get_config(k: &str) -> ResultType<CodecInfos> {
     }
 }
 
-pub fn check_config() {
+pub fn check_available_hwcodec() {
     let ctx = EncodeContext {
         name: String::from(""),
         width: 1920,
@@ -362,7 +363,7 @@ pub fn check_config() {
     log::error!("Failed to serialize codec info");
 }
 
-pub fn check_config_process() {
+pub fn hwcodec_new_check_process() {
     use hbb_common::sysinfo::{ProcessExt, System, SystemExt};
     use std::sync::Once;
     let f = || {

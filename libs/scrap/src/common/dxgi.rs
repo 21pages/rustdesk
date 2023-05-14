@@ -1,5 +1,8 @@
-use crate::{common::TraitCapturer, dxgi};
+#[cfg(feature = "gpu_video_codec")]
+use crate::AdapterDevice;
+use crate::{common::TraitCapturer, dxgi, CaptureOutputFormat};
 use std::{
+    ffi::c_void,
     io::{
         self,
         ErrorKind::{NotFound, TimedOut, WouldBlock},
@@ -15,10 +18,10 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new(display: Display, yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, format: CaptureOutputFormat) -> io::Result<Capturer> {
         let width = display.width();
         let height = display.height();
-        let inner = dxgi::Capturer::new(display.0, yuv)?;
+        let inner = dxgi::Capturer::new(display.0, format)?;
         Ok(Capturer {
             inner,
             width,
@@ -40,13 +43,13 @@ impl Capturer {
 }
 
 impl TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.inner.set_use_yuv(use_yuv);
+    fn set_output_format(&mut self, format: CaptureOutputFormat) {
+        self.inner.set_output_format(format);
     }
 
     fn frame<'a>(&'a mut self, timeout: Duration) -> io::Result<Frame<'a>> {
         match self.inner.frame(timeout.as_millis() as _) {
-            Ok(frame) => Ok(Frame(frame)),
+            Ok(frame) => Ok(frame),
             Err(ref error) if error.kind() == TimedOut => Err(WouldBlock.into()),
             Err(error) => Err(error),
         }
@@ -59,11 +62,21 @@ impl TraitCapturer for Capturer {
     fn set_gdi(&mut self) -> bool {
         self.inner.set_gdi()
     }
+
+    #[cfg(feature = "gpu_video_codec")]
+    fn device(&self) -> AdapterDevice {
+        self.inner.device()
+    }
 }
 
-pub struct Frame<'a>(pub &'a [u8]);
+pub enum Frame<'a> {
+    PixelBuffer(PixelBuffer<'a>),
+    Texture(*mut c_void),
+}
 
-impl<'a> ops::Deref for Frame<'a> {
+pub struct PixelBuffer<'a>(pub &'a [u8]);
+
+impl<'a> ops::Deref for PixelBuffer<'a> {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
         self.0
@@ -134,9 +147,14 @@ impl CapturerMag {
         dxgi::mag::CapturerMag::is_supported()
     }
 
-    pub fn new(origin: (i32, i32), width: usize, height: usize, use_yuv: bool) -> io::Result<Self> {
+    pub fn new(
+        origin: (i32, i32),
+        width: usize,
+        height: usize,
+        format: CaptureOutputFormat,
+    ) -> io::Result<Self> {
         Ok(CapturerMag {
-            inner: dxgi::mag::CapturerMag::new(origin, width, height, use_yuv)?,
+            inner: dxgi::mag::CapturerMag::new(origin, width, height, format)?,
             data: Vec::new(),
         })
     }
@@ -151,13 +169,13 @@ impl CapturerMag {
 }
 
 impl TraitCapturer for CapturerMag {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.inner.set_use_yuv(use_yuv)
+    fn set_output_format(&mut self, format: CaptureOutputFormat) {
+        self.inner.set_output_format(format)
     }
 
     fn frame<'a>(&'a mut self, _timeout_ms: Duration) -> io::Result<Frame<'a>> {
         self.inner.frame(&mut self.data)?;
-        Ok(Frame(&self.data))
+        Ok(Frame::PixelBuffer(PixelBuffer(&self.data)))
     }
 
     fn is_gdi(&self) -> bool {
@@ -166,5 +184,10 @@ impl TraitCapturer for CapturerMag {
 
     fn set_gdi(&mut self) -> bool {
         false
+    }
+
+    #[cfg(feature = "gpu_video_codec")]
+    fn device(&self) -> AdapterDevice {
+        AdapterDevice::default()
     }
 }
