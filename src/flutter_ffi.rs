@@ -73,6 +73,7 @@ pub fn stop_global_event_stream(app_type: String) {
 pub enum EventToUI {
     Event(String),
     Rgba(usize),
+    Texture(usize),
 }
 
 pub fn host_stop_system_key_propagate(_stopped: bool) {
@@ -1377,7 +1378,14 @@ pub fn session_send_note(session_id: SessionID, note: String) {
 
 pub fn session_alternative_codecs(session_id: SessionID) -> String {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        let (vp8, av1, h264, h265) = session.alternative_codecs();
+        #[allow(unused_mut)]
+        #[allow(unused_assignments)]
+        let mut luid = None;
+        #[cfg(feature = "gpucodec")]
+        {
+            luid = Some(flutter::get_adapter_luid());
+        }
+        let (vp8, av1, h264, h265) = session.alternative_codecs(luid);
         let msg = HashMap::from([("vp8", vp8), ("av1", av1), ("h264", h264), ("h265", h265)]);
         serde_json::ser::to_string(&msg).unwrap_or("".to_owned())
     } else {
@@ -1556,12 +1564,22 @@ pub fn session_next_rgba(session_id: SessionID, display: usize) -> SyncReturn<()
     SyncReturn(super::flutter::session_next_rgba(session_id, display))
 }
 
-pub fn session_register_texture(
+pub fn session_register_pixelbuffer_texture(
     session_id: SessionID,
     display: usize,
     ptr: usize,
 ) -> SyncReturn<()> {
-    SyncReturn(super::flutter::session_register_texture(
+    SyncReturn(super::flutter::session_register_pixelbuffer_texture(
+        session_id, display, ptr,
+    ))
+}
+
+pub fn session_register_gpu_texture(
+    session_id: SessionID,
+    display: usize,
+    ptr: usize,
+) -> SyncReturn<()> {
+    SyncReturn(super::flutter::session_register_gpu_texture(
         session_id, display, ptr,
     ))
 }
@@ -1708,7 +1726,7 @@ pub fn main_hide_docker() -> SyncReturn<bool> {
     SyncReturn(true)
 }
 
-pub fn main_use_texture_render() -> SyncReturn<bool> {
+pub fn main_has_pixelbuffer_texture_render() -> SyncReturn<bool> {
     #[cfg(not(feature = "flutter_texture_render"))]
     {
         SyncReturn(false)
@@ -1728,6 +1746,17 @@ pub fn main_has_file_clipboard() -> SyncReturn<bool> {
         )
     ));
     SyncReturn(ret)
+}
+
+pub fn main_has_gpu_texture_render() -> SyncReturn<bool> {
+    #[cfg(not(feature = "gpucodec"))]
+    {
+        SyncReturn(false)
+    }
+    #[cfg(feature = "gpucodec")]
+    {
+        SyncReturn(true)
+    }
 }
 
 pub fn cm_init() {

@@ -506,7 +506,7 @@ impl SciterSession {
             .lc
             .write()
             .unwrap()
-            .initialize(id, conn_type, None, force_relay);
+            .initialize(id, conn_type, None, force_relay, None);
 
         Self(session)
     }
@@ -532,7 +532,7 @@ impl SciterSession {
     }
 
     fn alternative_codecs(&self) -> Value {
-        let (vp8, av1, h264, h265) = self.0.alternative_codecs();
+        let (vp8, av1, h264, h265) = self.0.alternative_codecs(None);
         let mut v = Value::array(0);
         v.push(vp8);
         v.push(av1);

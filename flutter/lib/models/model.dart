@@ -2044,6 +2044,7 @@ class FFI {
   late final InputModel inputModel; // session
   late final ElevationModel elevationModel; // session
   late final CmFileModel cmFileModel; // cm
+  late final TextureModel textureModel; //session
 
   FFI(SessionID? sId) {
     sessionId = sId ?? (isDesktop ? Uuid().v4obj() : _constSessionId);
@@ -2063,6 +2064,7 @@ class FFI {
     inputModel = InputModel(WeakReference(this));
     elevationModel = ElevationModel(WeakReference(this));
     cmFileModel = CmFileModel(WeakReference(this));
+    textureModel = TextureModel(WeakReference(this));
   }
 
   /// Mobile reuse FFI
@@ -2142,6 +2144,9 @@ class FFI {
       }
     }
 
+    final hasPixelBufferTextureRender = bind.mainHasPixelbufferTextureRender();
+    final hasGpuTextureRender = bind.mainHasGpuTextureRender();
+
     final SimpleWrapper<bool> isToNewWindowNotified = SimpleWrapper(false);
     // Preserved for the rgba data.
     stream.listen((message) {
@@ -2187,7 +2192,9 @@ class FFI {
           }
         } else if (message is EventToUI_Rgba) {
           final display = message.field0;
-          if (useTextureRender) {
+          if (hasPixelBufferTextureRender) {
+            debugPrint("EventToUI_Rgba display:$display");
+            textureModel.setTextureType(display: display, gpuTexture: false);
             onEvent2UIRgba();
           } else {
             // Fetch the image buffer from rust codes.
@@ -2200,6 +2207,13 @@ class FFI {
               onEvent2UIRgba();
               imageModel.onRgba(display, rgba);
             }
+          }
+        } else if (message is EventToUI_Texture) {
+          final display = message.field0;
+          debugPrint("EventToUI_Texture display:$display");
+          if (hasGpuTextureRender) {
+            textureModel.setTextureType(display: display, gpuTexture: true);
+            onEvent2UIRgba();
           }
         }
       }();

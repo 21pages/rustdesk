@@ -670,7 +670,7 @@ impl Connection {
             conn.lr.my_id.clone(),
         );
         video_service::notify_video_frame_fetched(id, None);
-        scrap::codec::Encoder::update(id, scrap::codec::EncodingUpdate::Remove);
+        scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::Remove(id));
         if conn.authorized {
             password::update_temporary_password();
         }
@@ -1078,7 +1078,9 @@ impl Connection {
             pi.platform_additions = serde_json::to_string(&platform_additions).unwrap_or("".into());
         }
 
-        pi.encoding = Some(scrap::codec::Encoder::supported_encoding()).into();
+        let supported_encoding = scrap::codec::Encoder::supported_encoding();
+        log::info!("peer info supported_encoding: {:?}", supported_encoding);
+        pi.encoding = Some(supported_encoding).into();
 
         if self.port_forward_socket.is_some() {
             let mut msg_out = Message::new();
@@ -1415,21 +1417,19 @@ impl Connection {
     fn update_codec_on_login(&self, lr: &LoginRequest) {
         if let Some(o) = lr.option.as_ref() {
             if let Some(q) = o.supported_decoding.clone().take() {
-                scrap::codec::Encoder::update(
+                scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::New(
                     self.inner.id(),
-                    scrap::codec::EncodingUpdate::New(q),
-                );
+                    q,
+                ));
             } else {
-                scrap::codec::Encoder::update(
+                scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::NewOnlyVP9(
                     self.inner.id(),
-                    scrap::codec::EncodingUpdate::NewOnlyVP9,
-                );
+                ));
             }
         } else {
-            scrap::codec::Encoder::update(
+            scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::NewOnlyVP9(
                 self.inner.id(),
-                scrap::codec::EncodingUpdate::NewOnlyVP9,
-            );
+            ));
         }
     }
 
@@ -2369,7 +2369,7 @@ impl Connection {
                 .user_custom_fps(self.inner.id(), o.custom_fps as _);
         }
         if let Some(q) = o.supported_decoding.clone().take() {
-            scrap::codec::Encoder::update(self.inner.id(), scrap::codec::EncodingUpdate::New(q));
+            scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::New(self.inner.id(), q));
         }
         if let Ok(q) = o.lock_after_session_end.enum_value() {
             if q != BoolOption::NotSet {

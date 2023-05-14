@@ -1,4 +1,4 @@
-use crate::{common::TraitCapturer, x11, TraitFrame, Pixfmt};
+use crate::{common::TraitCapturer, x11, Frame, Pixfmt, TraitPixelBuffer};
 use std::{io, time::Duration};
 
 pub struct Capturer(x11::Capturer);
@@ -21,26 +21,35 @@ impl Capturer {
 
 impl TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout: Duration) -> io::Result<Frame<'a>> {
-        Ok(self.0.frame()?)
+        let height = self.height();
+        Ok(Frame::PixelBuffer(PixelBuffer::new(
+            self.0.frame()?,
+            Pixfmt::BGRA,
+            height,
+        )))
     }
 }
 
-pub struct Frame<'a>{
+pub struct PixelBuffer<'a> {
     pub data: &'a [u8],
-    pub pixfmt:Pixfmt,
-    pub stride:Vec<usize>,
+    pub pixfmt: Pixfmt,
+    pub stride: Vec<usize>,
 }
 
-impl<'a>  Frame<'a>  {
-    pub fn new(data:&'a [u8], pixfmt:Pixfmt, h:usize) -> Self {
+impl<'a> PixelBuffer<'a> {
+    pub fn new(data: &'a [u8], pixfmt: Pixfmt, h: usize) -> Self {
         let stride = data.len() / h;
         let mut v = Vec::new();
         v.push(stride);
-        Self { data, pixfmt, stride: v }
+        Self {
+            data,
+            pixfmt,
+            stride: v,
+        }
     }
 }
 
-impl<'a>  TraitFrame for Frame<'a>  {
+impl<'a> TraitPixelBuffer for PixelBuffer<'a> {
     fn data(&self) -> &[u8] {
         self.data
     }

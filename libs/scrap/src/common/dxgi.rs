@@ -1,4 +1,6 @@
-use crate::{common::TraitCapturer, dxgi, Pixfmt};
+#[cfg(feature = "gpucodec")]
+use crate::AdapterDevice;
+use crate::{common::TraitCapturer, dxgi, Frame, Pixfmt};
 use std::{
     io::{
         self,
@@ -41,7 +43,7 @@ impl Capturer {
 impl TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, timeout: Duration) -> io::Result<Frame<'a>> {
         match self.inner.frame(timeout.as_millis() as _) {
-            Ok(frame) => Ok(Frame::new(frame, self.height)),
+            Ok(frame) => Ok(frame),
             Err(ref error) if error.kind() == TimedOut => Err(WouldBlock.into()),
             Err(error) => Err(error),
         }
@@ -54,23 +56,33 @@ impl TraitCapturer for Capturer {
     fn set_gdi(&mut self) -> bool {
         self.inner.set_gdi()
     }
+
+    #[cfg(feature = "gpucodec")]
+    fn device(&self) -> AdapterDevice {
+        self.inner.device()
+    }
+
+    #[cfg(feature = "gpucodec")]
+    fn set_output_texture(&mut self, texture: bool) {
+        self.inner.set_output_texture(texture);
+    }
 }
 
-pub struct Frame<'a> {
+pub struct PixelBuffer<'a> {
     data: &'a [u8],
     stride: Vec<usize>,
 }
 
-impl<'a> Frame<'a> {
+impl<'a> PixelBuffer<'a> {
     pub fn new(data: &'a [u8], h: usize) -> Self {
         let stride = data.len() / h;
         let mut v = Vec::new();
         v.push(stride);
-        Frame { data, stride: v }
+        PixelBuffer { data, stride: v }
     }
 }
 
-impl<'a> crate::TraitFrame for Frame<'a> {
+impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
     fn data(&self) -> &[u8] {
         self.data
     }
@@ -167,7 +179,10 @@ impl CapturerMag {
 impl TraitCapturer for CapturerMag {
     fn frame<'a>(&'a mut self, _timeout_ms: Duration) -> io::Result<Frame<'a>> {
         self.inner.frame(&mut self.data)?;
-        Ok(Frame::new(&self.data, self.inner.get_rect().2))
+        Ok(Frame::PixelBuffer(PixelBuffer::new(
+            &self.data,
+            self.inner.get_rect().2,
+        )))
     }
 
     fn is_gdi(&self) -> bool {
@@ -177,4 +192,12 @@ impl TraitCapturer for CapturerMag {
     fn set_gdi(&mut self) -> bool {
         false
     }
+
+    #[cfg(feature = "gpucodec")]
+    fn device(&self) -> AdapterDevice {
+        AdapterDevice::default()
+    }
+
+    #[cfg(feature = "gpucodec")]
+    fn set_output_texture(&mut self, _texture: bool) {}
 }
