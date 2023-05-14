@@ -396,7 +396,11 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         } else if args[0] == "--check-hwcodec-config" {
             #[cfg(feature = "hwcodec")]
-            scrap::hwcodec::check_config();
+            scrap::hwcodec::check_available_hwcodec();
+            return None;
+        } else if args[0] == "--check-gpu-video-codec-config" {
+            #[cfg(feature = "gpu_video_codec")]
+            scrap::gpu_video_codec::check_available_gpu_video_codec();
             return None;
         } else if args[0] == "--cm" {
             // call connection manager to establish connections

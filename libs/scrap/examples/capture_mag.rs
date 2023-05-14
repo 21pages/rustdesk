@@ -32,9 +32,13 @@ fn record(i: usize) {
     let (w, h) = (display.width(), display.height());
 
     {
-        let mut capture_mag =
-            CapturerMag::new(display.origin(), display.width(), display.height(), false)
-                .expect("Couldn't begin capture.");
+        let mut capture_mag = CapturerMag::new(
+            display.origin(),
+            display.width(),
+            display.height(),
+            scrap::CaptureOutputFormat::BGRA,
+        )
+        .expect("Couldn't begin capture.");
         let wnd_cls = "";
         let wnd_name = "RustDeskPrivacyWindow";
         if false == capture_mag.exclude(wnd_cls, wnd_name).unwrap() {
@@ -44,6 +48,7 @@ fn record(i: usize) {
         }
 
         let frame = capture_mag.frame(Duration::from_millis(0)).unwrap();
+        let frame = frame.pixelbuffer().unwrap();
         println!("Capture data len: {}, Saving...", frame.len());
 
         let mut bitflipped = Vec::with_capacity(w * h * 4);
@@ -68,9 +73,13 @@ fn record(i: usize) {
     }
 
     {
-        let mut capture_mag =
-            CapturerMag::new(display.origin(), display.width(), display.height(), true)
-                .expect("Couldn't begin capture.");
+        let mut capture_mag = CapturerMag::new(
+            display.origin(),
+            display.width(),
+            display.height(),
+            scrap::CaptureOutputFormat::I420,
+        )
+        .expect("Couldn't begin capture.");
         let wnd_cls = "";
         let wnd_title = "RustDeskPrivacyWindow";
         if false == capture_mag.exclude(wnd_cls, wnd_title).unwrap() {
@@ -80,6 +89,7 @@ fn record(i: usize) {
         }
 
         let buffer = capture_mag.frame(Duration::from_millis(0)).unwrap();
+        let buffer = buffer.pixelbuffer().unwrap();
         println!("Capture data len: {}, Saving...", buffer.len());
 
         let mut frame = Default::default();

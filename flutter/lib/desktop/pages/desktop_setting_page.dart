@@ -392,6 +392,8 @@ class _GeneralState extends State<_General> {
       offstage: !bind.mainHasHwcodec(),
       child: _Card(title: 'Hardware Codec', children: [
         _OptionCheckBox(context, 'Enable hardware codec', 'enable-hwcodec'),
+        _OptionCheckBox(context, 'Enable zero copy gpu acceleration',
+            'enable-gpu-video-codec'),
       ]),
     );
   }

@@ -27,13 +27,14 @@ fn main() {
         .spawn()
         .expect("This example requires ffplay.");
 
-    let mut capturer = Capturer::new(d, false).unwrap();
+    let mut capturer = Capturer::new(d, scrap::CaptureOutputFormat::BGRA).unwrap();
     let mut out = child.stdin.unwrap();
 
     loop {
         match capturer.frame(Duration::from_millis(0)) {
             Ok(frame) => {
                 // Write the frame, removing end-of-row padding.
+                let frame = frame.pixelbuffer().unwrap();
                 let stride = frame.len() / h;
                 let rowlen = 4 * w;
                 for row in frame.chunks(stride) {
