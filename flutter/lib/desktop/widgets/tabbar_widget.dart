@@ -149,18 +149,20 @@ class DesktopTabController {
   void jumpTo(int index, {bool callOnSelected = true}) {
     if (!isDesktop || index < 0) return;
     state.update((val) {
-      val!.selected = index;
-      Future.delayed(Duration(milliseconds: 100), (() {
-        if (val.pageController.hasClients) {
-          val.pageController.jumpToPage(index);
-        }
-        val.scrollController.itemCount = val.tabs.length;
-        if (val.scrollController.hasClients &&
-            val.scrollController.itemCount > index) {
-          val.scrollController
-              .scrollToItem(index, center: false, animate: true);
-        }
-      }));
+      if (val != null) {
+        val.selected = index;
+        Future.delayed(Duration(milliseconds: 100), (() {
+          if (val.pageController.hasClients) {
+            val.pageController.jumpToPage(index);
+          }
+          val.scrollController.itemCount = val.tabs.length;
+          if (val.scrollController.hasClients &&
+              val.scrollController.itemCount > index) {
+            val.scrollController
+                .scrollToItem(index, center: false, animate: true);
+          }
+        }));
+      }
     });
     if (callOnSelected) {
       if (state.value.tabs.length > index) {

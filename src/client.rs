@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::c_void,
     net::SocketAddr,
     ops::Deref,
     str::FromStr,
@@ -44,7 +45,7 @@ use hbb_common::{
     tcp::FramedStream,
     timeout,
     tokio::time::Duration,
-    AddrMangle, ResultType, Stream,
+    AddrMangle, ResultType, SessionID, Stream,
 };
 pub use helper::*;
 use scrap::{
@@ -147,7 +148,7 @@ pub fn get_key_state(key: enigo::Key) -> bool {
 cfg_if::cfg_if! {
     if #[cfg(target_os = "android")] {
 
-use hbb_common::libc::{c_float, c_int, c_void};
+use hbb_common::libc::{c_float, c_int};
 type Oboe = *mut c_void;
 extern "C" {
     fn create_oboe_player(channels: c_int, sample_rate: c_int) -> Oboe;
@@ -988,27 +989,41 @@ impl AudioHandler {
 pub struct VideoHandler {
     decoder: Decoder,
     pub rgb: ImageRgb,
+    pub texture: *mut c_void,
     recorder: Arc<Mutex<Option<Recorder>>>,
     record: bool,
+    _session_id: SessionID,
 }
 
 impl VideoHandler {
     /// Create a new video handler.
-    pub fn new() -> Self {
+    pub fn new(session_id: &SessionID) -> Self {
+        #[cfg(all(feature = "gpu_video_codec", feature = "flutter"))]
+        let luid = crate::flutter::session_get_adapter_luid(session_id);
+        #[cfg(not(all(feature = "gpu_video_codec", feature = "flutter")))]
+        let luid = scrap::codec::INVALID_LUID;
+        println!("new session_get_adapter_luid: {:?}", luid);
         VideoHandler {
-            decoder: Decoder::new(),
+            decoder: Decoder::new(luid),
             rgb: ImageRgb::new(ImageFormat::ARGB, crate::DST_STRIDE_RGBA),
+            texture: std::ptr::null_mut(),
             recorder: Default::default(),
             record: false,
+            _session_id: session_id.clone(),
         }
     }
 
     /// Handle a new video frame.
     #[inline]
-    pub fn handle_frame(&mut self, vf: VideoFrame) -> ResultType<bool> {
+    pub fn handle_frame(&mut self, vf: VideoFrame, pixelbuffer: &mut bool) -> ResultType<bool> {
         match &vf.union {
             Some(frame) => {
-                let res = self.decoder.handle_video_frame(frame, &mut self.rgb);
+                let res = self.decoder.handle_video_frame(
+                    frame,
+                    &mut self.rgb,
+                    &mut self.texture,
+                    pixelbuffer,
+                );
                 if self.record {
                     self.recorder
                         .lock()
@@ -1024,7 +1039,11 @@ impl VideoHandler {
 
     /// Reset the decoder.
     pub fn reset(&mut self) {
-        self.decoder = Decoder::new();
+        #[cfg(all(feature = "flutter", feature = "gpu_video_codec"))]
+        let luid = crate::flutter::session_get_adapter_luid(&self._session_id);
+        #[cfg(not(all(feature = "flutter", feature = "gpu_video_codec")))]
+        let luid = scrap::codec::INVALID_LUID;
+        self.decoder = Decoder::new(luid);
     }
 
     /// Start or stop screen record.
@@ -1398,8 +1417,9 @@ impl LoginConfigHandler {
             msg.disable_clipboard = BoolOption::Yes.into();
             n += 1;
         }
-        msg.supported_decoding =
-            hbb_common::protobuf::MessageField::some(Decoder::supported_decodings(Some(&self.id)));
+        msg.supported_decoding = hbb_common::protobuf::MessageField::some(
+            Decoder::supported_decodings(Some(&self.id), cfg!(feature = "flutter")),
+        );
         n += 1;
 
         if n > 0 {
@@ -1727,7 +1747,8 @@ impl LoginConfigHandler {
     }
 
     pub fn change_prefer_codec(&self) -> Message {
-        let decoding = scrap::codec::Decoder::supported_decodings(Some(&self.id));
+        let decoding =
+            scrap::codec::Decoder::supported_decodings(Some(&self.id), cfg!(feature = "flutter"));
         let mut misc = Misc::new();
         misc.set_option(OptionMessage {
             supported_decoding: hbb_common::protobuf::MessageField::some(decoding),
@@ -1767,6 +1788,7 @@ pub type MediaSender = mpsc::Sender<MediaData>;
 /// * `video_callback` - The callback for video frame. Being called when a video frame is ready.
 pub fn start_video_audio_threads<F>(
     video_callback: F,
+    sesssion_id: &SessionID,
 ) -> (
     MediaSender,
     MediaSender,
@@ -1774,7 +1796,7 @@ pub fn start_video_audio_threads<F>(
     Arc<AtomicUsize>,
 )
 where
-    F: 'static + FnMut(&mut scrap::ImageRgb) + Send,
+    F: 'static + FnMut(&mut scrap::ImageRgb, *mut c_void, bool) + Send,
 {
     let (video_sender, video_receiver) = mpsc::channel::<MediaData>();
     let video_queue = Arc::new(ArrayQueue::<VideoFrame>::new(VIDEO_QUEUE_SIZE));
@@ -1785,9 +1807,10 @@ where
     let fps = Arc::new(AtomicUsize::new(0));
     let decode_fps = fps.clone();
     let mut skip_beginning = 0;
+    let sesssion_id = sesssion_id.to_owned();
 
     std::thread::spawn(move || {
-        let mut video_handler = VideoHandler::new();
+        let mut video_handler = VideoHandler::new(&sesssion_id);
         loop {
             if let Ok(data) = video_receiver.recv() {
                 match data {
@@ -1802,8 +1825,13 @@ where
                             }
                         };
                         let start = std::time::Instant::now();
-                        if let Ok(true) = video_handler.handle_frame(vf) {
-                            video_callback(&mut video_handler.rgb);
+                        let mut pixelbuffer = true;
+                        if let Ok(true) = video_handler.handle_frame(vf, &mut pixelbuffer) {
+                            video_callback(
+                                &mut video_handler.rgb,
+                                video_handler.texture,
+                                pixelbuffer,
+                            );
                             // fps calculation
                             // The first frame will be very slow
                             if skip_beginning < 5 {

@@ -367,7 +367,15 @@ pub async fn start_server(is_server: bool) {
         use std::sync::Once;
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            scrap::hwcodec::check_config_process();
+            scrap::hwcodec::hwcodec_new_check_process();
+        })
+    }
+    #[cfg(feature = "gpu_video_codec")]
+    {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            scrap::gpu_video_codec::gpu_video_codec_new_check_process();
         })
     }
 

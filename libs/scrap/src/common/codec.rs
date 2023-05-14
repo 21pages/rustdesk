@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::c_void,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
@@ -14,8 +15,10 @@ use crate::{
     aom::{self, AomDecoder, AomDecoderConfig, AomEncoder, AomEncoderConfig},
     common::GoogleImage,
     vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
-    CodecName, ImageRgb,
+    CaptureOutputFormat, CodecName, Frame, ImageRgb,
 };
+#[cfg(feature = "gpu_video_codec")]
+use crate::{gpu_video_codec::*, AdapterDevice};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sysinfo::{System, SystemExt};
@@ -29,13 +32,20 @@ use hbb_common::{
     },
     ResultType,
 };
-#[cfg(any(feature = "hwcodec", feature = "mediacodec"))]
+#[cfg(any(
+    feature = "hwcodec",
+    feature = "mediacodec",
+    feature = "gpu_video_codec"
+))]
 use hbb_common::{config::Config2, lazy_static};
 
 lazy_static::lazy_static! {
     static ref PEER_DECODINGS: Arc<Mutex<HashMap<i32, SupportedDecoding>>> = Default::default();
-    static ref CODEC_NAME: Arc<Mutex<CodecName>> = Arc::new(Mutex::new(CodecName::VP9));
+    static ref ENCODE_CODEC_NAME: Arc<Mutex<CodecName>> = Arc::new(Mutex::new(CodecName::VP9));
 }
+
+pub const INVALID_LUID: i64 = -1;
+pub const ENCODE_NEED_SWITCH: &'static str = "ENCODE_NEED_SWITCH";
 
 #[derive(Debug, Clone)]
 pub struct HwEncoderConfig {
@@ -45,11 +55,24 @@ pub struct HwEncoderConfig {
     pub bitrate: i32,
 }
 
+#[cfg(feature = "gpu_video_codec")]
 #[derive(Debug, Clone)]
+pub struct GvcEncoderConfig {
+    pub device: AdapterDevice,
+    pub width: usize,
+    pub height: usize,
+    pub bitrate: i32,
+    pub feature: gpu_video_codec::gvc_common::FeatureContext,
+}
+
+#[derive(Debug)]
 pub enum EncoderCfg {
     VPX(VpxEncoderConfig),
     AOM(AomEncoderConfig),
+    #[cfg(feature = "hwcodec")]
     HW(HwEncoderConfig),
+    #[cfg(feature = "gpu_video_codec")]
+    GVC(GvcEncoderConfig),
 }
 
 pub trait EncoderApi {
@@ -57,9 +80,9 @@ pub trait EncoderApi {
     where
         Self: Sized;
 
-    fn encode_to_message(&mut self, frame: &[u8], ms: i64) -> ResultType<Message>;
+    fn encode_to_message(&mut self, frame: Frame, ms: i64) -> ResultType<Message>;
 
-    fn use_yuv(&self) -> bool;
+    fn input_format(&self) -> CaptureOutputFormat;
 
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()>;
 }
@@ -88,6 +111,8 @@ pub struct Decoder {
     av1: AomDecoder,
     #[cfg(feature = "hwcodec")]
     hw: HwDecoders,
+    #[cfg(feature = "gpu_video_codec")]
+    tex: GvcDecoders,
     #[cfg(feature = "hwcodec")]
     i420: Vec<u8>,
     #[cfg(feature = "mediacodec")]
@@ -96,9 +121,10 @@ pub struct Decoder {
 
 #[derive(Debug, Clone)]
 pub enum EncodingUpdate {
-    New(SupportedDecoding),
-    Remove,
-    NewOnlyVP9,
+    New(i32, SupportedDecoding),
+    Remove(i32),
+    NewOnlyVP9(i32),
+    NoTexture,
 }
 
 impl Encoder {
@@ -118,26 +144,37 @@ impl Encoder {
                     codec: Box::new(hw),
                 }),
                 Err(e) => {
-                    check_config_process();
-                    *CODEC_NAME.lock().unwrap() = CodecName::VP9;
+                    hwcodec_new_check_process();
+                    *ENCODE_CODEC_NAME.lock().unwrap() = CodecName::VP9;
                     Err(e)
                 }
             },
-            #[cfg(not(feature = "hwcodec"))]
-            _ => Err(anyhow!("unsupported encoder type")),
+            #[cfg(feature = "gpu_video_codec")]
+            EncoderCfg::GVC(_) => match GvcEncoder::new(config) {
+                Ok(tex) => Ok(Encoder {
+                    codec: Box::new(tex),
+                }),
+                Err(e) => {
+                    gpu_video_codec_new_check_process();
+                    *ENCODE_CODEC_NAME.lock().unwrap() = CodecName::VP9;
+                    Err(e)
+                }
+            },
         }
     }
 
-    pub fn update(id: i32, update: EncodingUpdate) {
+    pub fn update(update: EncodingUpdate) {
+        log::info!("update:{:?}", update);
         let mut decodings = PEER_DECODINGS.lock().unwrap();
+        let mut _no_texture = false;
         match update {
-            EncodingUpdate::New(decoding) => {
+            EncodingUpdate::New(id, decoding) => {
                 decodings.insert(id, decoding);
             }
-            EncodingUpdate::Remove => {
+            EncodingUpdate::Remove(id) => {
                 decodings.remove(&id);
             }
-            EncodingUpdate::NewOnlyVP9 => {
+            EncodingUpdate::NewOnlyVP9(id) => {
                 decodings.insert(
                     id,
                     SupportedDecoding {
@@ -145,6 +182,9 @@ impl Encoder {
                         ..Default::default()
                     },
                 );
+            }
+            EncodingUpdate::NoTexture => {
+                _no_texture = true;
             }
         }
 
@@ -154,24 +194,34 @@ impl Encoder {
         let mut h264_name = None;
         #[allow(unused_mut)]
         let mut h265_name = None;
-        #[cfg(feature = "hwcodec")]
-        {
-            if enable_hwcodec_option() {
-                let best = HwEncoder::best();
-                let h264_useable =
-                    decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h264 > 0);
-                let h265_useable =
-                    decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h265 > 0);
-                if h264_useable {
-                    h264_name = best.h264.map_or(None, |c| Some(c.name));
+        let _h264_useable =
+            decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h264 > 0);
+        let _h265_useable =
+            decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h265 > 0);
+        #[cfg(feature = "gpu_video_codec")]
+        if enable_gpu_video_codec_option() && !_no_texture {
+            if _h264_useable && h264_name.is_none() {
+                if GvcEncoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
+                    h264_name = Some("".to_string());
                 }
-                if h265_useable {
-                    h265_name = best.h265.map_or(None, |c| Some(c.name));
+            }
+            if _h265_useable && h265_name.is_none() {
+                if GvcEncoder::possible_available(CodecName::H265("".to_string())).len() > 0 {
+                    h265_name = Some("".to_string());
                 }
             }
         }
-
-        let mut name = CODEC_NAME.lock().unwrap();
+        #[cfg(feature = "hwcodec")]
+        if enable_hwcodec_option() {
+            let best = HwEncoder::best();
+            if _h264_useable && h264_name.is_none() {
+                h264_name = best.h264.map_or(None, |c| Some(c.name));
+            }
+            if _h265_useable && h265_name.is_none() {
+                h265_name = best.h265.map_or(None, |c| Some(c.name));
+            }
+        }
+        let mut name = ENCODE_CODEC_NAME.lock().unwrap();
         let mut preference = PreferCodec::Auto;
         let preferences: Vec<_> = decodings
             .iter()
@@ -215,7 +265,7 @@ impl Encoder {
 
     #[inline]
     pub fn negotiated_codec() -> CodecName {
-        CODEC_NAME.lock().unwrap().clone()
+        ENCODE_CODEC_NAME.lock().unwrap().clone()
     }
 
     pub fn supported_encoding() -> SupportedEncoding {
@@ -228,15 +278,26 @@ impl Encoder {
         #[cfg(feature = "hwcodec")]
         if enable_hwcodec_option() {
             let best = HwEncoder::best();
-            encoding.h264 = best.h264.is_some();
-            encoding.h265 = best.h265.is_some();
+            encoding.h264 |= best.h264.is_some();
+            encoding.h265 |= best.h265.is_some();
+        }
+        #[cfg(feature = "gpu_video_codec")]
+        if enable_gpu_video_codec_option() {
+            encoding.h264 |=
+                GvcEncoder::possible_available(CodecName::H264("".to_string())).len() > 0;
+            encoding.h265 |=
+                GvcEncoder::possible_available(CodecName::H265("".to_string())).len() > 0;
         }
         encoding
+    }
+
+    pub fn fallback(name: CodecName) {
+        *ENCODE_CODEC_NAME.lock().unwrap() = name;
     }
 }
 
 impl Decoder {
-    pub fn supported_decodings(id_for_perfer: Option<&str>) -> SupportedDecoding {
+    pub fn supported_decodings(id_for_perfer: Option<&str>, _allow_tex: bool) -> SupportedDecoding {
         #[allow(unused_mut)]
         let mut decoding = SupportedDecoding {
             ability_vp8: 1,
@@ -250,8 +311,25 @@ impl Decoder {
         #[cfg(feature = "hwcodec")]
         if enable_hwcodec_option() {
             let best = HwDecoder::best();
-            decoding.ability_h264 = if best.h264.is_some() { 1 } else { 0 };
-            decoding.ability_h265 = if best.h265.is_some() { 1 } else { 0 };
+            decoding.ability_h264 |= if best.h264.is_some() { 1 } else { 0 };
+            decoding.ability_h265 |= if best.h265.is_some() { 1 } else { 0 };
+        }
+        #[cfg(feature = "gpu_video_codec")]
+        {
+            if enable_gpu_video_codec_option() && _allow_tex {
+                decoding.ability_h264 |=
+                    if GvcDecoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
+                        1
+                    } else {
+                        0
+                    };
+                decoding.ability_h265 |=
+                    if GvcDecoder::possible_available(CodecName::H265("".to_string())).len() > 0 {
+                        1
+                    } else {
+                        0
+                    };
+            }
         }
         #[cfg(feature = "mediacodec")]
         if enable_hwcodec_option() {
@@ -271,7 +349,7 @@ impl Decoder {
         decoding
     }
 
-    pub fn new() -> Decoder {
+    pub fn new(_luid: i64) -> Decoder {
         let vp8 = VpxDecoder::new(VpxDecoderConfig {
             codec: VpxVideoCodecId::VP8,
             num_threads: (num_cpus::get() / 2) as _,
@@ -296,6 +374,12 @@ impl Decoder {
             } else {
                 HwDecoders::default()
             },
+            #[cfg(feature = "gpu_video_codec")]
+            tex: if enable_gpu_video_codec_option() && _luid != INVALID_LUID {
+                GvcDecoder::new_decoders(_luid)
+            } else {
+                GvcDecoders::default()
+            },
             #[cfg(feature = "hwcodec")]
             i420: vec![],
             #[cfg(feature = "mediacodec")]
@@ -312,6 +396,8 @@ impl Decoder {
         &mut self,
         frame: &video_frame::Union,
         rgb: &mut ImageRgb,
+        _texture: &mut *mut c_void,
+        _pixelbuffer: &mut bool,
     ) -> ResultType<bool> {
         match frame {
             video_frame::Union::Vp8s(vp8s) => {
@@ -323,21 +409,39 @@ impl Decoder {
             video_frame::Union::Av1s(av1s) => {
                 Decoder::handle_av1s_video_frame(&mut self.av1, av1s, rgb)
             }
-            #[cfg(feature = "hwcodec")]
+            #[cfg(any(feature = "hwcodec", feature = "gpu_video_codec"))]
             video_frame::Union::H264s(h264s) => {
-                if let Some(decoder) = &mut self.hw.h264 {
-                    Decoder::handle_hw_video_frame(decoder, h264s, rgb, &mut self.i420)
-                } else {
-                    Err(anyhow!("don't support h264!"))
+                #[cfg(feature = "gpu_video_codec")]
+                {
+                    if let Some(decoder) = &mut self.tex.h264 {
+                        *_pixelbuffer = false;
+                        return Decoder::handle_gvc_video_frame(decoder, h264s, _texture);
+                    }
                 }
+                #[cfg(feature = "hwcodec")]
+                {
+                    if let Some(decoder) = &mut self.hw.h264 {
+                        return Decoder::handle_hw_video_frame(decoder, h264s, rgb, &mut self.i420);
+                    }
+                }
+                Err(anyhow!("don't support h264!"))
             }
-            #[cfg(feature = "hwcodec")]
+            #[cfg(any(feature = "hwcodec", feature = "gpu_video_codec"))]
             video_frame::Union::H265s(h265s) => {
-                if let Some(decoder) = &mut self.hw.h265 {
-                    Decoder::handle_hw_video_frame(decoder, h265s, rgb, &mut self.i420)
-                } else {
-                    Err(anyhow!("don't support h265!"))
+                #[cfg(feature = "gpu_video_codec")]
+                {
+                    if let Some(decoder) = &mut self.tex.h265 {
+                        *_pixelbuffer = false;
+                        return Decoder::handle_gvc_video_frame(decoder, h265s, _texture);
+                    }
                 }
+                #[cfg(feature = "hwcodec")]
+                {
+                    if let Some(decoder) = &mut self.hw.h265 {
+                        return Decoder::handle_hw_video_frame(decoder, h265s, rgb, &mut self.i420);
+                    }
+                }
+                Err(anyhow!("don't support h265!"))
             }
             #[cfg(feature = "mediacodec")]
             video_frame::Union::H264s(h264s) => {
@@ -429,6 +533,22 @@ impl Decoder {
         return Ok(ret);
     }
 
+    #[cfg(feature = "gpu_video_codec")]
+    fn handle_gvc_video_frame(
+        decoder: &mut GvcDecoder,
+        frames: &EncodedVideoFrames,
+        texture: &mut *mut c_void,
+    ) -> ResultType<bool> {
+        let mut ret = false;
+        for h26x in frames.frames.iter() {
+            for image in decoder.decode(&h26x.data)? {
+                *texture = image.frame.texture;
+                ret = true;
+            }
+        }
+        return Ok(ret);
+    }
+
     // rgb [in/out] fmt and stride must be set in ImageRgb
     #[cfg(feature = "mediacodec")]
     fn handle_mediacodec_video_frame(
@@ -467,6 +587,13 @@ impl Decoder {
 #[cfg(any(feature = "hwcodec", feature = "mediacodec"))]
 fn enable_hwcodec_option() -> bool {
     if let Some(v) = Config2::get().options.get("enable-hwcodec") {
+        return v != "N";
+    }
+    return true; // default is true
+}
+#[cfg(feature = "gpu_video_codec")]
+fn enable_gpu_video_codec_option() -> bool {
+    if let Some(v) = Config2::get().options.get("enable-gpu_video_codec") {
         return v != "N";
     }
     return true; // default is true
