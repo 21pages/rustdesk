@@ -119,6 +119,11 @@ def make_parser():
             '' if windows or osx else ', need libva-dev, libvdpau-dev.')
     )
     parser.add_argument(
+        '--gpucodec',
+        action='store_true',
+        help='Enable feature gpucodec, only available on windows now.'
+    )
+    parser.add_argument(
         '--portable',
         action='store_true',
         help='Build windows portable'
@@ -265,6 +270,8 @@ def get_features(args):
         features.append('virtual_display_driver')
     if args.hwcodec:
         features.append('hwcodec')
+    if args.gpucodec: 
+        features.append('gpucodec')
     if args.flutter:
         features.append('flutter')
         features.append('flutter_texture_render')

@@ -697,6 +697,7 @@ message Misc {
     bool client_record_status = 29;
     CaptureDisplays capture_displays = 30;
     int32 refresh_video_display = 31;
+    SupportedEncoding supported_encoding = 32;
   }
 }
 

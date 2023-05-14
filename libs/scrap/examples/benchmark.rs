@@ -88,11 +88,11 @@ fn capture_yuv(yuv_count: usize) -> (Vec<Vec<u8>>, usize, usize) {
         }
     }
     let d = displays.remove(index);
-    let mut c = Capturer::new(d, true).unwrap();
+    let mut c = Capturer::new(d, scrap::CaptureOutputFormat::I420).unwrap();
     let mut v = vec![];
     loop {
         if let Ok(frame) = c.frame(std::time::Duration::from_millis(30)) {
-            v.push(frame.0.to_vec());
+            v.push(frame.pixelbuffer().unwrap().to_vec());
             print!("\rcapture {}/{}", v.len(), yuv_count);
             std::io::stdout().flush().ok();
             if v.len() == yuv_count {

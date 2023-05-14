@@ -1,7 +1,7 @@
 use crate::common::{
     wayland,
     x11::{self, Frame},
-    TraitCapturer,
+    CaptureOutputFormat, TraitCapturer,
 };
 use std::{io, time::Duration};
 
@@ -11,7 +11,8 @@ pub enum Capturer {
 }
 
 impl Capturer {
-    pub fn new(display: Display, yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, format: CaptureOutputFormat) -> io::Result<Capturer> {
+        let yuv = format == CaptureOutputFormat::I420;
         Ok(match display {
             Display::X11(d) => Capturer::X11(x11::Capturer::new(d, yuv)?),
             Display::WAYLAND(d) => Capturer::WAYLAND(wayland::Capturer::new(d, yuv)?),
@@ -34,10 +35,10 @@ impl Capturer {
 }
 
 impl TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
+    fn set_output_format(&mut self, format: CaptureOutputFormat) {
         match self {
-            Capturer::X11(d) => d.set_use_yuv(use_yuv),
-            Capturer::WAYLAND(d) => d.set_use_yuv(use_yuv),
+            Capturer::X11(d) => d.set_output_format(format),
+            Capturer::WAYLAND(d) => d.set_output_format(format),
         }
     }
 
