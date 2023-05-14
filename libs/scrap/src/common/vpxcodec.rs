@@ -7,8 +7,7 @@ use hbb_common::log;
 use hbb_common::message_proto::{EncodedVideoFrame, EncodedVideoFrames, Message, VideoFrame};
 use hbb_common::ResultType;
 
-use crate::codec::EncoderApi;
-use crate::{GoogleImage, STRIDE_ALIGN};
+use crate::{codec::EncoderApi, CaptureOutputFormat, Frame, GoogleImage, STRIDE_ALIGN};
 
 use super::vpx::{vpx_codec_err_t::*, *};
 use crate::{generate_call_macro, generate_call_ptr_macro, Error, Result};
@@ -84,7 +83,8 @@ impl EncoderApi for VpxEncoder {
         }
     }
 
-    fn encode_to_message(&mut self, frame: &[u8], ms: i64) -> ResultType<Message> {
+    fn encode_to_message(&mut self, frame: Frame, ms: i64) -> ResultType<Message> {
+        let frame = frame.pixelbuffer()?;
         let mut frames = Vec::new();
         for ref frame in self
             .encode(ms, frame, STRIDE_ALIGN)
@@ -104,8 +104,8 @@ impl EncoderApi for VpxEncoder {
         }
     }
 
-    fn use_yuv(&self) -> bool {
-        true
+    fn input_format(&self) -> CaptureOutputFormat {
+        CaptureOutputFormat::I420
     }
 
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {

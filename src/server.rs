@@ -371,7 +371,15 @@ pub async fn start_server(is_server: bool) {
         use std::sync::Once;
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            scrap::hwcodec::check_config_process();
+            scrap::hwcodec::hwcodec_new_check_process();
+        })
+    }
+    #[cfg(feature = "texcodec")]
+    {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            scrap::texcodec::texcodec_new_check_process();
         })
     }
 

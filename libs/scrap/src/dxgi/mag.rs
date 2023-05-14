@@ -22,6 +22,8 @@ use winapi::{
     },
 };
 
+use crate::CaptureOutputFormat;
+
 pub const MW_FILTERMODE_EXCLUDE: u32 = 0;
 pub const MW_FILTERMODE_INCLUDE: u32 = 1;
 pub const GET_MODULE_HANDLE_EX_FLAG_PIN: u32 = 1;
@@ -246,7 +248,7 @@ pub struct CapturerMag {
     width: usize,
     height: usize,
 
-    use_yuv: bool,
+    output_format: CaptureOutputFormat,
     data: Vec<u8>,
 }
 
@@ -266,7 +268,7 @@ impl CapturerMag {
         origin: (i32, i32),
         width: usize,
         height: usize,
-        use_yuv: bool,
+        format: CaptureOutputFormat,
     ) -> Result<Self> {
         unsafe {
             let x = GetSystemMetrics(SM_XVIRTUALSCREEN);
@@ -311,7 +313,7 @@ impl CapturerMag {
             },
             width,
             height,
-            use_yuv,
+            output_format: format,
             data: Vec::new(),
         };
 
@@ -437,8 +439,8 @@ impl CapturerMag {
         Ok(s)
     }
 
-    pub(crate) fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.use_yuv = use_yuv;
+    pub(crate) fn set_output_format(&mut self, format: CaptureOutputFormat) {
+        self.output_format = format;
     }
 
     pub(crate) fn exclude(&mut self, cls: &str, name: &str) -> Result<bool> {
@@ -579,7 +581,7 @@ impl CapturerMag {
             ));
         }
 
-        if self.use_yuv {
+        if self.output_format == CaptureOutputFormat::I420 {
             self.data.resize(lock.1.len(), 0);
             unsafe {
                 std::ptr::copy_nonoverlapping(&mut lock.1[0], &mut self.data[0], self.data.len());
@@ -651,7 +653,8 @@ mod tests {
     use super::*;
     #[test]
     fn test() {
-        let mut capture_mag = CapturerMag::new((0, 0), 1920, 1080, false).unwrap();
+        let mut capture_mag =
+            CapturerMag::new((0, 0), 1920, 1080, CaptureOutputFormat::BGRA).unwrap();
         capture_mag.exclude("", "RustDeskPrivacyWindow").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1000 * 10));
         let mut data = Vec::new();

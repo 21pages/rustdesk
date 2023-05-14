@@ -268,6 +268,8 @@ def get_features(args):
     if args.flutter:
         features.append('flutter')
         features.append('flutter_texture_render')
+    if args.texcodec: # based on flutter feature
+        features.append('texcodec')
     if args.flatpak:
         features.append('flatpak')
     if args.appimage:

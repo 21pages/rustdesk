@@ -27,9 +27,12 @@ typedef F4Dart = int Function(Pointer<Utf8>);
 typedef F5 = Void Function(Pointer<Utf8>);
 typedef F5Dart = void Function(Pointer<Utf8>);
 typedef HandleEvent = Future<void> Function(Map<String, dynamic> evt);
-// pub fn session_register_texture(id: *const char, ptr: usize)
+// pub fn session_register_pixelfbuffer_texture(id: *const char, ptr: usize)
 typedef F6 = Void Function(Pointer<Utf8>, Uint64);
 typedef F6Dart = void Function(Pointer<Utf8>, int);
+// pub fn session_register_gpu_texture(id: *const char, output_ptr: usize)
+typedef F7 = Void Function(Pointer<Utf8>, Uint64);
+typedef F7Dart = void Function(Pointer<Utf8>, int);
 
 /// FFI wrapper around the native Rust core.
 /// Hides the platform differences.
@@ -52,7 +55,8 @@ class PlatformFFI {
   F3? _session_get_rgba;
   F4Dart? _session_get_rgba_size;
   F5Dart? _session_next_rgba;
-  F6Dart? _session_register_texture;
+  F6Dart? _session_register_pixelbuffer_texture;
+  F7Dart? _session_register_gpu_texture;
 
   static get localeName => Platform.localeName;
 
@@ -134,11 +138,19 @@ class PlatformFFI {
     malloc.free(a);
   }
 
-  void registerTexture(SessionID sessionId, int ptr) {
-    if (_session_register_texture == null) return;
+  void registerPixelbufferTexture(SessionID sessionId, int ptr) {
+    if (_session_register_pixelbuffer_texture == null) return;
     final sessionIdStr = sessionId.toString();
     final a = sessionIdStr.toNativeUtf8();
-    _session_register_texture!(a, ptr);
+    _session_register_pixelbuffer_texture!(a, ptr);
+    malloc.free(a);
+  }
+
+  void registerGpuTexture(SessionID sessionId, int output_ptr) {
+    if (_session_register_gpu_texture == null) return;
+    final sessionIdStr = sessionId.toString();
+    final a = sessionIdStr.toNativeUtf8();
+    _session_register_gpu_texture!(a, output_ptr);
     malloc.free(a);
   }
 
@@ -162,8 +174,10 @@ class PlatformFFI {
           dylib.lookupFunction<F4, F4Dart>("session_get_rgba_size");
       _session_next_rgba =
           dylib.lookupFunction<F5, F5Dart>("session_next_rgba");
-      _session_register_texture =
-          dylib.lookupFunction<F6, F6Dart>("session_register_texture");
+      _session_register_pixelbuffer_texture = dylib
+          .lookupFunction<F6, F6Dart>("session_register_pixelbuffer_texture");
+      _session_register_gpu_texture =
+          dylib.lookupFunction<F7, F7Dart>("session_register_gpu_texture");
       try {
         // SYSTEM user failed
         _dir = (await getApplicationDocumentsDirectory()).path;

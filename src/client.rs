@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::c_void,
     net::SocketAddr,
     ops::Deref,
     str::FromStr,
@@ -53,13 +54,13 @@ use scrap::{
     ImageFormat, ImageRgb,
 };
 
-use crate::is_keyboard_mode_supported;
+use crate::{flutter_ffi::SessionID, is_keyboard_mode_supported};
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::{check_clipboard, ClipboardContext, CLIPBOARD_INTERVAL};
 #[cfg(not(feature = "flutter"))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::ui_session_interface::SessionPermissionConfig;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::{check_clipboard, ClipboardContext, CLIPBOARD_INTERVAL};
 
 pub use super::lang::*;
 
@@ -993,27 +994,41 @@ impl AudioHandler {
 pub struct VideoHandler {
     decoder: Decoder,
     pub rgb: ImageRgb,
+    pub texture: *mut c_void,
     recorder: Arc<Mutex<Option<Recorder>>>,
     record: bool,
+    _session_id: SessionID,
 }
 
 impl VideoHandler {
     /// Create a new video handler.
-    pub fn new() -> Self {
+    pub fn new(session_id: &SessionID) -> Self {
+        #[cfg(feature = "texcodec")]
+        let luid = crate::flutter::session_get_adapter_luid(session_id);
+        #[cfg(not(feature = "texcodec"))]
+        let luid = 0;
+        println!("new session_get_adapter_luid: {:?}", luid);
         VideoHandler {
-            decoder: Decoder::new(),
+            decoder: Decoder::new(luid),
             rgb: ImageRgb::new(ImageFormat::ARGB, crate::DST_STRIDE_RGBA),
+            texture: std::ptr::null_mut(),
             recorder: Default::default(),
             record: false,
+            _session_id: session_id.clone(),
         }
     }
 
     /// Handle a new video frame.
     #[inline]
-    pub fn handle_frame(&mut self, vf: VideoFrame) -> ResultType<bool> {
+    pub fn handle_frame(&mut self, vf: VideoFrame, pixelbuffer: &mut bool) -> ResultType<bool> {
         match &vf.union {
             Some(frame) => {
-                let res = self.decoder.handle_video_frame(frame, &mut self.rgb);
+                let res = self.decoder.handle_video_frame(
+                    frame,
+                    &mut self.rgb,
+                    &mut self.texture,
+                    pixelbuffer,
+                );
                 if self.record {
                     self.recorder
                         .lock()
@@ -1029,7 +1044,11 @@ impl VideoHandler {
 
     /// Reset the decoder.
     pub fn reset(&mut self) {
-        self.decoder = Decoder::new();
+        #[cfg(all(feature = "flutter", feature = "texcodec"))]
+        let luid = crate::flutter::session_get_adapter_luid(&self._session_id);
+        #[cfg(not(all(feature = "flutter", feature = "texcodec")))]
+        let luid = 0;
+        self.decoder = Decoder::new(luid);
     }
 
     /// Start or stop screen record.
@@ -1786,6 +1805,7 @@ pub type MediaSender = mpsc::Sender<MediaData>;
 /// * `video_callback` - The callback for video frame. Being called when a video frame is ready.
 pub fn start_video_audio_threads<F>(
     video_callback: F,
+    sesssion_id: &SessionID,
 ) -> (
     MediaSender,
     MediaSender,
@@ -1793,7 +1813,7 @@ pub fn start_video_audio_threads<F>(
     Arc<AtomicUsize>,
 )
 where
-    F: 'static + FnMut(&mut scrap::ImageRgb) + Send,
+    F: 'static + FnMut(&mut scrap::ImageRgb, *mut c_void, bool) + Send,
 {
     let (video_sender, video_receiver) = mpsc::channel::<MediaData>();
     let video_queue = Arc::new(ArrayQueue::<VideoFrame>::new(VIDEO_QUEUE_SIZE));
@@ -1804,9 +1824,10 @@ where
     let fps = Arc::new(AtomicUsize::new(0));
     let decode_fps = fps.clone();
     let mut skip_beginning = 0;
+    let sesssion_id = sesssion_id.to_owned();
 
     std::thread::spawn(move || {
-        let mut video_handler = VideoHandler::new();
+        let mut video_handler = VideoHandler::new(&sesssion_id);
         loop {
             if let Ok(data) = video_receiver.recv() {
                 match data {
@@ -1821,8 +1842,13 @@ where
                             }
                         };
                         let start = std::time::Instant::now();
-                        if let Ok(true) = video_handler.handle_frame(vf) {
-                            video_callback(&mut video_handler.rgb);
+                        let mut pixelbuffer = true;
+                        if let Ok(true) = video_handler.handle_frame(vf, &mut pixelbuffer) {
+                            video_callback(
+                                &mut video_handler.rgb,
+                                video_handler.texture,
+                                pixelbuffer,
+                            );
                             // fps calculation
                             // The first frame will be very slow
                             if skip_beginning < 5 {

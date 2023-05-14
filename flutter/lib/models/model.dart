@@ -708,6 +708,18 @@ class ImageModel with ChangeNotifier {
     final yscale = size.height / _image!.height;
     return min(xscale, yscale) / 1.5;
   }
+
+  bool isGpuTexture = false;
+  RxInt textureID = (-1).obs;
+
+  int rgbaTextureId = -1;
+  int gpuTextureId = -1;
+
+  setTextureType({bool gpuTexture = false}) {
+    debugPrint("setTextureType:gpuTexture:$gpuTexture");
+    isGpuTexture = gpuTexture;
+    textureID.value = gpuTexture ? gpuTextureId : rgbaTextureId;
+  }
 }
 
 enum ScrollStyle {
@@ -1649,7 +1661,8 @@ class FFI {
     );
     final stream = bind.sessionStart(sessionId: sessionId, id: id);
     final cb = ffiModel.startEventListener(sessionId, id);
-    final useTextureRender = bind.mainUseTextureRender();
+    final usePixelBufferTextureRender = bind.mainUsePixelbufferTextureRender();
+    final useGpuTextureRender = bind.mainUseGpuTextureRender();
     // Preserved for the rgba data.
     stream.listen((message) {
       if (closed) return;
@@ -1671,7 +1684,8 @@ class FFI {
             await cb(event);
           }
         } else if (message is EventToUI_Rgba) {
-          if (useTextureRender) {
+          if (usePixelBufferTextureRender) {
+            imageModel.setTextureType(gpuTexture: false);
             if (_waitForImage[sessionId]!) {
               _waitForImage[sessionId] = false;
               dialogManager.dismissAll();
@@ -1690,6 +1704,19 @@ class FFI {
             final rgba = platformFFI.getRgba(sessionId, sz);
             if (rgba != null) {
               imageModel.onRgba(rgba);
+            }
+          }
+        } else if (message is EventToUI_Texture) {
+          if (useGpuTextureRender) {
+            imageModel.setTextureType(gpuTexture: true);
+            if (_waitForImage[sessionId]!) {
+              _waitForImage[sessionId] = false;
+              dialogManager.dismissAll();
+              for (final cb in imageModel.callbacksOnFirstImage) {
+                cb(id);
+              }
+              await canvasModel.updateViewStyle();
+              await canvasModel.updateScrollStyle();
             }
           }
         }

@@ -64,6 +64,7 @@ pub fn stop_global_event_stream(app_type: String) {
 pub enum EventToUI {
     Event(String),
     Rgba,
+    Texture,
 }
 
 pub fn host_stop_system_key_propagate(_stopped: bool) {
@@ -1427,12 +1428,23 @@ pub fn main_hide_docker() -> SyncReturn<bool> {
     SyncReturn(true)
 }
 
-pub fn main_use_texture_render() -> SyncReturn<bool> {
+pub fn main_use_pixelbuffer_texture_render() -> SyncReturn<bool> {
     #[cfg(not(feature = "flutter_texture_render"))]
     {
         SyncReturn(false)
     }
     #[cfg(feature = "flutter_texture_render")]
+    {
+        SyncReturn(true)
+    }
+}
+
+pub fn main_use_gpu_texture_render() -> SyncReturn<bool> {
+    #[cfg(not(feature = "texcodec"))]
+    {
+        SyncReturn(false)
+    }
+    #[cfg(feature = "texcodec")]
     {
         SyncReturn(true)
     }

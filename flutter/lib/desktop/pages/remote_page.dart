@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_custom_cursor/cursor_manager.dart'
     as custom_cursor_manager;
+import 'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock/wakelock.dart';
@@ -66,9 +67,9 @@ class _RemotePageState extends State<RemotePage>
   late RxBool _zoomCursor;
   late RxBool _remoteCursorMoved;
   late RxBool _keyboardEnabled;
-  late RxInt _textureId;
   late int _textureKey;
-  final useTextureRender = bind.mainUseTextureRender();
+  final usePixelbufferTextureRender = bind.mainUsePixelbufferTextureRender();
+  final useGpuTextureRender = bind.mainUseGpuTextureRender();
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -86,8 +87,7 @@ class _RemotePageState extends State<RemotePage>
     _showRemoteCursor = ShowRemoteCursorState.find(id);
     _keyboardEnabled = KeyboardEnabledState.find(id);
     _remoteCursorMoved = RemoteCursorMovedState.find(id);
-    _textureKey = newTextureId;
-    _textureId = RxInt(-1);
+    _textureKey = newRgbaTextureId;
   }
 
   @override
@@ -100,6 +100,7 @@ class _RemotePageState extends State<RemotePage>
       showKBLayoutTypeChooserIfNeeded(
           _ffi.ffiModel.pi.platform, _ffi.dialogManager);
     });
+
     _ffi.start(
       widget.id,
       password: widget.password,
@@ -114,18 +115,41 @@ class _RemotePageState extends State<RemotePage>
     if (!Platform.isLinux) {
       Wakelock.enable();
     }
+
     // Register texture.
-    _textureId.value = -1;
-    if (useTextureRender) {
-      textureRenderer.createTexture(_textureKey).then((id) async {
-        debugPrint("id: $id, texture_key: $_textureKey");
+    _ffi.imageModel.rgbaTextureId = -1;
+    if (usePixelbufferTextureRender) {
+      rgbaTextureRenderer.createTexture(_textureKey).then((id) async {
+        debugPrint("pixelbuffer texture id: $id, texture_key: $_textureKey");
         if (id != -1) {
-          final ptr = await textureRenderer.getTexturePtr(_textureKey);
-          platformFFI.registerTexture(sessionId, ptr);
-          _textureId.value = id;
+          _ffi.imageModel.rgbaTextureId = id;
+          if (!_ffi.imageModel.isGpuTexture) {
+            _ffi.imageModel.textureID.value = id;
+          }
+          final ptr = await rgbaTextureRenderer.getTexturePtr(_textureKey);
+          platformFFI.registerPixelbufferTexture(sessionId, ptr);
         }
       });
     }
+    if (useGpuTextureRender) {
+      gpuTextureRenderer.registerTexture().then((id) async {
+        debugPrint("gpu texture id: $id");
+        if (id != null) {
+          _ffi.imageModel.gpuTextureId = id;
+          if (_ffi.imageModel.isGpuTexture) {
+            _ffi.imageModel.textureID.value = id;
+          }
+          final output = await gpuTextureRenderer.output(id);
+
+          if (output != null) {
+            platformFFI.registerGpuTexture(sessionId, output);
+          }
+        }
+      }, onError: (err) {
+        debugPrint("Failed to register gpu texture:$err");
+      });
+    }
+
     _ffi.ffiModel.updateEventListener(sessionId, widget.id);
     bind.pluginSyncUi(syncTo: kAppTypeDesktopRemote);
     _ffi.qualityMonitorModel.checkShowQualityMonitor(sessionId);
@@ -207,9 +231,13 @@ class _RemotePageState extends State<RemotePage>
   @override
   void dispose() {
     debugPrint("REMOTE PAGE dispose ${widget.id}");
-    if (useTextureRender) {
-      platformFFI.registerTexture(sessionId, 0);
-      textureRenderer.closeTexture(_textureKey);
+    if (usePixelbufferTextureRender) {
+      platformFFI.registerPixelbufferTexture(sessionId, 0);
+      rgbaTextureRenderer.closeTexture(_textureKey);
+    }
+    if (useGpuTextureRender) {
+      platformFFI.registerGpuTexture(sessionId, 0);
+      gpuTextureRenderer.unregisterTexture(_ffi.imageModel.gpuTextureId);
     }
     // ensure we leave this session, this is a double check
     bind.sessionEnterOrLeave(sessionId: sessionId, enter: false);
@@ -373,13 +401,14 @@ class _RemotePageState extends State<RemotePage>
           Provider.of<CanvasModel>(context, listen: false).updateViewStyle();
         });
         return ImagePaint(
+          ffi: _ffi,
           id: widget.id,
           zoomCursor: _zoomCursor,
           cursorOverImage: _cursorOverImage,
           keyboardEnabled: _keyboardEnabled,
           remoteCursorMoved: _remoteCursorMoved,
-          textureId: _textureId,
-          useTextureRender: useTextureRender,
+          textureId: _ffi.imageModel.textureID,
+          useTextureRender: usePixelbufferTextureRender || useGpuTextureRender,
           listenerBuilder: (child) =>
               _buildRawPointerMouseRegion(child, enterView, leaveView),
         );
@@ -412,6 +441,7 @@ class _RemotePageState extends State<RemotePage>
 }
 
 class ImagePaint extends StatefulWidget {
+  final FFI ffi;
   final String id;
   final RxBool zoomCursor;
   final RxBool cursorOverImage;
@@ -423,6 +453,7 @@ class ImagePaint extends StatefulWidget {
 
   ImagePaint(
       {Key? key,
+      required this.ffi,
       required this.id,
       required this.zoomCursor,
       required this.cursorOverImage,
@@ -448,6 +479,11 @@ class _ImagePaintState extends State<ImagePaint> {
   RxBool get keyboardEnabled => widget.keyboardEnabled;
   RxBool get remoteCursorMoved => widget.remoteCursorMoved;
   Widget Function(Widget)? get listenerBuilder => widget.listenerBuilder;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -550,7 +586,7 @@ class _ImagePaintState extends State<ImagePaint> {
                 top: c.y.toInt().toDouble(),
                 width: c.getDisplayWidth() * s,
                 height: c.getDisplayHeight() * s,
-                child: Texture(textureId: widget.textureId.value),
+                child: Obx(() => Texture(textureId: widget.textureId.value)),
               )
             ],
           );
