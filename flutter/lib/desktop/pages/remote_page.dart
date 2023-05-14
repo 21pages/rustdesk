@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_custom_cursor/cursor_manager.dart'
     as custom_cursor_manager;
+import 'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock/wakelock.dart';
@@ -73,7 +74,8 @@ class _RemotePageState extends State<RemotePage>
   late RxBool _zoomCursor;
   late RxBool _remoteCursorMoved;
   late RxBool _keyboardEnabled;
-  late RenderTexture _renderTexture;
+  late PixelbufferRenderTexture _pixelbufferRenderTexture;
+  late GpuRenderTexture _gpuRenderTexture;
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -103,6 +105,7 @@ class _RemotePageState extends State<RemotePage>
       showKBLayoutTypeChooserIfNeeded(
           _ffi.ffiModel.pi.platform, _ffi.dialogManager);
     });
+
     _ffi.start(
       widget.id,
       password: widget.password,
@@ -118,9 +121,12 @@ class _RemotePageState extends State<RemotePage>
     if (!Platform.isLinux) {
       Wakelock.enable();
     }
+
     // Register texture.
-    _renderTexture = RenderTexture();
-    _renderTexture.create(sessionId);
+    _pixelbufferRenderTexture = PixelbufferRenderTexture();
+    _gpuRenderTexture = GpuRenderTexture();
+    _pixelbufferRenderTexture.create(sessionId, _ffi);
+    _gpuRenderTexture.create(sessionId, _ffi);
 
     _ffi.ffiModel.updateEventListener(sessionId, widget.id);
     bind.pluginSyncUi(syncTo: kAppTypeDesktopRemote);
@@ -207,7 +213,8 @@ class _RemotePageState extends State<RemotePage>
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
     debugPrint("REMOTE PAGE dispose session $sessionId ${widget.id}");
-    await _renderTexture.destroy(closeSession);
+    await _pixelbufferRenderTexture.destroy(closeSession);
+    await _gpuRenderTexture.destroy(closeSession);
     // ensure we leave this session, this is a double check
     _ffi.inputModel.enterOrLeave(false);
     DesktopMultiWindow.removeListener(this);
@@ -403,13 +410,15 @@ class _RemotePageState extends State<RemotePage>
           Provider.of<CanvasModel>(context, listen: false).updateViewStyle();
         });
         return ImagePaint(
+          ffi: _ffi,
           id: widget.id,
           zoomCursor: _zoomCursor,
           cursorOverImage: _cursorOverImage,
           keyboardEnabled: _keyboardEnabled,
           remoteCursorMoved: _remoteCursorMoved,
-          textureId: _renderTexture.textureId,
-          useTextureRender: RenderTexture.useTextureRender,
+          textureId: _ffi.imageModel.textureID,
+          useTextureRender: _pixelbufferRenderTexture.support ||
+              _gpuRenderTexture.support, // TODO, windows has both, it's ok now
           listenerBuilder: (child) =>
               _buildRawTouchAndPointerRegion(child, enterView, leaveView),
         );
@@ -442,6 +451,7 @@ class _RemotePageState extends State<RemotePage>
 }
 
 class ImagePaint extends StatefulWidget {
+  final FFI ffi;
   final String id;
   final RxBool zoomCursor;
   final RxBool cursorOverImage;
@@ -453,6 +463,7 @@ class ImagePaint extends StatefulWidget {
 
   ImagePaint(
       {Key? key,
+      required this.ffi,
       required this.id,
       required this.zoomCursor,
       required this.cursorOverImage,
@@ -478,6 +489,11 @@ class _ImagePaintState extends State<ImagePaint> {
   RxBool get keyboardEnabled => widget.keyboardEnabled;
   RxBool get remoteCursorMoved => widget.remoteCursorMoved;
   Widget Function(Widget)? get listenerBuilder => widget.listenerBuilder;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -585,10 +601,12 @@ class _ImagePaintState extends State<ImagePaint> {
                 top: y,
                 width: c.getDisplayWidth() * s,
                 height: c.getDisplayHeight() * s,
-                child: Texture(
-                  textureId: widget.textureId.value,
-                  filterQuality:
-                      isViewOriginal() ? FilterQuality.none : FilterQuality.low,
+                child: Obx(
+                  () => Texture(
+                      textureId: widget.textureId.value,
+                      filterQuality: isViewOriginal()
+                          ? FilterQuality.none
+                          : FilterQuality.low),
                 ),
               )
             ],
@@ -614,7 +632,8 @@ class _ImagePaintState extends State<ImagePaint> {
     } else {
       final key = cache.updateGetKey(scale);
       if (!cursor.cachedKeys.contains(key)) {
-        debugPrint("Register custom cursor with key $key (${cache.hotx},${cache.hoty})");
+        debugPrint(
+            "Register custom cursor with key $key (${cache.hotx},${cache.hoty})");
         // [Safety]
         // It's ok to call async registerCursor in current synchronous context,
         // because activating the cursor is also an async call and will always

@@ -57,3 +57,7 @@ gstreamer-video = { version = "0.16", optional = true }
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
 hwcodec = { git = "https://github.com/21pages/hwcodec", branch = "stable", optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+#gpu_video_codec = { path = "D:/rustdesk/gpu_video_codec/codec", optional = true }
+gpu_video_codec = { git = "https://github.com/21pages/gpu_video_codec", optional = true }

@@ -100,8 +100,10 @@ class PlatformFFI {
       _ffiBind.sessionGetRgbaSize(sessionId: sessionId);
   void nextRgba(SessionID sessionId) =>
       _ffiBind.sessionNextRgba(sessionId: sessionId);
-  void registerTexture(SessionID sessionId, int ptr) =>
-      _ffiBind.sessionRegisterTexture(sessionId: sessionId, ptr: ptr);
+  void registerPixelbufferTexture(SessionID sessionId, int ptr) => _ffiBind
+      .sessionRegisterPixelbufferTexture(sessionId: sessionId, ptr: ptr);
+  void registerGpuTexture(SessionID sessionId, int ptr) =>
+      _ffiBind.sessionRegisterGpuTexture(sessionId: sessionId, ptr: ptr);
 
   /// Init the FFI class, loads the native Rust core library.
   Future<void> init(String appType) async {

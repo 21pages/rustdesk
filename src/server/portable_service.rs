@@ -8,7 +8,10 @@ use hbb_common::{
     tokio::{self, sync::mpsc},
     ResultType,
 };
-use scrap::{Capturer, Frame, TraitCapturer};
+#[cfg(feature = "gpu_video_codec")]
+use scrap::AdapterDevice;
+
+use scrap::{CaptureOutputFormat, Capturer, Frame, TraitCapturer};
 use shared_memory::*;
 use std::{
     mem::size_of,
@@ -299,7 +302,7 @@ pub mod server {
     fn run_capture(shmem: Arc<SharedMemory>) {
         let mut c = None;
         let mut last_current_display = usize::MAX;
-        let mut last_use_yuv = false;
+        let mut last_output_format = CaptureOutputFormat::I420;
         let mut last_timeout_ms: i32 = 33;
         let mut spf = Duration::from_millis(last_timeout_ms as _);
         let mut first_frame_captured = false;
@@ -315,10 +318,10 @@ pub mod server {
                 let para = para_ptr as *const CapturerPara;
                 let recreate = (*para).recreate;
                 let current_display = (*para).current_display;
-                let use_yuv = (*para).use_yuv;
-                let use_yuv_set = (*para).use_yuv_set;
+                let output_format = (*para).output_format;
+                let output_format_set = (*para).output_format_set;
                 let timeout_ms = (*para).timeout_ms;
-                if !use_yuv_set {
+                if !output_format_set {
                     c = None;
                     std::thread::sleep(spf);
                     continue;
@@ -332,11 +335,11 @@ pub mod server {
                     };
                     display_width = display.width();
                     display_height = display.height();
-                    match Capturer::new(display, use_yuv) {
+                    match Capturer::new(display, output_format) {
                         Ok(mut v) => {
                             c = {
                                 last_current_display = current_display;
-                                last_use_yuv = use_yuv;
+                                last_output_format = output_format;
                                 first_frame_captured = false;
                                 if dxgi_failed_times > MAX_DXGI_FAIL_TIME {
                                     dxgi_failed_times = 0;
@@ -347,8 +350,8 @@ pub mod server {
                                     CapturerPara {
                                         recreate: false,
                                         current_display: (*para).current_display,
-                                        use_yuv: (*para).use_yuv,
-                                        use_yuv_set: (*para).use_yuv_set,
+                                        output_format: (*para).output_format,
+                                        output_format_set: (*para).output_format_set,
                                         timeout_ms: (*para).timeout_ms,
                                     },
                                 );
@@ -364,14 +367,14 @@ pub mod server {
                 } else {
                     if recreate
                         || current_display != last_current_display
-                        || use_yuv != last_use_yuv
+                        || output_format != last_output_format
                     {
                         log::info!(
-                            "create capturer, display:{}->{}, use_yuv:{}->{}",
+                            "create capturer, display:{}->{}, use_yuv:{:?}->{:?}",
                             last_current_display,
                             current_display,
-                            last_use_yuv,
-                            use_yuv
+                            last_output_format,
+                            output_format
                         );
                         c = None;
                         continue;
@@ -391,21 +394,26 @@ pub mod server {
                     }
                 }
                 match c.as_mut().map(|f| f.frame(spf)) {
-                    Some(Ok(f)) => {
-                        utils::set_frame_info(
-                            &shmem,
-                            FrameInfo {
-                                length: f.0.len(),
-                                width: display_width,
-                                height: display_height,
-                            },
-                        );
-                        shmem.write(ADDR_CAPTURE_FRAME, f.0);
-                        shmem.write(ADDR_CAPTURE_WOULDBLOCK, &utils::i32_to_vec(TRUE));
-                        utils::increase_counter(shmem.as_ptr().add(ADDR_CAPTURE_FRAME_COUNTER));
-                        first_frame_captured = true;
-                        dxgi_failed_times = 0;
-                    }
+                    Some(Ok(f)) => match f {
+                        Frame::PixelBuffer(f) => {
+                            utils::set_frame_info(
+                                &shmem,
+                                FrameInfo {
+                                    length: f.0.len(),
+                                    width: display_width,
+                                    height: display_height,
+                                },
+                            );
+                            shmem.write(ADDR_CAPTURE_FRAME, f.0);
+                            shmem.write(ADDR_CAPTURE_WOULDBLOCK, &utils::i32_to_vec(TRUE));
+                            utils::increase_counter(shmem.as_ptr().add(ADDR_CAPTURE_FRAME_COUNTER));
+                            first_frame_captured = true;
+                            dxgi_failed_times = 0;
+                        }
+                        Frame::Texture(_) => {
+                            // should not happen
+                        }
+                    },
                     Some(Err(e)) => {
                         if e.kind() != std::io::ErrorKind::WouldBlock {
                             // DXGI_ERROR_INVALID_CALL after each success on Microsoft GPU driver
@@ -521,6 +529,7 @@ pub mod server {
 // functions called in main process.
 pub mod client {
     use hbb_common::{anyhow::Context, message_proto::PointerDeviceEvent};
+    use scrap::{CaptureOutputFormat, PixelBuffer};
 
     use super::*;
 
@@ -643,7 +652,7 @@ pub mod client {
     }
 
     impl CapturerPortable {
-        pub fn new(current_display: usize, use_yuv: bool) -> Self
+        pub fn new(current_display: usize, format: CaptureOutputFormat) -> Self
         where
             Self: Sized,
         {
@@ -657,8 +666,8 @@ pub mod client {
                     CapturerPara {
                         recreate: true,
                         current_display,
-                        use_yuv,
-                        use_yuv_set: false,
+                        output_format: format,
+                        output_format_set: false,
                         timeout_ms: 33,
                     },
                 );
@@ -676,7 +685,7 @@ pub mod client {
     }
 
     impl TraitCapturer for CapturerPortable {
-        fn set_use_yuv(&mut self, use_yuv: bool) {
+        fn set_output_format(&mut self, format: CaptureOutputFormat) {
             let mut option = SHMEM.lock().unwrap();
             if let Some(shmem) = option.as_mut() {
                 unsafe {
@@ -687,8 +696,8 @@ pub mod client {
                         CapturerPara {
                             recreate: (*para).recreate,
                             current_display: (*para).current_display,
-                            use_yuv,
-                            use_yuv_set: true,
+                            output_format: format,
+                            output_format_set: true,
                             timeout_ms: (*para).timeout_ms,
                         },
                     );
@@ -712,8 +721,8 @@ pub mod client {
                         CapturerPara {
                             recreate: (*para).recreate,
                             current_display: (*para).current_display,
-                            use_yuv: (*para).use_yuv,
-                            use_yuv_set: (*para).use_yuv_set,
+                            output_format: (*para).output_format,
+                            output_format_set: (*para).output_format_set,
                             timeout_ms: timeout.as_millis() as _,
                         },
                     );
@@ -736,7 +745,7 @@ pub mod client {
                     }
                     let frame_ptr = base.add(ADDR_CAPTURE_FRAME);
                     let data = slice::from_raw_parts(frame_ptr, (*frame_info).length);
-                    Ok(Frame(data))
+                    Ok(Frame::PixelBuffer(PixelBuffer(data)))
                 } else {
                     let ptr = base.add(ADDR_CAPTURE_WOULDBLOCK);
                     let wouldblock = utils::ptr_to_i32(ptr);
@@ -762,6 +771,11 @@ pub mod client {
 
         fn set_gdi(&mut self) -> bool {
             true
+        }
+
+        #[cfg(feature = "gpu_video_codec")]
+        fn device(&self) -> AdapterDevice {
+            AdapterDevice::default()
         }
     }
 
@@ -902,7 +916,7 @@ pub mod client {
     pub fn create_capturer(
         current_display: usize,
         display: scrap::Display,
-        use_yuv: bool,
+        format: CaptureOutputFormat,
         portable_service_running: bool,
     ) -> ResultType<Box<dyn TraitCapturer>> {
         if portable_service_running != RUNNING.lock().unwrap().clone() {
@@ -910,11 +924,11 @@ pub mod client {
         }
         if portable_service_running {
             log::info!("Create shared memory capturer");
-            return Ok(Box::new(CapturerPortable::new(current_display, use_yuv)));
+            return Ok(Box::new(CapturerPortable::new(current_display, format)));
         } else {
             log::debug!("Create capturer dxgi|gdi");
             return Ok(Box::new(
-                Capturer::new(display, use_yuv).with_context(|| "Failed to create capturer")?,
+                Capturer::new(display, format).with_context(|| "Failed to create capturer")?,
             ));
         }
     }
@@ -965,8 +979,8 @@ pub mod client {
 pub struct CapturerPara {
     recreate: bool,
     current_display: usize,
-    use_yuv: bool,
-    use_yuv_set: bool,
+    output_format: CaptureOutputFormat,
+    output_format_set: bool,
     timeout_ms: i32,
 }
 

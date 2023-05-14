@@ -1,10 +1,11 @@
 use crate::android::ffi::*;
 use crate::rgba_to_i420;
+use crate::CaptureOutputFormat;
 use lazy_static::lazy_static;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::{io, time::Duration};
+use std::{ffi::c_void, io, time::Duration};
 
 lazy_static! {
     static ref SCREEN_SIZE: Mutex<(u16, u16, u16)> = Mutex::new((0, 0, 0)); // (width, height, scale)
@@ -17,7 +18,7 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new(display: Display, _yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, _format: CaptureOutputFormat) -> io::Result<Capturer> {
         Ok(Capturer {
             display,
             bgra: Vec::new(),
@@ -35,13 +36,13 @@ impl Capturer {
 }
 
 impl crate::TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, _use_yuv: bool) {}
+    fn set_output_format(&mut self, _format: CaptureOutputFormat) {}
 
     fn frame<'a>(&'a mut self, _timeout: Duration) -> io::Result<Frame<'a>> {
         if let Some(buf) = get_video_raw() {
             crate::would_block_if_equal(&mut self.saved_raw_data, buf)?;
             rgba_to_i420(self.width(), self.height(), buf, &mut self.bgra);
-            Ok(Frame::RAW(&self.bgra))
+            Ok(Frame::PixelBuffer(PixelBuffer(&self.bgra)))
         } else {
             return Err(io::ErrorKind::WouldBlock.into());
         }
@@ -49,9 +50,11 @@ impl crate::TraitCapturer for Capturer {
 }
 
 pub enum Frame<'a> {
-    RAW(&'a [u8]),
-    Empty,
+    PixelBuffer(PixelBuffer<'a>),
+    Texture(*mut c_void),
 }
+
+pub struct PixelBuffer<'a>(pub &'a [u8]);
 
 pub struct Display {
     default: bool,

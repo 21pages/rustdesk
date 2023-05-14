@@ -5,6 +5,7 @@ use rdev::{Event, EventType::*, KeyCode};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::{collections::HashMap, sync::atomic::AtomicBool};
 use std::{
+    ffi::c_void,
     ops::{Deref, DerefMut},
     str::FromStr,
     sync::{
@@ -346,8 +347,9 @@ impl<T: InvokeUiSession> Session<T> {
         true
     }
 
-    pub fn alternative_codecs(&self) -> (bool, bool, bool, bool) {
-        let decoder = scrap::codec::Decoder::supported_decodings(None);
+    pub fn alternative_codecs(&self, luid: Option<i64>) -> (bool, bool, bool, bool) {
+        let decoder =
+            scrap::codec::Decoder::supported_decodings(None, cfg!(feature = "flutter"), luid);
         let mut vp8 = decoder.ability_vp8 > 0;
         let mut av1 = decoder.ability_av1 > 0;
         let mut h264 = decoder.ability_h264 > 0;
@@ -1177,6 +1179,8 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn on_voice_call_incoming(&self);
     fn get_rgba(&self) -> *const u8;
     fn next_rgba(&self);
+    #[cfg(all(feature = "gpu_video_codec", feature = "flutter"))]
+    fn on_texture(&self, texture: *mut c_void);
 }
 
 impl<T: InvokeUiSession> Deref for Session<T> {
@@ -1450,11 +1454,18 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     let frame_count = Arc::new(AtomicUsize::new(0));
     let frame_count_cl = frame_count.clone();
     let ui_handler = handler.ui_handler.clone();
-    let (video_sender, audio_sender, video_queue, decode_fps) =
-        start_video_audio_threads(move |data: &mut scrap::ImageRgb| {
+    let (video_sender, audio_sender, video_queue, decode_fps) = start_video_audio_threads(
+        move |data: &mut scrap::ImageRgb, _texture: *mut c_void, pixelbuffer: bool| {
             frame_count_cl.fetch_add(1, Ordering::Relaxed);
-            ui_handler.on_rgba(data);
-        });
+            if pixelbuffer {
+                ui_handler.on_rgba(data);
+            } else {
+                #[cfg(all(feature = "gpu_video_codec", feature = "flutter"))]
+                ui_handler.on_texture(_texture);
+            }
+        },
+        &handler.session_id,
+    );
 
     let mut remote = Remote::new(
         handler,

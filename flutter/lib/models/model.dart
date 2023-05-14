@@ -814,6 +814,33 @@ class ImageModel with ChangeNotifier {
     final yscale = size.height / _image!.height;
     return min(xscale, yscale) / 1.5;
   }
+
+  RxInt textureID = (-1).obs;
+
+  int _rgbaTextureId = -1;
+  int get rgbaTextureId => _rgbaTextureId;
+  int _gpuTextureId = -1;
+  int get gpuTextureId => _gpuTextureId;
+  bool _isGpuTexture = false;
+  bool get isGpuTexture => _isGpuTexture;
+
+  setTextureType({bool gpuTexture = false}) {
+    debugPrint("setTextureType:isGpuTexture:$gpuTexture");
+    _isGpuTexture = gpuTexture;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
+  }
+
+  setRgbaTextureId(int id) {
+    debugPrint("setRgbaTextureId:$id");
+    _rgbaTextureId = id;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
+  }
+
+  setGpuTextureId(int id) {
+    debugPrint("setGpuTextureId:$id");
+    _gpuTextureId = id;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
+  }
 }
 
 enum ScrollStyle {
@@ -1791,7 +1818,8 @@ class FFI {
     }
     final stream = bind.sessionStart(sessionId: sessionId, id: id);
     final cb = ffiModel.startEventListener(sessionId, id);
-    final useTextureRender = bind.mainUseTextureRender();
+    final hasPixelBufferTextureRender = bind.mainHasPixelbufferTextureRender();
+    final hasGpuTextureRender = bind.mainHasGpuTextureRender();
 
     final SimpleWrapper<bool> isToNewWindowNotified = SimpleWrapper(false);
     // Preserved for the rgba data.
@@ -1836,7 +1864,8 @@ class FFI {
             await cb(event);
           }
         } else if (message is EventToUI_Rgba) {
-          if (useTextureRender) {
+          if (hasPixelBufferTextureRender) {
+            imageModel.setTextureType(gpuTexture: false);
             onEvent2UIRgba();
           } else {
             // Fetch the image buffer from rust codes.
@@ -1849,6 +1878,11 @@ class FFI {
               onEvent2UIRgba();
               imageModel.onRgba(rgba);
             }
+          }
+        } else if (message is EventToUI_Texture) {
+          if (hasGpuTextureRender) {
+            imageModel.setTextureType(gpuTexture: true);
+            onEvent2UIRgba();
           }
         }
       }();

@@ -514,6 +514,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.0.4"
+  flutter_gpu_texture_renderer:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: c4983141e090561ba2492bd5521a1abe070efefe
+      resolved-ref: c4983141e090561ba2492bd5521a1abe070efefe
+      url: "https://github.com/21pages/flutter_gpu_texture_renderer"
+    source: git
+    version: "0.0.1"
   flutter_improved_scrolling:
     dependency: "direct main"
     description:

@@ -1,4 +1,7 @@
-use crate::common::{x11::Frame, TraitCapturer};
+use crate::common::{
+    x11::{Frame, PixelBuffer},
+    CaptureOutputFormat, TraitCapturer,
+};
 use crate::wayland::{capturable::*, *};
 use std::{io, sync::RwLock, time::Duration};
 
@@ -60,24 +63,25 @@ impl Capturer {
 }
 
 impl TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
+    fn set_output_format(&mut self, format: CaptureOutputFormat) {
+        let use_yuv = format == CaptureOutputFormat::I420;
         self.2 = use_yuv;
     }
 
     fn frame<'a>(&'a mut self, timeout: Duration) -> io::Result<Frame<'a>> {
         match self.1.capture(timeout.as_millis() as _).map_err(map_err)? {
-            PixelProvider::BGR0(w, h, x) => Ok(Frame(if self.2 {
+            PixelProvider::BGR0(w, h, x) => Ok(Frame::PixelBuffer(PixelBuffer(if self.2 {
                 crate::common::bgra_to_i420(w as _, h as _, &x, &mut self.3);
                 &self.3[..]
             } else {
                 x
-            })),
-            PixelProvider::RGB0(w, h, x) => Ok(Frame(if self.2 {
+            }))),
+            PixelProvider::RGB0(w, h, x) => Ok(Frame::PixelBuffer(PixelBuffer(if self.2 {
                 crate::common::rgba_to_i420(w as _, h as _, &x, &mut self.3);
                 &self.3[..]
             } else {
                 x
-            })),
+            }))),
             PixelProvider::NONE => Err(std::io::ErrorKind::WouldBlock.into()),
             _ => Err(map_err("Invalid data")),
         }

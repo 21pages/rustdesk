@@ -688,6 +688,7 @@ message Misc {
     uint32 full_speed_fps = 27;
     uint32 auto_adjust_fps = 28;
     bool client_record_status = 29;
+    SupportedEncoding supported_encoding = 30;
   }
 }
 

@@ -36,10 +36,10 @@ use hbb_common::{
 use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
-    codec::{Encoder, EncoderCfg, HwEncoderConfig, Quality},
+    codec::{Encoder, EncoderCfg, Quality},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
-    CodecName, Display, TraitCapturer,
+    CaptureOutputFormat, CodecName, Display, Frame, TraitCapturer,
 };
 #[cfg(windows)]
 use std::sync::Once;
@@ -240,7 +240,7 @@ fn check_display_changed(
 fn create_capturer(
     privacy_mode_id: i32,
     display: Display,
-    use_yuv: bool,
+    format: CaptureOutputFormat,
     _current: usize,
     _portable_service_running: bool,
 ) -> ResultType<Box<dyn TraitCapturer>> {
@@ -255,7 +255,7 @@ fn create_capturer(
                 display.origin(),
                 display.width(),
                 display.height(),
-                use_yuv,
+                format,
             ) {
                 Ok(mut c1) => {
                     let mut ok = false;
@@ -305,12 +305,12 @@ fn create_capturer(
             return crate::portable_service::client::create_capturer(
                 _current,
                 display,
-                use_yuv,
+                format,
                 _portable_service_running,
             );
             #[cfg(not(windows))]
             return Ok(Box::new(
-                Capturer::new(display, use_yuv).with_context(|| "Failed to create capturer")?,
+                Capturer::new(display, format).with_context(|| "Failed to create capturer")?,
             ));
         }
     };
@@ -322,7 +322,13 @@ pub fn test_create_capturer(privacy_mode_id: i32, timeout_millis: u64) -> String
     loop {
         let err = match get_current_display() {
             Ok((_, current, display)) => {
-                match create_capturer(privacy_mode_id, display, true, current, false) {
+                match create_capturer(
+                    privacy_mode_id,
+                    display,
+                    CaptureOutputFormat::I420,
+                    current,
+                    false,
+                ) {
                     Ok(_) => return "".to_owned(),
                     Err(e) => e,
                 }
@@ -376,7 +382,10 @@ impl DerefMut for CapturerInfo {
     }
 }
 
-fn get_capturer(use_yuv: bool, portable_service_running: bool) -> ResultType<CapturerInfo> {
+fn get_capturer(
+    format: CaptureOutputFormat,
+    portable_service_running: bool,
+) -> ResultType<CapturerInfo> {
     #[cfg(target_os = "linux")]
     {
         if !scrap::is_x11() {
@@ -424,7 +433,7 @@ fn get_capturer(use_yuv: bool, portable_service_running: bool) -> ResultType<Cap
     let capturer = create_capturer(
         capturer_privacy_mode_id,
         display,
-        use_yuv,
+        format,
         current,
         portable_service_running,
     )?;
@@ -472,6 +481,7 @@ pub fn try_plug_out_virtual_display() {
 }
 
 fn run(sp: GenericService) -> ResultType<()> {
+    let _cleaner = RunCleaner;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let _wake_lock = get_wake_lock();
 
@@ -483,7 +493,7 @@ fn run(sp: GenericService) -> ResultType<()> {
     #[cfg(not(windows))]
     let last_portable_service_running = false;
 
-    let mut c = get_capturer(true, last_portable_service_running)?;
+    let mut c = get_capturer(CaptureOutputFormat::I420, last_portable_service_running)?;
 
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     video_qos.refresh(None);
@@ -491,19 +501,23 @@ fn run(sp: GenericService) -> ResultType<()> {
     let mut quality = video_qos.quality();
     let abr = VideoQoS::abr_enabled();
     log::info!("init quality={:?}, abr enabled:{}", quality, abr);
-    let codec_name = Encoder::negotiated_codec();
-    let recorder = get_recorder(c.width, c.height, &codec_name);
-    let last_recording =
-        (recorder.lock().unwrap().is_some() || video_qos.record()) && codec_name != CodecName::AV1;
-    drop(video_qos);
-    let encoder_cfg = get_encoder_config(&c, quality, last_recording);
-
+    let encoder_cfg = get_encoder_config(
+        &c,
+        quality,
+        video_qos.record(),
+        last_portable_service_running,
+    );
     let mut encoder;
     match Encoder::new(encoder_cfg) {
         Ok(x) => encoder = x,
         Err(err) => bail!("Failed to create encoder: {}", err),
     }
-    c.set_use_yuv(encoder.use_yuv());
+    let codec_name = Encoder::negotiated_codec();
+    let recorder = get_recorder(c.width, c.height, &codec_name);
+    let last_recording =
+        (recorder.lock().unwrap().is_some() || video_qos.record()) && codec_name != CodecName::AV1;
+    drop(video_qos);
+    c.set_output_format(encoder.input_format());
     VIDEO_QOS.lock().unwrap().store_bitrate(encoder.bitrate());
 
     if *SWITCH.lock().unwrap() {
@@ -553,6 +567,10 @@ fn run(sp: GenericService) -> ResultType<()> {
     #[cfg(target_os = "linux")]
     let mut would_block_count = 0u32;
 
+    #[cfg(all(windows, feature = "gpu_video_codec"))]
+    let last_is_gdi = c.is_gdi();
+    let mut supported_encoding_update = false;
+
     while sp.ok() {
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
@@ -586,6 +604,13 @@ fn run(sp: GenericService) -> ResultType<()> {
         }
         #[cfg(windows)]
         if last_portable_service_running != crate::portable_service::client::running() {
+            bail!("SWITCH");
+        }
+        #[cfg(all(windows, feature = "gpu_video_codec"))]
+        if last_is_gdi != c.is_gdi() {
+            if c.is_gdi() && (codec_name == CodecName::H264G || codec_name == CodecName::H265G) {
+                scrap::gpu_video_codec::GvcEncoder::set_this_process_not_use(true);
+            }
             bail!("SWITCH");
         }
         check_privacy_mode_changed(&sp, c.privacy_mode_id)?;
@@ -628,16 +653,11 @@ fn run(sp: GenericService) -> ResultType<()> {
             Ok(frame) => {
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
-                match frame {
-                    scrap::Frame::RAW(data) => {
-                        if data.len() != 0 {
-                            let send_conn_ids =
-                                handle_one_frame(&sp, data, ms, &mut encoder, recorder.clone())?;
-                            frame_controller.set_send(now, send_conn_ids);
-                        }
-                    }
-                    _ => {}
-                };
+                if !frame.pixelbuffer()?.is_empty() {
+                    let send_conn_ids =
+                        handle_one_frame(&sp, frame, ms, &mut encoder, recorder.clone())?;
+                    frame_controller.set_send(now, send_conn_ids);
+                }
                 Ok(())
             }
             Err(err) => Err(err),
@@ -649,7 +669,7 @@ fn run(sp: GenericService) -> ResultType<()> {
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
                 let send_conn_ids =
-                    handle_one_frame(&sp, &frame, ms, &mut encoder, recorder.clone())?;
+                    handle_one_frame(&sp, frame, ms, &mut encoder, recorder.clone())?;
                 frame_controller.set_send(now, send_conn_ids);
                 #[cfg(windows)]
                 {
@@ -713,6 +733,10 @@ fn run(sp: GenericService) -> ResultType<()> {
                 }
             }
         }
+        if !supported_encoding_update {
+            supported_encoding_update = true;
+            update_supported_encoding(&sp);
+        }
 
         let mut fetched_conn_ids = HashSet::new();
         let timeout_millis = 3_000u64;
@@ -730,7 +754,6 @@ fn run(sp: GenericService) -> ResultType<()> {
 
         let elapsed = now.elapsed();
         // may need to enable frame(timeout)
-        log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {
             std::thread::sleep(spf - elapsed);
         }
@@ -742,19 +765,90 @@ fn run(sp: GenericService) -> ResultType<()> {
     Ok(())
 }
 
-fn get_encoder_config(c: &CapturerInfo, quality: Quality, recording: bool) -> EncoderCfg {
-    // https://www.wowza.com/community/t/the-correct-keyframe-interval-in-obs-studio/95162
-    let keyframe_interval = if recording { Some(240) } else { None };
-    match Encoder::negotiated_codec() {
-        scrap::CodecName::H264(name) | scrap::CodecName::H265(name) => {
-            EncoderCfg::HW(HwEncoderConfig {
-                name,
-                width: c.width,
-                height: c.height,
-                quality,
-                keyframe_interval,
-            })
+struct RunCleaner;
+
+impl Drop for RunCleaner {
+    fn drop(&mut self) {
+        #[cfg(feature = "gpu_video_codec")]
+        {
+            use scrap::gpu_video_codec::GvcEncoder;
+            GvcEncoder::set_video_service_adapter_luid(None);
+            GvcEncoder::set_video_service_not_use(false);
         }
+    }
+}
+
+fn update_supported_encoding(sp: &GenericService) {
+    let mut misc: Misc = Misc::new();
+    misc.set_supported_encoding(scrap::codec::Encoder::supported_encoding());
+    let mut msg = Message::new();
+    msg.set_misc(misc);
+    sp.send(msg);
+}
+
+fn get_encoder_config(
+    c: &CapturerInfo,
+    quality: Quality,
+    client_record: bool,
+    _portable_service: bool,
+) -> EncoderCfg {
+    #[cfg(all(windows, feature = "gpu_video_codec"))]
+    if _portable_service || c.is_gdi() {
+        log::info!("gdi:{}, portable:{}", c.is_gdi(), _portable_service);
+        scrap::gpu_video_codec::GvcEncoder::set_video_service_not_use(true);
+    }
+    #[cfg(feature = "gpu_video_codec")]
+    {
+        scrap::gpu_video_codec::GvcEncoder::set_video_service_adapter_luid(Some(c.device().luid));
+        scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::Check);
+    }
+    // https://www.wowza.com/community/t/the-correct-keyframe-interval-in-obs-studio/95162
+    let keyframe_interval =
+        if !Config::get_option("allow-auto-record-incoming").is_empty() || client_record {
+            Some(240)
+        } else {
+            None
+        };
+    let negotiated_codec = Encoder::negotiated_codec();
+    match negotiated_codec.clone() {
+        scrap::CodecName::H264G | scrap::CodecName::H265G => {
+            #[cfg(feature = "gpu_video_codec")]
+            if let Some(feature) =
+                scrap::gpu_video_codec::GvcEncoder::try_get(&c.device(), negotiated_codec.clone())
+            {
+                EncoderCfg::GVC(scrap::codec::GvcEncoderConfig {
+                    device: c.device(),
+                    width: c.width,
+                    height: c.height,
+                    quality,
+                    feature,
+                    keyframe_interval,
+                })
+            } else {
+                handle_hw_encoder(
+                    negotiated_codec.clone(),
+                    c.width,
+                    c.height,
+                    quality as _,
+                    keyframe_interval,
+                )
+            }
+            #[cfg(not(feature = "gpu_video_codec"))]
+            handle_hw_encoder(
+                negotiated_codec.clone(),
+                c.width,
+                c.height,
+                quality as _,
+                keyframe_interval,
+            )
+        }
+        scrap::CodecName::H264(_name) | scrap::CodecName::H265(_name) => handle_hw_encoder(
+            negotiated_codec.clone(),
+            c.width,
+            c.height,
+            quality as _,
+            keyframe_interval,
+        ),
         name @ (scrap::CodecName::VP8 | scrap::CodecName::VP9) => {
             EncoderCfg::VPX(VpxEncoderConfig {
                 width: c.width as _,
@@ -772,8 +866,81 @@ fn get_encoder_config(c: &CapturerInfo, quality: Quality, recording: bool) -> En
             width: c.width as _,
             height: c.height as _,
             quality,
-            keyframe_interval,
+            keyframe_interval: None,
         }),
+    }
+}
+
+fn handle_hw_encoder(
+    _name: CodecName,
+    width: usize,
+    height: usize,
+    quality: Quality,
+    keyframe_interval: Option<usize>,
+) -> EncoderCfg {
+    let f = || {
+        #[cfg(feature = "hwcodec")]
+        match _name {
+            CodecName::H264G | CodecName::H265G => {
+                if !scrap::codec::enable_hwcodec_option() {
+                    return Err(());
+                }
+                let is_h265 = _name == CodecName::H265G;
+                let best = scrap::hwcodec::HwEncoder::best();
+                if let Some(h264) = best.h264 {
+                    if !is_h265 {
+                        Encoder::fallback(CodecName::H264(h264.name.clone()));
+                        return Ok(EncoderCfg::HW(scrap::codec::HwEncoderConfig {
+                            name: h264.name,
+                            width,
+                            height,
+                            quality,
+                            keyframe_interval,
+                        }));
+                    }
+                }
+                if let Some(h265) = best.h265 {
+                    if is_h265 {
+                        Encoder::fallback(CodecName::H265(h265.name.clone()));
+                        return Ok(EncoderCfg::HW(scrap::codec::HwEncoderConfig {
+                            name: h265.name,
+                            width,
+                            height,
+                            quality,
+                            keyframe_interval,
+                        }));
+                    }
+                }
+            }
+            CodecName::H264(name) | CodecName::H265(name) => {
+                return Ok(EncoderCfg::HW(scrap::codec::HwEncoderConfig {
+                    name,
+                    width,
+                    height,
+                    quality,
+                    keyframe_interval,
+                }));
+            }
+            _ => {
+                return Err(());
+            }
+        };
+
+        Err(())
+    };
+
+    match f() {
+        Ok(cfg) => cfg,
+        _ => {
+            Encoder::fallback(CodecName::VP9);
+            EncoderCfg::VPX(VpxEncoderConfig {
+                width: width as _,
+                height: height as _,
+                quality,
+                codec: VpxVideoCodecId::VP9,
+                keyframe_interval,
+            })
+        }
     }
 }
 
@@ -830,7 +997,7 @@ fn check_privacy_mode_changed(sp: &GenericService, privacy_mode_id: i32) -> Resu
 #[inline]
 fn handle_one_frame(
     sp: &GenericService,
-    frame: &[u8],
+    frame: Frame,
     ms: i64,
     encoder: &mut Encoder,
     recorder: Arc<Mutex<Option<Recorder>>>,
@@ -844,14 +1011,22 @@ fn handle_one_frame(
     })?;
 
     let mut send_conn_ids: HashSet<i32> = Default::default();
-    if let Ok(msg) = encoder.encode_to_message(frame, ms) {
-        #[cfg(not(target_os = "ios"))]
-        recorder
-            .lock()
-            .unwrap()
-            .as_mut()
-            .map(|r| r.write_message(&msg));
-        send_conn_ids = sp.send_video_frame(msg);
+    match encoder.encode_to_message(frame, ms) {
+        Ok(msg) => {
+            #[cfg(not(target_os = "ios"))]
+            recorder
+                .lock()
+                .unwrap()
+                .as_mut()
+                .map(|r| r.write_message(&msg));
+            send_conn_ids = sp.send_video_frame(msg);
+        }
+        Err(e) => match e.to_string().as_str() {
+            scrap::codec::ENCODE_NEED_SWITCH => {
+                bail!("SWITCH");
+            }
+            _ => {}
+        },
     }
     Ok(send_conn_ids)
 }

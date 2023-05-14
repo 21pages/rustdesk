@@ -99,6 +99,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "amf"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#1ba12dc2487b5daaa241da1765929ffe72c34987"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "gvc_common",
+ "log",
+]
+
+[[package]]
 name = "android_log-sys"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2618,6 +2629,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpu_video_codec"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#1ba12dc2487b5daaa241da1765929ffe72c34987"
+dependencies = [
+ "amf",
+ "bindgen 0.59.2",
+ "cc",
+ "gvc_common",
+ "log",
+ "mfx",
+ "nv",
+ "serde 1.0.163",
+ "serde_derive",
+ "serde_json 1.0.96",
+]
+
+[[package]]
 name = "gstreamer"
 version = "0.16.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2803,6 +2831,19 @@ dependencies = [
  "proc-macro2 1.0.63",
  "quote 1.0.27",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "gvc_common"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#1ba12dc2487b5daaa241da1765929ffe72c34987"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "log",
+ "serde 1.0.163",
+ "serde_derive",
+ "serde_json 1.0.96",
 ]
 
 [[package]]
@@ -3670,6 +3711,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mfx"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#1ba12dc2487b5daaa241da1765929ffe72c34987"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "gvc_common",
+ "log",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4037,6 +4089,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "nv"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#1ba12dc2487b5daaa241da1765929ffe72c34987"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "gvc_common",
+ "log",
 ]
 
 [[package]]
@@ -5389,6 +5452,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "dbus",
  "docopt",
+ "gpu_video_codec",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",
