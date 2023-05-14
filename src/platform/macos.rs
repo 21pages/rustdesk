@@ -20,7 +20,7 @@ use core_graphics::{
 use hbb_common::{allow_err, anyhow::anyhow, bail, log, message_proto::Resolution};
 use include_dir::{include_dir, Dir};
 use objc::{class, msg_send, sel, sel_impl};
-use scrap::{libc::c_void, quartz::ffi::*};
+use scrap::{libc::c_void, quartz::ffi::*, CaptureOutputFormat};
 use std::path::PathBuf;
 
 static PRIVILEGES_SCRIPTS_DIR: Dir =
@@ -126,7 +126,7 @@ pub fn is_can_screen_recording(prompt: bool) -> bool {
     if !can_record_screen && prompt {
         use scrap::{Capturer, Display};
         if let Ok(d) = Display::primary() {
-            Capturer::new(d, true).ok();
+            Capturer::new(d, CaptureOutputFormat::I420).ok();
         }
     }
     can_record_screen

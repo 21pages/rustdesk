@@ -1,5 +1,12 @@
 pub use self::vpxcodec::*;
-use hbb_common::message_proto::{video_frame, VideoFrame};
+use hbb_common::{
+    anyhow::bail,
+    message_proto::{video_frame, VideoFrame},
+    ResultType,
+};
+use std::ffi::c_void;
+#[cfg(target_os = "ios")]
+use std::ops;
 use std::slice;
 
 cfg_if! {
@@ -33,6 +40,8 @@ cfg_if! {
 
 pub mod codec;
 pub mod convert;
+#[cfg(feature = "gpu_video_codec")]
+pub mod gpu_video_codec;
 #[cfg(feature = "hwcodec")]
 pub mod hwcodec;
 #[cfg(feature = "mediacodec")]
@@ -96,7 +105,7 @@ pub fn would_block_if_equal(old: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> 
 }
 
 pub trait TraitCapturer {
-    fn set_use_yuv(&mut self, use_yuv: bool);
+    fn set_output_format(&mut self, format: CaptureOutputFormat);
 
     // We doesn't support
     #[cfg(not(any(target_os = "ios")))]
@@ -106,6 +115,26 @@ pub trait TraitCapturer {
     fn is_gdi(&self) -> bool;
     #[cfg(windows)]
     fn set_gdi(&mut self) -> bool;
+
+    #[cfg(feature = "gpu_video_codec")]
+    fn device(&self) -> AdapterDevice;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AdapterDevice {
+    pub device: *mut c_void,
+    pub vendor_id: ::std::os::raw::c_uint,
+    pub luid: i64,
+}
+
+impl Default for AdapterDevice {
+    fn default() -> Self {
+        Self {
+            device: std::ptr::null_mut(),
+            vendor_id: Default::default(),
+            luid: Default::default(),
+        }
+    }
 }
 
 #[cfg(x11)]
@@ -137,6 +166,8 @@ pub enum CodecName {
     AV1,
     H264(String),
     H265(String),
+    // H264Tex,
+    // H265Tex,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -183,6 +214,48 @@ impl ToString for CodecFormat {
             CodecFormat::H264 => "H264".into(),
             CodecFormat::H265 => "H265".into(),
             CodecFormat::Unknown => "Unknow".into(),
+        }
+    }
+}
+#[cfg(target_os = "ios")]
+pub enum Frame<'a> {
+    PixelBuffer(PixelBuffer<'a>),
+    Texture(*mut c_void),
+}
+
+#[cfg(target_os = "ios")]
+pub struct PixelBuffer<'a>(pub &'a [u8]);
+
+#[cfg(target_os = "ios")]
+impl<'a> ops::Deref for PixelBuffer<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum CaptureOutputFormat {
+    I420,
+    BGRA,
+    Texture,
+}
+
+impl<'a> Frame<'a> {
+    pub fn pixelbuffer(&self) -> ResultType<&'_ [u8]> {
+        match self {
+            #[cfg(target_os = "macos")]
+            Frame::PixelBuffer(f) => Ok(&f.0),
+            #[cfg(not(target_os = "macos"))]
+            Frame::PixelBuffer(f) => Ok(f.0),
+            _ => bail!("not pixelfbuffer frame"),
+        }
+    }
+
+    pub fn texture(&self) -> ResultType<*mut c_void> {
+        match self {
+            Frame::Texture(f) => Ok(*f),
+            _ => bail!("not texture frame"),
         }
     }
 }
