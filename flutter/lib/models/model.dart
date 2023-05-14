@@ -701,6 +701,21 @@ class ImageModel with ChangeNotifier {
     final yscale = size.height / _image!.height;
     return min(xscale, yscale) / 1.5;
   }
+
+  // bool? _gpuTexture;
+
+  // bool? get gpuTexture => _gpuTexture;
+  bool isGpuTexture = false;
+  RxInt textureID = (-1).obs;
+
+  int rgbaTextureId = -1;
+  int gpuTextureId = -1;
+
+  setTextureType({bool gpuTexture = false}) {
+    debugPrint("setTextureType:gpuTexture:$gpuTexture");
+    isGpuTexture = gpuTexture;
+    textureID.value = gpuTexture ? gpuTextureId : rgbaTextureId;
+  }
 }
 
 enum ScrollStyle {
@@ -1358,8 +1373,8 @@ class CursorModel with ChangeNotifier {
   Future<bool> _updateCache(
       Uint8List rgba, ui.Image image, int id, int w, int h) async {
     Uint8List? data;
-    img2.Image imgOrigin =
-        img2.Image.fromBytes(width: w, height:h, bytes: rgba.buffer, order: img2.ChannelOrder.rgba);
+    img2.Image imgOrigin = img2.Image.fromBytes(
+        width: w, height: h, bytes: rgba.buffer, order: img2.ChannelOrder.rgba);
     if (Platform.isWindows) {
       data = imgOrigin.getBytes(order: img2.ChannelOrder.bgra);
     } else {
@@ -1653,6 +1668,7 @@ class FFI {
           }
         } else if (message is EventToUI_Rgba) {
           if (useTextureRender) {
+            imageModel.setTextureType(gpuTexture: false);
             if (_waitForImage[id]!) {
               _waitForImage[id] = false;
               dialogManager.dismissAll();
@@ -1671,6 +1687,19 @@ class FFI {
             final rgba = platformFFI.getRgba(id, sz);
             if (rgba != null) {
               imageModel.onRgba(rgba);
+            }
+          }
+        } else if (message is EventToUI_Texture) {
+          if (useTextureRender) {
+            imageModel.setTextureType(gpuTexture: true);
+            if (_waitForImage[id]!) {
+              _waitForImage[id] = false;
+              dialogManager.dismissAll();
+              for (final cb in imageModel.callbacksOnFirstImage) {
+                cb(id);
+              }
+              await canvasModel.updateViewStyle();
+              await canvasModel.updateScrollStyle();
             }
           }
         }

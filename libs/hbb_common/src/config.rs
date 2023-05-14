@@ -1371,6 +1371,26 @@ impl HwCodecConfig {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct TexCodecConfig {
+    #[serde(default, deserialize_with = "deserialize_string")]
+    pub available: String,
+}
+
+impl TexCodecConfig {
+    pub fn load() -> TexCodecConfig {
+        Config::load_::<TexCodecConfig>("_texcodec")
+    }
+
+    pub fn store(&self) {
+        Config::store_(self, "_texcodec");
+    }
+
+    pub fn remove() {
+        std::fs::remove_file(Config::file_("_texcodec")).ok();
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct UserDefaultConfig {
     #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
     options: HashMap<String, String>,

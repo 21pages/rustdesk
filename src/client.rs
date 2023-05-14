@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::c_void,
     net::SocketAddr,
     ops::Deref,
     str::FromStr,
@@ -993,27 +994,40 @@ impl AudioHandler {
 pub struct VideoHandler {
     decoder: Decoder,
     pub rgb: ImageRgb,
+    pub texture: *mut c_void,
     recorder: Arc<Mutex<Option<Recorder>>>,
     record: bool,
+    id: String,
 }
 
 impl VideoHandler {
     /// Create a new video handler.
-    pub fn new() -> Self {
+    pub fn new(id: &str) -> Self {
+        #[cfg(all(feature = "flutter", feature = "texcodec"))]
+        let device = crate::flutter::session_get_gpu_device(id);
+        #[cfg(not(all(feature = "flutter", feature = "texcodec")))]
+        let device = std::ptr::null_mut();
         VideoHandler {
-            decoder: Decoder::new(),
+            decoder: Decoder::new(device),
             rgb: ImageRgb::new(ImageFormat::ARGB, crate::DST_STRIDE_RGBA),
+            texture: std::ptr::null_mut(),
             recorder: Default::default(),
             record: false,
+            id: id.to_string(),
         }
     }
 
     /// Handle a new video frame.
     #[inline]
-    pub fn handle_frame(&mut self, vf: VideoFrame) -> ResultType<bool> {
+    pub fn handle_frame(&mut self, vf: VideoFrame, pixelbuffer: &mut bool) -> ResultType<bool> {
         match &vf.union {
             Some(frame) => {
-                let res = self.decoder.handle_video_frame(frame, &mut self.rgb);
+                let res = self.decoder.handle_video_frame(
+                    frame,
+                    &mut self.rgb,
+                    &mut self.texture,
+                    pixelbuffer,
+                );
                 if self.record {
                     self.recorder
                         .lock()
@@ -1029,7 +1043,11 @@ impl VideoHandler {
 
     /// Reset the decoder.
     pub fn reset(&mut self) {
-        self.decoder = Decoder::new();
+        #[cfg(all(feature = "flutter", feature = "texcodec"))]
+        let device = crate::flutter::session_get_gpu_device(&self.id);
+        #[cfg(not(all(feature = "flutter", feature = "texcodec")))]
+        let device = std::ptr::null_mut();
+        self.decoder = Decoder::new(device);
     }
 
     /// Start or stop screen record.
@@ -1353,7 +1371,9 @@ impl LoginConfigHandler {
     ///
     /// * `ignore_default` - If `true`, ignore the default value of the option.
     fn get_option_message(&self, ignore_default: bool) -> Option<OptionMessage> {
-        if self.conn_type.eq(&ConnType::FILE_TRANSFER) || self.conn_type.eq(&ConnType::PORT_FORWARD) || self.conn_type.eq(&ConnType::RDP)
+        if self.conn_type.eq(&ConnType::FILE_TRANSFER)
+            || self.conn_type.eq(&ConnType::PORT_FORWARD)
+            || self.conn_type.eq(&ConnType::RDP)
         {
             return None;
         }
@@ -1424,7 +1444,9 @@ impl LoginConfigHandler {
     }
 
     pub fn get_option_message_after_login(&self) -> Option<OptionMessage> {
-        if self.conn_type.eq(&ConnType::FILE_TRANSFER) || self.conn_type.eq(&ConnType::PORT_FORWARD) || self.conn_type.eq(&ConnType::RDP)
+        if self.conn_type.eq(&ConnType::FILE_TRANSFER)
+            || self.conn_type.eq(&ConnType::PORT_FORWARD)
+            || self.conn_type.eq(&ConnType::RDP)
         {
             return None;
         }
@@ -1779,6 +1801,7 @@ pub type MediaSender = mpsc::Sender<MediaData>;
 /// * `video_callback` - The callback for video frame. Being called when a video frame is ready.
 pub fn start_video_audio_threads<F>(
     video_callback: F,
+    id: &str,
 ) -> (
     MediaSender,
     MediaSender,
@@ -1786,7 +1809,7 @@ pub fn start_video_audio_threads<F>(
     Arc<AtomicUsize>,
 )
 where
-    F: 'static + FnMut(&mut scrap::ImageRgb) + Send,
+    F: 'static + FnMut(&mut scrap::ImageRgb, *mut c_void, bool) + Send,
 {
     let (video_sender, video_receiver) = mpsc::channel::<MediaData>();
     let video_queue = Arc::new(ArrayQueue::<VideoFrame>::new(VIDEO_QUEUE_SIZE));
@@ -1797,9 +1820,10 @@ where
     let fps = Arc::new(AtomicUsize::new(0));
     let decode_fps = fps.clone();
     let mut skip_beginning = 0;
+    let id = id.to_owned();
 
     std::thread::spawn(move || {
-        let mut video_handler = VideoHandler::new();
+        let mut video_handler = VideoHandler::new(&id);
         loop {
             if let Ok(data) = video_receiver.recv() {
                 match data {
@@ -1814,8 +1838,13 @@ where
                             }
                         };
                         let start = std::time::Instant::now();
-                        if let Ok(true) = video_handler.handle_frame(vf) {
-                            video_callback(&mut video_handler.rgb);
+                        let mut pixelbuffer = true;
+                        if let Ok(true) = video_handler.handle_frame(vf, &mut pixelbuffer) {
+                            video_callback(
+                                &mut video_handler.rgb,
+                                video_handler.texture,
+                                pixelbuffer,
+                            );
                             // fps calculation
                             // The first frame will be very slow
                             if skip_beginning < 5 {

@@ -3,6 +3,7 @@ pub mod gdi;
 pub use gdi::CapturerGDI;
 pub mod mag;
 
+use hbb_common::ResultType;
 use winapi::{
     shared::{
         dxgi::*,
@@ -19,6 +20,9 @@ use winapi::{
         winnt::HRESULT, winuser::*,
     },
 };
+
+use crate::{AdapterDevice, CaptureOutputFormat, Frame, PixelBuffer};
+use std::ffi::c_void;
 
 pub struct ComPtr<T>(*mut T);
 impl<T> ComPtr<T> {
@@ -43,28 +47,33 @@ pub struct Capturer {
     duplication: ComPtr<IDXGIOutputDuplication>,
     fastlane: bool,
     surface: ComPtr<IDXGISurface>,
+    texture: ComPtr<ID3D11Texture2D>,
     width: usize,
     height: usize,
-    use_yuv: bool,
+    output_format: CaptureOutputFormat,
     yuv: Vec<u8>,
     rotated: Vec<u8>,
     gdi_capturer: Option<CapturerGDI>,
     gdi_buffer: Vec<u8>,
     saved_raw_data: Vec<u8>, // for faster compare and copy
+    adapter_desc1: DXGI_ADAPTER_DESC1,
 }
 
 impl Capturer {
-    pub fn new(display: Display, use_yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, format: CaptureOutputFormat) -> io::Result<Capturer> {
         let mut device = ptr::null_mut();
         let mut context = ptr::null_mut();
         let mut duplication = ptr::null_mut();
         #[allow(invalid_value)]
         let mut desc = unsafe { mem::MaybeUninit::uninit().assume_init() };
+        #[allow(invalid_value)]
+        let mut adapter_desc1 = unsafe { mem::MaybeUninit::uninit().assume_init() };
         let mut gdi_capturer = None;
 
         let mut res = if display.gdi {
             wrap_hresult(1)
         } else {
+            wrap_hresult(unsafe { (*display.adapter.0).GetDesc1(&mut adapter_desc1) }).ok();
             wrap_hresult(unsafe {
                 D3D11CreateDevice(
                     display.adapter.0 as *mut _,
@@ -145,20 +154,22 @@ impl Capturer {
             duplication: ComPtr(duplication),
             fastlane: desc.DesktopImageInSystemMemory == TRUE,
             surface: ComPtr(ptr::null_mut()),
+            texture: ComPtr(ptr::null_mut()),
             width: display.width() as usize,
             height: display.height() as usize,
             display,
-            use_yuv,
             yuv: Vec::new(),
             rotated: Vec::new(),
             gdi_capturer,
             gdi_buffer: Vec::new(),
             saved_raw_data: Vec::new(),
+            output_format: format,
+            adapter_desc1,
         })
     }
 
-    pub fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.use_yuv = use_yuv;
+    pub fn set_output_format(&mut self, format: CaptureOutputFormat) {
+        self.output_format = format;
     }
 
     pub fn is_gdi(&self) -> bool {
@@ -236,7 +247,16 @@ impl Capturer {
         Ok(surface)
     }
 
-    pub fn frame<'a>(&'a mut self, timeout: UINT) -> io::Result<&'a [u8]> {
+    pub fn frame<'a>(&'a mut self, timeout: UINT) -> io::Result<Frame<'a>> {
+        match self.output_format {
+            CaptureOutputFormat::Texture => Ok(Frame::Texture(self.get_texture(timeout)?)),
+            _ => Ok(Frame::PixelBuffer(PixelBuffer(
+                self.get_pixelbuffer(timeout)?,
+            ))),
+        }
+    }
+
+    fn get_pixelbuffer<'a>(&'a mut self, timeout: UINT) -> io::Result<&'a [u8]> {
         unsafe {
             // Release last frame.
             // No error checking needed because we don't care.
@@ -296,7 +316,7 @@ impl Capturer {
                 }
             };
             Ok({
-                if self.use_yuv {
+                if self.output_format == CaptureOutputFormat::I420 {
                     crate::common::bgra_to_i420(
                         self.width as usize,
                         self.height as usize,
@@ -311,6 +331,31 @@ impl Capturer {
         }
     }
 
+    fn get_texture(&mut self, timeout: UINT) -> io::Result<*mut c_void> {
+        unsafe {
+            (*self.duplication.0).ReleaseFrame();
+            let mut frame = ptr::null_mut();
+            #[allow(invalid_value)]
+            let mut info = mem::MaybeUninit::uninit().assume_init();
+
+            wrap_hresult((*self.duplication.0).AcquireNextFrame(timeout, &mut info, &mut frame))?;
+            let frame = ComPtr(frame);
+
+            // if info.AccumulatedFrames == 0 || *info.LastPresentTime.QuadPart() == 0 {
+            //     return Err(std::io::ErrorKind::WouldBlock.into());
+            // }
+
+            let mut texture: *mut ID3D11Texture2D = ptr::null_mut();
+            (*frame.0).QueryInterface(
+                &IID_ID3D11Texture2D,
+                &mut texture as *mut *mut _ as *mut *mut _,
+            );
+            let texture = ComPtr(texture);
+            self.texture = texture;
+            Ok(self.texture.0 as *mut c_void)
+        }
+    }
+
     fn unmap(&self) {
         unsafe {
             (*self.duplication.0).ReleaseFrame();
@@ -321,6 +366,15 @@ impl Capturer {
                     (*self.surface.0).Unmap();
                 }
             }
+        }
+    }
+
+    pub fn device(&self) -> AdapterDevice {
+        AdapterDevice {
+            device: self.device.0 as _,
+            vendor_id: self.adapter_desc1.VendorId,
+            adapter_luid_low: self.adapter_desc1.AdapterLuid.LowPart,
+            adapter_luid_high: self.adapter_desc1.AdapterLuid.HighPart,
         }
     }
 }
@@ -585,4 +639,31 @@ fn wrap_hresult(x: HRESULT) -> io::Result<()> {
         }
     })
     .into())
+}
+
+pub fn device_to_adapter_device(device: *mut c_void) -> ResultType<AdapterDevice> {
+    let dev = ComPtr(device as *mut ID3D11Device);
+    let dxgi_device = unsafe {
+        let mut dxgi_device: *mut IDXGIDevice = std::ptr::null_mut();
+        wrap_hresult((*dev.0).QueryInterface(
+            &IID_IDXGIDevice2,
+            &mut dxgi_device as *mut *mut _ as *mut *mut _,
+        ))?;
+        ComPtr(dxgi_device)
+    };
+    let dxgi_adapter = unsafe {
+        let mut dxgi_adapter: *mut IDXGIAdapter = std::ptr::null_mut();
+        wrap_hresult((*dxgi_device.0).GetAdapter(&mut dxgi_adapter))?;
+        ComPtr(dxgi_adapter)
+    };
+    #[allow(invalid_value)]
+    let mut adapter_desc = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    unsafe { wrap_hresult((*dxgi_adapter.0).GetDesc(&mut adapter_desc))? };
+
+    Ok(AdapterDevice {
+        device,
+        vendor_id: adapter_desc.VendorId,
+        adapter_luid_low: adapter_desc.AdapterLuid.LowPart,
+        adapter_luid_high: adapter_desc.AdapterLuid.HighPart,
+    })
 }

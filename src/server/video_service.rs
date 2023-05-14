@@ -36,10 +36,10 @@ use hbb_common::{
 use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
-    codec::{Encoder, EncoderCfg, HwEncoderConfig},
+    codec::{Encoder, EncoderCfg, HwEncoderConfig, TexEncoderConfig},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
-    CodecName, Display, TraitCapturer,
+    CaptureOutputFormat, CodecName, Display, Frame, TraitCapturer,
 };
 #[cfg(windows)]
 use std::sync::Once;
@@ -264,7 +264,7 @@ fn check_display_changed(
 fn create_capturer(
     privacy_mode_id: i32,
     display: Display,
-    use_yuv: bool,
+    format: CaptureOutputFormat,
     _current: usize,
     _portable_service_running: bool,
 ) -> ResultType<Box<dyn TraitCapturer>> {
@@ -279,7 +279,7 @@ fn create_capturer(
                 display.origin(),
                 display.width(),
                 display.height(),
-                use_yuv,
+                format,
             ) {
                 Ok(mut c1) => {
                     let mut ok = false;
@@ -329,12 +329,12 @@ fn create_capturer(
             return crate::portable_service::client::create_capturer(
                 _current,
                 display,
-                use_yuv,
+                format,
                 _portable_service_running,
             );
             #[cfg(not(windows))]
             return Ok(Box::new(
-                Capturer::new(display, use_yuv).with_context(|| "Failed to create capturer")?,
+                Capturer::new(display).with_context(|| "Failed to create capturer")?,
             ));
         }
     };
@@ -355,7 +355,13 @@ pub fn test_create_capturer(privacy_mode_id: i32, timeout_millis: u64) -> bool {
     let test_begin = Instant::now();
     while test_begin.elapsed().as_millis() < timeout_millis as _ {
         if let Ok((_, current, display)) = get_current_display() {
-            if let Ok(_) = create_capturer(privacy_mode_id, display, true, current, false) {
+            if let Ok(_) = create_capturer(
+                privacy_mode_id,
+                display,
+                CaptureOutputFormat::I420,
+                current,
+                false,
+            ) {
                 return true;
             }
         }
@@ -404,7 +410,10 @@ impl DerefMut for CapturerInfo {
     }
 }
 
-fn get_capturer(use_yuv: bool, portable_service_running: bool) -> ResultType<CapturerInfo> {
+fn get_capturer(
+    format: CaptureOutputFormat,
+    portable_service_running: bool,
+) -> ResultType<CapturerInfo> {
     #[cfg(target_os = "linux")]
     {
         if !scrap::is_x11() {
@@ -452,7 +461,7 @@ fn get_capturer(use_yuv: bool, portable_service_running: bool) -> ResultType<Cap
     let capturer = create_capturer(
         capturer_privacy_mode_id,
         display,
-        use_yuv,
+        format,
         current,
         portable_service_running,
     )?;
@@ -517,7 +526,7 @@ fn run(sp: GenericService) -> ResultType<()> {
     #[cfg(not(windows))]
     let last_portable_service_running = false;
 
-    let mut c = get_capturer(true, last_portable_service_running)?;
+    let mut c = get_capturer(CaptureOutputFormat::I420, last_portable_service_running)?;
 
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     video_qos.set_size(c.width as _, c.height as _);
@@ -527,14 +536,24 @@ fn run(sp: GenericService) -> ResultType<()> {
     drop(video_qos);
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
 
-    let encoder_cfg = match Encoder::negotiated_codec() {
+    let negotiated_codec = Encoder::negotiated_codec();
+    let encoder_cfg = match negotiated_codec.clone() {
         scrap::CodecName::H264(name) | scrap::CodecName::H265(name) => {
-            EncoderCfg::HW(HwEncoderConfig {
-                name,
-                width: c.width,
-                height: c.height,
-                bitrate: bitrate as _,
-            })
+            match scrap::texcodec::TexEncoder::try_get(&c.device(), negotiated_codec.clone()) {
+                Some(feature) => EncoderCfg::TEX(TexEncoderConfig {
+                    device: c.device(),
+                    width: c.width,
+                    height: c.height,
+                    bitrate: bitrate as _,
+                    feature,
+                }),
+                None => EncoderCfg::HW(HwEncoderConfig {
+                    name: name.clone(),
+                    width: c.width,
+                    height: c.height,
+                    bitrate: bitrate as _,
+                }),
+            }
         }
         name @ (scrap::CodecName::VP8 | scrap::CodecName::VP9) => {
             EncoderCfg::VPX(VpxEncoderConfig {
@@ -560,7 +579,7 @@ fn run(sp: GenericService) -> ResultType<()> {
         Ok(x) => encoder = x,
         Err(err) => bail!("Failed to create encoder: {}", err),
     }
-    c.set_use_yuv(encoder.use_yuv());
+    c.set_output_format(encoder.input_format());
 
     if *SWITCH.lock().unwrap() {
         log::debug!("Broadcasting display switch");
@@ -608,6 +627,9 @@ fn run(sp: GenericService) -> ResultType<()> {
 
     #[cfg(target_os = "linux")]
     let mut would_block_count = 0u32;
+
+    let mut last_encode_elapsed = Instant::now();
+    let mut last_encode_counter: u32 = 0;
 
     while sp.ok() {
         #[cfg(windows)]
@@ -698,7 +720,14 @@ fn run(sp: GenericService) -> ResultType<()> {
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
                 let send_conn_ids =
-                    handle_one_frame(&sp, &frame, ms, &mut encoder, recorder.clone())?;
+                    handle_one_frame(&sp, frame, ms, &mut encoder, recorder.clone())?;
+                last_encode_counter += 1;
+                if last_encode_elapsed.elapsed().as_secs() >= 1 {
+                    last_encode_elapsed = Instant::now();
+                    log::info!("encode fps: {}", last_encode_counter);
+                    last_encode_counter = 0;
+                }
+
                 frame_controller.set_send(now, send_conn_ids);
                 #[cfg(windows)]
                 {
@@ -777,9 +806,18 @@ fn run(sp: GenericService) -> ResultType<()> {
 
         let elapsed = now.elapsed();
         // may need to enable frame(timeout)
-        log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
+        // if res.is_ok() {
+        //     elapsed_sum += elapsed;
+        //     elapsed_counter += 1;
+        //     log::info!(
+        //         "{:?} {:?} {:?}",
+        //         time::Instant::now(),
+        //         elapsed,
+        //         elapsed_sum / elapsed_counter
+        //     );
+        // }
         if elapsed < spf {
-            std::thread::sleep(spf - elapsed);
+            // std::thread::sleep(spf - elapsed);
         }
     }
 
@@ -844,7 +882,7 @@ fn check_privacy_mode_changed(sp: &GenericService, privacy_mode_id: i32) -> Resu
 #[inline]
 fn handle_one_frame(
     sp: &GenericService,
-    frame: &[u8],
+    frame: Frame,
     ms: i64,
     encoder: &mut Encoder,
     recorder: Arc<Mutex<Option<Recorder>>>,

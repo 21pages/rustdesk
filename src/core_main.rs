@@ -221,7 +221,11 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         } else if args[0] == "--check-hwcodec-config" {
             #[cfg(feature = "hwcodec")]
-            scrap::hwcodec::check_config();
+            scrap::hwcodec::check_available_hwcodec();
+            return None;
+        } else if args[0] == "--check-texcodec-config" {
+            #[cfg(feature = "hwcodec")]
+            scrap::texcodec::check_available_texcodec();
             return None;
         } else if args[0] == "--cm" {
             // call connection manager to establish connections
