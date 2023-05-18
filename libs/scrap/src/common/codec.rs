@@ -226,7 +226,8 @@ impl Encoder {
 
     #[inline]
     pub fn negotiated_codec() -> CodecName {
-        CODEC_NAME.lock().unwrap().clone()
+        // CODEC_NAME.lock().unwrap().clone()
+        CodecName::H264("".to_string())
     }
 
     pub fn supported_encoding() -> SupportedEncoding {
