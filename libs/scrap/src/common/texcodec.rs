@@ -36,7 +36,7 @@ impl EncoderApi for TexEncoder {
             EncoderCfg::TEX(config) => {
                 let ctx = EncodeContext {
                     f: FeatureContext {
-                        driver: EncodeDriver::AMF,
+                        driver: EncodeDriver::MFX,
                         api: API::API_DX11,
                         dataFormat: hw_common::DataFormat::H264,
                     },
@@ -149,7 +149,7 @@ impl TexDecoder {
 
     pub fn new(dataFormat: hw_common::DataFormat, device: *mut c_void) -> ResultType<Self> {
         let ctx = DecodeContext {
-            driver: DecodeDriver::AMF,
+            driver: DecodeDriver::MFX,
             api: API::API_DX11,
             dataFormat,
             outputSurfaceFormat: SurfaceFormat::SURFACE_FORMAT_BGRA,
