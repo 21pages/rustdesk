@@ -81,7 +81,7 @@ jobs:
       - name: Install vcpkg dependencies
         run: |
           cd C:\
-          git clone https://github.com/Kingtous/rustdesk_thirdpary_lib --depth=1 
+          git clone https://github.com/21pages/rustdesk_thirdpary_lib --depth=1 
           
       - name: Build rustdesk
         env:
@@ -173,7 +173,7 @@ jobs:
       - name: Install vcpkg dependencies
         run: |
           cd C:\
-          git clone https://github.com/Kingtous/rustdesk_thirdpary_lib --depth=1 
+          git clone https://github.com/21pages/rustdesk_thirdpary_lib --depth=1 
 
       - name: Build rustdesk
         id: build
@@ -400,7 +400,7 @@ jobs:
         shell: bash
         run: |
           pushd /opt
-          sudo git clone https://github.com/Kingtous/rustdesk_thirdparty_lib.git --depth=1
+          sudo git clone https://github.com/21pages/rustdesk_thirdparty_lib.git --depth=1
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
@@ -500,7 +500,7 @@ jobs:
         shell: bash
         run: |
           pushd /opt
-          git clone https://github.com/Kingtous/rustdesk_thirdparty_lib.git --depth=1
+          git clone https://github.com/21pages/rustdesk_thirdparty_lib.git --depth=1
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
