@@ -4,7 +4,7 @@ use crate::{
 };
 use hbb_common::{
     allow_err,
-    anyhow::{anyhow, Context},
+    anyhow::{anyhow, bail, Context},
     bytes::Bytes,
     config::HwCodecConfig,
     log,
@@ -148,6 +148,7 @@ impl HwEncoder {
                 bgra,
                 &mut self.yuv,
             ),
+            _ => bail!("unsupported pixfmt"),
         }
 
         match self.encoder.encode(&self.yuv) {
@@ -262,6 +263,7 @@ impl HwDecoderImage<'_> {
                 );
                 return Ok(());
             }
+            _ => bail!("unsuppoted pixfmt"),
         }
     }
 
