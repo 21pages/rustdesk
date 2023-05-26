@@ -126,25 +126,25 @@ class _RemotePageState extends State<RemotePage>
       rgbaTextureRenderer.createTexture(_textureKey).then((id) async {
         debugPrint("pixelbuffer texture id: $id, texture_key: $_textureKey");
         if (id != -1) {
-          final ptr = await rgbaTextureRenderer.getTexturePtr(_textureKey);
-          platformFFI.registerPixelbufferTexture(widget.id, ptr);
           _ffi.imageModel.rgbaTextureId = id;
           if (!_ffi.imageModel.isGpuTexture) {
             _ffi.imageModel.textureID.value = id;
           }
+          final ptr = await rgbaTextureRenderer.getTexturePtr(_textureKey);
+          platformFFI.registerPixelbufferTexture(widget.id, ptr);
         }
       });
       gpuTextureRenderer.registerTexture().then((id) async {
         debugPrint("gpu texture id: $id");
         if (id != null) {
           _ffi.imageModel.gpuTextureId = id;
+          if (_ffi.imageModel.isGpuTexture) {
+            _ffi.imageModel.textureID.value = id;
+          }
           final output = await gpuTextureRenderer.output(id);
 
           if (output != null) {
             platformFFI.registerGpuTexture(widget.id, output);
-          }
-          if (_ffi.imageModel.isGpuTexture) {
-            _ffi.imageModel.textureID.value = id;
           }
         }
       }, onError: (err) {

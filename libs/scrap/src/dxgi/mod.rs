@@ -3,7 +3,7 @@ pub mod gdi;
 pub use gdi::CapturerGDI;
 pub mod mag;
 
-use hbb_common::ResultType;
+use hbb_common::{bail, ResultType};
 use winapi::{
     shared::{
         dxgi::*,
@@ -642,6 +642,9 @@ fn wrap_hresult(x: HRESULT) -> io::Result<()> {
 }
 
 pub fn device_to_adapter_device(device: *mut c_void) -> ResultType<AdapterDevice> {
+    if device.is_null() {
+        bail!("device is null");
+    }
     let dev = ComPtr(device as *mut ID3D11Device);
     let dxgi_device = unsafe {
         let mut dxgi_device: *mut IDXGIDevice = std::ptr::null_mut();
