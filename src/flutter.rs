@@ -183,7 +183,7 @@ pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
 pub type FlutterGpuTextureRendererPluginCApiSetTexture =
     unsafe extern "C" fn(output: *mut c_void, texture: *mut c_void);
 
-pub type FlutterGpuTextureRendererPluginCApiGetDevice = unsafe extern "C" fn() -> *mut c_void;
+pub type FlutterGpuTextureRendererPluginCApiCreateDevice = unsafe extern "C" fn() -> *mut c_void;
 
 // Video Texture Renderer in Flutter
 #[cfg(feature = "flutter_texture_render")]
@@ -243,8 +243,8 @@ impl Default for VideoRenderer {
         let get_device_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
             Ok(lib) => {
                 let find_sym_res = unsafe {
-                    lib.symbol::<FlutterGpuTextureRendererPluginCApiGetDevice>(
-                        "FlutterGpuTextureRendererPluginCApiGetDevice",
+                    lib.symbol::<FlutterGpuTextureRendererPluginCApiCreateDevice>(
+                        "FlutterGpuTextureRendererPluginCApiCreateDevice",
                     )
                 };
                 match find_sym_res {
@@ -264,6 +264,8 @@ impl Default for VideoRenderer {
             Some(gpu_device_ptr) => unsafe { gpu_device_ptr() },
             None => std::ptr::null_mut(),
         };
+
+        println!("=============== gpu_device_ptr: {:?}", gpu_device_ptr);
 
         Self {
             rgba_ptr: 0,
@@ -1090,6 +1092,7 @@ fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
 #[no_mangle]
 #[cfg(not(feature = "flutter_texture_render"))]
 pub fn session_get_rgba_size(id: *const char) -> usize {
+    println!("session_get_rgba_size 1");
     let id = unsafe { std::ffi::CStr::from_ptr(id as _) };
     if let Ok(id) = id.to_str() {
         if let Some(session) = SESSIONS.read().unwrap().get(id) {
@@ -1102,6 +1105,7 @@ pub fn session_get_rgba_size(id: *const char) -> usize {
 #[no_mangle]
 #[cfg(feature = "flutter_texture_render")]
 pub fn session_get_rgba_size(_id: *const char) -> usize {
+    println!("session_get_rgba_size 2");
     0
 }
 

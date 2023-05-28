@@ -133,8 +133,10 @@ class _RemotePageState extends State<RemotePage>
           final ptr = await rgbaTextureRenderer.getTexturePtr(_textureKey);
           platformFFI.registerPixelbufferTexture(widget.id, ptr);
         }
+        print("initState rgba finish");
       });
-      gpuTextureRenderer.registerTexture().then((id) async {
+      final device = bind.sessionGetGpuDevice(id: widget.id);
+      gpuTextureRenderer.registerTexture(device).then((id) async {
         debugPrint("gpu texture id: $id");
         if (id != null) {
           _ffi.imageModel.gpuTextureId = id;
@@ -173,6 +175,7 @@ class _RemotePageState extends State<RemotePage>
     // }
 
     _blockableOverlayState.applyFfi(_ffi);
+    print("initState 9");
   }
 
   @override

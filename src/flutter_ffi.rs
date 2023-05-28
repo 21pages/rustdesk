@@ -549,6 +549,11 @@ pub fn session_set_size(_id: String, _width: usize, _height: usize) {
     }
 }
 
+pub fn session_get_gpu_device(id: String) -> SyncReturn<i64> {
+    #[cfg(feature = "flutter_texture_render")]
+    SyncReturn(flutter::session_get_gpu_device(&id) as i64)
+}
+
 pub fn main_get_sound_inputs() -> Vec<String> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     return get_sound_inputs();
