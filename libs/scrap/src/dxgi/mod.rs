@@ -3,7 +3,7 @@ pub mod gdi;
 pub use gdi::CapturerGDI;
 pub mod mag;
 
-use hbb_common::ResultType;
+use hbb_common::{bail, ResultType};
 use winapi::{
     shared::{
         dxgi::*,
@@ -373,8 +373,8 @@ impl Capturer {
         AdapterDevice {
             device: self.device.0 as _,
             vendor_id: self.adapter_desc1.VendorId,
-            adapter_luid_low: self.adapter_desc1.AdapterLuid.LowPart,
-            adapter_luid_high: self.adapter_desc1.AdapterLuid.HighPart,
+            luid: ((self.adapter_desc1.AdapterLuid.HighPart as i64) << 32)
+                | self.adapter_desc1.AdapterLuid.LowPart as i64,
         }
     }
 }
@@ -642,6 +642,9 @@ fn wrap_hresult(x: HRESULT) -> io::Result<()> {
 }
 
 pub fn device_to_adapter_device(device: *mut c_void) -> ResultType<AdapterDevice> {
+    if device.is_null() {
+        bail!("device is null");
+    }
     let dev = ComPtr(device as *mut ID3D11Device);
     let dxgi_device = unsafe {
         let mut dxgi_device: *mut IDXGIDevice = std::ptr::null_mut();
@@ -663,7 +666,7 @@ pub fn device_to_adapter_device(device: *mut c_void) -> ResultType<AdapterDevice
     Ok(AdapterDevice {
         device,
         vendor_id: adapter_desc.VendorId,
-        adapter_luid_low: adapter_desc.AdapterLuid.LowPart,
-        adapter_luid_high: adapter_desc.AdapterLuid.HighPart,
+        luid: ((adapter_desc.AdapterLuid.HighPart as i64) << 32)
+            | adapter_desc.AdapterLuid.LowPart as i64,
     })
 }

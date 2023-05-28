@@ -328,7 +328,7 @@ impl Decoder {
         decoding
     }
 
-    pub fn new(device: *mut c_void) -> Decoder {
+    pub fn new(luid: i64) -> Decoder {
         let vp8 = VpxDecoder::new(VpxDecoderConfig {
             codec: VpxVideoCodecId::VP8,
             num_threads: (num_cpus::get() / 2) as _,
@@ -354,7 +354,7 @@ impl Decoder {
                 HwDecoders::default()
             },
             #[cfg(feature = "texcodec")]
-            tex: TexDecoder::new_decoders(device),
+            tex: TexDecoder::new_decoders(luid),
             #[cfg(feature = "hwcodec")]
             i420: vec![],
             #[cfg(feature = "mediacodec")]

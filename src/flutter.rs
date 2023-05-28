@@ -183,7 +183,7 @@ pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
 pub type FlutterGpuTextureRendererPluginCApiSetTexture =
     unsafe extern "C" fn(output: *mut c_void, texture: *mut c_void);
 
-pub type FlutterGpuTextureRendererPluginCApiGetDevice = unsafe extern "C" fn() -> *mut c_void;
+pub type FlutterGpuTextureRendererPluginCApiGetAdapterLuid = unsafe extern "C" fn() -> i64;
 
 // Video Texture Renderer in Flutter
 #[cfg(feature = "flutter_texture_render")]
@@ -195,7 +195,7 @@ struct VideoRenderer {
     height: usize,
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
     gpu_output_ptr: usize,
-    gpu_device_ptr: usize,
+    adapter_luid: i64,
     on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
 }
 
@@ -240,17 +240,17 @@ impl Default for VideoRenderer {
                 None
             }
         };
-        let get_device_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
+        let get_adapter_luid_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
             Ok(lib) => {
                 let find_sym_res = unsafe {
-                    lib.symbol::<FlutterGpuTextureRendererPluginCApiGetDevice>(
-                        "FlutterGpuTextureRendererPluginCApiGetDevice",
+                    lib.symbol::<FlutterGpuTextureRendererPluginCApiGetAdapterLuid>(
+                        "FlutterGpuTextureRendererPluginCApiGetAdapterLuid",
                     )
                 };
                 match find_sym_res {
                     Ok(sym) => Some(sym),
                     Err(e) => {
-                        log::error!("Failed to find symbol FlutterGpuTextureRendererPluginCApiGetDevice, {e}");
+                        log::error!("Failed to find symbol FlutterGpuTextureRendererPluginCApiGetAdapterLuid, {e}");
                         None
                     }
                 }
@@ -260,9 +260,9 @@ impl Default for VideoRenderer {
                 None
             }
         };
-        let gpu_device_ptr = match get_device_func {
-            Some(gpu_device_ptr) => unsafe { gpu_device_ptr() },
-            None => std::ptr::null_mut(),
+        let adapter_luid = match get_adapter_luid_func {
+            Some(get_adapter_luid_func) => unsafe { get_adapter_luid_func() },
+            None => 0,
         };
 
         Self {
@@ -271,7 +271,7 @@ impl Default for VideoRenderer {
             height: 0,
             on_rgba_func,
             gpu_output_ptr: 0,
-            gpu_device_ptr: gpu_device_ptr as _,
+            adapter_luid,
             on_texture_func,
         }
     }
@@ -397,8 +397,8 @@ impl FlutterHandler {
         self.renderer.write().unwrap().gpu_output_ptr = output_ptr;
     }
 
-    pub fn get_gpu_device(&self) -> *mut c_void {
-        self.renderer.read().unwrap().gpu_device_ptr as _
+    pub fn get_adapter_luid(&self) -> i64 {
+        self.renderer.read().unwrap().adapter_luid
     }
 
     #[inline]
@@ -1160,12 +1160,12 @@ pub fn session_register_gpu_texture(id: *const char, output_ptr: usize) {
 #[cfg(not(feature = "flutter_texture_render"))]
 pub fn session_register_gpu_texture(id: *const char, output_ptr: usize) {}
 
-pub fn session_get_gpu_device(id: &str) -> *mut c_void {
+pub fn session_get_adapter_luid(id: &str) -> i64 {
     if let Some(session) = SESSIONS.write().unwrap().get_mut(id) {
-        return session.get_gpu_device();
+        return session.get_adapter_luid();
     }
     log::error!("session_get_gpu_device failed");
-    return std::ptr::null_mut();
+    return 0;
 }
 
 #[inline]

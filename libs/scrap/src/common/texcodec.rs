@@ -113,11 +113,7 @@ impl TexEncoder {
             .map(|c| c.e)
             .unwrap_or_default()
             .drain(..)
-            .filter(|c| {
-                c.luid_low == device.adapter_luid_low
-                    && c.luid_high == device.adapter_luid_high
-                    && c.data_format == data_format
-            })
+            .filter(|c| c.luid == device.luid && c.data_format == data_format)
             .collect();
         if v.len() > 0 {
             Some(v[0].clone())
@@ -163,19 +159,12 @@ pub struct TexDecoders {
 }
 
 impl TexDecoder {
-    pub fn try_get(
-        device: &AdapterDevice,
-        data_format: hw_common::DataFormat,
-    ) -> Option<DecodeContext> {
+    pub fn try_get(luid: i64, data_format: hw_common::DataFormat) -> Option<DecodeContext> {
         let v: Vec<_> = get_available_config()
             .map(|c| c.d)
             .unwrap_or_default()
             .drain(..)
-            .filter(|c| {
-                c.luid_low == device.adapter_luid_low
-                    && c.luid_high == device.adapter_luid_high
-                    && c.data_format == data_format
-            })
+            .filter(|c| c.luid == luid && c.data_format == data_format)
             .collect();
         if v.len() > 0 {
             Some(v[0].clone())
@@ -198,35 +187,26 @@ impl TexDecoder {
             .collect()
     }
 
-    pub fn new_decoders(device: *mut c_void) -> TexDecoders {
+    pub fn new_decoders(luid: i64) -> TexDecoders {
         let mut h264: Option<TexDecoder> = None;
         let mut h265: Option<TexDecoder> = None;
-        if let Ok(decoder) = TexDecoder::new(hw_common::DataFormat::H264, device) {
+        if let Ok(decoder) = TexDecoder::new(hw_common::DataFormat::H264, luid) {
             h264 = Some(decoder);
         }
-        if let Ok(decoder) = TexDecoder::new(hw_common::DataFormat::H265, device) {
+        if let Ok(decoder) = TexDecoder::new(hw_common::DataFormat::H265, luid) {
             h265 = Some(decoder);
         }
         log::info!(
-            "tex new_decoders device: {}, {}, {}",
-            device as usize,
+            "tex new_decoders device: {}, {}",
             h264.is_some(),
             h265.is_some()
         );
         TexDecoders { h264, h265 }
     }
 
-    pub fn new(data_format: hw_common::DataFormat, device: *mut c_void) -> ResultType<Self> {
-        let adapter = device_to_adapter_device(device)?;
-        let mut ctx =
-            Self::try_get(&adapter, data_format).ok_or(anyhow!("Failed to get decode context"))?;
-        // let driver = match adapter.vendor_id {
-        //     AdapterVendor::NVIDIA => DecodeDriver::CUVID,
-        //     AdapterVendor::AMD => DecodeDriver::AMF,
-        //     AdapterVendor::INTEL => DecodeDriver::MFX,
-        //     _ => bail!("unknown adapter vendor:{}", adapter.vendor_id),
-        // };
-        ctx.device = Some(device);
+    pub fn new(data_format: hw_common::DataFormat, luid: i64) -> ResultType<Self> {
+        let ctx =
+            Self::try_get(luid, data_format).ok_or(anyhow!("Failed to get decode context"))?;
         match Decoder::new(ctx) {
             Ok(decoder) => Ok(Self { decoder }),
             Err(_) => Err(anyhow!(format!("Failed to create decoder"))),

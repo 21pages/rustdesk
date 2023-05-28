@@ -1004,11 +1004,12 @@ impl VideoHandler {
     /// Create a new video handler.
     pub fn new(id: &str) -> Self {
         #[cfg(all(feature = "flutter", feature = "texcodec"))]
-        let device = crate::flutter::session_get_gpu_device(id);
+        let luid = crate::flutter::session_get_adapter_luid(id);
         #[cfg(not(all(feature = "flutter", feature = "texcodec")))]
-        let device = std::ptr::null_mut();
+        let luid = 0;
+        println!("new session_get_adapter_luid: {:?}", luid);
         VideoHandler {
-            decoder: Decoder::new(device),
+            decoder: Decoder::new(luid),
             rgb: ImageRgb::new(ImageFormat::ARGB, crate::DST_STRIDE_RGBA),
             texture: std::ptr::null_mut(),
             recorder: Default::default(),
@@ -1044,10 +1045,10 @@ impl VideoHandler {
     /// Reset the decoder.
     pub fn reset(&mut self) {
         #[cfg(all(feature = "flutter", feature = "texcodec"))]
-        let device = crate::flutter::session_get_gpu_device(&self.id);
+        let luid = crate::flutter::session_get_adapter_luid(&self.id);
         #[cfg(not(all(feature = "flutter", feature = "texcodec")))]
-        let device = std::ptr::null_mut();
-        self.decoder = Decoder::new(device);
+        let luid = 0;
+        self.decoder = Decoder::new(luid);
     }
 
     /// Start or stop screen record.

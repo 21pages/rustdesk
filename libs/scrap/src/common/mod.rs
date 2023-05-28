@@ -121,8 +121,7 @@ pub trait TraitCapturer {
 pub struct AdapterDevice {
     pub device: *mut c_void,
     pub vendor_id: ::std::os::raw::c_uint,
-    pub adapter_luid_low: ::std::os::raw::c_ulong,
-    pub adapter_luid_high: ::std::os::raw::c_long,
+    pub luid: i64,
 }
 
 impl Default for AdapterDevice {
@@ -130,8 +129,7 @@ impl Default for AdapterDevice {
         Self {
             device: std::ptr::null_mut(),
             vendor_id: Default::default(),
-            adapter_luid_low: Default::default(),
-            adapter_luid_high: Default::default(),
+            luid: Default::default(),
         }
     }
 }
