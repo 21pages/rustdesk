@@ -817,7 +817,7 @@ fn run(sp: GenericService) -> ResultType<()> {
         //     );
         // }
         if elapsed < spf {
-            // std::thread::sleep(spf - elapsed);
+            std::thread::sleep(spf - elapsed);
         }
     }
 

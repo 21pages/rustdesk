@@ -68,6 +68,7 @@ impl EncoderApi for TexEncoder {
         let mut vf = VideoFrame::new();
         let mut frames = Vec::new();
         for frame in self.encode(texture).with_context(|| "Failed to encode")? {
+            println!("encode tex: {:?}, len:{}", texture, frame.data.len());
             frames.push(EncodedVideoFrame {
                 data: Bytes::from(frame.data),
                 pts: frame.pts as _,

@@ -104,10 +104,10 @@ dependencies:
   percent_indicator: ^4.2.2
   dropdown_button2: ^2.0.0
   flutter_gpu_texture_renderer:
-    # path: D:/flutter/flutter_gpu_texture_renderer
-    git:
-      url: https://github.com/21pages/flutter_gpu_texture_renderer
-      ref: 14aab7224c40925b219322d9f646e340882dbbfb
+    path: D:/flutter/flutter_gpu_texture_renderer
+    # git:
+    #   url: https://github.com/21pages/flutter_gpu_texture_renderer
+    #   ref: 14aab7224c40925b219322d9f646e340882dbbfb
 
 dev_dependencies:
   icons_launcher: ^2.0.4
