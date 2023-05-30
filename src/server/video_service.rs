@@ -605,6 +605,8 @@ fn run(sp: GenericService) -> ResultType<()> {
     let recorder = get_recorder(c.width, c.height, &codec_name);
     #[cfg(windows)]
     start_uac_elevation_check();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let _wake_lock = crate::platform::WakeLock::new(30);
 
     #[cfg(target_os = "linux")]
     let mut would_block_count = 0u32;

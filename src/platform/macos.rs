@@ -701,3 +701,10 @@ pub fn elevate(args: Vec<&str>, prompt: &str) -> ResultType<bool> {
         }
     }
 }
+
+#[inline]
+pub(super) fn feed_wake_lock(second: usize) {
+    std::process::Command::new("caffeinate")
+        .args(["-u", "-t", &format!("{}", second)])
+        .spawn();
+}

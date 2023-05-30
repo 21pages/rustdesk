@@ -48,7 +48,7 @@ pub fn breakdown_callback() {
 pub fn change_resolution(name: &str, width: usize, height: usize) -> ResultType<()> {
     let cur_resolution = current_resolution(name)?;
     // For MacOS
-    // to-do: Make sure the following comparison works. 
+    // to-do: Make sure the following comparison works.
     // For Linux
     // Just run "xrandr", dpi may not be taken into consideration.
     // For Windows
@@ -70,6 +70,51 @@ pub fn get_active_username() -> String {
 
 #[cfg(target_os = "android")]
 pub const PA_SAMPLE_RATE: u32 = 48000;
+
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub struct WakeLock(Arc<AtomicBool>);
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl WakeLock {
+    pub fn new(second: usize) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_cloned = stop.clone();
+        std::thread::spawn(move || {
+            let mut ms: usize = 0;
+            let sleep_ms: usize = 100;
+            loop {
+                if ms == 0 {
+                    feed_wake_lock(second)
+                }
+                if stop_cloned.load(Ordering::Relaxed) {
+                    break;
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(sleep_ms as u64));
+                }
+                ms += sleep_ms;
+                if ms > second * 1000 {
+                    ms = 0;
+                }
+            }
+        });
+
+        WakeLock(stop)
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for WakeLock {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+        #[cfg(windows)]
+        reset_wake_lock();
+    }
+}
 
 #[cfg(test)]
 mod tests {
