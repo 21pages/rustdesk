@@ -506,6 +506,8 @@ fn check_get_displays_changed_msg() -> Option<Message> {
 }
 
 fn run(sp: GenericService) -> ResultType<()> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let _awake = keepawake::Builder::new().display(true).create().ok();
     #[cfg(all(windows, feature = "virtual_display_driver"))]
     ensure_close_virtual_device()?;
 

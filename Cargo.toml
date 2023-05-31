@@ -90,6 +90,7 @@ clipboard = { path = "libs/clipboard" }
 ctrlc = "3.2"
 arboard = "3.2"
 system_shutdown = "4.0"
+keepawake = "0.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 trayicon = { git = "https://github.com/open-trade/trayicon-rs", features = ["winit"] }
