@@ -1219,7 +1219,7 @@ fn get_before_uninstall(kill_self: bool) -> String {
     sc delete {app_name}
     taskkill /F /IM {broker_exe}
     taskkill /F /IM {app_name}.exe{filter}
-    reg delete HKEY_CLASSES_ROOT\\.{ext} /f
+    reg query HKEY_CLASSES_ROOT\\.{ext} && reg delete HKEY_CLASSES_ROOT\\.{ext} /f
     netsh advfirewall firewall delete rule name=\"{app_name} Service\"
     ",
         app_name = app_name,
@@ -1234,7 +1234,7 @@ fn get_uninstall(kill_self: bool) -> String {
     format!(
         "
     {before_uninstall}
-    reg delete {subkey} /f
+    reg query {subkey} && reg delete {subkey} /f
     if exist \"{path}\" rd /s /q \"{path}\"
     if exist \"{start_menu}\" rd /s /q \"{start_menu}\"
     if exist \"%PUBLIC%\\Desktop\\{app_name}.lnk\" del /f /q \"%PUBLIC%\\Desktop\\{app_name}.lnk\"
@@ -1886,7 +1886,11 @@ pub fn current_resolution(name: &str) -> ResultType<Resolution> {
     }
 }
 
-pub(super) fn change_resolution_directly(name: &str, width: usize, height: usize) -> ResultType<()> {
+pub(super) fn change_resolution_directly(
+    name: &str,
+    width: usize,
+    height: usize,
+) -> ResultType<()> {
     let device_name = str_to_device_name(name);
     unsafe {
         let mut dm: DEVMODEW = std::mem::zeroed();
