@@ -1206,7 +1206,7 @@ pub fn run_before_uninstall() -> ResultType<()> {
 
 fn get_before_uninstall(kill_self: bool) -> String {
     let app_name = crate::get_app_name();
-    let ext = app_name.to_lowercase();
+    let _ext = app_name.to_lowercase();
     let filter = if kill_self {
         "".to_string()
     } else {
@@ -1219,29 +1219,25 @@ fn get_before_uninstall(kill_self: bool) -> String {
     sc delete {app_name}
     taskkill /F /IM {broker_exe}
     taskkill /F /IM {app_name}.exe{filter}
-    reg query HKEY_CLASSES_ROOT\\.{ext} && reg delete HKEY_CLASSES_ROOT\\.{ext} /f
     netsh advfirewall firewall delete rule name=\"{app_name} Service\"
     ",
         app_name = app_name,
         broker_exe = WIN_MAG_INJECTED_PROCESS_EXE,
-        ext = ext,
         filter = filter,
     )
 }
 
 fn get_uninstall(kill_self: bool) -> String {
-    let (subkey, path, start_menu, _, _) = get_install_info();
+    let (_subkey, path, start_menu, _, _) = get_install_info();
     format!(
         "
     {before_uninstall}
-    reg query {subkey} && reg delete {subkey} /f
     if exist \"{path}\" rd /s /q \"{path}\"
     if exist \"{start_menu}\" rd /s /q \"{start_menu}\"
     if exist \"%PUBLIC%\\Desktop\\{app_name}.lnk\" del /f /q \"%PUBLIC%\\Desktop\\{app_name}.lnk\"
     if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\" del /f /q \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\"
     ",
         before_uninstall=get_before_uninstall(kill_self),
-        subkey=subkey,
         app_name = crate::get_app_name(),
         path = path,
         start_menu = start_menu,
