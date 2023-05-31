@@ -45,6 +45,9 @@ extern "C" {
     ) -> BOOL;
     fn MacGetMode(display: u32, width: *mut u32, height: *mut u32) -> BOOL;
     fn MacSetMode(display: u32, width: u32, height: u32) -> BOOL;
+    fn MacOpenInhibit() -> *mut c_void;
+    fn MacUpdateInhibit(sys: *mut c_void) -> BOOL;
+    fn MacCloseInhibit(sys: *mut c_void);
 }
 
 pub fn is_process_trusted(prompt: bool) -> bool {
@@ -702,9 +705,24 @@ pub fn elevate(args: Vec<&str>, prompt: &str) -> ResultType<bool> {
     }
 }
 
-#[inline]
-pub(super) fn feed_wake_lock(second: usize) {
-    std::process::Command::new("caffeinate")
-        .args(["-u", "-t", &format!("{}", second)])
-        .spawn();
+pub struct WakeLock(Box<c_void>);
+
+impl WakeLock {
+    pub fn new(_second: usize) -> Self {
+        unsafe {
+            let sys = MacOpenInhibit();
+            if !sys.is_null() {
+                MacUpdateInhibit(sys);
+            }
+            WakeLock(Box::from_raw(sys))
+        }
+    }
+}
+
+impl Drop for WakeLock {
+    fn drop(&mut self) {
+        unsafe {
+            MacCloseInhibit(&mut *self.0);
+        }
+    }
 }

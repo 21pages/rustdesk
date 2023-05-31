@@ -76,10 +76,11 @@ use std::sync::{
     Arc,
 };
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+// Used on platforms that need to constantly reset idle display time
+#[cfg(target_os = "linux")]
 pub struct WakeLock(Arc<AtomicBool>);
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(target_os = "linux")]
 impl WakeLock {
     pub fn new(second: usize) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
@@ -107,7 +108,7 @@ impl WakeLock {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(target_os = "linux")]
 impl Drop for WakeLock {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Relaxed);

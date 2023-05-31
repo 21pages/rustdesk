@@ -40,9 +40,8 @@ use winapi::{
         winbase::*,
         wingdi::*,
         winnt::{
-            TokenElevation, ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
-            ES_SYSTEM_REQUIRED, HANDLE, PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION,
-            TOKEN_QUERY,
+            TokenElevation, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, HANDLE,
+            PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY,
         },
         winuser::*,
     },
@@ -2153,19 +2152,19 @@ pub fn is_process_consent_running() -> ResultType<bool> {
         .output()?;
     Ok(output.status.success() && !output.stdout.is_empty())
 }
+pub struct WakeLock;
 
-#[inline]
-pub(super) fn feed_wake_lock(_second: usize) {
-    unsafe {
-        SetThreadExecutionState(
-            ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED | ES_DISPLAY_REQUIRED,
-        )
-    };
+impl WakeLock {
+    pub fn new(_second: usize) -> Self {
+        unsafe { SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED) };
+        WakeLock {}
+    }
 }
 
-#[inline]
-pub(super) fn reset_wake_lock() {
-    unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+impl Drop for WakeLock {
+    fn drop(&mut self) {
+        unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+    }
 }
 
 #[cfg(test)]

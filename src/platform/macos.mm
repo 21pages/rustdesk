@@ -1,6 +1,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AppKit/AppKit.h>
 #import <IOKit/hidsystem/IOHIDLib.h>
+#include <IOKit/pwr_mgt/IOPMLib.h>
 #include <Security/Authorization.h>
 #include <Security/AuthorizationTags.h>
 
@@ -212,4 +213,68 @@ extern "C" bool MacSetMode(CGDirectDisplayID display, uint32_t width, uint32_t h
     CGDisplayModeRelease(currentMode);
     CFRelease(allModes);
     return ret;
+}
+
+// https://github.com/videolan/vlc/blob/f7bb59d9f51cc10b25ff86d34a3eff744e60c46e/modules/misc/inhibit/iokit-inhibit.c#L63
+struct vlc_inhibit_sys
+{
+    // Activity IOPMAssertion to wake the display if sleeping
+    IOPMAssertionID act_assertion_id;
+
+    // Inhibition IOPMAssertion to keep display or machine from sleeping
+    IOPMAssertionID inh_assertion_id;
+};
+typedef struct vlc_inhibit_sys vlc_inhibit_sys_t;
+
+extern "C" void* MacOpenInhibit() {
+    vlc_inhibit_sys_t *sys = (vlc_inhibit_sys_t*)malloc(sizeof(vlc_inhibit_sys_t));
+    if (!sys) {
+        printf("Failed to malloc vlc_inhibit_sys_t\n");
+        return NULL;
+    }
+    sys->act_assertion_id = kIOPMNullAssertionID;
+    sys->inh_assertion_id = kIOPMNullAssertionID;
+    return sys;
+}
+
+extern "C" bool MacUpdateInhibit(vlc_inhibit_sys_t *sys) {
+    if (sys == NULL) return false;
+    IOReturn ret;
+    CFStringRef activity_reason = CFSTR("RustDesk");
+    // Wake up display
+    ret = IOPMAssertionDeclareUserActivity(activity_reason,
+                                            kIOPMUserActiveLocal,
+                                            &(sys->act_assertion_id));
+    if (ret != kIOReturnSuccess) {
+        printf("Failed to declare user activity (%i)\n", ret);
+    }
+
+    // Actual display inhibition assertion
+    ret = IOPMAssertionCreateWithName(kIOPMAssertPreventUserIdleDisplaySleep,
+                                        kIOPMAssertionLevelOn,
+                                        activity_reason,
+                                        &(sys->inh_assertion_id));
+    if (ret != kIOReturnSuccess) {
+        printf("Failed to IOPMAssertionCreateWithName (%i)\n", ret);
+    }
+    return ret == kIOReturnSuccess;
+}
+
+extern "C" void MacCloseInhibit(vlc_inhibit_sys_t *sys) {
+    if (sys == NULL) return;
+    // Release remaining IOPMAssertion for inhibition, if any
+    if (sys->inh_assertion_id != kIOPMNullAssertionID) {
+        if (IOPMAssertionRelease(sys->inh_assertion_id) != kIOReturnSuccess) {
+            printf("Failed releasing IOPMAssertion on termination\n");
+        }
+        sys->inh_assertion_id = kIOPMNullAssertionID;
+    }
+
+    // Release remaining IOPMAssertion for activity, if any
+    if (sys->act_assertion_id != kIOPMNullAssertionID) {
+        if (IOPMAssertionRelease(sys->act_assertion_id) != kIOReturnSuccess) {
+            printf("Failed releasing IOPMAssertion on termination\n");
+        }
+        sys->act_assertion_id = kIOPMNullAssertionID;
+    }
 }
