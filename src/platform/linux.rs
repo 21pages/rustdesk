@@ -1061,9 +1061,39 @@ mod desktop {
     }
 }
 
-#[inline]
-pub(super) fn feed_wake_lock(_second: usize) {
-    std::process::Command::new("xset")
-        .args(["s", "reset"])
-        .spawn();
+pub struct WakeLock(Arc<AtomicBool>);
+
+impl WakeLock {
+    pub fn new(second: usize) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_cloned = stop.clone();
+        std::thread::spawn(move || {
+            let mut ms: usize = 0;
+            let sleep_ms: usize = 100;
+            loop {
+                if ms == 0 {
+                    std::process::Command::new("xset")
+                        .args(["s", "reset"])
+                        .spawn();
+                }
+                if stop_cloned.load(Ordering::Relaxed) {
+                    break;
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(sleep_ms as u64));
+                }
+                ms += sleep_ms;
+                if ms > second * 1000 {
+                    ms = 0;
+                }
+            }
+        });
+
+        WakeLock(stop)
+    }
+}
+
+impl Drop for WakeLock {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
 }

@@ -71,52 +71,6 @@ pub fn get_active_username() -> String {
 #[cfg(target_os = "android")]
 pub const PA_SAMPLE_RATE: u32 = 48000;
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-
-// Used on platforms that need to constantly reset idle display time
-#[cfg(target_os = "linux")]
-pub struct WakeLock(Arc<AtomicBool>);
-
-#[cfg(target_os = "linux")]
-impl WakeLock {
-    pub fn new(second: usize) -> Self {
-        let stop = Arc::new(AtomicBool::new(false));
-        let stop_cloned = stop.clone();
-        std::thread::spawn(move || {
-            let mut ms: usize = 0;
-            let sleep_ms: usize = 100;
-            loop {
-                if ms == 0 {
-                    feed_wake_lock(second)
-                }
-                if stop_cloned.load(Ordering::Relaxed) {
-                    break;
-                } else {
-                    std::thread::sleep(std::time::Duration::from_millis(sleep_ms as u64));
-                }
-                ms += sleep_ms;
-                if ms > second * 1000 {
-                    ms = 0;
-                }
-            }
-        });
-
-        WakeLock(stop)
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for WakeLock {
-    fn drop(&mut self) {
-        self.0.store(true, Ordering::Relaxed);
-        #[cfg(windows)]
-        reset_wake_lock();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
