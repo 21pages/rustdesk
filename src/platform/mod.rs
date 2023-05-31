@@ -71,6 +71,24 @@ pub fn get_active_username() -> String {
 #[cfg(target_os = "android")]
 pub const PA_SAMPLE_RATE: u32 = 48000;
 
+#[cfg(target_os = "android")]
+use scrap::android::call_main_service_set_by_name;
+#[cfg(target_os = "android")]
+pub struct WakeLock;
+
+#[cfg(target_os = "android")]
+impl WakeLock {
+    pub fn new(_second: usize) -> Self {
+        call_main_service_set_by_name("enable_wake_lock", None, None);
+        WakeLock {}
+    }
+}
+#[cfg(target_os = "android")]
+impl Drop for WakeLock {
+    fn drop(&mut self) {
+        call_main_service_set_by_name("disable_wake_lock", None, None);
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

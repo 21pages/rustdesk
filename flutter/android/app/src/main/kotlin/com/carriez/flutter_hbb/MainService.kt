@@ -131,6 +131,14 @@ class MainService : Service() {
                 Log.d(logTag, "from rust:stop_capture")
                 stopCapture()
             }
+            "enable_wake_lock" -> {
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                Log.d(logTag, "from rust:enable_wake_lock")
+            }
+            "disable_wake_lock" -> {
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                Log.d(logTag, "from rust:disable_wake_lock")
+            }
             else -> {
             }
         }
