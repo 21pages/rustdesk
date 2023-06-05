@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:get/get.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../common.dart';
 import '../../models/model.dart';
@@ -473,9 +474,9 @@ void enterUserLoginDialog(String id, OverlayDialogManager dialogManager) async {
 }
 
 void enterUserLoginAndPasswordDialog(
-    String id, OverlayDialogManager dialogManager) async {
+    UuidValue sessionUuid, OverlayDialogManager dialogManager) async {
   await _connectDialog(
-    id,
+    sessionUuid,
     dialogManager,
     osUsernameController: TextEditingController(),
     osPasswordController: TextEditingController(),
@@ -484,7 +485,7 @@ void enterUserLoginAndPasswordDialog(
 }
 
 _connectDialog(
-  String id,
+  UuidValue sessionUuid,
   OverlayDialogManager dialogManager, {
   TextEditingController? osUsernameController,
   TextEditingController? osPasswordController,
@@ -492,11 +493,13 @@ _connectDialog(
 }) async {
   var rememberPassword = false;
   if (passwordController != null) {
-    rememberPassword = await bind.sessionGetRemember(id: id) ?? false;
+    rememberPassword =
+        await bind.sessionGetRemember(sessionUuid: sessionUuid) ?? false;
   }
   var rememberAccount = false;
   if (osUsernameController != null) {
-    rememberAccount = await bind.sessionGetRemember(id: id) ?? false;
+    rememberAccount =
+        await bind.sessionGetRemember(sessionUuid: sessionUuid) ?? false;
   }
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
@@ -511,13 +514,15 @@ _connectDialog(
       final password = passwordController?.text.trim() ?? '';
       if (passwordController != null && password.isEmpty) return;
       if (rememberAccount) {
-        bind.sessionPeerOption(id: id, name: 'os-username', value: osUsername);
-        bind.sessionPeerOption(id: id, name: 'os-password', value: osPassword);
+        bind.sessionPeerOption(
+            sessionUuid: sessionUuid, name: 'os-username', value: osUsername);
+        bind.sessionPeerOption(
+            sessionUuid: sessionUuid, name: 'os-password', value: osPassword);
       }
       gFFI.login(
         osUsername,
         osPassword,
-        id,
+        sessionUuid,
         password,
         rememberPassword,
       );
@@ -878,8 +883,8 @@ void showWaitAcceptDialog(String id, String type, String title, String text,
 
 void showRestartRemoteDevice(
     PeerInfo pi, String id, OverlayDialogManager dialogManager) async {
-  final res =
-      await dialogManager.show<bool>((setState, close, context) => CustomAlertDialog(
+  final res = await dialogManager
+      .show<bool>((setState, close, context) => CustomAlertDialog(
             title: Row(children: [
               Icon(Icons.warning_rounded, color: Colors.redAccent, size: 28),
               Flexible(

@@ -39,7 +39,8 @@ pub static IS_IN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Default)]
 pub struct Session<T: InvokeUiSession> {
-    pub id: String,
+    pub session_uuid: uuid::Uuid,
+    pub id: String, // peer id
     pub password: String,
     pub args: Vec<String>,
     pub lc: Arc<RwLock<LoginConfigHandler>>,

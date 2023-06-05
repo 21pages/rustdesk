@@ -23,6 +23,7 @@ import 'package:texture_rgba_renderer/texture_rgba_renderer.dart';
 import 'package:uni_links/uni_links.dart';
 import 'package:uni_links_desktop/uni_links_desktop.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 import 'package:win32/win32.dart' as win32;
 import 'package:window_manager/window_manager.dart';
 import 'package:window_size/window_size.dart' as window_size;
@@ -881,8 +882,8 @@ class CustomAlertDialog extends StatelessWidget {
   }
 }
 
-void msgBox(String id, String type, String title, String text, String link,
-    OverlayDialogManager dialogManager,
+void msgBox(UuidValue session_uuid, String type, String title, String text,
+    String link, OverlayDialogManager dialogManager,
     {bool? hasCancel, ReconnectHandle? reconnect}) {
   dialogManager.dismissAll();
   List<Widget> buttons = [];
@@ -927,7 +928,7 @@ void msgBox(String id, String type, String title, String text, String link,
     buttons.insert(
         0,
         dialogButton('Reconnect', isOutline: true, onPressed: () {
-          reconnect(dialogManager, id, false);
+          reconnect(dialogManager, session_uuid, false);
         }));
   }
   if (link.isNotEmpty) {
@@ -941,7 +942,7 @@ void msgBox(String id, String type, String title, String text, String link,
       onSubmit: hasOk ? submit : null,
       onCancel: hasCancel == true ? cancel : null,
     ),
-    tag: '$id-$type-$title-$text-$link',
+    tag: '$session_uuid-$type-$title-$text-$link',
   );
 }
 

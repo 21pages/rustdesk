@@ -27,6 +27,7 @@ import 'package:image/image.dart' as img2;
 import 'package:flutter_custom_cursor/cursor_manager.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:uuid/uuid.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../common.dart';
@@ -36,7 +37,7 @@ import 'input_model.dart';
 import 'platform_model.dart';
 
 typedef HandleMsgBox = Function(Map<String, dynamic> evt, String id);
-typedef ReconnectHandle = Function(OverlayDialogManager, String, bool);
+typedef ReconnectHandle = Function(OverlayDialogManager, UuidValue, bool);
 final _waitForImage = <String, bool>{};
 
 class FfiModel with ChangeNotifier {
@@ -139,30 +140,30 @@ class FfiModel with ChangeNotifier {
     _permissions.clear();
   }
 
-  StreamEventHandler startEventListener(String peerId) {
+  StreamEventHandler startEventListener(UuidValue sessionUuid) {
     return (evt) async {
       var name = evt['name'];
       if (name == 'msgbox') {
-        handleMsgBox(evt, peerId);
+        handleMsgBox(evt, sessionUuid);
       } else if (name == 'peer_info') {
-        handlePeerInfo(evt, peerId);
+        handlePeerInfo(evt, sessionUuid);
       } else if (name == 'sync_peer_info') {
-        handleSyncPeerInfo(evt, peerId);
+        handleSyncPeerInfo(evt, sessionUuid);
       } else if (name == 'connection_ready') {
         setConnectionType(
-            peerId, evt['secure'] == 'true', evt['direct'] == 'true');
+            sessionUuid, evt['secure'] == 'true', evt['direct'] == 'true');
       } else if (name == 'switch_display') {
-        handleSwitchDisplay(evt, peerId);
+        handleSwitchDisplay(evt, sessionUuid);
       } else if (name == 'cursor_data') {
         await parent.target?.cursorModel.updateCursorData(evt);
       } else if (name == 'cursor_id') {
         await parent.target?.cursorModel.updateCursorId(evt);
       } else if (name == 'cursor_position') {
-        await parent.target?.cursorModel.updateCursorPosition(evt, peerId);
+        await parent.target?.cursorModel.updateCursorPosition(evt, sessionUuid);
       } else if (name == 'clipboard') {
         Clipboard.setData(ClipboardData(text: evt['content']));
       } else if (name == 'permission') {
-        updatePermission(evt, peerId);
+        updatePermission(evt, sessionUuid);
       } else if (name == 'chat_client_mode') {
         parent.target?.chatModel
             .receive(ChatModel.clientModeID, evt['text'] ?? '');
@@ -191,9 +192,9 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'update_quality_status') {
         parent.target?.qualityMonitorModel.updateQualityStatus(evt);
       } else if (name == 'update_block_input_state') {
-        updateBlockInputState(evt, peerId);
+        updateBlockInputState(evt, sessionUuid);
       } else if (name == 'update_privacy_mode') {
-        updatePrivacyMode(evt, peerId);
+        updatePrivacyMode(evt, sessionUuid);
       } else if (name == 'new_connection') {
         var uni_links = evt['uni_links'].toString();
         if (uni_links.startsWith(kUniLinksPrefix)) {
@@ -205,10 +206,10 @@ class FfiModel with ChangeNotifier {
         final show = evt['show'].toString() == 'true';
         parent.target?.serverModel.setShowElevation(show);
       } else if (name == 'cancel_msgbox') {
-        cancelMsgBox(evt, peerId);
+        cancelMsgBox(evt, sessionUuid);
       } else if (name == 'switch_back') {
         final peer_id = evt['peer_id'].toString();
-        await bind.sessionSwitchSides(id: peer_id);
+        await bind.sessionSwitchSides(sessionUuid: sessionUuid);
         closeConnection(id: peer_id);
       } else if (name == 'portable_service_running') {
         parent.target?.elevationModel.onPortableServiceRunning(evt);
@@ -235,11 +236,11 @@ class FfiModel with ChangeNotifier {
         pluginManager.handleEvent(evt);
       } else if (name == 'plugin_event') {
         handlePluginEvent(
-            evt, peerId, (Map<String, dynamic> e) => handleMsgBox(e, peerId));
+            evt, (Map<String, dynamic> e) => handleMsgBox(e, sessionUuid));
       } else if (name == 'plugin_reload') {
-        handleReloading(evt, peerId);
+        handleReloading(evt);
       } else if (name == 'plugin_option') {
-        handleOption(evt, peerId);
+        handleOption(evt);
       } else {
         debugPrint('Unknown event name: $name');
       }
@@ -326,7 +327,7 @@ class FfiModel with ChangeNotifier {
   }
 
   /// Handle the message box event based on [evt] and [id].
-  handleMsgBox(Map<String, dynamic> evt, String id) {
+  handleMsgBox(Map<String, dynamic> evt, UuidValue sessionUuid) {
     if (parent.target == null) return;
     final dialogManager = parent.target!.dialogManager;
     final type = evt['type'];
@@ -357,20 +358,20 @@ class FfiModel with ChangeNotifier {
       showRelayHintDialog(id, type, title, text, dialogManager);
     } else {
       var hasRetry = evt['hasRetry'] == 'true';
-      showMsgBox(id, type, title, text, link, hasRetry, dialogManager);
+      showMsgBox(sessionUuid, type, title, text, link, hasRetry, dialogManager);
     }
   }
 
   /// Show a message box with [type], [title] and [text].
-  showMsgBox(String id, String type, String title, String text, String link,
-      bool hasRetry, OverlayDialogManager dialogManager,
+  showMsgBox(UuidValue sessionUuid, String type, String title, String text,
+      String link, bool hasRetry, OverlayDialogManager dialogManager,
       {bool? hasCancel}) {
-    msgBox(id, type, title, text, link, dialogManager,
+    msgBox(sessionUuid, type, title, text, link, dialogManager,
         hasCancel: hasCancel, reconnect: reconnect);
     _timer?.cancel();
     if (hasRetry) {
       _timer = Timer(Duration(seconds: _reconnects), () {
-        reconnect(dialogManager, id, false);
+        reconnect(dialogManager, sessionUuid, false);
       });
       _reconnects *= 2;
     } else {
@@ -378,9 +379,9 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  void reconnect(
-      OverlayDialogManager dialogManager, String id, bool forceRelay) {
-    bind.sessionReconnect(id: id, forceRelay: forceRelay);
+  void reconnect(OverlayDialogManager dialogManager, UuidValue sessionUuid,
+      bool forceRelay) {
+    bind.sessionReconnect(sessionUuid: sessionUuid, forceRelay: forceRelay);
     clearPermissions();
     dialogManager.showLoading(translate('Connecting...'),
         onCancel: closeConnection);
@@ -1358,8 +1359,8 @@ class CursorModel with ChangeNotifier {
   Future<bool> _updateCache(
       Uint8List rgba, ui.Image image, int id, int w, int h) async {
     Uint8List? data;
-    img2.Image imgOrigin =
-        img2.Image.fromBytes(width: w, height:h, bytes: rgba.buffer, order: img2.ChannelOrder.rgba);
+    img2.Image imgOrigin = img2.Image.fromBytes(
+        width: w, height: h, bytes: rgba.buffer, order: img2.ChannelOrder.rgba);
     if (Platform.isWindows) {
       data = imgOrigin.getBytes(order: img2.ChannelOrder.bgra);
     } else {
@@ -1558,6 +1559,7 @@ enum ConnType { defaultConn, fileTransfer, portForward, rdp }
 
 /// Flutter state manager and data communication with the Rust core.
 class FFI {
+  final sessionUuid = Uuid().v4obj();
   var id = '';
   var version = '';
   var connType = ConnType.defaultConn;
@@ -1623,6 +1625,7 @@ class FFI {
     }
     // ignore: unused_local_variable
     final addRes = bind.sessionAddSync(
+      sessionUuid: sessionUuid,
       id: id,
       isFileTransfer: isFileTransfer,
       isPortForward: isPortForward,
@@ -1631,8 +1634,8 @@ class FFI {
       forceRelay: forceRelay ?? false,
       password: password ?? "",
     );
-    final stream = bind.sessionStart(id: id);
-    final cb = ffiModel.startEventListener(id);
+    final stream = bind.sessionStart(sessionUuid: sessionUuid, id: id);
+    final cb = ffiModel.startEventListener(sessionUuid);
     () async {
       final useTextureRender = bind.mainUseTextureRender();
       // Preserved for the rgba data.
@@ -1682,10 +1685,10 @@ class FFI {
   }
 
   /// Login with [password], choose if the client should [remember] it.
-  void login(String osUsername, String osPassword, String id, String password,
-      bool remember) {
+  void login(String osUsername, String osPassword, UuidValue sessionUuid,
+      String password, bool remember) {
     bind.sessionLogin(
-        id: id,
+        sessionUuid: sessionUuid,
         osUsername: osUsername,
         osPassword: osPassword,
         password: password,
