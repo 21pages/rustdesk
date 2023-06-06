@@ -117,7 +117,7 @@ class _RemotePageState extends State<RemotePage>
         debugPrint("id: $id, texture_key: $_textureKey");
         if (id != -1) {
           final ptr = await textureRenderer.getTexturePtr(_textureKey);
-          platformFFI.registerTexture(widget.id, ptr);
+          platformFFI.registerTexture(_ffi.sessionUuid, ptr);
           _textureId.value = id;
         }
       });
@@ -203,7 +203,7 @@ class _RemotePageState extends State<RemotePage>
   void dispose() {
     debugPrint("REMOTE PAGE dispose ${widget.id}");
     if (useTextureRender) {
-      platformFFI.registerTexture(widget.id, 0);
+      platformFFI.registerTexture(_ffi.sessionUuid, 0);
       textureRenderer.closeTexture(_textureKey);
     }
     // ensure we leave this session, this is a double check

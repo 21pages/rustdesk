@@ -5,7 +5,7 @@ use crate::{
 };
 use flutter_rust_bridge::StreamSink;
 use hbb_common::{
-    bail, config::LocalConfig, get_version_number, log, message_proto::*,
+    anyhow::anyhow, bail, config::LocalConfig, get_version_number, log, message_proto::*,
     rendezvous_proto::ConnType, ResultType,
 };
 #[cfg(feature = "flutter_texture_render")]
@@ -1011,12 +1011,17 @@ fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
     serde_json::ser::to_string(&v).unwrap_or("".to_string())
 }
 
+fn char_to_uuid(c: *const char) -> ResultType<Uuid> {
+    let cstr = unsafe { std::ffi::CStr::from_ptr(c as _) };
+    let str = cstr.to_str()?;
+    Uuid::from_str(str).map_err(|e| anyhow!("{:?}", e))
+}
+
 #[no_mangle]
-#[cfg(not(feature = "flutter_texture_render"))]
-pub fn session_get_rgba_size(session_uuid: Uuid) -> usize {
-    let id = unsafe { std::ffi::CStr::from_ptr(id as _) };
-    if let Ok(id) = id.to_str() {
-        if let Some(session) = SESSIONS.read().unwrap().get(id) {
+pub fn session_get_rgba_size(_session_uuid_str: *const char) -> usize {
+    #[cfg(not(feature = "flutter_texture_render"))]
+    if let Ok(session_uuid) = char_to_uuid(_session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
             return session.rgba.read().unwrap().len();
         }
     }
@@ -1024,39 +1029,35 @@ pub fn session_get_rgba_size(session_uuid: Uuid) -> usize {
 }
 
 #[no_mangle]
-#[cfg(feature = "flutter_texture_render")]
-pub fn session_get_rgba_size(_session_uuid: Uuid) -> usize {
-    0
-}
-
-#[no_mangle]
-pub fn session_get_rgba(session_uuid: Uuid) -> *const u8 {
-    if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
-        return session.get_rgba();
+pub fn session_get_rgba(session_uuid_str: *const char) -> *const u8 {
+    if let Ok(session_uuid) = char_to_uuid(session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
+            return session.get_rgba();
+        }
     }
+
     std::ptr::null()
 }
 
 #[no_mangle]
-pub fn session_next_rgba(session_uuid: Uuid) {
-    if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
-        return session.next_rgba();
+pub fn session_next_rgba(session_uuid_str: *const char) {
+    if let Ok(session_uuid) = char_to_uuid(session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
+            return session.next_rgba();
+        }
     }
 }
 
 #[inline]
 #[no_mangle]
-#[cfg(feature = "flutter_texture_render")]
-pub fn session_register_texture(session_uuid: Uuid, ptr: usize) {
-    if let Some(session) = SESSIONS.write().unwrap().get_mut(&session_uuid) {
-        return session.register_texture(ptr);
+pub fn session_register_texture(_session_uuid_str: *const char, _ptr: usize) {
+    #[cfg(feature = "flutter_texture_render")]
+    if let Ok(session_uuid) = char_to_uuid(_session_uuid_str) {
+        if let Some(session) = SESSIONS.write().unwrap().get_mut(&session_uuid) {
+            return session.register_texture(_ptr);
+        }
     }
 }
-
-#[inline]
-#[no_mangle]
-#[cfg(not(feature = "flutter_texture_render"))]
-pub fn session_register_texture(_id: *const char, _ptr: usize) {}
 
 #[inline]
 pub fn push_session_event(

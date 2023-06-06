@@ -663,7 +663,7 @@ class ImageModel with ChangeNotifier {
         isWeb ? ui.PixelFormat.rgba8888 : ui.PixelFormat.bgra8888,
         onPixelsCopied: () {
       // Unlock the rgba memory from rust codes.
-      platformFFI.nextRgba(id);
+      platformFFI.nextRgba(sessionUuid);
     }).then((image) {
       if (parent.target?.id != pid) return;
       try {
@@ -1690,11 +1690,11 @@ class FFI {
             }
           } else {
             // Fetch the image buffer from rust codes.
-            final sz = platformFFI.getRgbaSize(id);
+            final sz = platformFFI.getRgbaSize(sessionUuid);
             if (sz == null || sz == 0) {
               return;
             }
-            final rgba = platformFFI.getRgba(id, sz);
+            final rgba = platformFFI.getRgba(sessionUuid, sz);
             if (rgba != null) {
               imageModel.onRgba(rgba);
             }
