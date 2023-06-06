@@ -122,14 +122,14 @@ class _RemotePageState extends State<RemotePage>
         }
       });
     }
-    _ffi.ffiModel.updateEventListener(widget.id);
+    _ffi.ffiModel.updateEventListener(_ffi.sessionUuid, widget.id);
     bind.pluginSyncUi(syncTo: kAppTypeDesktopRemote);
-    _ffi.qualityMonitorModel.checkShowQualityMonitor(widget.id);
+    _ffi.qualityMonitorModel.checkShowQualityMonitor(_ffi.sessionUuid);
     // Session option should be set after models.dart/FFI.start
     _showRemoteCursor.value = bind.sessionGetToggleOptionSync(
-        id: widget.id, arg: 'show-remote-cursor');
-    _zoomCursor.value =
-        bind.sessionGetToggleOptionSync(id: widget.id, arg: 'zoom-cursor');
+        sessionUuid: _ffi.sessionUuid, arg: 'show-remote-cursor');
+    _zoomCursor.value = bind.sessionGetToggleOptionSync(
+        sessionUuid: _ffi.sessionUuid, arg: 'zoom-cursor');
     DesktopMultiWindow.addListener(this);
     // if (!_isCustomCursorInited) {
     //   customCursorController.registerNeedUpdateCursorCallback(
@@ -207,7 +207,7 @@ class _RemotePageState extends State<RemotePage>
       textureRenderer.closeTexture(_textureKey);
     }
     // ensure we leave this session, this is a double check
-    bind.sessionEnterOrLeave(id: widget.id, enter: false);
+    bind.sessionEnterOrLeave(sessionUuid: _ffi.sessionUuid, enter: false);
     DesktopMultiWindow.removeListener(this);
     _ffi.dialogManager.hideMobileActionsOverlay();
     _ffi.recordingModel.onClose();
@@ -278,7 +278,7 @@ class _RemotePageState extends State<RemotePage>
     super.build(context);
     return WillPopScope(
         onWillPop: () async {
-          clientClose(widget.id, _ffi.dialogManager);
+          clientClose(_ffi.sessionUuid, _ffi.dialogManager);
           return false;
         },
         child: MultiProvider(providers: [
@@ -305,7 +305,7 @@ class _RemotePageState extends State<RemotePage>
       if (!_rawKeyFocusNode.hasFocus) {
         _rawKeyFocusNode.requestFocus();
       }
-      bind.sessionEnterOrLeave(id: widget.id, enter: true);
+      bind.sessionEnterOrLeave(sessionUuid: _ffi.sessionUuid, enter: true);
     }
   }
 
@@ -325,7 +325,7 @@ class _RemotePageState extends State<RemotePage>
     }
     // See [onWindowBlur].
     if (!Platform.isWindows) {
-      bind.sessionEnterOrLeave(id: widget.id, enter: false);
+      bind.sessionEnterOrLeave(sessionUuid: _ffi.sessionUuid, enter: false);
     }
   }
 

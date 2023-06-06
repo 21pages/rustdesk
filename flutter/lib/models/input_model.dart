@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
@@ -59,6 +60,8 @@ class InputModel {
 
   get id => parent.target?.id ?? "";
 
+  UuidValue get sessionUuid => parent.target!.sessionUuid;
+
   bool get keyboardPerm => parent.target!.ffiModel.keyboard;
 
   InputModel(this.parent);
@@ -70,7 +73,7 @@ class InputModel {
 
     // * Currently mobile does not enable map mode
     if (isDesktop) {
-      bind.sessionGetKeyboardMode(id: id).then((result) {
+      bind.sessionGetKeyboardMode(sessionUuid: sessionUuid).then((result) {
         keyboardMode = result.toString();
       });
     }
@@ -169,7 +172,7 @@ class InputModel {
       lockModes |= (1 << scrolllock);
     }
     bind.sessionHandleFlutterKeyEvent(
-        id: id,
+        sessionUuid: sessionUuid,
         name: name,
         platformCode: platformCode,
         positionCode: positionCode,
@@ -204,7 +207,7 @@ class InputModel {
   void inputKey(String name, {bool? down, bool? press}) {
     if (!keyboardPerm) return;
     bind.sessionInputKey(
-        id: id,
+        sessionUuid: sessionUuid,
         name: name,
         down: down ?? false,
         press: press ?? true,
@@ -264,7 +267,7 @@ class InputModel {
   /// Send scroll event with scroll distance [y].
   void scroll(int y) {
     bind.sessionSendMouse(
-        id: id,
+        sessionUuid: sessionUuid,
         msg: json
             .encode(modify({'id': id, 'type': 'wheel', 'y': y.toString()})));
   }
@@ -287,7 +290,7 @@ class InputModel {
   void sendMouse(String type, MouseButtons button) {
     if (!keyboardPerm) return;
     bind.sessionSendMouse(
-        id: id,
+        sessionUuid: sessionUuid,
         msg: json.encode(modify({'type': type, 'buttons': button.value})));
   }
 
@@ -297,7 +300,7 @@ class InputModel {
       resetModifiers();
     }
     _flingTimer?.cancel();
-    bind.sessionEnterOrLeave(id: id, enter: enter);
+    bind.sessionEnterOrLeave(sessionUuid: sessionUuid, enter: enter);
   }
 
   /// Send mouse movement event with distance in [x] and [y].
@@ -306,7 +309,8 @@ class InputModel {
     var x2 = x.toInt();
     var y2 = y.toInt();
     bind.sessionSendMouse(
-        id: id, msg: json.encode(modify({'x': '$x2', 'y': '$y2'})));
+        sessionUuid: sessionUuid,
+        msg: json.encode(modify({'x': '$x2', 'y': '$y2'})));
   }
 
   void onPointHoverImage(PointerHoverEvent e) {
@@ -334,7 +338,8 @@ class InputModel {
     var y = _trackpadScrollUnsent.dy.truncate();
     _trackpadScrollUnsent -= Offset(x.toDouble(), y.toDouble());
     bind.sessionSendMouse(
-        id: id, msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
+        sessionUuid: sessionUuid,
+        msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
   }
 
   void _scheduleFling(double x, double y, int delay) {
@@ -388,7 +393,8 @@ class InputModel {
       }
 
       bind.sessionSendMouse(
-          id: id, msg: '{"type": "trackpad", "x": "$dx", "y": "$dy"}');
+          sessionUuid: sessionUuid,
+          msg: '{"type": "trackpad", "x": "$dx", "y": "$dy"}');
       _scheduleFling(x, y, delay);
     });
   }
@@ -448,7 +454,8 @@ class InputModel {
         dy = 1;
       }
       bind.sessionSendMouse(
-          id: id, msg: '{"type": "wheel", "x": "$dx", "y": "$dy"}');
+          sessionUuid: sessionUuid,
+          msg: '{"type": "wheel", "x": "$dx", "y": "$dy"}');
     }
   }
 
@@ -641,7 +648,7 @@ class InputModel {
         break;
     }
     evt['buttons'] = buttons;
-    bind.sessionSendMouse(id: id, msg: json.encode(evt));
+    bind.sessionSendMouse(sessionUuid: sessionUuid, msg: json.encode(evt));
   }
 
   /// Web only

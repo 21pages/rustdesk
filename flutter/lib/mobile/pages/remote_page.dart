@@ -13,6 +13,7 @@ import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:get/get.dart';
 import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 import 'package:wakelock/wakelock.dart';
 
 import '../../common.dart';
@@ -54,6 +55,7 @@ class _RemotePageState extends State<RemotePage> {
   var _showEdit = false; // use soft keyboard
 
   InputModel get inputModel => gFFI.inputModel;
+  UuidValue get sessionUuid => gFFI.sessionUuid;
 
   @override
   void initState() {
@@ -66,9 +68,9 @@ class _RemotePageState extends State<RemotePage> {
     });
     Wakelock.enable();
     _physicalFocusNode.requestFocus();
-    gFFI.ffiModel.updateEventListener(widget.id);
+    gFFI.ffiModel.updateEventListener(sessionUuid, widget.id);
     gFFI.inputModel.listenToMouse(true);
-    gFFI.qualityMonitorModel.checkShowQualityMonitor(widget.id);
+    gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionUuid);
     keyboardSubscription =
         keyboardVisibilityController.onChange.listen(onSoftKeyboardChanged);
     _blockableOverlayState.applyFfi(gFFI);
@@ -130,7 +132,7 @@ class _RemotePageState extends State<RemotePage> {
       if (newValue.length > common) {
         var s = newValue.substring(common);
         if (s.length > 1) {
-          bind.sessionInputString(id: widget.id, value: s);
+          bind.sessionInputString(sessionUuid: sessionUuid, value: s);
         } else {
           inputChar(s);
         }
@@ -164,11 +166,11 @@ class _RemotePageState extends State<RemotePage> {
                 content == '（）' ||
                 content == '【】')) {
           // can not only input content[0], because when input ], [ are also auo insert, which cause ] never be input
-          bind.sessionInputString(id: widget.id, value: content);
+          bind.sessionInputString(sessionUuid: sessionUuid, value: content);
           openKeyboard();
           return;
         }
-        bind.sessionInputString(id: widget.id, value: content);
+        bind.sessionInputString(sessionUuid: sessionUuid, value: content);
       } else {
         inputChar(content);
       }
@@ -213,7 +215,7 @@ class _RemotePageState extends State<RemotePage> {
 
     return WillPopScope(
       onWillPop: () async {
-        clientClose(widget.id, gFFI.dialogManager);
+        clientClose(sessionUuid, gFFI.dialogManager);
         return false;
       },
       child: getRawPointerAndKeyBody(Scaffold(
@@ -305,7 +307,7 @@ class _RemotePageState extends State<RemotePage> {
                       color: Colors.white,
                       icon: Icon(Icons.clear),
                       onPressed: () {
-                        clientClose(widget.id, gFFI.dialogManager);
+                        clientClose(sessionUuid, gFFI.dialogManager);
                       },
                     )
                   ] +
@@ -476,7 +478,7 @@ class _RemotePageState extends State<RemotePage> {
         },
         onTwoFingerScaleEnd: (d) {
           _scale = 1;
-          bind.sessionSetViewStyle(id: widget.id, value: "");
+          bind.sessionSetViewStyle(sessionUuid: sessionUuid, value: "");
         },
         onThreeFingerVerticalDragUpdate: gFFI.ffiModel.isPeerAndroid
             ? null
@@ -535,7 +537,7 @@ class _RemotePageState extends State<RemotePage> {
     var paints = <Widget>[ImagePaint()];
     if (!gFFI.canvasModel.cursorEmbedded) {
       final cursor = bind.sessionGetToggleOptionSync(
-          id: widget.id, arg: 'show-remote-cursor');
+          sessionUuid: sessionUuid, arg: 'show-remote-cursor');
       if (keyboard || cursor) {
         paints.add(CursorPaint());
       }
@@ -579,7 +581,7 @@ class _RemotePageState extends State<RemotePage> {
                   gFFI.ffiModel.toggleTouchMode();
                   final v = gFFI.ffiModel.touchMode ? 'Y' : '';
                   bind.sessionPeerOption(
-                      id: widget.id, name: "touch", value: v);
+                      sessionUuid: sessionUuid, name: "touch", value: v);
                 })));
   }
 
@@ -830,7 +832,7 @@ void showOptions(
       children.add(InkWell(
           onTap: () {
             if (i == cur) return;
-            bind.sessionSwitchDisplay(id: id, value: i);
+            bind.sessionSwitchDisplay(sessionUuid: gFFI.sessionUuid, value: i);
             gFFI.dialogManager.dismissAll();
           },
           child: Ink(

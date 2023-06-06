@@ -53,6 +53,7 @@ class FfiModel with ChangeNotifier {
   var _reconnects = 1;
   bool _viewOnly = false;
   WeakReference<FFI> parent;
+  late final UuidValue sessionUuid;
 
   Map<String, bool> get permissions => _permissions;
 
@@ -78,6 +79,7 @@ class FfiModel with ChangeNotifier {
 
   FfiModel(this.parent) {
     clear();
+    sessionUuid = parent.target!.sessionUuid;
   }
 
   toggleTouchMode() {
@@ -140,30 +142,31 @@ class FfiModel with ChangeNotifier {
     _permissions.clear();
   }
 
-  StreamEventHandler startEventListener(UuidValue sessionUuid) {
+  // todo: why called by two position
+  StreamEventHandler startEventListener(UuidValue sessionUuid, String peerId) {
     return (evt) async {
       var name = evt['name'];
       if (name == 'msgbox') {
-        handleMsgBox(evt, sessionUuid);
+        handleMsgBox(evt, sessionUuid, peerId);
       } else if (name == 'peer_info') {
-        handlePeerInfo(evt, sessionUuid);
+        handlePeerInfo(evt, peerId);
       } else if (name == 'sync_peer_info') {
         handleSyncPeerInfo(evt, sessionUuid);
       } else if (name == 'connection_ready') {
         setConnectionType(
-            sessionUuid, evt['secure'] == 'true', evt['direct'] == 'true');
+            peerId, evt['secure'] == 'true', evt['direct'] == 'true');
       } else if (name == 'switch_display') {
-        handleSwitchDisplay(evt, sessionUuid);
+        handleSwitchDisplay(evt, sessionUuid, peerId);
       } else if (name == 'cursor_data') {
         await parent.target?.cursorModel.updateCursorData(evt);
       } else if (name == 'cursor_id') {
         await parent.target?.cursorModel.updateCursorId(evt);
       } else if (name == 'cursor_position') {
-        await parent.target?.cursorModel.updateCursorPosition(evt, sessionUuid);
+        await parent.target?.cursorModel.updateCursorPosition(evt, peerId);
       } else if (name == 'clipboard') {
         Clipboard.setData(ClipboardData(text: evt['content']));
       } else if (name == 'permission') {
-        updatePermission(evt, sessionUuid);
+        updatePermission(evt, peerId);
       } else if (name == 'chat_client_mode') {
         parent.target?.chatModel
             .receive(ChatModel.clientModeID, evt['text'] ?? '');
@@ -192,9 +195,9 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'update_quality_status') {
         parent.target?.qualityMonitorModel.updateQualityStatus(evt);
       } else if (name == 'update_block_input_state') {
-        updateBlockInputState(evt, sessionUuid);
+        updateBlockInputState(evt, peerId);
       } else if (name == 'update_privacy_mode') {
-        updatePrivacyMode(evt, sessionUuid);
+        updatePrivacyMode(evt, sessionUuid, peerId);
       } else if (name == 'new_connection') {
         var uni_links = evt['uni_links'].toString();
         if (uni_links.startsWith(kUniLinksPrefix)) {
@@ -235,8 +238,8 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'plugin_manager') {
         pluginManager.handleEvent(evt);
       } else if (name == 'plugin_event') {
-        handlePluginEvent(
-            evt, (Map<String, dynamic> e) => handleMsgBox(e, sessionUuid));
+        handlePluginEvent(evt,
+            (Map<String, dynamic> e) => handleMsgBox(e, sessionUuid, peerId));
       } else if (name == 'plugin_reload') {
         handleReloading(evt);
       } else if (name == 'plugin_option') {
@@ -272,8 +275,8 @@ class FfiModel with ChangeNotifier {
   }
 
   /// Bind the event listener to receive events from the Rust core.
-  updateEventListener(String peerId) {
-    platformFFI.setEventCallback(startEventListener(peerId));
+  updateEventListener(UuidValue sessionUuid, String peerId) {
+    platformFFI.setEventCallback(startEventListener(sessionUuid, peerId));
   }
 
   handleAliasChanged(Map<String, dynamic> evt) {
@@ -283,18 +286,19 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  _updateCurDisplay(String peerId, Display newDisplay) {
+  _updateCurDisplay(UuidValue sessionUuid, Display newDisplay) {
     if (newDisplay != _display) {
       if (newDisplay.x != _display.x || newDisplay.y != _display.y) {
         parent.target?.cursorModel
             .updateDisplayOrigin(newDisplay.x, newDisplay.y);
       }
       _display = newDisplay;
-      _updateSessionWidthHeight(peerId);
+      _updateSessionWidthHeight(sessionUuid);
     }
   }
 
-  handleSwitchDisplay(Map<String, dynamic> evt, String peerId) {
+  handleSwitchDisplay(
+      Map<String, dynamic> evt, UuidValue sessionUuid, String peerId) {
     _pi.currentDisplay = int.parse(evt['display']);
     var newDisplay = Display();
     newDisplay.x = double.tryParse(evt['x']) ?? newDisplay.x;
@@ -307,7 +311,7 @@ class FfiModel with ChangeNotifier {
     newDisplay.originalHeight =
         int.tryParse(evt['original_height']) ?? kInvalidResolutionValue;
 
-    _updateCurDisplay(peerId, newDisplay);
+    _updateCurDisplay(sessionUuid, newDisplay);
 
     try {
       CurrentDisplayState.find(peerId).value = _pi.currentDisplay;
@@ -319,15 +323,15 @@ class FfiModel with ChangeNotifier {
     notifyListeners();
   }
 
-  cancelMsgBox(Map<String, dynamic> evt, String id) {
+  cancelMsgBox(Map<String, dynamic> evt, UuidValue sessionUuid) {
     if (parent.target == null) return;
     final dialogManager = parent.target!.dialogManager;
-    final tag = '$id-${evt['tag']}';
+    final tag = '$sessionUuid-${evt['tag']}';
     dialogManager.dismissByTag(tag);
   }
 
   /// Handle the message box event based on [evt] and [id].
-  handleMsgBox(Map<String, dynamic> evt, UuidValue sessionUuid) {
+  handleMsgBox(Map<String, dynamic> evt, UuidValue sessionUuid, String peerId) {
     if (parent.target == null) return;
     final dialogManager = parent.target!.dialogManager;
     final type = evt['type'];
@@ -335,27 +339,27 @@ class FfiModel with ChangeNotifier {
     final text = evt['text'];
     final link = evt['link'];
     if (type == 're-input-password') {
-      wrongPasswordDialog(id, dialogManager, type, title, text);
+      wrongPasswordDialog(sessionUuid, dialogManager, type, title, text);
     } else if (type == 'input-password') {
-      enterPasswordDialog(id, dialogManager);
+      enterPasswordDialog(sessionUuid, dialogManager);
     } else if (type == 'session-login' || type == 'session-re-login') {
-      enterUserLoginDialog(id, dialogManager);
+      enterUserLoginDialog(sessionUuid, dialogManager);
     } else if (type == 'session-login-password' ||
         type == 'session-login-password') {
-      enterUserLoginAndPasswordDialog(id, dialogManager);
+      enterUserLoginAndPasswordDialog(sessionUuid, dialogManager);
     } else if (type == 'restarting') {
-      showMsgBox(id, type, title, text, link, false, dialogManager,
+      showMsgBox(sessionUuid, type, title, text, link, false, dialogManager,
           hasCancel: false);
     } else if (type == 'wait-remote-accept-nook') {
-      showWaitAcceptDialog(id, type, title, text, dialogManager);
+      showWaitAcceptDialog(sessionUuid, type, title, text, dialogManager);
     } else if (type == 'on-uac' || type == 'on-foreground-elevated') {
-      showOnBlockDialog(id, type, title, text, dialogManager);
+      showOnBlockDialog(sessionUuid, type, title, text, dialogManager);
     } else if (type == 'wait-uac') {
-      showWaitUacDialog(id, dialogManager, type);
+      showWaitUacDialog(sessionUuid, dialogManager, type);
     } else if (type == 'elevation-error') {
-      showElevationError(id, type, title, text, dialogManager);
+      showElevationError(sessionUuid, type, title, text, dialogManager);
     } else if (type == 'relay-hint') {
-      showRelayHintDialog(id, type, title, text, dialogManager);
+      showRelayHintDialog(sessionUuid, type, title, text, dialogManager);
     } else {
       var hasRetry = evt['hasRetry'] == 'true';
       showMsgBox(sessionUuid, type, title, text, link, hasRetry, dialogManager);
@@ -387,9 +391,9 @@ class FfiModel with ChangeNotifier {
         onCancel: closeConnection);
   }
 
-  void showRelayHintDialog(String id, String type, String title, String text,
-      OverlayDialogManager dialogManager) {
-    dialogManager.show(tag: '$id-$type', (setState, close, context) {
+  void showRelayHintDialog(UuidValue sessionUuid, String type, String title,
+      String text, OverlayDialogManager dialogManager) {
+    dialogManager.show(tag: '$sessionUuid-$type', (setState, close, context) {
       onClose() {
         closeConnection();
         close();
@@ -404,15 +408,17 @@ class FfiModel with ChangeNotifier {
         actions: [
           dialogButton('Close', onPressed: onClose, isOutline: true),
           dialogButton('Retry',
-              onPressed: () => reconnect(dialogManager, id, false)),
+              onPressed: () => reconnect(dialogManager, sessionUuid, false)),
           dialogButton('Connect via relay',
-              onPressed: () => reconnect(dialogManager, id, true),
+              onPressed: () => reconnect(dialogManager, sessionUuid, true),
               buttonStyle: style),
           dialogButton('Always connect via relay', onPressed: () {
             const option = 'force-always-relay';
             bind.sessionPeerOption(
-                id: id, name: option, value: bool2option(option, true));
-            reconnect(dialogManager, id, true);
+                sessionUuid: sessionUuid,
+                name: option,
+                value: bool2option(option, true));
+            reconnect(dialogManager, sessionUuid, true);
           }, buttonStyle: style),
         ],
         onCancel: onClose,
@@ -420,13 +426,16 @@ class FfiModel with ChangeNotifier {
     });
   }
 
-  _updateSessionWidthHeight(String id) {
+  _updateSessionWidthHeight(UuidValue sessionUuid) {
     parent.target?.canvasModel.updateViewStyle();
     if (display.width <= 0 || display.height <= 0) {
       debugPrintStack(
           label: 'invalid display size (${display.width},${display.height})');
     } else {
-      bind.sessionSetSize(id: id, width: display.width, height: display.height);
+      bind.sessionSetSize(
+          sessionUuid: sessionUuid,
+          width: display.width,
+          height: display.height);
     }
   }
 
@@ -462,8 +471,9 @@ class FfiModel with ChangeNotifier {
                 .showMobileActionsOverlay(ffi: parent.target!));
       }
     } else {
-      _touchMode =
-          await bind.sessionGetOption(id: peerId, arg: 'touch-mode') != '';
+      _touchMode = await bind.sessionGetOption(
+              sessionUuid: sessionUuid, arg: 'touch-mode') !=
+          '';
     }
 
     if (connType == ConnType.fileTransfer) {
@@ -477,7 +487,7 @@ class FfiModel with ChangeNotifier {
       stateGlobal.displaysCount.value = _pi.displays.length;
       if (_pi.currentDisplay < _pi.displays.length) {
         _display = _pi.displays[_pi.currentDisplay];
-        _updateSessionWidthHeight(peerId);
+        _updateSessionWidthHeight(sessionUuid);
       }
       if (displays.isNotEmpty) {
         parent.target?.dialogManager.showLoading(
@@ -492,8 +502,10 @@ class FfiModel with ChangeNotifier {
       parent.target?.elevationModel.onPeerInfo(_pi);
     }
     if (connType == ConnType.defaultConn) {
-      setViewOnly(peerId,
-          bind.sessionGetToggleOptionSync(id: peerId, arg: 'view-only'));
+      setViewOnly(
+          peerId,
+          bind.sessionGetToggleOptionSync(
+              sessionUuid: sessionUuid, arg: 'view-only'));
     }
     if (connType == ConnType.defaultConn) {
       final platform_additions = evt['platform_additions'];
@@ -548,7 +560,7 @@ class FfiModel with ChangeNotifier {
   }
 
   /// Handle the peer info synchronization event based on [evt].
-  handleSyncPeerInfo(Map<String, dynamic> evt, String peerId) async {
+  handleSyncPeerInfo(Map<String, dynamic> evt, UuidValue sessionUuid) async {
     if (evt['displays'] != null) {
       List<dynamic> displays = json.decode(evt['displays']);
       List<Display> newDisplays = [];
@@ -558,7 +570,7 @@ class FfiModel with ChangeNotifier {
       _pi.displays = newDisplays;
       stateGlobal.displaysCount.value = _pi.displays.length;
       if (_pi.currentDisplay >= 0 && _pi.currentDisplay < _pi.displays.length) {
-        _updateCurDisplay(peerId, _pi.displays[_pi.currentDisplay]);
+        _updateCurDisplay(sessionUuid, _pi.displays[_pi.currentDisplay]);
       }
     }
     notifyListeners();
@@ -574,11 +586,12 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  updatePrivacyMode(Map<String, dynamic> evt, String peerId) {
+  updatePrivacyMode(
+      Map<String, dynamic> evt, UuidValue sessionUuid, String peerId) {
     notifyListeners();
     try {
-      PrivacyModeState.find(peerId).value =
-          bind.sessionGetToggleOptionSync(id: peerId, arg: 'privacy-mode');
+      PrivacyModeState.find(peerId).value = bind.sessionGetToggleOptionSync(
+          sessionUuid: sessionUuid, arg: 'privacy-mode');
     } catch (e) {
       //
     }
@@ -593,8 +606,8 @@ class FfiModel with ChangeNotifier {
       if (value) {
         ShowRemoteCursorState.find(id).value = value;
       } else {
-        ShowRemoteCursorState.find(id).value =
-            bind.sessionGetToggleOptionSync(id: id, arg: 'show-remote-cursor');
+        ShowRemoteCursorState.find(id).value = bind.sessionGetToggleOptionSync(
+            sessionUuid: sessionUuid, arg: 'show-remote-cursor');
       }
     } catch (e) {
       //
@@ -613,11 +626,15 @@ class ImageModel with ChangeNotifier {
 
   String id = '';
 
+  late final UuidValue sessionUuid;
+
   WeakReference<FFI> parent;
 
   final List<Function(String)> callbacksOnFirstImage = [];
 
-  ImageModel(this.parent);
+  ImageModel(this.parent) {
+    sessionUuid = parent.target!.sessionUuid;
+  }
 
   addCallbackOnFirstImage(Function(String) cb) => callbacksOnFirstImage.add(cb);
 
@@ -675,7 +692,7 @@ class ImageModel with ChangeNotifier {
         await initializeCursorAndCanvas(parent.target!);
       }
       if (parent.target?.ffiModel.isPeerAndroid ?? false) {
-        bind.sessionSetViewStyle(id: id, value: 'adaptive');
+        bind.sessionSetViewStyle(sessionUuid: sessionUuid, value: 'adaptive');
         parent.target?.canvasModel.updateViewStyle();
       }
     }
@@ -794,6 +811,7 @@ class CanvasModel with ChangeNotifier {
   // double windowBorderWidth = 0.0;
   // remote id
   String id = '';
+  late final UuidValue sessionUuid;
   // scroll offset x percent
   double _scrollX = 0.0;
   // scroll offset y percent
@@ -805,7 +823,9 @@ class CanvasModel with ChangeNotifier {
 
   WeakReference<FFI> parent;
 
-  CanvasModel(this.parent);
+  CanvasModel(this.parent) {
+    sessionUuid = parent.target!.sessionUuid;
+  }
 
   double get x => _x;
   double get y => _y;
@@ -848,7 +868,7 @@ class CanvasModel with ChangeNotifier {
       return Size(w < 0 ? 0 : w, h < 0 ? 0 : h);
     }
 
-    final style = await bind.sessionGetViewStyle(id: id);
+    final style = await bind.sessionGetViewStyle(sessionUuid: sessionUuid);
     if (style == null) {
       return;
     }
@@ -884,7 +904,7 @@ class CanvasModel with ChangeNotifier {
   }
 
   updateScrollStyle() async {
-    final style = await bind.sessionGetScrollStyle(id: id);
+    final style = await bind.sessionGetScrollStyle(sessionUuid: sessionUuid);
     if (style == kRemoteScrollStyleBar) {
       _scrollStyle = ScrollStyle.scrollbar;
       _resetScroll();
@@ -1475,9 +1495,9 @@ class QualityMonitorModel with ChangeNotifier {
   bool get show => _show;
   QualityMonitorData get data => _data;
 
-  checkShowQualityMonitor(String id) async {
+  checkShowQualityMonitor(UuidValue sessionUuid) async {
     final show = await bind.sessionGetToggleOption(
-            id: id, arg: 'show-quality-monitor') ==
+            sessionUuid: sessionUuid, arg: 'show-quality-monitor') ==
         true;
     if (_show != show) {
       _show = show;
@@ -1511,32 +1531,35 @@ class RecordingModel with ChangeNotifier {
 
   onSwitchDisplay() {
     if (isIOS || !_start) return;
-    var id = parent.target?.id;
+    final sessionUuid = parent.target?.sessionUuid;
     int? width = parent.target?.canvasModel.getDisplayWidth();
     int? height = parent.target?.canvasModel.getDisplayHeight();
-    if (id == null || width == null || height == null) return;
-    bind.sessionRecordScreen(id: id, start: true, width: width, height: height);
+    if (sessionUuid == null || width == null || height == null) return;
+    bind.sessionRecordScreen(
+        sessionUuid: sessionUuid, start: true, width: width, height: height);
   }
 
   toggle() {
     if (isIOS) return;
-    var id = parent.target?.id;
-    if (id == null) return;
+    final sessionUuid = parent.target?.sessionUuid;
+    if (sessionUuid == null) return;
     _start = !_start;
     notifyListeners();
     if (_start) {
-      bind.sessionRefresh(id: id);
+      bind.sessionRefresh(sessionUuid: sessionUuid);
     } else {
-      bind.sessionRecordScreen(id: id, start: false, width: 0, height: 0);
+      bind.sessionRecordScreen(
+          sessionUuid: sessionUuid, start: false, width: 0, height: 0);
     }
   }
 
   onClose() {
     if (isIOS) return;
-    var id = parent.target?.id;
-    if (id == null) return;
+    final sessionUuid = parent.target?.sessionUuid;
+    if (sessionUuid == null) return;
     _start = false;
-    bind.sessionRecordScreen(id: id, start: false, width: 0, height: 0);
+    bind.sessionRecordScreen(
+        sessionUuid: sessionUuid, start: false, width: 0, height: 0);
   }
 }
 
@@ -1612,10 +1635,10 @@ class FFI {
     assert(!(isFileTransfer && isPortForward), 'more than one connect type');
     if (isFileTransfer) {
       connType = ConnType.fileTransfer;
-      id = 'ft_$id';
+      // id = 'ft_$id';
     } else if (isPortForward) {
       connType = ConnType.portForward;
-      id = 'pf_$id';
+      // id = 'pf_$id';
     } else {
       chatModel.resetClientMode();
       connType = ConnType.defaultConn;
@@ -1635,7 +1658,7 @@ class FFI {
       password: password ?? "",
     );
     final stream = bind.sessionStart(sessionUuid: sessionUuid, id: id);
-    final cb = ffiModel.startEventListener(sessionUuid);
+    final cb = ffiModel.startEventListener(sessionUuid, id);
     () async {
       final useTextureRender = bind.mainUseTextureRender();
       // Preserved for the rgba data.
@@ -1699,15 +1722,21 @@ class FFI {
   Future<void> close() async {
     chatModel.close();
     if (imageModel.image != null && !isWebDesktop) {
-      await setCanvasConfig(id, cursorModel.x, cursorModel.y, canvasModel.x,
-          canvasModel.y, canvasModel.scale, ffiModel.pi.currentDisplay);
+      await setCanvasConfig(
+          sessionUuid,
+          cursorModel.x,
+          cursorModel.y,
+          canvasModel.x,
+          canvasModel.y,
+          canvasModel.scale,
+          ffiModel.pi.currentDisplay);
     }
     imageModel.update(null);
     cursorModel.clear();
     ffiModel.clear();
     canvasModel.clear();
     inputModel.resetModifiers();
-    await bind.sessionClose(id: id);
+    await bind.sessionClose(sessionUuid: sessionUuid);
     debugPrint('model $id closed');
     id = '';
   }
@@ -1798,8 +1827,14 @@ class PeerInfo {
 
 const canvasKey = 'canvas';
 
-Future<void> setCanvasConfig(String id, double xCursor, double yCursor,
-    double xCanvas, double yCanvas, double scale, int currentDisplay) async {
+Future<void> setCanvasConfig(
+    UuidValue sessionUuid,
+    double xCursor,
+    double yCursor,
+    double xCanvas,
+    double yCanvas,
+    double scale,
+    int currentDisplay) async {
   final p = <String, dynamic>{};
   p['xCursor'] = xCursor;
   p['yCursor'] = yCursor;
@@ -1807,12 +1842,14 @@ Future<void> setCanvasConfig(String id, double xCursor, double yCursor,
   p['yCanvas'] = yCanvas;
   p['scale'] = scale;
   p['currentDisplay'] = currentDisplay;
-  await bind.sessionSetFlutterConfig(id: id, k: canvasKey, v: jsonEncode(p));
+  await bind.sessionSetFlutterConfig(
+      sessionUuid: sessionUuid, k: canvasKey, v: jsonEncode(p));
 }
 
-Future<Map<String, dynamic>?> getCanvasConfig(String id) async {
+Future<Map<String, dynamic>?> getCanvasConfig(UuidValue sessionUuid) async {
   if (!isWebDesktop) return null;
-  var p = await bind.sessionGetFlutterConfig(id: id, k: canvasKey);
+  var p = await bind.sessionGetFlutterConfig(
+      sessionUuid: sessionUuid, k: canvasKey);
   if (p == null || p.isEmpty) return null;
   try {
     Map<String, dynamic> m = json.decode(p);
@@ -1822,12 +1859,13 @@ Future<Map<String, dynamic>?> getCanvasConfig(String id) async {
   }
 }
 
-void removePreference(String id) async {
-  await bind.sessionSetFlutterConfig(id: id, k: canvasKey, v: '');
+void removePreference(UuidValue sessionUuid) async {
+  await bind.sessionSetFlutterConfig(
+      sessionUuid: sessionUuid, k: canvasKey, v: '');
 }
 
 Future<void> initializeCursorAndCanvas(FFI ffi) async {
-  var p = await getCanvasConfig(ffi.id);
+  var p = await getCanvasConfig(ffi.sessionUuid);
   int currentDisplay = 0;
   if (p != null) {
     currentDisplay = p['currentDisplay'];

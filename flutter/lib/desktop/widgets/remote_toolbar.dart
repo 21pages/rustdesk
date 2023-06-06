@@ -15,6 +15,7 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:uuid/uuid.dart';
 import 'package:window_size/window_size.dart' as window_size;
 
 import '../../common.dart';
@@ -141,14 +142,16 @@ class RemoteMenuEntry {
       ],
       curOptionGetter: () async {
         // null means peer id is not found, which there's no need to care about
-        final viewStyle = await bind.sessionGetViewStyle(id: remoteId) ?? '';
+        final viewStyle =
+            await bind.sessionGetViewStyle(sessionUuid: ffi.sessionUuid) ?? '';
         if (rxViewStyle != null) {
           rxViewStyle.value = viewStyle;
         }
         return viewStyle;
       },
       optionSetter: (String oldValue, String newValue) async {
-        await bind.sessionSetViewStyle(id: remoteId, value: newValue);
+        await bind.sessionSetViewStyle(
+            sessionUuid: ffi.sessionUuid, value: newValue);
         if (rxViewStyle != null) {
           rxViewStyle.value = newValue;
         }
@@ -165,6 +168,7 @@ class RemoteMenuEntry {
 
   static MenuEntrySwitch2<String> showRemoteCursor(
     String remoteId,
+    UuidValue sessionUuid,
     EdgeInsets padding, {
     DismissFunc? dismissFunc,
     DismissCallback? dismissCallback,
@@ -178,9 +182,9 @@ class RemoteMenuEntry {
         return state;
       },
       setter: (bool v) async {
-        await bind.sessionToggleOption(id: remoteId, value: optKey);
-        state.value =
-            bind.sessionGetToggleOptionSync(id: remoteId, arg: optKey);
+        await bind.sessionToggleOption(sessionUuid: sessionUuid, value: optKey);
+        state.value = bind.sessionGetToggleOptionSync(
+            sessionUuid: sessionUuid, arg: optKey);
         if (dismissFunc != null) {
           dismissFunc();
         }
@@ -192,13 +196,13 @@ class RemoteMenuEntry {
   }
 
   static MenuEntrySwitch<String> disableClipboard(
-    String remoteId,
+    UuidValue sessionUuid,
     EdgeInsets? padding, {
     DismissFunc? dismissFunc,
     DismissCallback? dismissCallback,
   }) {
     return createSwitchMenuEntry(
-      remoteId,
+      sessionUuid,
       'Disable clipboard',
       'disable-clipboard',
       padding,
@@ -208,7 +212,7 @@ class RemoteMenuEntry {
   }
 
   static MenuEntrySwitch<String> createSwitchMenuEntry(
-    String remoteId,
+    UuidValue sessionUuid,
     String text,
     String option,
     EdgeInsets? padding,
@@ -220,10 +224,11 @@ class RemoteMenuEntry {
       switchType: SwitchType.scheckbox,
       text: translate(text),
       getter: () async {
-        return bind.sessionGetToggleOptionSync(id: remoteId, arg: option);
+        return bind.sessionGetToggleOptionSync(
+            sessionUuid: sessionUuid, arg: option);
       },
       setter: (bool v) async {
-        await bind.sessionToggleOption(id: remoteId, value: option);
+        await bind.sessionToggleOption(sessionUuid: sessionUuid, value: option);
         if (dismissFunc != null) {
           dismissFunc();
         }
@@ -235,7 +240,7 @@ class RemoteMenuEntry {
   }
 
   static MenuEntryButton<String> insertLock(
-    String remoteId,
+    UuidValue sessionUuid,
     EdgeInsets? padding, {
     DismissFunc? dismissFunc,
     DismissCallback? dismissCallback,
@@ -246,7 +251,7 @@ class RemoteMenuEntry {
         style: style,
       ),
       proc: () {
-        bind.sessionLockScreen(id: remoteId);
+        bind.sessionLockScreen(sessionUuid: sessionUuid);
         if (dismissFunc != null) {
           dismissFunc();
         }
@@ -258,7 +263,7 @@ class RemoteMenuEntry {
   }
 
   static insertCtrlAltDel(
-    String remoteId,
+    UuidValue sessionUuid,
     EdgeInsets? padding, {
     DismissFunc? dismissFunc,
     DismissCallback? dismissCallback,
@@ -269,7 +274,7 @@ class RemoteMenuEntry {
         style: style,
       ),
       proc: () {
-        bind.sessionCtrlAltDel(id: remoteId);
+        bind.sessionCtrlAltDel(sessionUuid: sessionUuid);
         if (dismissFunc != null) {
           dismissFunc();
         }
@@ -329,7 +334,8 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
 
     Future.delayed(Duration.zero, () async {
       _fractionX.value = double.tryParse(await bind.sessionGetOption(
-                  id: widget.id, arg: 'remote-menubar-drag-x') ??
+                  sessionUuid: widget.ffi.sessionUuid,
+                  arg: 'remote-menubar-drag-x') ??
               '0.5') ??
           0.5;
     });
@@ -387,7 +393,7 @@ class _RemoteMenubarState extends State<RemoteMenubar> {
             elevation: _MenubarTheme.elevation,
             shadowColor: MyTheme.color(context).shadow,
             child: _DraggableShowHide(
-              id: widget.id,
+              sessionUuid: widget.ffi.sessionUuid,
               dragging: _dragging,
               fractionX: _fractionX,
               show: show,
@@ -621,7 +627,7 @@ class _MonitorMenu extends StatelessWidget {
           _menuDismissCallback(ffi);
           RxInt display = CurrentDisplayState.find(id);
           if (display.value != i) {
-            bind.sessionSwitchDisplay(id: id, value: i);
+            bind.sessionSwitchDisplay(sessionUuid: ffi.sessionUuid, value: i);
           }
         },
       ));
@@ -763,7 +769,8 @@ class ScreenAdjustor {
   }
 
   Future<bool> isWindowCanBeAdjusted() async {
-    final viewStyle = await bind.sessionGetViewStyle(id: id) ?? '';
+    final viewStyle =
+        await bind.sessionGetViewStyle(sessionUuid: ffi.sessionUuid) ?? '';
     if (viewStyle != kRemoteViewStyleOriginal) {
       return false;
     }
@@ -885,9 +892,11 @@ class _DisplayMenuState extends State<_DisplayMenu> {
 
   scrollStyle() {
     return futureBuilder(future: () async {
-      final viewStyle = await bind.sessionGetViewStyle(id: id) ?? '';
+      final viewStyle =
+          await bind.sessionGetViewStyle(sessionUuid: ffi.sessionUuid) ?? '';
       final visible = viewStyle == kRemoteViewStyleOriginal;
-      final scrollStyle = await bind.sessionGetScrollStyle(id: widget.id) ?? '';
+      final scrollStyle =
+          await bind.sessionGetScrollStyle(sessionUuid: ffi.sessionUuid) ?? '';
       return {'visible': visible, 'scrollStyle': scrollStyle};
     }(), hasData: (data) {
       final visible = data['visible'] as bool;
@@ -895,7 +904,8 @@ class _DisplayMenuState extends State<_DisplayMenu> {
       final groupValue = data['scrollStyle'] as String;
       onChange(String? value) async {
         if (value == null) return;
-        await bind.sessionSetScrollStyle(id: widget.id, value: value);
+        await bind.sessionSetScrollStyle(
+            sessionUuid: ffi.sessionUuid, value: value);
         widget.ffi.canvasModel.updateScrollStyle();
       }
 
@@ -1007,6 +1017,7 @@ class _ResolutionsMenuState extends State<_ResolutionsMenu> {
   late final TextEditingController _customHeight =
       TextEditingController(text: display.height.toString());
 
+  FFI get ffi => widget.ffi;
   PeerInfo get pi => widget.ffi.ffiModel.pi;
   FfiModel get ffiModel => widget.ffi.ffiModel;
   Display get display => ffiModel.display;
@@ -1101,7 +1112,7 @@ class _ResolutionsMenuState extends State<_ResolutionsMenu> {
 
   _changeResolution(int w, int h) async {
     await bind.sessionChangeResolution(
-      id: widget.id,
+      sessionUuid: ffi.sessionUuid,
       width: w,
       height: h,
     );
@@ -1253,12 +1264,15 @@ class _KeyboardMenu extends StatelessWidget {
     if (!ffiModel.keyboard) return Offstage();
     String? modeOnly;
     if (stateGlobal.grabKeyboard) {
-      if (bind.sessionIsKeyboardModeSupported(id: id, mode: _kKeyMapMode)) {
-        bind.sessionSetKeyboardMode(id: id, value: _kKeyMapMode);
+      if (bind.sessionIsKeyboardModeSupported(
+          sessionUuid: ffi.sessionUuid, mode: _kKeyMapMode)) {
+        bind.sessionSetKeyboardMode(
+            sessionUuid: ffi.sessionUuid, value: _kKeyMapMode);
         modeOnly = _kKeyMapMode;
       } else if (bind.sessionIsKeyboardModeSupported(
-          id: id, mode: _kKeyLegacyMode)) {
-        bind.sessionSetKeyboardMode(id: id, value: _kKeyLegacyMode);
+          sessionUuid: ffi.sessionUuid, mode: _kKeyLegacyMode)) {
+        bind.sessionSetKeyboardMode(
+            sessionUuid: ffi.sessionUuid, value: _kKeyLegacyMode);
         modeOnly = _kKeyLegacyMode;
       }
     }
@@ -1278,7 +1292,8 @@ class _KeyboardMenu extends StatelessWidget {
 
   mode(String? modeOnly) {
     return futureBuilder(future: () async {
-      return await bind.sessionGetKeyboardMode(id: id) ?? _kKeyLegacyMode;
+      return await bind.sessionGetKeyboardMode(sessionUuid: ffi.sessionUuid) ??
+          _kKeyLegacyMode;
     }(), hasData: (data) {
       final groupValue = data as String;
       List<KeyboardModeMenu> modes = [
@@ -1290,14 +1305,15 @@ class _KeyboardMenu extends StatelessWidget {
       final enabled = !ffi.ffiModel.viewOnly;
       onChanged(String? value) async {
         if (value == null) return;
-        await bind.sessionSetKeyboardMode(id: id, value: value);
+        await bind.sessionSetKeyboardMode(
+            sessionUuid: ffi.sessionUuid, value: value);
       }
 
       for (KeyboardModeMenu mode in modes) {
         if (modeOnly != null && mode.key != modeOnly) {
           continue;
         } else if (!bind.sessionIsKeyboardModeSupported(
-            id: id, mode: mode.key)) {
+            sessionUuid: ffi.sessionUuid, mode: mode.key)) {
           continue;
         }
 
@@ -1350,7 +1366,8 @@ class _KeyboardMenu extends StatelessWidget {
         onChanged: enabled
             ? (value) async {
                 if (value == null) return;
-                await bind.sessionToggleOption(id: id, value: 'view-only');
+                await bind.sessionToggleOption(
+                    sessionUuid: ffi.sessionUuid, value: 'view-only');
                 ffiModel.setViewOnly(id, value);
               }
             : null,
@@ -1411,7 +1428,8 @@ class _ChatMenuState extends State<_ChatMenu> {
     return MenuButton(
       child: Text(translate('Voice call')),
       ffi: widget.ffi,
-      onPressed: () => bind.sessionRequestVoiceCall(id: widget.id),
+      onPressed: () =>
+          bind.sessionRequestVoiceCall(sessionUuid: widget.ffi.sessionUuid),
     );
   }
 }
@@ -1446,7 +1464,8 @@ class _VoiceCallMenu extends StatelessWidget {
         return _IconMenuButton(
             assetName: icon,
             tooltip: tooltip,
-            onPressed: () => bind.sessionCloseVoiceCall(id: id),
+            onPressed: () =>
+                bind.sessionCloseVoiceCall(sessionUuid: ffi.sessionUuid),
             color: _MenubarTheme.redColor,
             hoverColor: _MenubarTheme.hoverRedColor);
       },
@@ -1491,7 +1510,7 @@ class _CloseMenu extends StatelessWidget {
     return _IconMenuButton(
       assetName: 'assets/close.svg',
       tooltip: 'Close',
-      onPressed: () => clientClose(id, ffi.dialogManager),
+      onPressed: () => clientClose(ffi.sessionUuid, ffi.dialogManager),
       color: _MenubarTheme.redColor,
       hoverColor: _MenubarTheme.hoverRedColor,
     );
@@ -1752,13 +1771,13 @@ class RdoMenuButton<T> extends StatelessWidget {
 }
 
 class _DraggableShowHide extends StatefulWidget {
-  final String id;
+  final UuidValue sessionUuid;
   final RxDouble fractionX;
   final RxBool dragging;
   final RxBool show;
   const _DraggableShowHide({
     Key? key,
-    required this.id,
+    required this.sessionUuid,
     required this.fractionX,
     required this.dragging,
     required this.show,
@@ -1825,7 +1844,7 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
           widget.fractionX.value = right;
         }
         bind.sessionPeerOption(
-          id: widget.id,
+          sessionUuid: widget.sessionUuid,
           name: 'remote-menubar-drag-x',
           value: widget.fractionX.value.toString(),
         );
@@ -1951,7 +1970,8 @@ class _MultiMonitorMenu extends StatelessWidget {
             ),
             onPressed: () {
               if (display.value != i) {
-                bind.sessionSwitchDisplay(id: id, value: i);
+                bind.sessionSwitchDisplay(
+                    sessionUuid: ffi.sessionUuid, value: i);
               }
             },
           );

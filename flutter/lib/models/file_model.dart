@@ -7,6 +7,7 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/utils/event_loop.dart';
 import 'package:get/get.dart';
 import 'package:path/path.dart' as path;
+import 'package:uuid/uuid.dart';
 
 import '../consts.dart';
 import 'model.dart';
@@ -33,7 +34,7 @@ class JobID {
   }
 }
 
-typedef GetSessionID = String Function();
+typedef GetSessionID = UuidValue Function();
 
 class FileModel {
   final WeakReference<FFI> parent;
@@ -45,11 +46,11 @@ class FileModel {
   late final FileController remoteController;
 
   late final GetSessionID getSessionID;
-  String get sessionID => getSessionID();
+  UuidValue get sessionID => getSessionID();
   late final FileDialogEventLoop evtLoop;
 
   FileModel(this.parent) {
-    getSessionID = () => parent.target?.id ?? "";
+    getSessionID = () => parent.target!.sessionUuid;
     fileFetcher = FileFetcher(getSessionID);
     jobController = JobController(getSessionID);
     localController = FileController(
@@ -133,7 +134,7 @@ class FileModel {
         evtLoop.setSkip(!need_override);
       }
       await bind.sessionSetConfirmOverrideFile(
-          id: sessionID,
+          sessionUuid: sessionID,
           actId: id,
           fileNum: int.parse(evt['file_num']),
           needOverride: need_override,
@@ -236,7 +237,7 @@ class DirectoryData {
 class FileController {
   final bool isLocal;
   final GetSessionID getSessionID;
-  String get sessionID => getSessionID();
+  UuidValue get sessionID => getSessionID();
 
   final FileFetcher fileFetcher;
 
@@ -287,7 +288,7 @@ class FileController {
       options.value.home = await bind.mainGetHomeDir();
     }
     options.value.showHidden = (await bind.sessionGetPeerOption(
-            id: sessionID,
+            sessionUuid: sessionID,
             name: isLocal ? "local_show_hidden" : "remote_show_hidden"))
         .isNotEmpty;
     options.value.isWindows = isLocal
@@ -297,7 +298,7 @@ class FileController {
     await Future.delayed(Duration(milliseconds: 100));
 
     final dir = (await bind.sessionGetPeerOption(
-        id: sessionID, name: isLocal ? "local_dir" : "remote_dir"));
+        sessionUuid: sessionID, name: isLocal ? "local_dir" : "remote_dir"));
     openDirectory(dir.isEmpty ? options.value.home : dir);
 
     await Future.delayed(Duration(seconds: 1));
@@ -315,7 +316,7 @@ class FileController {
         options.value.showHidden ? "Y" : "";
     for (final msg in msgMap.entries) {
       await bind.sessionPeerOption(
-          id: sessionID, name: msg.key, value: msg.value);
+          sessionUuid: sessionID, name: msg.key, value: msg.value);
     }
     directory.value.clear();
     options.value.clear();
@@ -447,7 +448,7 @@ class FileController {
     for (var from in items.items) {
       final jobID = jobController.add(from, isRemoteToLocal);
       bind.sessionSendFiles(
-          id: sessionID,
+          sessionUuid: sessionID,
           actId: jobID,
           path: from.path,
           to: PathUtil.join(toPath, from.name, isWindows),
@@ -547,7 +548,8 @@ class FileController {
 
   Future<bool?> showRemoveDialog(
       String title, String content, bool showCheckbox) async {
-    return await dialogManager?.show<bool>((setState, Function(bool v) close, context) {
+    return await dialogManager?.show<bool>(
+        (setState, Function(bool v) close, context) {
       cancel() => close(false);
       submit() => close(true);
       return CustomAlertDialog(
@@ -611,7 +613,7 @@ class FileController {
 
   void sendRemoveFile(String path, int fileNum) {
     bind.sessionRemoveFile(
-        id: sessionID,
+        sessionUuid: sessionID,
         actId: JobController.jobID.next(),
         path: path,
         isRemote: !isLocal,
@@ -621,7 +623,7 @@ class FileController {
   void sendRemoveEmptyDir(String path, int fileNum) {
     history.removeWhere((element) => element.contains(path));
     bind.sessionRemoveAllEmptyDirs(
-        id: sessionID,
+        sessionUuid: sessionID,
         actId: JobController.jobID.next(),
         path: path,
         isRemote: !isLocal);
@@ -629,7 +631,7 @@ class FileController {
 
   Future<void> createDir(String path) async {
     bind.sessionCreateDir(
-        id: sessionID,
+        sessionUuid: sessionID,
         actId: JobController.jobID.next(),
         path: path,
         isRemote: !isLocal);
@@ -641,7 +643,7 @@ class JobController {
   final jobTable = List<JobProgress>.empty(growable: true).obs;
   final jobResultListener = JobResultListener<Map<String, dynamic>>();
   final GetSessionID getSessionID;
-  String get sessionID => getSessionID();
+  UuidValue get sessionID => getSessionID();
 
   JobController(this.getSessionID);
 
@@ -719,7 +721,7 @@ class JobController {
   }
 
   Future<void> cancelJob(int id) async {
-    await bind.sessionCancelJob(id: sessionID, actId: id);
+    await bind.sessionCancelJob(sessionUuid: sessionID, actId: id);
   }
 
   void loadLastJob(Map<String, dynamic> evt) {
@@ -745,7 +747,7 @@ class JobController {
       ..state = JobState.paused;
     jobTable.add(jobProgress);
     bind.sessionAddJob(
-      id: sessionID,
+      sessionUuid: sessionID,
       isRemote: isRemote,
       includeHidden: showHidden,
       actId: currJobId,
@@ -760,7 +762,7 @@ class JobController {
     if (jobIndex != -1) {
       final job = jobTable[jobIndex];
       bind.sessionResumeJob(
-          id: sessionID, actId: job.id, isRemote: job.isRemoteToLocal);
+          sessionUuid: sessionID, actId: job.id, isRemote: job.isRemoteToLocal);
       job.state = JobState.inProgress;
       jobTable.refresh();
     } else {
@@ -831,7 +833,7 @@ class FileFetcher {
   Map<int, Completer<FileDirectory>> readRecursiveTasks = {};
 
   final GetSessionID getSessionID;
-  String get sessionID => getSessionID();
+  UuidValue get sessionID => getSessionID();
 
   FileFetcher(this.getSessionID);
 
@@ -896,12 +898,12 @@ class FileFetcher {
     try {
       if (isLocal) {
         final res = await bind.sessionReadLocalDirSync(
-            id: sessionID, path: path, showHidden: showHidden);
+            sessionUuid: sessionID, path: path, showHidden: showHidden);
         final fd = FileDirectory.fromJson(jsonDecode(res));
         return fd;
       } else {
         await bind.sessionReadRemoteDir(
-            id: sessionID, path: path, includeHidden: showHidden);
+            sessionUuid: sessionID, path: path, includeHidden: showHidden);
         return registerReadTask(isLocal, path);
       }
     } catch (e) {
@@ -914,7 +916,7 @@ class FileFetcher {
     // TODO test Recursive is show hidden default?
     try {
       await bind.sessionReadDirRecursive(
-          id: sessionID,
+          sessionUuid: sessionID,
           actId: actID,
           path: path,
           isRemote: !isLocal,

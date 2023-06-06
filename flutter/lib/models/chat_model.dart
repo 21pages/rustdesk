@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get_rx/src/rx_types/rx_types.dart';
 import 'package:get/get.dart';
+import 'package:uuid/uuid.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -74,7 +75,11 @@ class ChatModel with ChangeNotifier {
 
   final WeakReference<FFI> parent;
 
-  ChatModel(this.parent);
+  late final UuidValue sessionUuid;
+
+  ChatModel(this.parent) {
+    sessionUuid = parent.target!.sessionUuid;
+  }
 
   FocusNode inputNode = FocusNode();
 
@@ -302,7 +307,7 @@ class ChatModel with ChangeNotifier {
       _messages[_currentID]?.insert(message);
       if (_currentID == clientModeID) {
         if (parent.target != null) {
-          bind.sessionSendChat(id: parent.target!.id, text: message.text);
+          bind.sessionSendChat(sessionUuid: sessionUuid, text: message.text);
         }
       } else {
         bind.cmSendChat(connId: _currentID, msg: message.text);
@@ -347,8 +352,8 @@ class ChatModel with ChangeNotifier {
     }
   }
 
-  void closeVoiceCall(String id) {
-    bind.sessionCloseVoiceCall(id: id);
+  void closeVoiceCall() {
+    bind.sessionCloseVoiceCall(sessionUuid: sessionUuid);
   }
 }
 
