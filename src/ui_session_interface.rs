@@ -15,12 +15,15 @@ use bytes::Bytes;
 use rdev::{Event, EventType::*, KeyCode};
 use uuid::Uuid;
 
-use hbb_common::config::{Config, LocalConfig, PeerConfig};
 #[cfg(not(feature = "flutter"))]
 use hbb_common::fs;
 use hbb_common::rendezvous_proto::ConnType;
 use hbb_common::tokio::{self, sync::mpsc};
 use hbb_common::{allow_err, message_proto::*};
+use hbb_common::{
+    config::{Config, LocalConfig, PeerConfig},
+    SessionID,
+};
 use hbb_common::{get_version_number, log, Stream};
 
 use crate::client::io_loop::Remote;
@@ -39,7 +42,7 @@ pub static IS_IN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Default)]
 pub struct Session<T: InvokeUiSession> {
-    pub session_uuid: uuid::Uuid,
+    pub session_id: SessionID,
     pub id: String, // peer id
     pub password: String,
     pub args: Vec<String>,

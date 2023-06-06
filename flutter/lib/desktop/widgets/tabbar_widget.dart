@@ -29,7 +29,6 @@ const double _kActionIconSize = 12;
 
 class TabInfo {
   final String key;
-  UuidValue? sessionUuid;
   final String label;
   final IconData? selectedIcon;
   final IconData? unselectedIcon;

@@ -1,6 +1,6 @@
 use crate::{
     client::*,
-    flutter_ffi::EventToUI,
+    flutter_ffi::{EventToUI, SessionID},
     ui_session_interface::{io_loop, InvokeUiSession, Session},
 };
 use flutter_rust_bridge::StreamSink;
@@ -27,7 +27,6 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use uuid::Uuid;
 
 /// tag "main" for [Desktop Main Page] and [Mobile (Client and Server)] (the mobile don't need multiple windows, only one global event stream is needed)
 /// tag "cm" only for [Desktop CM Page]
@@ -42,8 +41,8 @@ pub(crate) const APP_TYPE_DESKTOP_FILE_TRANSFER: &str = "file transfer";
 pub(crate) const APP_TYPE_DESKTOP_PORT_FORWARD: &str = "port forward";
 
 lazy_static::lazy_static! {
-    pub(crate) static ref CUR_SESSION_ID: RwLock<Uuid> = Default::default();
-    pub(crate) static ref SESSIONS: RwLock<HashMap<uuid::Uuid, Session<FlutterHandler>>> = Default::default();
+    pub(crate) static ref CUR_SESSION_ID: RwLock<SessionID> = Default::default();
+    pub(crate) static ref SESSIONS: RwLock<HashMap<SessionID, Session<FlutterHandler>>> = Default::default();
     static ref GLOBAL_EVENT_STREAM: RwLock<HashMap<String, StreamSink<String>>> = Default::default(); // rust to dart event channel
 }
 
@@ -697,7 +696,7 @@ impl InvokeUiSession for FlutterHandler {
 /// * `is_file_transfer` - If the session is used for file transfer.
 /// * `is_port_forward` - If the session is used for port forward.
 pub fn session_add(
-    session_uuid: &Uuid,
+    session_id: &SessionID,
     id: &str,
     is_file_transfer: bool,
     is_port_forward: bool,
@@ -706,12 +705,11 @@ pub fn session_add(
     force_relay: bool,
     password: String,
 ) -> ResultType<Session<FlutterHandler>> {
-    // let session_uuid = uuid::Uuid::from_str(session_uuid)?;
     let peer_id = get_peer_id(id.to_owned());
     LocalConfig::set_remote_id(&peer_id);
 
     let session: Session<FlutterHandler> = Session {
-        session_uuid: session_uuid.clone(),
+        session_id: session_id.clone(),
         id: peer_id.clone(),
         password,
         server_keyboard_enabled: Arc::new(RwLock::new(true)),
@@ -747,7 +745,7 @@ pub fn session_add(
     if let Some(same_id_session) = SESSIONS
         .write()
         .unwrap()
-        .insert(session_uuid.to_owned(), session.clone())
+        .insert(session_id.to_owned(), session.clone())
     {
         log::error!("Should not happen");
         same_id_session.close();
@@ -763,11 +761,11 @@ pub fn session_add(
 /// * `id` - The identifier of the remote session with prefix. Regex: [\w]*[\_]*[\d]+
 /// * `events2ui` - The events channel to ui.
 pub fn session_start_(
-    session_uuid: &Uuid,
+    session_id: &SessionID,
     id: &str,
     event_stream: StreamSink<EventToUI>,
 ) -> ResultType<()> {
-    if let Some(session) = SESSIONS.write().unwrap().get_mut(session_uuid) {
+    if let Some(session) = SESSIONS.write().unwrap().get_mut(session_id) {
         #[cfg(feature = "flutter_texture_render")]
         log::info!(
             "Session {} start, render by flutter texture rgba plugin",
@@ -798,12 +796,12 @@ pub fn update_text_clipboard_required() {
 
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn other_sessions_running(uuid: &uuid::Uuid) -> bool {
+pub fn other_sessions_running(session_id: &SessionID) -> bool {
     SESSIONS
         .read()
         .unwrap()
         .keys()
-        .filter(|k| *k != uuid)
+        .filter(|k| *k != session_id)
         .count()
         != 0
 }
@@ -980,13 +978,13 @@ pub fn make_fd_flutter(id: i32, entries: &Vec<FileEntry>, only_count: bool) -> S
     serde_json::to_string(&m).unwrap_or("".into())
 }
 
-pub fn get_cur_session_id() -> Uuid {
+pub fn get_cur_session_id() -> SessionID {
     CUR_SESSION_ID.read().unwrap().clone()
 }
 
-pub fn set_cur_session_id(session_uuid: Uuid) {
-    if get_cur_session_id() != session_uuid {
-        *CUR_SESSION_ID.write().unwrap() = session_uuid;
+pub fn set_cur_session_id(session_id: SessionID) {
+    if get_cur_session_id() != session_id {
+        *CUR_SESSION_ID.write().unwrap() = session_id;
     }
 }
 
@@ -1011,17 +1009,17 @@ fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
     serde_json::ser::to_string(&v).unwrap_or("".to_string())
 }
 
-fn char_to_uuid(c: *const char) -> ResultType<Uuid> {
+fn char_to_uuid(c: *const char) -> ResultType<SessionID> {
     let cstr = unsafe { std::ffi::CStr::from_ptr(c as _) };
     let str = cstr.to_str()?;
-    Uuid::from_str(str).map_err(|e| anyhow!("{:?}", e))
+    SessionID::from_str(str).map_err(|e| anyhow!("{:?}", e))
 }
 
 #[no_mangle]
 pub fn session_get_rgba_size(_session_uuid_str: *const char) -> usize {
     #[cfg(not(feature = "flutter_texture_render"))]
-    if let Ok(session_uuid) = char_to_uuid(_session_uuid_str) {
-        if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
+    if let Ok(session_id) = char_to_uuid(_session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
             return session.rgba.read().unwrap().len();
         }
     }
@@ -1030,8 +1028,8 @@ pub fn session_get_rgba_size(_session_uuid_str: *const char) -> usize {
 
 #[no_mangle]
 pub fn session_get_rgba(session_uuid_str: *const char) -> *const u8 {
-    if let Ok(session_uuid) = char_to_uuid(session_uuid_str) {
-        if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
+    if let Ok(session_id) = char_to_uuid(session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
             return session.get_rgba();
         }
     }
@@ -1041,8 +1039,8 @@ pub fn session_get_rgba(session_uuid_str: *const char) -> *const u8 {
 
 #[no_mangle]
 pub fn session_next_rgba(session_uuid_str: *const char) {
-    if let Ok(session_uuid) = char_to_uuid(session_uuid_str) {
-        if let Some(session) = SESSIONS.read().unwrap().get(&session_uuid) {
+    if let Ok(session_id) = char_to_uuid(session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
             return session.next_rgba();
         }
     }
@@ -1052,8 +1050,8 @@ pub fn session_next_rgba(session_uuid_str: *const char) {
 #[no_mangle]
 pub fn session_register_texture(_session_uuid_str: *const char, _ptr: usize) {
     #[cfg(feature = "flutter_texture_render")]
-    if let Ok(session_uuid) = char_to_uuid(_session_uuid_str) {
-        if let Some(session) = SESSIONS.write().unwrap().get_mut(&session_uuid) {
+    if let Ok(session_id) = char_to_uuid(_session_uuid_str) {
+        if let Some(session) = SESSIONS.write().unwrap().get_mut(&session_id) {
             return session.register_texture(_ptr);
         }
     }
@@ -1061,14 +1059,14 @@ pub fn session_register_texture(_session_uuid_str: *const char, _ptr: usize) {
 
 #[inline]
 pub fn push_session_event(
-    session_uuid: &Uuid,
+    session_id: &SessionID,
     name: &str,
     event: Vec<(&str, &str)>,
 ) -> Option<bool> {
     SESSIONS
         .read()
         .unwrap()
-        .get(session_uuid)?
+        .get(session_id)?
         .push_event(name, event)
 }
 

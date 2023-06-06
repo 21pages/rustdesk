@@ -12,7 +12,6 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 import 'package:win32/win32.dart' as win32;
 
 import '../common.dart';
@@ -105,10 +104,10 @@ class PlatformFFI {
     return res;
   }
 
-  Uint8List? getRgba(UuidValue sessionUuid, int bufSize) {
+  Uint8List? getRgba(SessionID sessionId, int bufSize) {
     if (_session_get_rgba == null) return null;
-    final sessionUuidStr = sessionUuid.toString();
-    var a = sessionUuidStr.toNativeUtf8();
+    final sessionIdStr = sessionId.toString();
+    var a = sessionIdStr.toNativeUtf8();
     try {
       final buffer = _session_get_rgba!(a);
       if (buffer == nullptr) {
@@ -121,27 +120,27 @@ class PlatformFFI {
     }
   }
 
-  int? getRgbaSize(UuidValue sessionUuid) {
+  int? getRgbaSize(SessionID sessionId) {
     if (_session_get_rgba_size == null) return null;
-    final sessionUuidStr = sessionUuid.toString();
-    var a = sessionUuidStr.toNativeUtf8();
+    final sessionIdStr = sessionId.toString();
+    var a = sessionIdStr.toNativeUtf8();
     final bufferSize = _session_get_rgba_size!(a);
     malloc.free(a);
     return bufferSize;
   }
 
-  void nextRgba(UuidValue sessionUuid) {
+  void nextRgba(SessionID sessionId) {
     if (_session_next_rgba == null) return;
-    final sessionUuidStr = sessionUuid.toString();
-    final a = sessionUuidStr.toNativeUtf8();
+    final sessionIdStr = sessionId.toString();
+    final a = sessionIdStr.toNativeUtf8();
     _session_next_rgba!(a);
     malloc.free(a);
   }
 
-  void registerTexture(UuidValue sessionUuid, int ptr) {
+  void registerTexture(SessionID sessionId, int ptr) {
     if (_session_register_texture == null) return;
-    final sessionUuidStr = sessionUuid.toString();
-    final a = sessionUuidStr.toNativeUtf8();
+    final sessionIdStr = sessionId.toString();
+    final a = sessionIdStr.toNativeUtf8();
     _session_register_texture!(a, ptr);
     malloc.free(a);
   }

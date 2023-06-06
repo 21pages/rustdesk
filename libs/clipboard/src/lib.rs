@@ -5,8 +5,7 @@ use hbb_common::{
         mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
         Mutex as TokioMutex,
     },
-    uuid::Uuid,
-    ResultType,
+    ResultType, SessionID,
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{
@@ -60,7 +59,7 @@ struct ConnEnabled {
 }
 
 struct MsgChannel {
-    session_uuid: Uuid,
+    session_uuid: SessionID,
     conn_id: i32,
     sender: UnboundedSender<ClipboardFile>,
     receiver: Arc<TokioMutex<UnboundedReceiver<ClipboardFile>>>,
@@ -79,7 +78,7 @@ lazy_static::lazy_static! {
     static ref PROCESS_SIDE: RwLock<ProcessSide> = RwLock::new(ProcessSide::UnknownSide);
 }
 
-pub fn get_client_conn_id(session_uuid: &Uuid) -> Option<i32> {
+pub fn get_client_conn_id(session_uuid: &SessionID) -> Option<i32> {
     VEC_MSG_CHANNEL
         .read()
         .unwrap()
@@ -89,7 +88,7 @@ pub fn get_client_conn_id(session_uuid: &Uuid) -> Option<i32> {
 }
 
 pub fn get_rx_cliprdr_client(
-    session_uuid: &Uuid,
+    session_uuid: &SessionID,
 ) -> (i32, Arc<TokioMutex<UnboundedReceiver<ClipboardFile>>>) {
     let mut lock = VEC_MSG_CHANNEL.write().unwrap();
     match lock
@@ -123,7 +122,7 @@ pub fn get_rx_cliprdr_server(conn_id: i32) -> Arc<TokioMutex<UnboundedReceiver<C
             let receiver = Arc::new(TokioMutex::new(receiver));
             let receiver2 = receiver.clone();
             let msg_channel = MsgChannel {
-                session_uuid: Uuid::nil(),
+                session_uuid: SessionID::nil(),
                 conn_id,
                 sender,
                 receiver,

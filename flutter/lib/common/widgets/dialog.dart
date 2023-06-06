@@ -5,14 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:get/get.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../common.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 
-void clientClose(UuidValue sessionUuid, OverlayDialogManager dialogManager) {
-  msgBox(sessionUuid, 'info', 'Close', 'Are you sure to close the connection?',
+void clientClose(SessionID sessionId, OverlayDialogManager dialogManager) {
+  msgBox(sessionId, 'info', 'Close', 'Are you sure to close the connection?',
       '', dialogManager);
 }
 
@@ -424,7 +423,7 @@ class _PasswordWidgetState extends State<PasswordWidget> {
   }
 }
 
-void wrongPasswordDialog(UuidValue sessionUuid,
+void wrongPasswordDialog(SessionID sessionId,
     OverlayDialogManager dialogManager, type, title, text) {
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
@@ -434,7 +433,7 @@ void wrongPasswordDialog(UuidValue sessionUuid,
     }
 
     submit() {
-      enterPasswordDialog(sessionUuid, dialogManager);
+      enterPasswordDialog(sessionId, dialogManager);
     }
 
     return CustomAlertDialog(
@@ -457,18 +456,18 @@ void wrongPasswordDialog(UuidValue sessionUuid,
 }
 
 void enterPasswordDialog(
-    UuidValue sessionUuid, OverlayDialogManager dialogManager) async {
+    SessionID sessionId, OverlayDialogManager dialogManager) async {
   await _connectDialog(
-    sessionUuid,
+    sessionId,
     dialogManager,
     passwordController: TextEditingController(),
   );
 }
 
 void enterUserLoginDialog(
-    UuidValue sessionUuid, OverlayDialogManager dialogManager) async {
+    SessionID sessionId, OverlayDialogManager dialogManager) async {
   await _connectDialog(
-    sessionUuid,
+    sessionId,
     dialogManager,
     osUsernameController: TextEditingController(),
     osPasswordController: TextEditingController(),
@@ -476,9 +475,9 @@ void enterUserLoginDialog(
 }
 
 void enterUserLoginAndPasswordDialog(
-    UuidValue sessionUuid, OverlayDialogManager dialogManager) async {
+    SessionID sessionId, OverlayDialogManager dialogManager) async {
   await _connectDialog(
-    sessionUuid,
+    sessionId,
     dialogManager,
     osUsernameController: TextEditingController(),
     osPasswordController: TextEditingController(),
@@ -487,7 +486,7 @@ void enterUserLoginAndPasswordDialog(
 }
 
 _connectDialog(
-  UuidValue sessionUuid,
+  SessionID sessionId,
   OverlayDialogManager dialogManager, {
   TextEditingController? osUsernameController,
   TextEditingController? osPasswordController,
@@ -496,12 +495,12 @@ _connectDialog(
   var rememberPassword = false;
   if (passwordController != null) {
     rememberPassword =
-        await bind.sessionGetRemember(sessionUuid: sessionUuid) ?? false;
+        await bind.sessionGetRemember(sessionId: sessionId) ?? false;
   }
   var rememberAccount = false;
   if (osUsernameController != null) {
     rememberAccount =
-        await bind.sessionGetRemember(sessionUuid: sessionUuid) ?? false;
+        await bind.sessionGetRemember(sessionId: sessionId) ?? false;
   }
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
@@ -517,14 +516,14 @@ _connectDialog(
       if (passwordController != null && password.isEmpty) return;
       if (rememberAccount) {
         bind.sessionPeerOption(
-            sessionUuid: sessionUuid, name: 'os-username', value: osUsername);
+            sessionId: sessionId, name: 'os-username', value: osUsername);
         bind.sessionPeerOption(
-            sessionUuid: sessionUuid, name: 'os-password', value: osPassword);
+            sessionId: sessionId, name: 'os-password', value: osPassword);
       }
       gFFI.login(
         osUsername,
         osPassword,
-        sessionUuid,
+        sessionId,
         password,
         rememberPassword,
       );
@@ -657,10 +656,10 @@ _connectDialog(
 }
 
 void showWaitUacDialog(
-    UuidValue sessionUuid, OverlayDialogManager dialogManager, String type) {
+    SessionID sessionId, OverlayDialogManager dialogManager, String type) {
   dialogManager.dismissAll();
   dialogManager.show(
-      tag: '$sessionUuid-wait-uac',
+      tag: '$sessionId-wait-uac',
       (setState, close, context) => CustomAlertDialog(
             title: null,
             content: msgboxContent(type, 'Wait', 'wait_accept_uac_tip'),
@@ -669,7 +668,7 @@ void showWaitUacDialog(
 
 // Another username && password dialog?
 void showRequestElevationDialog(
-    UuidValue sessionUuid, OverlayDialogManager dialogManager) {
+    SessionID sessionId, OverlayDialogManager dialogManager) {
   RxString groupValue = ''.obs;
   RxString errUser = ''.obs;
   RxString errPwd = ''.obs;
@@ -778,7 +777,7 @@ void showRequestElevationDialog(
       ]));
 
   dialogManager.dismissAll();
-  dialogManager.show(tag: '$sessionUuid-request-elevation',
+  dialogManager.show(tag: '$sessionId-request-elevation',
       (setState, close, context) {
     void submit() {
       if (groupValue.value == 'logon') {
@@ -791,11 +790,11 @@ void showRequestElevationDialog(
           return;
         }
         bind.sessionElevateWithLogon(
-            sessionUuid: sessionUuid,
+            sessionId: sessionId,
             username: userController.text,
             password: pwdController.text);
       } else {
-        bind.sessionElevateDirect(sessionUuid: sessionUuid);
+        bind.sessionElevateDirect(sessionId: sessionId);
       }
     }
 
@@ -813,20 +812,20 @@ void showRequestElevationDialog(
 }
 
 void showOnBlockDialog(
-  UuidValue sessionUuid,
+  SessionID sessionId,
   String type,
   String title,
   String text,
   OverlayDialogManager dialogManager,
 ) {
-  if (dialogManager.existing('$sessionUuid-wait-uac') ||
-      dialogManager.existing('$sessionUuid-request-elevation')) {
+  if (dialogManager.existing('$sessionId-wait-uac') ||
+      dialogManager.existing('$sessionId-request-elevation')) {
     return;
   }
-  dialogManager.show(tag: '$sessionUuid-$type', (setState, close, context) {
+  dialogManager.show(tag: '$sessionId-$type', (setState, close, context) {
     void submit() {
       close();
-      showRequestElevationDialog(sessionUuid, dialogManager);
+      showRequestElevationDialog(sessionId, dialogManager);
     }
 
     return CustomAlertDialog(
@@ -843,12 +842,12 @@ void showOnBlockDialog(
   });
 }
 
-void showElevationError(UuidValue sessionUuid, String type, String title,
+void showElevationError(SessionID sessionId, String type, String title,
     String text, OverlayDialogManager dialogManager) {
-  dialogManager.show(tag: '$sessionUuid-$type', (setState, close, context) {
+  dialogManager.show(tag: '$sessionId-$type', (setState, close, context) {
     void submit() {
       close();
-      showRequestElevationDialog(sessionUuid, dialogManager);
+      showRequestElevationDialog(sessionId, dialogManager);
     }
 
     return CustomAlertDialog(
@@ -866,7 +865,7 @@ void showElevationError(UuidValue sessionUuid, String type, String title,
   });
 }
 
-void showWaitAcceptDialog(UuidValue sessionUuid, String type, String title,
+void showWaitAcceptDialog(SessionID sessionId, String type, String title,
     String text, OverlayDialogManager dialogManager) {
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
@@ -885,7 +884,7 @@ void showWaitAcceptDialog(UuidValue sessionUuid, String type, String title,
   });
 }
 
-void showRestartRemoteDevice(PeerInfo pi, String id, UuidValue sessionUuid,
+void showRestartRemoteDevice(PeerInfo pi, String id, SessionID sessionId,
     OverlayDialogManager dialogManager) async {
   final res = await dialogManager
       .show<bool>((setState, close, context) => CustomAlertDialog(
@@ -913,33 +912,33 @@ void showRestartRemoteDevice(PeerInfo pi, String id, UuidValue sessionUuid,
             onCancel: close,
             onSubmit: () => close(true),
           ));
-  if (res == true) bind.sessionRestartRemoteDevice(sessionUuid: sessionUuid);
+  if (res == true) bind.sessionRestartRemoteDevice(sessionId: sessionId);
 }
 
 showSetOSPassword(
-  UuidValue sessionUuid,
+  SessionID sessionId,
   bool login,
   OverlayDialogManager dialogManager,
 ) async {
   final controller = TextEditingController();
-  var password = await bind.sessionGetOption(
-          sessionUuid: sessionUuid, arg: 'os-password') ??
-      '';
-  var autoLogin = await bind.sessionGetOption(
-          sessionUuid: sessionUuid, arg: 'auto-login') !=
-      '';
+  var password =
+      await bind.sessionGetOption(sessionId: sessionId, arg: 'os-password') ??
+          '';
+  var autoLogin =
+      await bind.sessionGetOption(sessionId: sessionId, arg: 'auto-login') !=
+          '';
   controller.text = password;
   dialogManager.show((setState, close, context) {
     submit() {
       var text = controller.text.trim();
       bind.sessionPeerOption(
-          sessionUuid: sessionUuid, name: 'os-password', value: text);
+          sessionId: sessionId, name: 'os-password', value: text);
       bind.sessionPeerOption(
-          sessionUuid: sessionUuid,
+          sessionId: sessionId,
           name: 'auto-login',
           value: autoLogin ? 'Y' : '');
       if (text != '' && login) {
-        bind.sessionInputOsPassword(sessionUuid: sessionUuid, value: text);
+        bind.sessionInputOsPassword(sessionId: sessionId, value: text);
       }
       close();
     }
@@ -991,17 +990,17 @@ showSetOSPassword(
 }
 
 showSetOSAccount(
-  UuidValue sessionUuid,
+  SessionID sessionId,
   OverlayDialogManager dialogManager,
 ) async {
   final usernameController = TextEditingController();
   final passwdController = TextEditingController();
-  var username = await bind.sessionGetOption(
-          sessionUuid: sessionUuid, arg: 'os-username') ??
-      '';
-  var password = await bind.sessionGetOption(
-          sessionUuid: sessionUuid, arg: 'os-password') ??
-      '';
+  var username =
+      await bind.sessionGetOption(sessionId: sessionId, arg: 'os-username') ??
+          '';
+  var password =
+      await bind.sessionGetOption(sessionId: sessionId, arg: 'os-password') ??
+          '';
   usernameController.text = username;
   passwdController.text = password;
   dialogManager.show((setState, close, context) {
@@ -1009,9 +1008,9 @@ showSetOSAccount(
       final username = usernameController.text.trim();
       final password = usernameController.text.trim();
       bind.sessionPeerOption(
-          sessionUuid: sessionUuid, name: 'os-username', value: username);
+          sessionId: sessionId, name: 'os-username', value: username);
       bind.sessionPeerOption(
-          sessionUuid: sessionUuid, name: 'os-password', value: password);
+          sessionId: sessionId, name: 'os-password', value: password);
       close();
     }
 
@@ -1075,13 +1074,13 @@ showSetOSAccount(
   });
 }
 
-showAuditDialog(UuidValue sessionUuid, dialogManager) async {
+showAuditDialog(SessionID sessionId, dialogManager) async {
   final controller = TextEditingController();
   dialogManager.show((setState, close) {
     submit() {
       var text = controller.text.trim();
       if (text != '') {
-        bind.sessionSendNote(sessionUuid: sessionUuid, note: text);
+        bind.sessionSendNote(sessionId: sessionId, note: text);
       }
       close();
     }
@@ -1136,11 +1135,11 @@ showAuditDialog(UuidValue sessionUuid, dialogManager) async {
   });
 }
 
-void showConfirmSwitchSidesDialog(UuidValue sessionUuid, String id,
-    OverlayDialogManager dialogManager) async {
+void showConfirmSwitchSidesDialog(
+    SessionID sessionId, String id, OverlayDialogManager dialogManager) async {
   dialogManager.show((setState, close, context) {
     submit() async {
-      await bind.sessionSwitchSides(sessionUuid: sessionUuid);
+      await bind.sessionSwitchSides(sessionId: sessionId);
       closeConnection(id: id);
     }
 
@@ -1157,7 +1156,7 @@ void showConfirmSwitchSidesDialog(UuidValue sessionUuid, String id,
   });
 }
 
-customImageQualityDialog(UuidValue sessionUuid, String id, FFI ffi) async {
+customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
   double qualityInitValue = 50;
   double fpsInitValue = 30;
   bool qualitySet = false;
@@ -1166,22 +1165,21 @@ customImageQualityDialog(UuidValue sessionUuid, String id, FFI ffi) async {
     if (quality != null) {
       qualitySet = true;
       await bind.sessionSetCustomImageQuality(
-          sessionUuid: sessionUuid, value: quality.toInt());
+          sessionId: sessionId, value: quality.toInt());
     }
     if (fps != null) {
       fpsSet = true;
-      await bind.sessionSetCustomFps(
-          sessionUuid: sessionUuid, fps: fps.toInt());
+      await bind.sessionSetCustomFps(sessionId: sessionId, fps: fps.toInt());
     }
     if (!qualitySet) {
       qualitySet = true;
       await bind.sessionSetCustomImageQuality(
-          sessionUuid: sessionUuid, value: qualityInitValue.toInt());
+          sessionId: sessionId, value: qualityInitValue.toInt());
     }
     if (!fpsSet) {
       fpsSet = true;
       await bind.sessionSetCustomFps(
-          sessionUuid: sessionUuid, fps: fpsInitValue.toInt());
+          sessionId: sessionId, fps: fpsInitValue.toInt());
     }
   }
 
@@ -1191,8 +1189,7 @@ customImageQualityDialog(UuidValue sessionUuid, String id, FFI ffi) async {
   });
 
   // quality
-  final quality =
-      await bind.sessionGetCustomImageQuality(sessionUuid: sessionUuid);
+  final quality = await bind.sessionGetCustomImageQuality(sessionId: sessionId);
   qualityInitValue =
       quality != null && quality.isNotEmpty ? quality[0].toDouble() : 50.0;
   const qualityMinValue = 10.0;
@@ -1241,7 +1238,7 @@ customImageQualityDialog(UuidValue sessionUuid, String id, FFI ffi) async {
       ));
   // fps
   final fpsOption =
-      await bind.sessionGetOption(sessionUuid: sessionUuid, arg: 'custom-fps');
+      await bind.sessionGetOption(sessionId: sessionId, arg: 'custom-fps');
   fpsInitValue = fpsOption == null ? 30 : double.tryParse(fpsOption) ?? 30;
   if (fpsInitValue < 5 || fpsInitValue > 120) {
     fpsInitValue = 30;

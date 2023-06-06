@@ -73,7 +73,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       gFFI.dialogManager
           .showLoading(translate('Connecting...'), onCancel: closeConnection);
     });
-    gFFI.ffiModel.updateEventListener(gFFI.sessionUuid, widget.id);
+    gFFI.ffiModel.updateEventListener(gFFI.sessionId, widget.id);
     Wakelock.enable();
   }
 
@@ -105,7 +105,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             IconButton(
                 icon: Icon(Icons.close),
                 onPressed: () =>
-                    clientClose(gFFI.sessionUuid, gFFI.dialogManager)),
+                    clientClose(gFFI.sessionId, gFFI.dialogManager)),
           ]),
           centerTitle: true,
           title: ToggleSwitch(

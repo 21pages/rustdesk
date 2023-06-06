@@ -53,6 +53,7 @@ pub use uuid;
 pub type Stream = quic::Connection;
 #[cfg(not(feature = "quic"))]
 pub type Stream = tcp::FramedStream;
+pub type SessionID = uuid::Uuid;
 
 #[inline]
 pub async fn sleep(sec: f32) {

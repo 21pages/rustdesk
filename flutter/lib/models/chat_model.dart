@@ -75,10 +75,10 @@ class ChatModel with ChangeNotifier {
 
   final WeakReference<FFI> parent;
 
-  late final UuidValue sessionUuid;
+  late final SessionID sessionId;
 
   ChatModel(this.parent) {
-    sessionUuid = parent.target!.sessionUuid;
+    sessionId = parent.target!.sessionId;
   }
 
   FocusNode inputNode = FocusNode();
@@ -307,7 +307,7 @@ class ChatModel with ChangeNotifier {
       _messages[_currentID]?.insert(message);
       if (_currentID == clientModeID) {
         if (parent.target != null) {
-          bind.sessionSendChat(sessionUuid: sessionUuid, text: message.text);
+          bind.sessionSendChat(sessionId: sessionId, text: message.text);
         }
       } else {
         bind.cmSendChat(connId: _currentID, msg: message.text);
@@ -353,7 +353,7 @@ class ChatModel with ChangeNotifier {
   }
 
   void closeVoiceCall() {
-    bind.sessionCloseVoiceCall(sessionUuid: sessionUuid);
+    bind.sessionCloseVoiceCall(sessionId: sessionId);
   }
 }
 

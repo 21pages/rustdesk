@@ -194,7 +194,7 @@ class _PortForwardPageState extends State<PortForwardPage>
                 (remoteHostController.text.isEmpty ||
                     remoteHostController.text.trim().isNotEmpty)) {
               await bind.sessionAddPortForward(
-                  sessionUuid: _ffi.sessionUuid,
+                  sessionId: _ffi.sessionId,
                   localPort: localPort,
                   remoteHost: remoteHostController.text.trim().isEmpty
                       ? 'localhost'
@@ -254,7 +254,7 @@ class _PortForwardPageState extends State<PortForwardPage>
             icon: const Icon(Icons.close),
             onPressed: () async {
               await bind.sessionRemovePortForward(
-                  sessionUuid: _ffi.sessionUuid, localPort: pf.localPort);
+                  sessionId: _ffi.sessionId, localPort: pf.localPort);
               refreshTunnelConfig();
             },
           ),
@@ -313,7 +313,7 @@ class _PortForwardPageState extends State<PortForwardPage>
                         width: 120,
                         child: ElevatedButton(
                           onPressed: () =>
-                              bind.sessionNewRdp(sessionUuid: _ffi.sessionUuid),
+                              bind.sessionNewRdp(sessionId: _ffi.sessionId),
                           child: Text(
                             translate('New RDP'),
                           ),
