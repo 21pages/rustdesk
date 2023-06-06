@@ -483,6 +483,8 @@ class FfiModel with ChangeNotifier {
             translate('Connected, waiting for image...'),
             onCancel: closeConnection);
         _waitForImage[peerId] = true;
+        flog(
+            "InFlutter handlePeerInfo, showLoading set _waitForImage[peerId] to true}");
         _reconnects = 1;
       }
       Map<String, dynamic> features = json.decode(evt['features']);
@@ -622,16 +624,21 @@ class ImageModel with ChangeNotifier {
 
   onRgba(Uint8List rgba) {
     final waitforImage = _waitForImage[id];
+    flog("InFlutter recv onRgba, waitforImage:$waitforImage");
     if (waitforImage == null) {
       debugPrint('Exception, peer $id not found for waiting image');
+      flog("InFlutter recv onRgba, waitforImage is null, return");
       return;
     }
 
     if (waitforImage == true) {
+      flog(
+          "InFlutter recv onRgba, waitforImage is true, set to false and dismiss all dialog");
       _waitForImage[id] = false;
       parent.target?.dialogManager.dismissAll();
       if (isDesktop) {
         for (final cb in callbacksOnFirstImage) {
+          flog("InFlutter callbacksOnFirstImage");
           cb(id);
         }
       }
@@ -646,6 +653,7 @@ class ImageModel with ChangeNotifier {
         onPixelsCopied: () {
       // Unlock the rgba memory from rust codes.
       platformFFI.nextRgba(id);
+      flog("InFlutter recv nextRgba");
     }).then((image) {
       if (parent.target?.id != pid) return;
       try {
@@ -1358,8 +1366,8 @@ class CursorModel with ChangeNotifier {
   Future<bool> _updateCache(
       Uint8List rgba, ui.Image image, int id, int w, int h) async {
     Uint8List? data;
-    img2.Image imgOrigin =
-        img2.Image.fromBytes(width: w, height:h, bytes: rgba.buffer, order: img2.ChannelOrder.rgba);
+    img2.Image imgOrigin = img2.Image.fromBytes(
+        width: w, height: h, bytes: rgba.buffer, order: img2.ChannelOrder.rgba);
     if (Platform.isWindows) {
       data = imgOrigin.getBytes(order: img2.ChannelOrder.bgra);
     } else {
@@ -1652,6 +1660,8 @@ class FFI {
             await cb(event);
           }
         } else if (message is EventToUI_Rgba) {
+          flog(
+              "InFlutter recv EventToUI_Rgba, useTextureRender:$useTextureRender, _waitForImage[id]:${_waitForImage[id]}");
           if (useTextureRender) {
             if (_waitForImage[id]!) {
               _waitForImage[id] = false;
@@ -1666,11 +1676,15 @@ class FFI {
             // Fetch the image buffer from rust codes.
             final sz = platformFFI.getRgbaSize(id);
             if (sz == null || sz == 0) {
+              flog(
+                  "InFlutter recv EventToUI_Rgba, sz == null || sz == 0 return");
               return;
             }
             final rgba = platformFFI.getRgba(id, sz);
             if (rgba != null) {
               imageModel.onRgba(rgba);
+            } else {
+              flog("InFlutter recv EventToUI_Rgba, rgba is null");
             }
           }
         }

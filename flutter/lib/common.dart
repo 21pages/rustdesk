@@ -598,6 +598,7 @@ class OverlayDialogManager {
   void dismissAll() {
     _dialogs.forEach((key, value) {
       value.complete(null);
+      flog("InFlutter dismissAll key:$key");
       BackButtonInterceptor.removeByName(key);
     });
     _dialogs.clear();
@@ -2034,4 +2035,9 @@ void onCopyFingerprint(String value) {
   } else {
     showToast(translate("no fingerprints"));
   }
+}
+
+void flog(String s) {
+  var f = File("/tmp/log.txt");
+  f.writeAsString('$s \n', mode: FileMode.writeOnlyAppend, flush: true);
 }

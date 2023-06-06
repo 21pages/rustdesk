@@ -5,8 +5,9 @@ use crate::{
 };
 use flutter_rust_bridge::StreamSink;
 use hbb_common::{
+    flog,
     bail, config::LocalConfig, get_version_number, log, message_proto::*,
-    rendezvous_proto::ConnType, ResultType,
+    rendezvous_proto::ConnType, ResultType
 };
 #[cfg(feature = "flutter_texture_render")]
 use hbb_common::{
@@ -324,6 +325,7 @@ impl FlutterHandler {
     #[inline]
     #[cfg(feature = "flutter_texture_render")]
     pub fn set_size(&mut self, width: usize, height: usize) {
+        flog(&format!("set_size::on_rgba[texture], set notify_rendered to false"));
         *self.notify_rendered.write().unwrap() = false;
         self.renderer.write().unwrap().set_size(width, height);
     }
@@ -513,13 +515,18 @@ impl InvokeUiSession for FlutterHandler {
         // If the current rgba is not fetched by flutter, i.e., is valid.
         // We give up sending a new event to flutter.
         if self.rgba_valid.load(Ordering::Relaxed) {
+            flog(&format!("flutter::on_rgba[nontexture], rgba_valid=true, return"));
             return;
         }
         self.rgba_valid.store(true, Ordering::Relaxed);
+        flog(&format!("flutter::on_rgba[nontexture], set rgba_valid=true"));
         // Return the rgba buffer to the video handler for reusing allocated rgba buffer.
         std::mem::swap::<Vec<u8>>(&mut rgba.raw, &mut *self.rgba.write().unwrap());
         if let Some(stream) = &*self.event_stream.read().unwrap() {
+            flog(&format!("flutter::on_rgba[nontexture], add EventToUI::Rgba"));
             stream.add(EventToUI::Rgba);
+        } else {
+            flog(&format!("flutter::on_rgba[nontexture], event_stream is None"));
         }
     }
 
@@ -528,11 +535,15 @@ impl InvokeUiSession for FlutterHandler {
     fn on_rgba(&self, rgba: &mut scrap::ImageRgb) {
         self.renderer.read().unwrap().on_rgba(rgba);
         if *self.notify_rendered.read().unwrap() {
+            flog(&format!("set_size::on_rgba[texture], notify_rendered is true, return"));
             return;
         }
         if let Some(stream) = &*self.event_stream.read().unwrap() {
             stream.add(EventToUI::Rgba);
+            flog(&format!("set_size::on_rgba[texture], add EventToUI::Rgba, set notify_rendered to true"));
             *self.notify_rendered.write().unwrap() = true;
+        } else {
+            flog(&format!("set_size::on_rgba[texture], event_stream is None"));
         }
     }
 
@@ -674,8 +685,11 @@ impl InvokeUiSession for FlutterHandler {
     #[inline]
     fn get_rgba(&self) -> *const u8 {
         #[cfg(not(feature = "flutter_texture_render"))]
-        if self.rgba_valid.load(Ordering::Relaxed) {
-            return self.rgba.read().unwrap().as_ptr();
+        {
+            flog(&format!("flutter::get_rgba[nontexture], rgba_valid:{}, rgba is null:{}", self.rgba_valid.load(Ordering::Relaxed), self.rgba.read().unwrap().as_ptr().is_null()));
+            if self.rgba_valid.load(Ordering::Relaxed) {
+                return self.rgba.read().unwrap().as_ptr();
+            }
         }
         std::ptr::null_mut()
     }
@@ -684,6 +698,7 @@ impl InvokeUiSession for FlutterHandler {
     fn next_rgba(&self) {
         #[cfg(not(feature = "flutter_texture_render"))]
         self.rgba_valid.store(false, Ordering::Relaxed);
+        flog("flutter::next_rgba[nontexture], set rgba_valid to false");
     }
 }
 

@@ -31,6 +31,7 @@ use hbb_common::{
         mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
         Mutex as TokioMutex,
     },
+    flog,
 };
 #[cfg(not(windows))]
 use scrap::Capturer;
@@ -506,6 +507,7 @@ fn check_get_displays_changed_msg() -> Option<Message> {
 }
 
 fn run(sp: GenericService) -> ResultType<()> {
+    flog("video_service start run");
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let _wake_lock = get_wake_lock();
     #[cfg(all(windows, feature = "virtual_display_driver"))]
