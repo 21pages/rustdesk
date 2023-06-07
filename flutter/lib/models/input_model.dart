@@ -59,11 +59,13 @@ class InputModel {
 
   get id => parent.target?.id ?? "";
 
-  SessionID get sessionId => parent.target!.sessionId;
+  late final SessionID sessionId;
 
   bool get keyboardPerm => parent.target!.ffiModel.keyboard;
 
-  InputModel(this.parent);
+  InputModel(this.parent) {
+    sessionId = parent.target!.sessionId;
+  }
 
   KeyEventResult handleRawKeyEvent(FocusNode data, RawKeyEvent e) {
     if (isDesktop && !stateGlobal.grabKeyboard) {

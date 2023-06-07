@@ -705,12 +705,11 @@ pub fn session_add(
     force_relay: bool,
     password: String,
 ) -> ResultType<Session<FlutterHandler>> {
-    let peer_id = get_peer_id(id.to_owned());
-    LocalConfig::set_remote_id(&peer_id);
+    LocalConfig::set_remote_id(&id);
 
     let session: Session<FlutterHandler> = Session {
         session_id: session_id.clone(),
-        id: peer_id.clone(),
+        id: id.to_owned(),
         password,
         server_keyboard_enabled: Arc::new(RwLock::new(true)),
         server_file_transfer_enabled: Arc::new(RwLock::new(true)),
@@ -740,7 +739,7 @@ pub fn session_add(
         .lc
         .write()
         .unwrap()
-        .initialize(peer_id, conn_type, switch_uuid, force_relay);
+        .initialize(id.to_owned(), conn_type, switch_uuid, force_relay);
 
     if let Some(same_id_session) = SESSIONS
         .write()
@@ -940,15 +939,6 @@ pub mod connection_manager {
         };
         std::thread::spawn(move || start_listen(cm, rx, tx));
     }
-}
-
-#[inline]
-pub fn get_peer_id(id: String) -> String {
-    return if let Some(index) = id.find('_') {
-        id[index + 1..].to_string()
-    } else {
-        id
-    };
 }
 
 pub fn make_fd_flutter(id: i32, entries: &Vec<FileEntry>, only_count: bool) -> String {

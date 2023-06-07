@@ -1633,10 +1633,8 @@ class FFI {
     assert(!(isFileTransfer && isPortForward), 'more than one connect type');
     if (isFileTransfer) {
       connType = ConnType.fileTransfer;
-      // id = 'ft_$id';
     } else if (isPortForward) {
       connType = ConnType.portForward;
-      // id = 'pf_$id';
     } else {
       chatModel.resetClientMode();
       connType = ConnType.defaultConn;
@@ -1855,10 +1853,6 @@ Future<Map<String, dynamic>?> getCanvasConfig(SessionID sessionId) async {
   } catch (e) {
     return null;
   }
-}
-
-void removePreference(SessionID sessionId) async {
-  await bind.sessionSetFlutterConfig(sessionId: sessionId, k: canvasKey, v: '');
 }
 
 Future<void> initializeCursorAndCanvas(FFI ffi) async {
