@@ -107,7 +107,7 @@ class _PeerTabPageState extends State<PeerTabPage>
             ),
           ),
         ),
-        _createPeersView(),
+        _pageViews(),
       ],
     );
   }
@@ -152,22 +152,25 @@ class _PeerTabPageState extends State<PeerTabPage>
         }).toList());
   }
 
-  Widget _createPeersView() {
+  Widget _pageViews() {
+    return Expanded(
+      child: PageView.builder(
+          controller: gFFI.peerTabModel.controller,
+          itemCount: 5,
+          itemBuilder: (context, index) => _createPeersView(index)),
+    );
+  }
+
+  Widget _createPeersView(int index) {
     final model = Provider.of<PeerTabModel>(context);
     Widget child;
-    if (model.indexs.isEmpty) {
-      child = Center(
-        child: Text(translate('Right click to select tabs')),
-      );
+    if (model.indexs.contains(model.currentTab)) {
+      child = entries[model.currentTab].widget;
     } else {
-      if (model.indexs.contains(model.currentTab)) {
-        child = entries[model.currentTab].widget;
-      } else {
-        Future.delayed(Duration.zero, () {
-          model.setCurrentTab(model.indexs[0]);
-        });
-        child = entries[0].widget;
-      }
+      Future.delayed(Duration.zero, () {
+        model.setCurrentTab(model.indexs[0]);
+      });
+      child = entries[0].widget;
     }
     return Expanded(
         child: child.marginSymmetric(vertical: isDesktop ? 12.0 : 6.0));

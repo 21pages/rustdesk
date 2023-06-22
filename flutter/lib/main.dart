@@ -384,6 +384,7 @@ class _AppState extends State<App> {
           ChangeNotifierProvider.value(value: gFFI.cursorModel),
           ChangeNotifierProvider.value(value: gFFI.canvasModel),
           ChangeNotifierProvider.value(value: gFFI.peerTabModel),
+          ChangeNotifierProvider.value(value: gFFI.groupModel),
         ],
         child: GetMaterialApp(
           navigatorKey: globalKey,

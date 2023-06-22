@@ -26,6 +26,7 @@ class PeerTabModel with ChangeNotifier {
     Icons.group,
   ];
   List<int> get indexs => List.generate(tabNames.length, (index) => index);
+  late final PageController controller;
 
   PeerTabModel(this.parent) {
     // init currentTab
@@ -34,11 +35,13 @@ class PeerTabModel with ChangeNotifier {
     if (_currentTab < 0 || _currentTab >= tabNames.length) {
       _currentTab = 0;
     }
+    controller = PageController(initialPage: _currentTab);
   }
 
   setCurrentTab(int index) {
     if (_currentTab != index) {
       _currentTab = index;
+      controller.jumpToPage(index);
       notifyListeners();
     }
   }

@@ -456,7 +456,7 @@ class MyGroupPeerView extends BasePeersView {
       }
     }
     if (gFFI.groupModel.selectedUser.isNotEmpty) {
-      if (gFFI.groupModel.selectedUser.value != peer.username) {
+      if (gFFI.groupModel.selectedUser != peer.username) {
         return false;
       }
     }
