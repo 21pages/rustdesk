@@ -31,11 +31,18 @@ class GroupModel {
   Future<void> pull() async {
     groupLoading.value = true;
     groupLoadError.value = "";
-    await _pull();
+    List<UserPayload> tmpUsers = List.empty(growable: true);
+    List<Peer> tmpPeers = List.empty(growable: true);
+    await _pull(tmpUsers, tmpPeers);
+    users.value = tmpUsers;
+    peersShow.value = tmpPeers;
+    print("users.value:${users.length}");
+    print("peersShow.value:${peersShow.length}");
     groupLoading.value = false;
   }
 
-  Future<void> _pull() async {
+  Future<void> _pull(List<UserPayload> tmpUsers, List<Peer> tmpPeers) async {
+    tmpPeers.add(Peer.loading());
     reset();
     if (bind.mainGetLocalOption(key: 'access_token') == '') {
       return;
@@ -81,8 +88,8 @@ class GroupModel {
                 if (data is List) {
                   for (final user in data) {
                     final u = UserPayload.fromJson(user);
-                    if (!users.any((e) => e.name == u.name)) {
-                      users.add(u);
+                    if (!tmpUsers.any((e) => e.name == u.name)) {
+                      tmpUsers.add(u);
                     }
                   }
                 }
@@ -95,7 +102,7 @@ class GroupModel {
       debugPrint('$err');
       groupLoadError.value = err.toString();
     } finally {
-      _pullUserPeers();
+      _pullUserPeers(tmpPeers);
     }
   }
 
@@ -128,8 +135,8 @@ class GroupModel {
     return false;
   }
 
-  Future<void> _pullUserPeers() async {
-    peersShow.clear();
+  Future<void> _pullUserPeers(List<Peer> tmpPeers) async {
+    // tmpPeers.clear();
     final api = "${await bind.mainGetApiServer()}/api/peers";
     try {
       var uri0 = Uri.parse(api);
@@ -165,8 +172,9 @@ class GroupModel {
                   for (final p in data) {
                     final peerPayload = PeerPayload.fromJson(p);
                     final peer = PeerPayload.toPeer(peerPayload);
-                    if (!peersShow.any((e) => e.id == peer.id)) {
-                      peersShow.add(peer);
+                    if (!tmpPeers.any((e) => e.id == peer.id)) {
+                      tmpPeers.add(peer);
+                      print("len:${tmpPeers.length}");
                     }
                   }
                 }

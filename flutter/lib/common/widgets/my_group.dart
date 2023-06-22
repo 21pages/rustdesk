@@ -41,11 +41,11 @@ class _MyGroupState extends State<MyGroup> {
 
   Widget buildBody(BuildContext context) {
     return Obx(() {
-      if (gFFI.groupModel.groupLoading.value) {
-        return const Center(
-          child: CircularProgressIndicator(),
-        );
-      }
+      // if (gFFI.groupModel.groupLoading.value) {
+      //   return const Center(
+      //     child: CircularProgressIndicator(),
+      //   );
+      // }
       if (gFFI.groupModel.groupLoadError.isNotEmpty) {
         return _buildShowError(gFFI.groupModel.groupLoadError.value);
       }
