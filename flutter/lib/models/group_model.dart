@@ -8,24 +8,34 @@ import 'package:get/get.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-class GroupModel {
+class GroupModel with ChangeNotifier {
   final RxBool groupLoading = false.obs;
   final RxString groupLoadError = "".obs;
   final RxString groupId = ''.obs;
   RxString groupName = ''.obs;
-  final RxList<UserPayload> users = RxList.empty(growable: true);
-  final RxList<Peer> peersShow = RxList.empty(growable: true);
-  final RxString selectedUser = ''.obs;
-  final RxString searchUserText = ''.obs;
   WeakReference<FFI> parent;
+
+  final List<UserPayload> _users = List.empty(growable: true);
+  List<UserPayload> get users => _users;
+  final List<Peer> _peersShow = List.empty(growable: true);
+  List<Peer> get peersShow => _peersShow;
+  String _selectedUser = '';
+  String get selectedUser => _selectedUser;
+  String _searchUserText = '';
+  String get searchUserText => _searchUserText;
 
   GroupModel(this.parent);
 
   reset() {
+    _reset();
+    notifyListeners();
+  }
+
+  _reset() {
     groupName.value = '';
     groupId.value = '';
-    users.clear();
-    peersShow.clear();
+    _users.clear();
+    _peersShow.clear();
   }
 
   Future<void> pull() async {
@@ -33,21 +43,22 @@ class GroupModel {
     groupLoadError.value = "";
     await _pull();
     groupLoading.value = false;
+    notifyListeners();
   }
 
   Future<void> _pull() async {
-    reset();
+    _reset();
     if (bind.mainGetLocalOption(key: 'access_token') == '') {
       return;
     }
     try {
       if (!await _getGroup()) {
-        reset();
+        _reset();
         return;
       }
     } catch (e) {
       debugPrint('$e');
-      reset();
+      _reset();
       return;
     }
     final api = "${await bind.mainGetApiServer()}/api/users";
@@ -81,8 +92,8 @@ class GroupModel {
                 if (data is List) {
                   for (final user in data) {
                     final u = UserPayload.fromJson(user);
-                    if (!users.any((e) => e.name == u.name)) {
-                      users.add(u);
+                    if (!_users.any((e) => e.name == u.name)) {
+                      _users.add(u);
                     }
                   }
                 }
@@ -129,7 +140,7 @@ class GroupModel {
   }
 
   Future<void> _pullUserPeers() async {
-    peersShow.clear();
+    _peersShow.clear();
     final api = "${await bind.mainGetApiServer()}/api/peers";
     try {
       var uri0 = Uri.parse(api);
@@ -165,8 +176,8 @@ class GroupModel {
                   for (final p in data) {
                     final peerPayload = PeerPayload.fromJson(p);
                     final peer = PeerPayload.toPeer(peerPayload);
-                    if (!peersShow.any((e) => e.id == peer.id)) {
-                      peersShow.add(peer);
+                    if (!_peersShow.any((e) => e.id == peer.id)) {
+                      _peersShow.add(peer);
                     }
                   }
                 }
@@ -179,5 +190,15 @@ class GroupModel {
       debugPrint('$err');
       groupLoadError.value = err.toString();
     } finally {}
+  }
+
+  setSelectedUser(String username) {
+    _selectedUser = username;
+    notifyListeners();
+  }
+
+  setSearchUserText(String text) {
+    _searchUserText = text;
+    notifyListeners();
   }
 }

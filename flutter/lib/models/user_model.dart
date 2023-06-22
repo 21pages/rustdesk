@@ -154,8 +154,9 @@ class UserModel {
   }
 
   static Future<List<dynamic>> queryLoginOptions() async {
+    final url = await bind.mainGetApiServer();
+    if (url.isEmpty) return [];
     try {
-      final url = await bind.mainGetApiServer();
       final resp = await http.get(Uri.parse('$url/api/login-options'));
       return jsonDecode(resp.body);
     } catch (e) {

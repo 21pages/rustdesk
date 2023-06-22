@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/hbbs/hbbs.dart';
 import 'package:flutter_hbb/common/widgets/login.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
+import 'package:flutter_hbb/models/group_model.dart';
 import 'package:get/get.dart';
+import 'package:provider/provider.dart';
 
 import '../../common.dart';
 
@@ -17,8 +19,6 @@ class MyGroup extends StatefulWidget {
 }
 
 class _MyGroupState extends State<MyGroup> {
-  RxString get selectedUser => gFFI.groupModel.selectedUser;
-  RxString get searchUserText => gFFI.groupModel.searchUserText;
   static TextEditingController searchUserController = TextEditingController();
 
   @override
@@ -41,11 +41,11 @@ class _MyGroupState extends State<MyGroup> {
 
   Widget buildBody(BuildContext context) {
     return Obx(() {
-      if (gFFI.groupModel.groupLoading.value) {
-        return const Center(
-          child: CircularProgressIndicator(),
-        );
-      }
+      // if (gFFI.groupModel.groupLoading.value) {
+      //   return const Center(
+      //     child: CircularProgressIndicator(),
+      //   );
+      // }
       if (gFFI.groupModel.groupLoadError.isNotEmpty) {
         return _buildShowError(gFFI.groupModel.groupLoadError.value);
       }
@@ -73,6 +73,7 @@ class _MyGroupState extends State<MyGroup> {
   }
 
   Widget _buildDesktop() {
+    final groupModel = Provider.of<GroupModel>(context);
     return Row(
       children: [
         Card(
@@ -105,15 +106,16 @@ class _MyGroupState extends State<MyGroup> {
         Expanded(
           child: Align(
               alignment: Alignment.topLeft,
-              child: Obx(() => MyGroupPeerView(
+              child: MyGroupPeerView(
                   menuPadding: widget.menuPadding,
-                  initPeers: gFFI.groupModel.peersShow.value))),
+                  initPeers: groupModel.peersShow)),
         )
       ],
     );
   }
 
   Widget _buildMobile() {
+    final groupModel = Provider.of<GroupModel>(context);
     return Column(
       children: [
         Card(
@@ -143,9 +145,9 @@ class _MyGroupState extends State<MyGroup> {
         Expanded(
           child: Align(
               alignment: Alignment.topLeft,
-              child: Obx(() => MyGroupPeerView(
+              child: MyGroupPeerView(
                   menuPadding: widget.menuPadding,
-                  initPeers: gFFI.groupModel.peersShow.value))),
+                  initPeers: groupModel.peersShow)),
         )
       ],
     );
@@ -158,7 +160,7 @@ class _MyGroupState extends State<MyGroup> {
             child: TextField(
           controller: searchUserController,
           onChanged: (value) {
-            searchUserText.value = value;
+            gFFI.groupModel.setSearchUserText(value);
           },
           decoration: InputDecoration(
             prefixIcon: Icon(
@@ -178,32 +180,32 @@ class _MyGroupState extends State<MyGroup> {
   }
 
   Widget _buildUserContacts() {
-    return Obx(() {
-      return Column(
-          children: gFFI.groupModel.users
-              .where((p0) {
-                if (searchUserText.isNotEmpty) {
-                  return p0.name.contains(searchUserText.value);
-                }
-                return true;
-              })
-              .map((e) => _buildUserItem(e))
-              .toList());
-    });
+    final groupModel = Provider.of<GroupModel>(context);
+    return Column(
+        children: groupModel.users
+            .where((p0) {
+              if (groupModel.searchUserText.isNotEmpty) {
+                return p0.name.contains(groupModel.searchUserText);
+              }
+              return true;
+            })
+            .map((e) => _buildUserItem(e))
+            .toList());
   }
 
   Widget _buildUserItem(UserPayload user) {
+    final groupModel = Provider.of<GroupModel>(context);
     final username = user.name;
-    return InkWell(onTap: () {
-      if (selectedUser.value != username) {
-        selectedUser.value = username;
-      } else {
-        selectedUser.value = '';
-      }
-    }, child: Obx(
-      () {
-        bool selected = selectedUser.value == username;
-        return Container(
+    bool selected = groupModel.selectedUser == username;
+    return InkWell(
+        onTap: () {
+          if (groupModel.selectedUser != username) {
+            groupModel.setSelectedUser(username);
+          } else {
+            groupModel.setSelectedUser('');
+          }
+        },
+        child: Container(
           decoration: BoxDecoration(
             color: selected ? MyTheme.color(context).highlight : null,
             border: Border(
@@ -220,8 +222,6 @@ class _MyGroupState extends State<MyGroup> {
               ],
             ).paddingSymmetric(vertical: 4),
           ),
-        );
-      },
-    )).marginSymmetric(horizontal: 12);
+        )).marginSymmetric(horizontal: 12);
   }
 }
