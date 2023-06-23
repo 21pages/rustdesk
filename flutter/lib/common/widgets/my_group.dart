@@ -1,3 +1,4 @@
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/hbbs/hbbs.dart';
 import 'package:flutter_hbb/common/widgets/login.dart';
@@ -49,7 +50,7 @@ class _MyGroupState extends State<MyGroup> {
       if (gFFI.groupModel.groupLoadError.isNotEmpty) {
         return _buildShowError(gFFI.groupModel.groupLoadError.value);
       }
-      if (isDesktop) {
+      if (!isDesktop) {
         return _buildDesktop();
       } else {
         return _buildMobile();
@@ -109,26 +110,105 @@ class _MyGroupState extends State<MyGroup> {
   }
 
   Widget _buildMobile() {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              border:
-                  Border.all(color: Theme.of(context).colorScheme.background)),
-          child: Container(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    final userDropdown = Obx(() {
+      if (gFFI.groupModel.users.isEmpty) {
+        return Offstage();
+      }
+      final bool hasSelected =
+          gFFI.groupModel.users.any((u) => u.name == selectedUser.value);
+      return DropdownButton2<String>(
+        isExpanded: true,
+        customButton: Row(children: [
+          Expanded(child: TextField()),
+          IconButton(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 2),
+              onPressed: () {
+                searchUserText.value = '';
+                selectedUser.value = '';
+              },
+              icon: Icon(
+                Icons.close,
+                color: Theme.of(context).hintColor,
+              )),
+        ]),
+        items: gFFI.groupModel.users
+            .map((item) => DropdownMenuItem(
+                  value: item.name,
+                  child: Text(
+                    item.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                    ),
+                  ),
+                ))
+            .toList(),
+        value: hasSelected ? selectedUser.value : null,
+        onChanged: (value) {
+          selectedUser.value = value ?? '';
+        },
+        buttonStyleData: const ButtonStyleData(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          height: 40,
+          width: 200,
+        ),
+        dropdownStyleData: const DropdownStyleData(
+          maxHeight: 200,
+        ),
+        menuItemStyleData: const MenuItemStyleData(
+          height: 40,
+        ),
+        dropdownSearchData: DropdownSearchData(
+          searchController: searchUserController,
+          searchInnerWidgetHeight: 50,
+          searchInnerWidget: Container(
+            height: 50,
+            padding: const EdgeInsets.only(
+              top: 8,
+              bottom: 4,
+              right: 8,
+              left: 8,
+            ),
+            child: Row(
               children: [
-                _buildLeftHeader(),
-                Container(
-                  width: double.infinity,
-                  child: _buildUserContacts(),
-                )
+                Expanded(
+                  child: TextFormField(
+                    expands: true,
+                    maxLines: null,
+                    controller: searchUserController,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      hintText: translate("Search"),
+                      hintStyle: const TextStyle(fontSize: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-        ).marginOnly(bottom: 12.0),
+          searchMatchFn: (item, searchValue) {
+            return item.value.toString().contains(searchValue);
+          },
+        ),
+        //This to clear the search value when you close the menu
+        onMenuStateChange: (isOpen) {
+          if (!isOpen) {
+            searchUserController.clear();
+          }
+        },
+      );
+    });
+
+    return Column(
+      children: [
+        userDropdown.marginOnly(bottom: 12.0),
         Expanded(
           child: Align(
               alignment: Alignment.topLeft,
