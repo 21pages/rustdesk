@@ -12,7 +12,6 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 
 import '../../common.dart';
-import '../../models/group_model.dart';
 import '../../models/platform_model.dart';
 
 class PeerTabPage extends StatefulWidget {
@@ -23,7 +22,7 @@ class PeerTabPage extends StatefulWidget {
 
 class _TabEntry {
   final Widget widget;
-  final Function() load;
+  final Function({dynamic hint}) load;
   _TabEntry(this.widget, this.load);
 }
 
@@ -53,12 +52,12 @@ class _PeerTabPageState extends State<PeerTabPage>
         AddressBook(
           menuPadding: _menuPadding(),
         ),
-        () => gFFI.abModel.pullAb()),
+        ({dynamic hint}) => gFFI.abModel.pullAb(force: hint == null)),
     _TabEntry(
       MyGroup(
         menuPadding: _menuPadding(),
       ),
-      () => gFFI.groupModel.pull(),
+      ({dynamic hint}) => gFFI.groupModel.pull(force: hint == null),
     ),
   ];
 
@@ -76,7 +75,7 @@ class _PeerTabPageState extends State<PeerTabPage>
   Future<void> handleTabSelection(int tabIndex) async {
     if (tabIndex < entries.length) {
       gFFI.peerTabModel.setCurrentTab(tabIndex);
-      entries[tabIndex].load();
+      entries[tabIndex].load(hint: false);
     }
   }
 
@@ -389,7 +388,7 @@ class _PeerSortDropdownState extends State<PeerSortDropdown> {
     var menuPos = RelativeRect.fromLTRB(0, 0, 0, 0);
     return InkWell(
       child: Icon(
-        Icons.sort,
+        Icons.sort_rounded,
         size: 18,
       ),
       onTapDown: (details) {

@@ -18,6 +18,7 @@ class GroupModel {
   final RxString selectedUser = ''.obs;
   final RxString searchUserText = ''.obs;
   WeakReference<FFI> parent;
+  var initialized = false;
 
   GroupModel(this.parent);
 
@@ -26,13 +27,20 @@ class GroupModel {
     groupId.value = '';
     users.clear();
     peersShow.clear();
+    initialized = false;
   }
 
-  Future<void> pull() async {
-    groupLoading.value = true;
-    groupLoadError.value = "";
+  Future<void> pull({force = true, quiet = false}) async {
+    /*
+    if (!force && initialized) return;
+    if (!quiet) {
+      groupLoading.value = true;
+      groupLoadError.value = "";
+    }
     await _pull();
     groupLoading.value = false;
+    initialized = true;
+    */
   }
 
   Future<void> _pull() async {
@@ -133,7 +141,8 @@ class GroupModel {
     final api = "${await bind.mainGetApiServer()}/api/peers";
     try {
       var uri0 = Uri.parse(api);
-      final pageSize = 20;
+      final pageSize =
+          20; // ????????????????????????????????????????????????????? stupid stupis, how about >20 peers
       var total = 0;
       int current = 0;
       var queryParameters = {
