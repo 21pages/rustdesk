@@ -376,6 +376,7 @@ class FfiModel with ChangeNotifier {
 
   void reconnect(OverlayDialogManager dialogManager, SessionID sessionId,
       bool forceRelay) {
+    _waitForImage.remove(sessionId);
     bind.sessionReconnect(sessionId: sessionId, forceRelay: forceRelay);
     clearPermissions();
     dialogManager.showLoading(translate('Connecting...'),
@@ -479,10 +480,14 @@ class FfiModel with ChangeNotifier {
         _updateSessionWidthHeight(sessionId);
       }
       if (displays.isNotEmpty) {
-        parent.target?.dialogManager.showLoading(
-            translate('Connected, waiting for image...'),
-            onCancel: closeConnection);
-        _waitForImage[sessionId] = true;
+        if (_waitForImage[sessionId] == null) {
+          debugPrint("show waiting for image");
+          parent.target?.dialogManager.showLoading(
+              translate('Connected, waiting for image...'),
+              onCancel: closeConnection);
+          _waitForImage[sessionId] = true;
+          bind.sessionOnWaitingForImageDialogShow(sessionId: sessionId);
+        }
         _reconnects = 1;
       }
       Map<String, dynamic> features = json.decode(evt['features']);
@@ -1701,7 +1706,7 @@ class FFI {
         } else if (message is EventToUI_Rgba) {
           if (hasPixelBufferTextureRender) {
             imageModel.setTextureType(gpuTexture: false);
-            if (_waitForImage[sessionId]!) {
+            if (_waitForImage[sessionId] != false) {
               _waitForImage[sessionId] = false;
               dialogManager.dismissAll();
               for (final cb in imageModel.callbacksOnFirstImage) {
@@ -1724,7 +1729,7 @@ class FFI {
         } else if (message is EventToUI_Texture) {
           if (hasGpuTextureRender) {
             imageModel.setTextureType(gpuTexture: true);
-            if (_waitForImage[sessionId]!) {
+            if (_waitForImage[sessionId] != false) {
               _waitForImage[sessionId] = false;
               dialogManager.dismissAll();
               for (final cb in imageModel.callbacksOnFirstImage) {
