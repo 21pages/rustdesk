@@ -119,6 +119,11 @@ def make_parser():
             '' if windows or osx else ', need libva-dev, libvdpau-dev.')
     )
     parser.add_argument(
+        '--texcodec',
+        action='store_true',
+        help='Enable feature texcodec, available on windows, flutter feature should also be enabled.'
+    )
+    parser.add_argument(
         '--portable',
         action='store_true',
         help='Build windows portable'
@@ -268,7 +273,7 @@ def get_features(args):
     if args.flutter:
         features.append('flutter')
         features.append('flutter_texture_render')
-    if args.texcodec: # based on flutter feature
+    if windows and args.flutter and args.texcodec: 
         features.append('texcodec')
     if args.flatpak:
         features.append('flatpak')
