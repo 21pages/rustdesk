@@ -184,6 +184,7 @@ impl TraitCapturer for CapturerMag {
         false
     }
 
+    #[cfg(feature = "texcodec")]
     fn device(&self) -> AdapterDevice {
         AdapterDevice::default()
     }

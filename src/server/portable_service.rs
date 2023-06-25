@@ -8,7 +8,10 @@ use hbb_common::{
     tokio::{self, sync::mpsc},
     ResultType,
 };
-use scrap::{CaptureOutputFormat, Capturer, AdapterDevice, Frame, TraitCapturer};
+#[cfg(feature = "texcodec")]
+use scrap::AdapterDevice;
+
+use scrap::{CaptureOutputFormat, Capturer, Frame, TraitCapturer};
 use shared_memory::*;
 use std::{
     mem::size_of,
@@ -747,6 +750,7 @@ pub mod client {
             true
         }
 
+        #[cfg(feature = "texcodec")]
         fn device(&self) -> AdapterDevice {
             AdapterDevice::default()
         }
