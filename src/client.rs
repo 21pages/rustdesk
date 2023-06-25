@@ -148,7 +148,7 @@ pub fn get_key_state(key: enigo::Key) -> bool {
 cfg_if::cfg_if! {
     if #[cfg(target_os = "android")] {
 
-use hbb_common::libc::{c_float, c_int, c_void};
+use hbb_common::libc::{c_float, c_int};
 type Oboe = *mut c_void;
 extern "C" {
     fn create_oboe_player(channels: c_int, sample_rate: c_int) -> Oboe;

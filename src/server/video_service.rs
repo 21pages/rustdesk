@@ -657,16 +657,11 @@ fn run(sp: GenericService) -> ResultType<()> {
             Ok(frame) => {
                 let time = now - start;
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
-                match frame {
-                    scrap::Frame::RAW(data) => {
-                        if data.len() != 0 {
-                            let send_conn_ids =
-                                handle_one_frame(&sp, data, ms, &mut encoder, recorder.clone())?;
-                            frame_controller.set_send(now, send_conn_ids);
-                        }
-                    }
-                    _ => {}
-                };
+                if !frame.pixelbuffer()?.is_empty() {
+                    let send_conn_ids =
+                        handle_one_frame(&sp, frame, ms, &mut encoder, recorder.clone())?;
+                    frame_controller.set_send(now, send_conn_ids);
+                }
                 Ok(())
             }
             Err(err) => Err(err),
