@@ -709,16 +709,31 @@ class ImageModel with ChangeNotifier {
     return min(xscale, yscale) / 1.5;
   }
 
-  bool isGpuTexture = false;
   RxInt textureID = (-1).obs;
 
-  int rgbaTextureId = -1;
-  int gpuTextureId = -1;
+  int _rgbaTextureId = -1;
+  int get rgbaTextureId => _rgbaTextureId;
+  int _gpuTextureId = -1;
+  int get gpuTextureId => _gpuTextureId;
+  bool _isGpuTexture = false;
+  bool get isGpuTexture => _isGpuTexture;
 
   setTextureType({bool gpuTexture = false}) {
-    debugPrint("setTextureType:gpuTexture:$gpuTexture");
-    isGpuTexture = gpuTexture;
-    textureID.value = gpuTexture ? gpuTextureId : rgbaTextureId;
+    debugPrint("setTextureType:isGpuTexture:$gpuTexture");
+    _isGpuTexture = gpuTexture;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
+  }
+
+  setRgbaTextureId(int id) {
+    debugPrint("setRgbaTextureId:$id");
+    _rgbaTextureId = id;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
+  }
+
+  setGpuTextureId(int id) {
+    debugPrint("setGpuTextureId:$id");
+    _gpuTextureId = id;
+    textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
   }
 }
 
@@ -1661,8 +1676,8 @@ class FFI {
     );
     final stream = bind.sessionStart(sessionId: sessionId, id: id);
     final cb = ffiModel.startEventListener(sessionId, id);
-    final usePixelBufferTextureRender = bind.mainUsePixelbufferTextureRender();
-    final useGpuTextureRender = bind.mainUseGpuTextureRender();
+    final hasPixelBufferTextureRender = bind.mainHasPixelbufferTextureRender();
+    final hasGpuTextureRender = bind.mainHasGpuTextureRender();
     // Preserved for the rgba data.
     stream.listen((message) {
       if (closed) return;
@@ -1684,7 +1699,7 @@ class FFI {
             await cb(event);
           }
         } else if (message is EventToUI_Rgba) {
-          if (usePixelBufferTextureRender) {
+          if (hasPixelBufferTextureRender) {
             imageModel.setTextureType(gpuTexture: false);
             if (_waitForImage[sessionId]!) {
               _waitForImage[sessionId] = false;
@@ -1707,7 +1722,7 @@ class FFI {
             }
           }
         } else if (message is EventToUI_Texture) {
-          if (useGpuTextureRender) {
+          if (hasGpuTextureRender) {
             imageModel.setTextureType(gpuTexture: true);
             if (_waitForImage[sessionId]!) {
               _waitForImage[sessionId] = false;

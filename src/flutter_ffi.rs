@@ -1428,7 +1428,7 @@ pub fn main_hide_docker() -> SyncReturn<bool> {
     SyncReturn(true)
 }
 
-pub fn main_use_pixelbuffer_texture_render() -> SyncReturn<bool> {
+pub fn main_has_pixelbuffer_texture_render() -> SyncReturn<bool> {
     #[cfg(not(feature = "flutter_texture_render"))]
     {
         SyncReturn(false)
@@ -1439,7 +1439,7 @@ pub fn main_use_pixelbuffer_texture_render() -> SyncReturn<bool> {
     }
 }
 
-pub fn main_use_gpu_texture_render() -> SyncReturn<bool> {
+pub fn main_has_gpu_texture_render() -> SyncReturn<bool> {
     #[cfg(not(feature = "texcodec"))]
     {
         SyncReturn(false)

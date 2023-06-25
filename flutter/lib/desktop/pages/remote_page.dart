@@ -68,8 +68,8 @@ class _RemotePageState extends State<RemotePage>
   late RxBool _remoteCursorMoved;
   late RxBool _keyboardEnabled;
   late int _textureKey;
-  final usePixelbufferTextureRender = bind.mainUsePixelbufferTextureRender();
-  final useGpuTextureRender = bind.mainUseGpuTextureRender();
+  final hasPixelbufferTextureRender = bind.mainHasPixelbufferTextureRender();
+  final hasGpuTextureRender = bind.mainHasGpuTextureRender();
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -117,28 +117,21 @@ class _RemotePageState extends State<RemotePage>
     }
 
     // Register texture.
-    _ffi.imageModel.rgbaTextureId = -1;
-    if (usePixelbufferTextureRender) {
+    if (hasPixelbufferTextureRender) {
       rgbaTextureRenderer.createTexture(_textureKey).then((id) async {
         debugPrint("pixelbuffer texture id: $id, texture_key: $_textureKey");
         if (id != -1) {
-          _ffi.imageModel.rgbaTextureId = id;
-          if (!_ffi.imageModel.isGpuTexture) {
-            _ffi.imageModel.textureID.value = id;
-          }
+          _ffi.imageModel.setRgbaTextureId(id);
           final ptr = await rgbaTextureRenderer.getTexturePtr(_textureKey);
           platformFFI.registerPixelbufferTexture(sessionId, ptr);
         }
       });
     }
-    if (useGpuTextureRender) {
+    if (hasGpuTextureRender) {
       gpuTextureRenderer.registerTexture().then((id) async {
         debugPrint("gpu texture id: $id");
         if (id != null) {
-          _ffi.imageModel.gpuTextureId = id;
-          if (_ffi.imageModel.isGpuTexture) {
-            _ffi.imageModel.textureID.value = id;
-          }
+          _ffi.imageModel.setGpuTextureId(id);
           final output = await gpuTextureRenderer.output(id);
 
           if (output != null) {
@@ -231,11 +224,11 @@ class _RemotePageState extends State<RemotePage>
   @override
   void dispose() {
     debugPrint("REMOTE PAGE dispose ${widget.id}");
-    if (usePixelbufferTextureRender) {
+    if (hasPixelbufferTextureRender) {
       platformFFI.registerPixelbufferTexture(sessionId, 0);
       rgbaTextureRenderer.closeTexture(_textureKey);
     }
-    if (useGpuTextureRender) {
+    if (hasGpuTextureRender) {
       platformFFI.registerGpuTexture(sessionId, 0);
       gpuTextureRenderer.unregisterTexture(_ffi.imageModel.gpuTextureId);
     }
@@ -408,7 +401,8 @@ class _RemotePageState extends State<RemotePage>
           keyboardEnabled: _keyboardEnabled,
           remoteCursorMoved: _remoteCursorMoved,
           textureId: _ffi.imageModel.textureID,
-          useTextureRender: usePixelbufferTextureRender || useGpuTextureRender,
+          useTextureRender: hasPixelbufferTextureRender ||
+              hasGpuTextureRender, // TODO, windows has both, it's ok now
           listenerBuilder: (child) =>
               _buildRawPointerMouseRegion(child, enterView, leaveView),
         );
