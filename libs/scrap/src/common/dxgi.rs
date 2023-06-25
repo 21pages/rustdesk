@@ -1,4 +1,6 @@
-use crate::{common::TraitCapturer, dxgi, AdapterDevice, CaptureOutputFormat};
+#[cfg(feature = "texcodec")]
+use crate::AdapterDevice;
+use crate::{common::TraitCapturer, dxgi, CaptureOutputFormat};
 use std::{
     ffi::c_void,
     io::{
