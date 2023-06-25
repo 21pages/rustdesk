@@ -2055,3 +2055,9 @@ Future<void> start_service(bool is_start) async {
     bind.mainSetOption(key: "stop-service", value: is_start ? "" : "Y");
   }
 }
+
+void flog(String s) {
+  var file = File("/storage/emulated/0/tmp/log.txt");
+  file.open(mode: FileMode.append);
+  file.writeAsStringSync("$s\n");
+}

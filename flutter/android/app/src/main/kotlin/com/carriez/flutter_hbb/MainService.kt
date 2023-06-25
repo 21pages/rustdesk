@@ -340,13 +340,13 @@ class MainService : Service() {
                 ).apply {
                     setOnImageAvailableListener({ imageReader: ImageReader ->
                         try {
-                            imageReader.acquireLatestImage().use { image ->
-                                if (image == null) return@setOnImageAvailableListener
-                                val planes = image.planes
-                                val buffer = planes[0].buffer
-                                buffer.rewind()
-                                onVideoFrameUpdate(buffer)
-                            }
+                            // imageReader.acquireLatestImage().use { image ->
+                            //     if (image == null) return@setOnImageAvailableListener
+                            //     val planes = image.planes
+                            //     val buffer = planes[0].buffer
+                            //     buffer.rewind()
+                            //     onVideoFrameUpdate(buffer)
+                            // }
                         } catch (ignored: java.lang.Exception) {
                         }
                     }, serviceHandler)
