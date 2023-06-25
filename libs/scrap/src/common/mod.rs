@@ -224,8 +224,11 @@ pub enum CaptureOutputFormat {
 }
 
 impl<'a> Frame<'a> {
-    pub fn pixelbuffer(&self) -> ResultType<&'a [u8]> {
+    pub fn pixelbuffer(&self) -> ResultType<&'_ [u8]> {
         match self {
+            #[cfg(target_os = "macos")]
+            Frame::PixelBuffer(f) => Ok(&f.0),
+            #[cfg(not(target_os = "macos"))]
             Frame::PixelBuffer(f) => Ok(f.0),
             _ => bail!("not pixelfbuffer frame"),
         }

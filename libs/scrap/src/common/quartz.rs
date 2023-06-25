@@ -1,7 +1,7 @@
 use crate::{quartz, CaptureOutputFormat};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
-use std::{io, mem, ops};
+use std::{io, mem, ops, ffi::c_void};
 
 pub struct Capturer {
     inner: quartz::Capturer,
@@ -37,7 +37,7 @@ impl Capturer {
         Ok(Capturer {
             inner,
             frame,
-            use_yuv,
+            format,
             i420: Vec::new(),
             saved_raw_data: Vec::new(),
         })
