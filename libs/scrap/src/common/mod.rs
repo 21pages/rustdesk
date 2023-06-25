@@ -5,6 +5,8 @@ use hbb_common::{
     ResultType,
 };
 use std::ffi::c_void;
+#[cfg(target_os = "ios")]
+use std::ops;
 use std::slice;
 
 cfg_if! {
@@ -213,6 +215,22 @@ impl ToString for CodecFormat {
             CodecFormat::H265 => "H265".into(),
             CodecFormat::Unknown => "Unknow".into(),
         }
+    }
+}
+#[cfg(target_os = "ios")]
+pub enum Frame<'a> {
+    PixelBuffer(PixelBuffer<'a>),
+    Texture(*mut c_void),
+}
+
+#[cfg(target_os = "ios")]
+pub struct PixelBuffer<'a>(pub &'a [u8]);
+
+#[cfg(target_os = "ios")]
+impl<'a> ops::Deref for PixelBuffer<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.0
     }
 }
 
