@@ -114,6 +114,7 @@ pub trait TraitCapturer {
     #[cfg(windows)]
     fn set_gdi(&mut self) -> bool;
 
+    #[cfg(feature = "texcodec")]
     fn device(&self) -> AdapterDevice;
 }
 

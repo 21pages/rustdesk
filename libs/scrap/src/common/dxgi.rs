@@ -61,6 +61,7 @@ impl TraitCapturer for Capturer {
         self.inner.set_gdi()
     }
 
+    #[cfg(feature = "texcodec")]
     fn device(&self) -> AdapterDevice {
         self.inner.device()
     }

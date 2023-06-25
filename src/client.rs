@@ -45,7 +45,7 @@ use hbb_common::{
     tcp::FramedStream,
     timeout,
     tokio::time::Duration,
-    AddrMangle, ResultType, Stream,
+    AddrMangle, ResultType, SessionID, Stream,
 };
 pub use helper::*;
 use scrap::{
@@ -54,7 +54,7 @@ use scrap::{
     ImageFormat, ImageRgb,
 };
 
-use crate::{flutter_ffi::SessionID, is_keyboard_mode_supported};
+use crate::is_keyboard_mode_supported;
 
 #[cfg(not(feature = "flutter"))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

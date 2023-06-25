@@ -334,7 +334,7 @@ fn create_capturer(
             );
             #[cfg(not(windows))]
             return Ok(Box::new(
-                Capturer::new(display).with_context(|| "Failed to create capturer")?,
+                Capturer::new(display, format).with_context(|| "Failed to create capturer")?,
             ));
         }
     };

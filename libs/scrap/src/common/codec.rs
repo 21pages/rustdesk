@@ -11,14 +11,14 @@ use crate::hwcodec::*;
 use crate::mediacodec::{
     MediaCodecDecoder, MediaCodecDecoders, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT,
 };
-#[cfg(feature = "texcodec")]
-use crate::texcodec::*;
 use crate::{
     aom::{self, AomDecoder, AomDecoderConfig, AomEncoder, AomEncoderConfig},
     common::GoogleImage,
     vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
-    AdapterDevice, CaptureOutputFormat, CodecName, Frame, ImageRgb,
+    CaptureOutputFormat, CodecName, Frame, ImageRgb,
 };
+#[cfg(feature = "texcodec")]
+use crate::{texcodec::*, AdapterDevice};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sysinfo::{System, SystemExt};
@@ -48,6 +48,7 @@ pub struct HwEncoderConfig {
     pub bitrate: i32,
 }
 
+#[cfg(feature = "texcodec")]
 #[derive(Debug, Clone)]
 pub struct TexEncoderConfig {
     pub device: AdapterDevice,
