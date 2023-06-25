@@ -9,8 +9,16 @@ use std::{
 use crate::gpucodec::*;
 #[cfg(feature = "hwcodec")]
 use crate::hwcodec::*;
+
 #[cfg(feature = "mediacodec")]
-use crate::mediacodec::{MediaCodecDecoder, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT};
+use crate::mediacodec::{
+    XMediaCodecDecoder as MediaCodecDecoder, XMediaCodecDecoder as MediaCodecDecoders,
+    H264_DECODER_SUPPORT, H265_DECODER_SUPPORT, VP8_DECODER_SUPPORT, VP9_DECODER_SUPPORT,
+};
+
+#[cfg(feature = "mediacodec")]
+use crate::CodecFormat;
+
 use crate::{
     aom::{self, AomDecoder, AomEncoder, AomEncoderConfig},
     common::GoogleImage,
@@ -747,13 +755,14 @@ impl Decoder {
     // rgb [in/out] fmt and stride must be set in ImageRgb
     #[cfg(feature = "mediacodec")]
     fn handle_mediacodec_video_frame(
+        codec_format: &CodecFormat,
         decoder: &mut MediaCodecDecoder,
         frames: &EncodedVideoFrames,
         rgb: &mut ImageRgb,
     ) -> ResultType<bool> {
         let mut ret = false;
-        for h264 in frames.frames.iter() {
-            return decoder.decode(&h264.data, rgb);
+        for frame in frames.frames.iter() {
+            return decoder.decode(codec_format, &frame.data, rgb, &frame.key, &frame.pts);
         }
         return Ok(false);
     }
