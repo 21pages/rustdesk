@@ -531,7 +531,7 @@ fn run(sp: GenericService) -> ResultType<()> {
     drop(video_qos);
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
 
-    let encoder_cfg = get_encoder_config(&c, bitrate);
+    let encoder_cfg = get_encoder_config(&c, bitrate, last_portable_service_running);
     let mut encoder;
     match Encoder::new(encoder_cfg) {
         Ok(x) => encoder = x,
@@ -588,6 +588,8 @@ fn run(sp: GenericService) -> ResultType<()> {
 
     let mut last_encode_elapsed = Instant::now();
     let mut last_encode_counter: u32 = 0;
+    #[cfg(all(windows, feature = "texcodec"))]
+    let last_is_gdi = c.is_gdi();
 
     while sp.ok() {
         #[cfg(windows)]
@@ -617,6 +619,10 @@ fn run(sp: GenericService) -> ResultType<()> {
         }
         #[cfg(windows)]
         if last_portable_service_running != crate::portable_service::client::running() {
+            bail!("SWITCH");
+        }
+        #[cfg(all(windows, feature = "texcodec"))]
+        if last_is_gdi != c.is_gdi() {
             bail!("SWITCH");
         }
         check_privacy_mode_changed(&sp, c.privacy_mode_id)?;
@@ -772,7 +778,11 @@ fn run(sp: GenericService) -> ResultType<()> {
     Ok(())
 }
 
-fn get_encoder_config(c: &CapturerInfo, bitrate: u32) -> EncoderCfg {
+fn get_encoder_config(c: &CapturerInfo, bitrate: u32, _portable_service: bool) -> EncoderCfg {
+    #[cfg(windows)]
+    if _portable_service || c.is_gdi() {
+        scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::NoTexture);
+    }
     let negotiated_codec = Encoder::negotiated_codec();
     match negotiated_codec.clone() {
         scrap::CodecName::H264(name) | scrap::CodecName::H265(name) => {

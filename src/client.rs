@@ -1003,10 +1003,10 @@ pub struct VideoHandler {
 impl VideoHandler {
     /// Create a new video handler.
     pub fn new(session_id: &SessionID) -> Self {
-        #[cfg(feature = "texcodec")]
+        #[cfg(all(feature = "texcodec", feature = "flutter"))]
         let luid = crate::flutter::session_get_adapter_luid(session_id);
-        #[cfg(not(feature = "texcodec"))]
-        let luid = 0;
+        #[cfg(not(all(feature = "texcodec", feature = "flutter")))]
+        let luid = scrap::codec::INVALID_LUID;
         println!("new session_get_adapter_luid: {:?}", luid);
         VideoHandler {
             decoder: Decoder::new(luid),
@@ -1047,7 +1047,7 @@ impl VideoHandler {
         #[cfg(all(feature = "flutter", feature = "texcodec"))]
         let luid = crate::flutter::session_get_adapter_luid(&self._session_id);
         #[cfg(not(all(feature = "flutter", feature = "texcodec")))]
-        let luid = 0;
+        let luid = scrap::codec::INVALID_LUID;
         self.decoder = Decoder::new(luid);
     }
 
@@ -1423,8 +1423,9 @@ impl LoginConfigHandler {
             msg.disable_clipboard = BoolOption::Yes.into();
             n += 1;
         }
-        msg.supported_decoding =
-            hbb_common::protobuf::MessageField::some(Decoder::supported_decodings(Some(&self.id)));
+        msg.supported_decoding = hbb_common::protobuf::MessageField::some(
+            Decoder::supported_decodings(Some(&self.id), cfg!(feature = "flutter")),
+        );
         n += 1;
 
         if n > 0 {
@@ -1753,7 +1754,8 @@ impl LoginConfigHandler {
     }
 
     pub fn change_prefer_codec(&self) -> Message {
-        let decoding = scrap::codec::Decoder::supported_decodings(Some(&self.id));
+        let decoding =
+            scrap::codec::Decoder::supported_decodings(Some(&self.id), cfg!(feature = "flutter"));
         let mut misc = Misc::new();
         misc.set_option(OptionMessage {
             supported_decoding: hbb_common::protobuf::MessageField::some(decoding),

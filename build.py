@@ -121,7 +121,7 @@ def make_parser():
     parser.add_argument(
         '--texcodec',
         action='store_true',
-        help='Enable feature texcodec, available on windows, flutter feature should also be enabled.'
+        help='Enable feature texcodec, only available on windows now.'
     )
     parser.add_argument(
         '--portable',
@@ -273,7 +273,7 @@ def get_features(args):
     if args.flutter:
         features.append('flutter')
         features.append('flutter_texture_render')
-    if windows and args.flutter and args.texcodec: 
+    if windows and args.texcodec: 
         features.append('texcodec')
     if args.flatpak:
         features.append('flatpak')

@@ -277,7 +277,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn alternative_codecs(&self) -> (bool, bool, bool, bool) {
-        let decoder = scrap::codec::Decoder::supported_decodings(None);
+        let decoder = scrap::codec::Decoder::supported_decodings(None, cfg!(feature = "flutter"));
         let mut vp8 = decoder.ability_vp8 > 0;
         let mut av1 = decoder.ability_av1 > 0;
         let mut h264 = decoder.ability_h264 > 0;
@@ -1030,7 +1030,7 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn on_voice_call_incoming(&self);
     fn get_rgba(&self) -> *const u8;
     fn next_rgba(&self);
-    #[cfg(feature = "texcodec")]
+    #[cfg(all(feature = "texcodec", feature = "flutter"))]
     fn on_texture(&self, texture: *mut c_void);
 }
 
@@ -1302,12 +1302,11 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>) {
     let ui_handler = handler.ui_handler.clone();
     let (video_sender, audio_sender, video_queue, decode_fps) = start_video_audio_threads(
         move |data: &mut scrap::ImageRgb, _texture: *mut c_void, pixelbuffer: bool| {
-            // log::info!("video callback: texture: {}", texture as usize);
             frame_count_cl.fetch_add(1, Ordering::Relaxed);
             if pixelbuffer {
                 ui_handler.on_rgba(data);
             } else {
-                #[cfg(feature = "texcodec")]
+                #[cfg(all(feature = "texcodec", feature = "flutter"))]
                 ui_handler.on_texture(_texture);
             }
         },

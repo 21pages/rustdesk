@@ -40,6 +40,8 @@ lazy_static::lazy_static! {
     static ref ENCODE_CODEC_NAME: Arc<Mutex<CodecName>> = Arc::new(Mutex::new(CodecName::VP9));
 }
 
+pub const INVALID_LUID: i64 = -1;
+
 #[derive(Debug, Clone)]
 pub struct HwEncoderConfig {
     pub name: String,
@@ -114,9 +116,10 @@ pub struct Decoder {
 
 #[derive(Debug, Clone)]
 pub enum EncodingUpdate {
-    New(SupportedDecoding),
-    Remove,
-    NewOnlyVP9,
+    New(i32, SupportedDecoding),
+    Remove(i32),
+    NewOnlyVP9(i32),
+    NoTexture,
 }
 
 impl Encoder {
@@ -155,16 +158,17 @@ impl Encoder {
         }
     }
 
-    pub fn update(id: i32, update: EncodingUpdate) {
+    pub fn update(update: EncodingUpdate) {
         let mut decodings = PEER_DECODINGS.lock().unwrap();
+        let mut _no_texture = false;
         match update {
-            EncodingUpdate::New(decoding) => {
+            EncodingUpdate::New(id, decoding) => {
                 decodings.insert(id, decoding);
             }
-            EncodingUpdate::Remove => {
+            EncodingUpdate::Remove(id) => {
                 decodings.remove(&id);
             }
-            EncodingUpdate::NewOnlyVP9 => {
+            EncodingUpdate::NewOnlyVP9(id) => {
                 decodings.insert(
                     id,
                     SupportedDecoding {
@@ -172,6 +176,9 @@ impl Encoder {
                         ..Default::default()
                     },
                 );
+            }
+            EncodingUpdate::NoTexture => {
+                _no_texture = true;
             }
         }
 
@@ -186,7 +193,7 @@ impl Encoder {
         let _h265_useable =
             decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h265 > 0);
         #[cfg(feature = "texcodec")]
-        if enable_texcodec_option() {
+        if enable_texcodec_option() && !_no_texture {
             if _h264_useable && h264_name.is_none() {
                 if TexEncoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
                     h264_name = Some("".to_string());
@@ -284,7 +291,7 @@ impl Encoder {
 }
 
 impl Decoder {
-    pub fn supported_decodings(id_for_perfer: Option<&str>) -> SupportedDecoding {
+    pub fn supported_decodings(id_for_perfer: Option<&str>, _allow_tex: bool) -> SupportedDecoding {
         #[allow(unused_mut)]
         let mut decoding = SupportedDecoding {
             ability_vp8: 1,
@@ -303,7 +310,7 @@ impl Decoder {
         }
         #[cfg(feature = "texcodec")]
         {
-            if enable_texcodec_option() {
+            if enable_texcodec_option() && _allow_tex {
                 decoding.ability_h264 |=
                     if TexDecoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
                         1
@@ -362,7 +369,7 @@ impl Decoder {
                 HwDecoders::default()
             },
             #[cfg(feature = "texcodec")]
-            tex: if enable_texcodec_option() {
+            tex: if enable_texcodec_option() && _luid != INVALID_LUID {
                 TexDecoder::new_decoders(_luid)
             } else {
                 TexDecoders::default()

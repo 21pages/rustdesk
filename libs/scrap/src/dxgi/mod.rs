@@ -73,21 +73,25 @@ impl Capturer {
         let mut res = if display.gdi {
             wrap_hresult(1)
         } else {
-            wrap_hresult(unsafe { (*display.adapter.0).GetDesc1(&mut adapter_desc1) }).ok();
-            wrap_hresult(unsafe {
-                D3D11CreateDevice(
-                    display.adapter.0 as *mut _,
-                    D3D_DRIVER_TYPE_UNKNOWN,
-                    ptr::null_mut(), // No software rasterizer.
-                    0,               // No device flags.
-                    ptr::null_mut(), // Feature levels.
-                    0,               // Feature levels' length.
-                    D3D11_SDK_VERSION,
-                    &mut device,
-                    ptr::null_mut(),
-                    &mut context,
-                )
-            })
+            let res = wrap_hresult(unsafe { (*display.adapter.0).GetDesc1(&mut adapter_desc1) });
+            if res.is_ok() {
+                wrap_hresult(unsafe {
+                    D3D11CreateDevice(
+                        display.adapter.0 as *mut _,
+                        D3D_DRIVER_TYPE_UNKNOWN,
+                        ptr::null_mut(), // No software rasterizer.
+                        0,               // No device flags.
+                        ptr::null_mut(), // Feature levels.
+                        0,               // Feature levels' length.
+                        D3D11_SDK_VERSION,
+                        &mut device,
+                        ptr::null_mut(),
+                        &mut context,
+                    )
+                })
+            } else {
+                res
+            }
         };
         let device = ComPtr(device);
         let context = ComPtr(context);
@@ -333,6 +337,9 @@ impl Capturer {
 
     fn get_texture(&mut self, timeout: UINT) -> io::Result<*mut c_void> {
         unsafe {
+            if self.duplication.0.is_null() {
+                return Err(std::io::ErrorKind::AddrNotAvailable.into());
+            }
             (*self.duplication.0).ReleaseFrame();
             let mut frame = ptr::null_mut();
             #[allow(invalid_value)]
@@ -341,9 +348,9 @@ impl Capturer {
             wrap_hresult((*self.duplication.0).AcquireNextFrame(timeout, &mut info, &mut frame))?;
             let frame = ComPtr(frame);
 
-            // if info.AccumulatedFrames == 0 || *info.LastPresentTime.QuadPart() == 0 {
-            //     return Err(std::io::ErrorKind::WouldBlock.into());
-            // }
+            if info.AccumulatedFrames == 0 || *info.LastPresentTime.QuadPart() == 0 {
+                return Err(std::io::ErrorKind::WouldBlock.into());
+            }
 
             let mut texture: *mut ID3D11Texture2D = ptr::null_mut();
             (*frame.0).QueryInterface(

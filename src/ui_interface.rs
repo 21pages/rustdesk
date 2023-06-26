@@ -115,12 +115,12 @@ pub fn get_license() -> String {
 pub fn get_option<T: AsRef<str>>(key: T) -> String {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-    let map = OPTIONS.lock().unwrap();
-    if let Some(v) = map.get(key.as_ref()) {
-        v.to_owned()
-    } else {
-        "".to_owned()
-    }
+        let map = OPTIONS.lock().unwrap();
+        if let Some(v) = map.get(key.as_ref()) {
+            v.to_owned()
+        } else {
+            "".to_owned()
+        }
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
@@ -200,14 +200,14 @@ pub fn using_public_server() -> bool {
 #[inline]
 pub fn get_options() -> String {
     let options = {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-    OPTIONS.lock().unwrap()
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        Config::get_options()
-    }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            OPTIONS.lock().unwrap()
+        }
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            Config::get_options()
+        }
     };
     let mut m = serde_json::Map::new();
     for (k, v) in options.iter() {
@@ -273,8 +273,8 @@ pub fn get_sound_inputs() -> Vec<String> {
 pub fn set_options(m: HashMap<String, String>) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-    *OPTIONS.lock().unwrap() = m.clone();
-    ipc::set_options(m).ok();
+        *OPTIONS.lock().unwrap() = m.clone();
+        ipc::set_options(m).ok();
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     Config::set_options(m);
@@ -308,13 +308,13 @@ pub fn set_option(key: String, value: String) {
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-    let mut options = OPTIONS.lock().unwrap();
-    if value.is_empty() {
-        options.remove(&key);
-    } else {
-        options.insert(key.clone(), value.clone());
-    }
-    ipc::set_options(options.clone()).ok();
+        let mut options = OPTIONS.lock().unwrap();
+        if value.is_empty() {
+            options.remove(&key);
+        } else {
+            options.insert(key.clone(), value.clone());
+        }
+        ipc::set_options(options.clone()).ok();
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     Config::set_option(key, value);
@@ -760,7 +760,7 @@ pub fn has_hwcodec() -> bool {
 #[cfg(feature = "flutter")]
 #[inline]
 pub fn supported_hwdecodings() -> (bool, bool) {
-    let decoding = scrap::codec::Decoder::supported_decodings(None);
+    let decoding = scrap::codec::Decoder::supported_decodings(None, true);
     (decoding.ability_h264 > 0, decoding.ability_h265 > 0)
 }
 
@@ -949,11 +949,11 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
 
 #[allow(dead_code)]
 pub fn option_synced() -> bool {
-    #[cfg(not(any(target_os = "android", target_os= "ios")))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         OPTION_SYNCED.lock().unwrap().clone()
     }
-    #[cfg(any(target_os = "android", target_os= "ios"))]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         true
     }
