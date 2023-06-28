@@ -780,6 +780,12 @@ fn run(sp: GenericService) -> ResultType<()> {
 
 fn get_encoder_config(c: &CapturerInfo, bitrate: u32, _portable_service: bool) -> EncoderCfg {
     #[cfg(windows)]
+    log::info!(
+        "get_encoder_config: gdi:{}, portable:{}",
+        c.is_gdi(),
+        _portable_service
+    );
+    #[cfg(windows)]
     if _portable_service || c.is_gdi() {
         scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::NoTexture);
     }
@@ -918,14 +924,22 @@ fn handle_one_frame(
     })?;
 
     let mut send_conn_ids: HashSet<i32> = Default::default();
-    if let Ok(msg) = encoder.encode_to_message(frame, ms) {
-        #[cfg(not(target_os = "ios"))]
-        recorder
-            .lock()
-            .unwrap()
-            .as_mut()
-            .map(|r| r.write_message(&msg));
-        send_conn_ids = sp.send_video_frame(msg);
+    match encoder.encode_to_message(frame, ms) {
+        Ok(msg) => {
+            #[cfg(not(target_os = "ios"))]
+            recorder
+                .lock()
+                .unwrap()
+                .as_mut()
+                .map(|r| r.write_message(&msg));
+            send_conn_ids = sp.send_video_frame(msg);
+        }
+        Err(e) => match e.to_string().as_str() {
+            scrap::codec::ENCODE_NEED_SWITCH => {
+                bail!("SWITCH");
+            }
+            _ => {}
+        },
     }
     Ok(send_conn_ids)
 }

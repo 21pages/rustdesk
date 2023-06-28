@@ -41,6 +41,7 @@ lazy_static::lazy_static! {
 }
 
 pub const INVALID_LUID: i64 = -1;
+pub const ENCODE_NEED_SWITCH: &'static str = "ENCODE_NEED_SWITCH";
 
 #[derive(Debug, Clone)]
 pub struct HwEncoderConfig {
@@ -159,6 +160,7 @@ impl Encoder {
     }
 
     pub fn update(update: EncodingUpdate) {
+        log::info!("update:{:?}", update);
         let mut decodings = PEER_DECODINGS.lock().unwrap();
         let mut _no_texture = false;
         match update {

@@ -21,6 +21,8 @@ use texcodec::{
 pub struct TexEncoder {
     encoder: Encoder,
     pub format: hw_common::DataFormat,
+    last_bad_len: usize,
+    same_bad_len_counter: usize,
 }
 
 impl EncoderApi for TexEncoder {
@@ -45,6 +47,8 @@ impl EncoderApi for TexEncoder {
                     Ok(encoder) => Ok(TexEncoder {
                         encoder,
                         format: config.feature.data_format,
+                        last_bad_len: 0,
+                        same_bad_len_counter: 0,
                     }),
                     Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
                 }
@@ -72,6 +76,28 @@ impl EncoderApi for TexEncoder {
             });
         }
         if frames.len() > 0 {
+            // This kind of problem has occurred. After a period of time when using AMD encoding,
+            // the encoding length is fixed at about 40, and the picture is still
+            const MIN_BAD_LEN: usize = 100;
+            const MAX_BAD_COUNTER: usize = 10;
+            let first_frame_len = frames[0].data.len();
+            if first_frame_len < MIN_BAD_LEN {
+                if first_frame_len == self.last_bad_len {
+                    self.same_bad_len_counter += 1;
+                    if self.same_bad_len_counter >= MAX_BAD_COUNTER {
+                        crate::codec::Encoder::update(crate::codec::EncodingUpdate::NoTexture);
+                        log::info!(
+                            "{} times encoding len is {}",
+                            self.same_bad_len_counter,
+                            self.last_bad_len
+                        );
+                        bail!(crate::codec::ENCODE_NEED_SWITCH);
+                    }
+                } else {
+                    self.last_bad_len = first_frame_len;
+                    self.same_bad_len_counter = 0;
+                }
+            }
             let frames = EncodedVideoFrames {
                 frames: frames.into(),
                 ..Default::default()
