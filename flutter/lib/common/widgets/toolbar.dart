@@ -63,14 +63,9 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
   // osAccount / osPassword
   v.add(
     TTextMenu(
-        child: Row(children: [
-          Text(translate(pi.is_headless ? 'OS Account' : 'OS Password')),
-          Offstage(
-              offstage: isDesktop,
-              child:
-                  Icon(Icons.edit, color: MyTheme.accent).marginOnly(left: 12))
-        ]),
-        trailingIcon: Transform.scale(scale: 0.8, child: Icon(Icons.edit)),
+        child: Text(translate(pi.is_headless ? 'OS Account' : 'OS Password')),
+        trailingIcon: Transform.scale(
+            scale: 0.8, child: Icon(Icons.edit, color: MyTheme.accent)),
         onPressed: () => pi.is_headless
             ? showSetOSAccount(sessionId, ffi.dialogManager)
             : showSetOSPassword(sessionId, false, ffi.dialogManager)),
@@ -120,9 +115,7 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
     );
   }
   // divider
-  if (isDesktop) {
-    v.add(TTextMenu(child: Offstage(), onPressed: () {}, divider: true));
-  }
+  v.add(TTextMenu(child: Offstage(), onPressed: () {}, divider: true));
   // ctrlAltDel
   if (!ffiModel.viewOnly &&
       ffiModel.keyboard &&
@@ -192,21 +185,14 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
           (perms["recording"] != false &&
               (codecFormat == "VP8" || codecFormat == "VP9")))) {
     v.add(TTextMenu(
-        child: Row(
-          children: [
-            Text(translate(ffi.recordingModel.start
-                ? 'Stop session recording'
-                : 'Start session recording')),
-            Padding(
-              padding: EdgeInsets.only(left: 12),
-              child: Icon(
-                  ffi.recordingModel.start
-                      ? Icons.pause_circle_filled
-                      : Icons.videocam_outlined,
-                  color: MyTheme.accent),
-            )
-          ],
-        ),
+        child: Text(translate(ffi.recordingModel.start
+            ? 'Stop session recording'
+            : 'Start session recording')),
+        trailingIcon: Icon(
+            ffi.recordingModel.start
+                ? Icons.pause_circle_filled
+                : Icons.videocam_outlined,
+            color: MyTheme.accent),
         onPressed: () => ffi.recordingModel.toggle()));
   }
   // fingerprint

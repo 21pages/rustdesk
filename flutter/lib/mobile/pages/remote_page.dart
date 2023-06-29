@@ -544,26 +544,30 @@ class _RemotePageState extends State<RemotePage> {
   }
 
   void showActions(String id) async {
-    final size = MediaQuery.of(context).size;
-    final x = 120.0;
-    final y = size.height;
     final menus = toolbarControls(context, id, gFFI);
-    final more = menus
-        .asMap()
-        .entries
-        .map((e) => PopupMenuItem<int>(child: e.value.child, value: e.key))
-        .toList();
-    () async {
-      var index = await showMenu(
-        context: context,
-        position: RelativeRect.fromLTRB(x, y, x, y),
-        items: more,
-        elevation: 8,
-      );
-      if (index != null && index < menus.length) {
-        menus[index].onPressed.call();
-      }
-    }();
+    gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+          content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: menus.map((e) {
+                if (e.divider) {
+                  return Divider();
+                } else {
+                  return InkWell(
+                    child: ListTile(
+                      visualDensity: VisualDensity.compact,
+                      title: Align(
+                          alignment: Alignment.centerLeft, child: e.child),
+                      trailing: e.trailingIcon,
+                    ),
+                    onTap: () {
+                      close();
+                      e.onPressed();
+                    },
+                  );
+                }
+              }).toList()));
+    }, clickMaskDismiss: true, backDismiss: true);
   }
 
   /// aka changeTouchMode

@@ -22,111 +22,102 @@ class ServerPage extends StatefulWidget implements PageShape {
 
   @override
   final appBarActions = [
-    PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert),
-        itemBuilder: (context) {
-          listTile(String text, bool checked) {
-            return ListTile(
-                title: Text(translate(text)),
-                trailing: Icon(
-                  Icons.check,
-                  color: checked ? null : Colors.transparent,
+    IconButton(
+      icon: const Icon(Icons.more_vert),
+      onPressed: () {
+        gFFI.dialogManager.show((setState, close, context) {
+          const textStyle = TextStyle(fontSize: 14);
+          textAction(String text, VoidCallback onClick, bool enabled) {
+            return InkWell(
+                child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      translate(text),
+                      style: textStyle.merge(TextStyle(
+                          color: enabled
+                              ? null
+                              : Theme.of(context).disabledColor)),
+                    )).marginSymmetric(vertical: 16),
+                onTap: enabled
+                    ? () {
+                        close();
+                        onClick();
+                      }
+                    : null);
+          }
+
+          RxString approveMode = gFFI.serverModel.approveMode.obs;
+          RxString verificationMethod = gFFI.serverModel.verificationMethod.obs;
+
+          approveModeRadio(String text, String value) {
+            return Obx(() => getRadio<String>(
+                    Text(
+                      translate(text),
+                      style: textStyle,
+                    ),
+                    value,
+                    approveMode.value, (String? value) {
+                  if (value != null) {
+                    gFFI.serverModel.setApproveMode(value);
+                    approveMode.value = value;
+                  }
+                }));
+          }
+
+          final approveModes = [
+            approveModeRadio('Accept sessions via password', 'password'),
+            approveModeRadio('Accept sessions via click', 'click'),
+            approveModeRadio('Accept sessions via both', ''),
+          ];
+
+          verificationMethodRadio(String text, String value) {
+            return Obx(() => getRadio<String>(
+                  Text(translate(text), style: textStyle),
+                  value,
+                  verificationMethod.value,
+                  approveMode.value != 'click'
+                      ? (String? value) {
+                          if (value != null) {
+                            bind.mainSetOption(
+                                key: "verification-method", value: value);
+                            verificationMethod.value = value;
+                          }
+                        }
+                      : null,
                 ));
           }
 
-          final approveMode = gFFI.serverModel.approveMode;
-          final verificationMethod = gFFI.serverModel.verificationMethod;
-          final showPasswordOption = approveMode != 'click';
-          return [
-            PopupMenuItem(
-              enabled: gFFI.serverModel.connectStatus > 0,
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              value: "changeID",
-              child: Text(translate("Change ID")),
-            ),
-            const PopupMenuDivider(),
-            PopupMenuItem(
-              padding: const EdgeInsets.symmetric(horizontal: 0.0),
-              value: 'AcceptSessionsViaPassword',
-              child: listTile(
-                  'Accept sessions via password', approveMode == 'password'),
-            ),
-            PopupMenuItem(
-              padding: const EdgeInsets.symmetric(horizontal: 0.0),
-              value: 'AcceptSessionsViaClick',
-              child:
-                  listTile('Accept sessions via click', approveMode == 'click'),
-            ),
-            PopupMenuItem(
-              padding: const EdgeInsets.symmetric(horizontal: 0.0),
-              value: "AcceptSessionsViaBoth",
-              child: listTile("Accept sessions via both",
-                  approveMode != 'password' && approveMode != 'click'),
-            ),
-            if (showPasswordOption) const PopupMenuDivider(),
-            if (showPasswordOption &&
-                verificationMethod != kUseTemporaryPassword)
-              PopupMenuItem(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                value: "setPermanentPassword",
-                child: Text(translate("Set permanent password")),
-              ),
-            if (showPasswordOption &&
-                verificationMethod != kUsePermanentPassword)
-              PopupMenuItem(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                value: "setTemporaryPasswordLength",
-                child: Text(translate("One-time password length")),
-              ),
-            if (showPasswordOption) const PopupMenuDivider(),
-            if (showPasswordOption)
-              PopupMenuItem(
-                padding: const EdgeInsets.symmetric(horizontal: 0.0),
-                value: kUseTemporaryPassword,
-                child: listTile('Use one-time password',
-                    verificationMethod == kUseTemporaryPassword),
-              ),
-            if (showPasswordOption)
-              PopupMenuItem(
-                padding: const EdgeInsets.symmetric(horizontal: 0.0),
-                value: kUsePermanentPassword,
-                child: listTile('Use permanent password',
-                    verificationMethod == kUsePermanentPassword),
-              ),
-            if (showPasswordOption)
-              PopupMenuItem(
-                padding: const EdgeInsets.symmetric(horizontal: 0.0),
-                value: kUseBothPasswords,
-                child: listTile(
-                    'Use both passwords',
-                    verificationMethod != kUseTemporaryPassword &&
-                        verificationMethod != kUsePermanentPassword),
-              ),
+          final verificationMethods = [
+            verificationMethodRadio(
+                'Use one-time password', kUseTemporaryPassword),
+            verificationMethodRadio(
+                'Use permanent password', kUsePermanentPassword),
+            verificationMethodRadio('Use both passwords', kUseBothPasswords),
           ];
-        },
-        onSelected: (value) {
-          if (value == "changeID") {
-            changeIdDialog();
-          } else if (value == "setPermanentPassword") {
-            setPermanentPasswordDialog(gFFI.dialogManager);
-          } else if (value == "setTemporaryPasswordLength") {
-            setTemporaryPasswordLengthDialog(gFFI.dialogManager);
-          } else if (value == kUsePermanentPassword ||
-              value == kUseTemporaryPassword ||
-              value == kUseBothPasswords) {
-            bind.mainSetOption(key: "verification-method", value: value);
-            gFFI.serverModel.updatePasswordModel();
-          } else if (value.startsWith("AcceptSessionsVia")) {
-            value = value.substring("AcceptSessionsVia".length);
-            if (value == "Password") {
-              gFFI.serverModel.setApproveMode('password');
-            } else if (value == "Click") {
-              gFFI.serverModel.setApproveMode('click');
-            } else {
-              gFFI.serverModel.setApproveMode('');
-            }
-          }
-        })
+
+          return CustomAlertDialog(
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              textAction('Change ID', () => changeIdDialog(), true),
+              const Divider(color: MyTheme.border),
+              ...approveModes,
+              const Divider(color: MyTheme.border),
+              ...verificationMethods,
+              const Divider(color: MyTheme.border),
+              Obx(() => textAction(
+                  'Set permanent password',
+                  () => setPermanentPasswordDialog(gFFI.dialogManager),
+                  approveMode.value != 'click' &&
+                      verificationMethod.value != kUseTemporaryPassword)),
+              Obx(() => textAction(
+                  'One-time password length',
+                  () => setTemporaryPasswordLengthDialog(gFFI.dialogManager),
+                  approveMode.value != 'click' &&
+                      verificationMethod.value != kUsePermanentPassword)),
+            ]),
+          );
+        }, clickMaskDismiss: true, backDismiss: true);
+      },
+    ),
   ];
 
   ServerPage({Key? key}) : super(key: key);
