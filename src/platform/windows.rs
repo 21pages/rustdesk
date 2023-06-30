@@ -802,19 +802,24 @@ fn get_subkey(name: &str, wow: bool) -> String {
 
 fn get_valid_subkey() -> String {
     let subkey = get_subkey(IS1, false);
+    log::info!("get_valid_subkey 1 subkey:{subkey}");
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
     }
     let subkey = get_subkey(IS1, true);
+    log::info!("get_valid_subkey 2 subkey:{subkey}");
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
     }
     let app_name = crate::get_app_name();
     let subkey = get_subkey(&app_name, true);
+    log::info!("get_valid_subkey 3 subkey:{subkey}");
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
     }
-    return get_subkey(&app_name, false);
+    let subkey = get_subkey(&app_name, false);
+    log::info!("get_valid_subkey 4 subkey:{subkey}");
+    return subkey;
 }
 
 pub fn get_install_info() -> (String, String, String, String) {
@@ -1310,6 +1315,7 @@ pub fn add_recent_document(path: &str) {
 
 pub fn is_installed() -> bool {
     let (_, _, _, exe) = get_install_info();
+    log::info!("is_installed:exe:{exe}");
     std::fs::metadata(exe).is_ok()
     /*
     use windows_service::{
