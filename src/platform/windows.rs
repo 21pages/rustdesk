@@ -1319,7 +1319,9 @@ pub fn add_recent_document(path: &str) {
 pub fn is_installed() -> bool {
     let (_, _, _, exe) = get_install_info();
     flog(&format!("is_installed:exe:{exe}"));
-    std::fs::metadata(exe).is_ok()
+    let result = std::fs::metadata(exe).is_ok();
+    flog(&format!("is_installed:result:{result}"));
+    result
     /*
     use windows_service::{
         service::ServiceAccess,
@@ -1346,9 +1348,14 @@ pub fn get_reg(name: &str) -> String {
 }
 
 fn get_reg_of(subkey: &str, name: &str) -> String {
+    flog(&format!("subkey:{subkey}, name:{name}"));
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    if let Ok(tmp) = hklm.open_subkey(subkey.replace("HKEY_LOCAL_MACHINE\\", "")) {
+    let subkey = subkey.replace("HKEY_LOCAL_MACHINE\\", "");
+    flog(&format!("replaced subkey:{subkey}"));
+    if let Ok(tmp) = hklm.open_subkey(subkey) {
+        flog(&format!("open_subkey ok"));
         if let Ok(v) = tmp.get_value(name) {
+            flog(&format!("get_value v:{v}"));
             return v;
         }
     }

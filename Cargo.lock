@@ -5377,7 +5377,7 @@ dependencies = [
 [[package]]
 name = "sciter-rs"
 version = "0.5.57"
-source = "git+https://github.com/21pages/rust-sciter?branch=fix#8717a530561fdeff4e9bb19038c82a186c7603ff"
+source = "git+https://github.com/21pages/rust-sciter?branch=LoadLibraryW#c47e3469aedc078d0ef62f3b8c42b23f845cba78"
 dependencies = [
  "lazy_static",
  "libc",

@@ -83,7 +83,7 @@ ringbuf = "0.3"
 machine-uid = "0.3"
 mac_address = "1.1"
 #sciter-rs = { path = "D:/rustdesk/rust-sciter" }
-sciter-rs = { git = "https://github.com/21pages/rust-sciter", branch = "fix" }
+sciter-rs = { git = "https://github.com/21pages/rust-sciter", branch = "LoadLibraryW" }
 sys-locale = "0.3"
 enigo = { path = "libs/enigo", features = [ "with_serde" ] }
 clipboard = { path = "libs/clipboard" }
