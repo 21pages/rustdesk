@@ -1352,11 +1352,16 @@ fn get_reg_of(subkey: &str, name: &str) -> String {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let subkey = subkey.replace("HKEY_LOCAL_MACHINE\\", "");
     flog(&format!("replaced subkey:{subkey}"));
-    if let Ok(tmp) = hklm.open_subkey(subkey) {
-        flog(&format!("open_subkey ok"));
-        if let Ok(v) = tmp.get_value(name) {
-            flog(&format!("get_value v:{v}"));
-            return v;
+    match hklm.open_subkey(subkey) {
+        Ok(tmp) => {
+            flog(&format!("open_subkey ok"));
+            if let Ok(v) = tmp.get_value(name) {
+                flog(&format!("get_value v:{v}"));
+                return v;
+            }
+        }
+        Err(e) => {
+            flog(&format!("open_subkey err:{:?}", e));
         }
     }
     "".to_owned()
