@@ -501,9 +501,6 @@ pub fn try_plug_out_virtual_display() {
 }
 
 fn run(sp: GenericService) -> ResultType<()> {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let _wake_lock = get_wake_lock();
-
     // ensure_inited() is needed because release_resource() may be called.
     #[cfg(target_os = "linux")]
     super::wayland::ensure_inited()?;
@@ -1065,17 +1062,4 @@ fn start_uac_elevation_check() {
             });
         }
     });
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn get_wake_lock() -> crate::platform::WakeLock {
-    let (display, idle, sleep) = if cfg!(windows) {
-        (true, false, false)
-    } else if cfg!(linux) {
-        (false, false, true)
-    } else {
-        //macos
-        (true, false, false)
-    };
-    crate::platform::WakeLock::new(display, idle, sleep)
 }

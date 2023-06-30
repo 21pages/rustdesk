@@ -1072,21 +1072,6 @@ mod desktop {
     }
 }
 
-pub struct WakeLock(Option<keepawake::AwakeHandle>);
-
-impl WakeLock {
-    pub fn new(display: bool, idle: bool, sleep: bool) -> Self {
-        WakeLock(
-            keepawake::Builder::new()
-                .display(display)
-                .idle(idle)
-                .sleep(sleep)
-                .create()
-                .ok(),
-        )
-    }
-}
-
 fn has_cmd(cmd: &str) -> bool {
     std::process::Command::new("which")
         .arg(cmd)
