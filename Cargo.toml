@@ -82,7 +82,8 @@ ringbuf = "0.3"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 machine-uid = "0.3"
 mac_address = "1.1"
-sciter-rs = { git = "https://github.com/open-trade/rust-sciter", branch = "dyn" }
+#sciter-rs = { path = "D:/rustdesk/rust-sciter" }
+sciter-rs = { git = "https://github.com/21pages/rust-sciter", branch = "fix" }
 sys-locale = "0.3"
 enigo = { path = "libs/enigo", features = [ "with_serde" ] }
 clipboard = { path = "libs/clipboard" }

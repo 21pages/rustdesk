@@ -356,6 +356,17 @@ pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHand
     }
 }
 
+pub fn flog(s: &str) {
+    use chrono::prelude::*;
+    use std::io::Write;
+
+    let mut option = std::fs::OpenOptions::new();
+
+    if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
+        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

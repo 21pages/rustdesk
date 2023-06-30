@@ -8,7 +8,7 @@ use crate::{
 use hbb_common::{
     allow_err, bail,
     config::{self, Config},
-    log,
+    flog, log,
     message_proto::Resolution,
     sleep, timeout, tokio,
 };
@@ -802,23 +802,23 @@ fn get_subkey(name: &str, wow: bool) -> String {
 
 fn get_valid_subkey() -> String {
     let subkey = get_subkey(IS1, false);
-    log::info!("get_valid_subkey 1 subkey:{subkey}");
+    flog(&format!("get_valid_subkey 1 subkey:{subkey}"));
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
     }
     let subkey = get_subkey(IS1, true);
-    log::info!("get_valid_subkey 2 subkey:{subkey}");
+    flog(&format!("get_valid_subkey 2 subkey:{subkey}"));
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
     }
     let app_name = crate::get_app_name();
     let subkey = get_subkey(&app_name, true);
-    log::info!("get_valid_subkey 3 subkey:{subkey}");
+    flog(&format!("get_valid_subkey 3 subkey:{subkey}"));
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
     }
     let subkey = get_subkey(&app_name, false);
-    log::info!("get_valid_subkey 4 subkey:{subkey}");
+    flog(&format!("get_valid_subkey 4 subkey:{subkey}"));
     return subkey;
 }
 
@@ -894,15 +894,18 @@ pub fn check_update_broker_process() -> ResultType<()> {
 
 fn get_install_info_with_subkey(subkey: String) -> (String, String, String, String) {
     let mut path = get_reg_of(&subkey, "InstallLocation");
+    flog(&format!("get_install_info_with_subkey: path 1:{path}"));
     if path.is_empty() {
         path = get_default_install_path();
     }
+    flog(&format!("get_install_info_with_subkey: path 2:{path}"));
     path = path.trim_end_matches('\\').to_owned();
     let start_menu = format!(
         "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\{}",
         crate::get_app_name()
     );
     let exe = format!("{}\\{}.exe", path, crate::get_app_name());
+    flog(&format!("get_install_info_with_subkey: exe:{exe}"));
     (subkey, path, start_menu, exe)
 }
 
@@ -1315,7 +1318,7 @@ pub fn add_recent_document(path: &str) {
 
 pub fn is_installed() -> bool {
     let (_, _, _, exe) = get_install_info();
-    log::info!("is_installed:exe:{exe}");
+    flog(&format!("is_installed:exe:{exe}"));
     std::fs::metadata(exe).is_ok()
     /*
     use windows_service::{
