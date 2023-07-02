@@ -1,6 +1,7 @@
 #[cfg(not(debug_assertions))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::platform::breakdown_callback;
+use hbb_common::flog;
 use hbb_common::log;
 #[cfg(not(debug_assertions))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -13,6 +14,22 @@ use hbb_common::platform::register_breakdown_handler;
 /// If it returns [`Some`], then the process will continue, and flutter gui will be started.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn core_main() -> Option<Vec<String>> {
+    if cfg!(target_pointer_width = "32") {
+        println!("32-bit target");
+        flog("================== target_pointer_width 32");
+    } else {
+        println!("64-bit target");
+        flog("================== target_pointer_width 64");
+    }
+
+    if std::mem::size_of::<usize>() == 4 {
+        println!("32-bit target");
+        flog("====================== size_of 32");
+    } else {
+        println!("64-bit target");
+        flog("====================== size_of 32");
+    }
+
     let mut args = Vec::new();
     let mut flutter_args = Vec::new();
     let mut i = 0;
