@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::flog;
 use sodiumoxide::base64;
 use std::sync::{Arc, RwLock};
 
@@ -118,15 +119,21 @@ pub fn decrypt_str_or_original(s: &str, current_version: &str) -> (String, bool,
 }
 
 pub fn encrypt_vec_or_original(v: &[u8], version: &str) -> Vec<u8> {
+    // log::info!("encrypt_vec_or_original v:{:?}, version:{:?}", v, version);
     if decrypt_vec_or_original(v, version).1 {
         log::error!("Duplicate encryption!");
+        flog(&format!("Duplicate encryption!"));
         return v.to_owned();
     }
     if version == "00" {
         if let Ok(s) = encrypt(v) {
             let mut version = version.to_owned().into_bytes();
             version.append(&mut s.into_bytes());
+
             return version;
+        } else {
+            log::info!("encrypt_vec_or_original failed");
+            flog(&format!("encrypt_vec_or_original failed"));
         }
     }
     v.to_owned()
@@ -141,6 +148,12 @@ pub fn decrypt_vec_or_original(v: &[u8], current_version: &str) -> (Vec<u8>, boo
         if version == "00" {
             if let Ok(v) = decrypt(&v[VERSION_LEN..]) {
                 return (v, true, version != current_version);
+            } else {
+                log::info!("============ decrypt_vec_or_original failed v:{:?}", v);
+                flog(&format!(
+                    "============ decrypt_vec_or_original failed v:{:?}",
+                    v
+                ));
             }
         }
     }
@@ -169,6 +182,7 @@ fn symmetric_crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, ()> {
     use std::convert::TryInto;
 
     let mut keybuf = crate::get_uuid();
+    flog(&format!("uuid:{:?}", keybuf));
     keybuf.resize(secretbox::KEYBYTES, 0);
     let key = secretbox::Key(keybuf.try_into().map_err(|_| ())?);
     let nonce = secretbox::Nonce([0; secretbox::NONCEBYTES]);
