@@ -455,6 +455,7 @@ extern "C" {
     fn win_stop_system_key_propagate(v: BOOL);
     fn is_win_down() -> BOOL;
     fn is_local_system() -> BOOL;
+    fn IsWow64() -> BOOL;
 }
 
 extern "system" {
@@ -1310,7 +1311,11 @@ pub fn add_recent_document(path: &str) {
 
 pub fn is_installed() -> bool {
     let (_, _, _, exe) = get_install_info();
-    std::fs::metadata(exe).is_ok()
+    let mut installed = std::fs::metadata(exe).is_ok();
+    if !installed {
+        installed = check_x64_installed_for_wow64();
+    }
+    installed
     /*
     use windows_service::{
         service::ServiceAccess,
@@ -1918,6 +1923,59 @@ pub fn install_cert(cert_file: &str) -> ResultType<()> {
 #[inline]
 pub fn uninstall_cert() -> ResultType<()> {
     cert::uninstall_cert()
+}
+
+fn check_x64_installed_for_wow64() -> bool {
+    if !cfg!(target_pointer_width = "32") || unsafe { IsWow64() == 0 } {
+        return false;
+    }
+    let get_reg_of = |subkey: &str, name: &str| {
+        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+        if let Ok(tmp) = hklm.open_subkey_with_flags(
+            subkey.replace("HKEY_LOCAL_MACHINE\\", ""),
+            KEY_READ | KEY_WOW64_64KEY,
+        ) {
+            if let Ok(v) = tmp.get_value(name) {
+                return v;
+            }
+        }
+        "".to_owned()
+    };
+
+    let get_valid_subkey = || {
+        let subkey = get_subkey(IS1, false);
+        if !get_reg_of(&subkey, "InstallLocation").is_empty() {
+            return subkey;
+        }
+        let subkey = get_subkey(IS1, true);
+        if !get_reg_of(&subkey, "InstallLocation").is_empty() {
+            return subkey;
+        }
+        let app_name = crate::get_app_name();
+        let subkey = get_subkey(&app_name, true);
+        if !get_reg_of(&subkey, "InstallLocation").is_empty() {
+            return subkey;
+        }
+        return get_subkey(&app_name, false);
+    };
+
+    let get_install_info_with_subkey = |subkey: String| {
+        let mut path = get_reg_of(&subkey, "InstallLocation");
+        if path.is_empty() {
+            path = get_default_install_path();
+        }
+        path = path.trim_end_matches('\\').to_owned();
+        let start_menu = format!(
+            "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\{}",
+            crate::get_app_name()
+        );
+        let exe = format!("{}\\{}.exe", path, crate::get_app_name());
+        (subkey, path, start_menu, exe)
+    };
+
+    let (_, _, _, exe) = get_install_info_with_subkey(get_valid_subkey());
+
+    std::fs::metadata(exe).is_ok()
 }
 
 mod cert {
