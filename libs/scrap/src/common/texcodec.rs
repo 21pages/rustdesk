@@ -12,7 +12,9 @@ use hbb_common::{
     message_proto::{EncodedVideoFrame, EncodedVideoFrames, Message, VideoFrame},
     ResultType,
 };
-use hw_common::{Available, DecodeContext, DynamicContext, EncodeContext, FeatureContext, MAX_GOP};
+use texcodec::hw_common::{self,
+    Available, DecodeContext, DynamicContext, EncodeContext, FeatureContext, MAX_GOP,
+};
 use texcodec::{
     decode::{self, DecodeFrame, Decoder},
     encode::{self, EncodeFrame, Encoder},

@@ -58,7 +58,7 @@ pub struct TexEncoderConfig {
     pub width: usize,
     pub height: usize,
     pub bitrate: i32,
-    pub feature: hw_common::FeatureContext,
+    pub feature: texcodec::hw_common::FeatureContext,
 }
 
 #[derive(Debug)]

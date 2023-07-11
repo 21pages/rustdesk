@@ -101,7 +101,7 @@ dependencies = [
 [[package]]
 name = "amf"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#1a4c0bfe35cd1258fd65a2bfabd71dcf730880f4"
+source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -2999,7 +2999,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hw_common"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#1a4c0bfe35cd1258fd65a2bfabd71dcf730880f4"
+source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -3176,17 +3176,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
 dependencies = [
  "cfg-if 1.0.0",
-]
-
-[[package]]
-name = "intel"
-version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#1a4c0bfe35cd1258fd65a2bfabd71dcf730880f4"
-dependencies = [
- "bindgen 0.59.2",
- "cc",
- "hw_common",
- "log",
 ]
 
 [[package]]
@@ -3704,6 +3693,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mfx"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "hw_common",
+ "log",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4096,9 +4096,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "nvidia"
+name = "nv"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#1a4c0bfe35cd1258fd65a2bfabd71dcf730880f4"
+source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -5451,7 +5451,6 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-video",
  "hbb_common",
- "hw_common",
  "hwcodec",
  "jni 0.21.1",
  "lazy_static",
@@ -6073,15 +6072,15 @@ dependencies = [
 [[package]]
 name = "texcodec"
 version = "0.1.0"
-source = "git+https://github.com/21pages/native_codec#1a4c0bfe35cd1258fd65a2bfabd71dcf730880f4"
+source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
 dependencies = [
  "amf",
  "bindgen 0.59.2",
  "cc",
  "hw_common",
- "intel",
  "log",
- "nvidia",
+ "mfx",
+ "nv",
  "serde 1.0.163",
  "serde_derive",
  "serde_json 1.0.96",
