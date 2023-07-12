@@ -101,7 +101,7 @@ dependencies = [
 [[package]]
 name = "amf"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
+source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -2999,7 +2999,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hw_common"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
+source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -3695,7 +3695,7 @@ dependencies = [
 [[package]]
 name = "mfx"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
+source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -4098,7 +4098,7 @@ dependencies = [
 [[package]]
 name = "nv"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
+source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -6072,7 +6072,7 @@ dependencies = [
 [[package]]
 name = "texcodec"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6b14a391e543f2b24a408bdafb68000fa97c991b"
+source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
 dependencies = [
  "amf",
  "bindgen 0.59.2",
