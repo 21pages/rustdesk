@@ -588,7 +588,7 @@ fn run(sp: GenericService) -> ResultType<()> {
 
     let mut last_encode_elapsed = Instant::now();
     let mut last_encode_counter: u32 = 0;
-    #[cfg(all(windows, feature = "texcodec"))]
+    #[cfg(all(windows, feature = "gpu_video_codec"))]
     let last_is_gdi = c.is_gdi();
 
     while sp.ok() {
@@ -621,7 +621,7 @@ fn run(sp: GenericService) -> ResultType<()> {
         if last_portable_service_running != crate::portable_service::client::running() {
             bail!("SWITCH");
         }
-        #[cfg(all(windows, feature = "texcodec"))]
+        #[cfg(all(windows, feature = "gpu_video_codec"))]
         if last_is_gdi != c.is_gdi() {
             bail!("SWITCH");
         }
@@ -792,11 +792,11 @@ fn get_encoder_config(c: &CapturerInfo, bitrate: u32, _portable_service: bool) -
     let negotiated_codec = Encoder::negotiated_codec();
     match negotiated_codec.clone() {
         scrap::CodecName::H264(name) | scrap::CodecName::H265(name) => {
-            #[cfg(feature = "texcodec")]
+            #[cfg(feature = "gpu_video_codec")]
             {
                 if name.is_empty() {
                     if let Some(feature) =
-                        scrap::texcodec::TexEncoder::try_get(&c.device(), negotiated_codec.clone())
+                        scrap::gpu_video_codec::TexEncoder::try_get(&c.device(), negotiated_codec.clone())
                     {
                         EncoderCfg::TEX(scrap::codec::TexEncoderConfig {
                             device: c.device(),
@@ -812,7 +812,7 @@ fn get_encoder_config(c: &CapturerInfo, bitrate: u32, _portable_service: bool) -
                     handle_hw_encoder(name, c.width, c.height, bitrate as _)
                 }
             }
-            #[cfg(not(feature = "texcodec"))]
+            #[cfg(not(feature = "gpu_video_codec"))]
             handle_hw_encoder(name, c.width, c.height, bitrate as _)
         }
         name @ (scrap::CodecName::VP8 | scrap::CodecName::VP9) => {

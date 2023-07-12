@@ -1362,14 +1362,14 @@ impl HwCodecConfig {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct TexCodecConfig {
+pub struct GpuVideoCodecConfig {
     #[serde(default, deserialize_with = "deserialize_string")]
     pub available: String,
 }
 
-impl TexCodecConfig {
-    pub fn load() -> TexCodecConfig {
-        Config::load_::<TexCodecConfig>("_texcodec")
+impl GpuVideoCodecConfig {
+    pub fn load() -> GpuVideoCodecConfig {
+        Config::load_::<GpuVideoCodecConfig>("_texcodec")
     }
 
     pub fn store(&self) {

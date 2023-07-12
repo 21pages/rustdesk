@@ -17,8 +17,8 @@ use crate::{
     vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
     CaptureOutputFormat, CodecName, Frame, ImageRgb,
 };
-#[cfg(feature = "texcodec")]
-use crate::{texcodec::*, AdapterDevice};
+#[cfg(feature = "gpu_video_codec")]
+use crate::{gpu_video_codec::*, AdapterDevice};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sysinfo::{System, SystemExt};
@@ -32,7 +32,11 @@ use hbb_common::{
     },
     ResultType,
 };
-#[cfg(any(feature = "hwcodec", feature = "mediacodec", feature = "texcodec"))]
+#[cfg(any(
+    feature = "hwcodec",
+    feature = "mediacodec",
+    feature = "gpu_video_codec"
+))]
 use hbb_common::{config::Config2, lazy_static};
 
 lazy_static::lazy_static! {
@@ -51,14 +55,14 @@ pub struct HwEncoderConfig {
     pub bitrate: i32,
 }
 
-#[cfg(feature = "texcodec")]
+#[cfg(feature = "gpu_video_codec")]
 #[derive(Debug, Clone)]
 pub struct TexEncoderConfig {
     pub device: AdapterDevice,
     pub width: usize,
     pub height: usize,
     pub bitrate: i32,
-    pub feature: texcodec::hw_common::FeatureContext,
+    pub feature: gpu_video_codec::hw_common::FeatureContext,
 }
 
 #[derive(Debug)]
@@ -67,7 +71,7 @@ pub enum EncoderCfg {
     AOM(AomEncoderConfig),
     #[cfg(feature = "hwcodec")]
     HW(HwEncoderConfig),
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     TEX(TexEncoderConfig),
 }
 
@@ -107,7 +111,7 @@ pub struct Decoder {
     av1: AomDecoder,
     #[cfg(feature = "hwcodec")]
     hw: HwDecoders,
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     tex: TexDecoders,
     #[cfg(feature = "hwcodec")]
     i420: Vec<u8>,
@@ -145,13 +149,13 @@ impl Encoder {
                     Err(e)
                 }
             },
-            #[cfg(feature = "texcodec")]
+            #[cfg(feature = "gpu_video_codec")]
             EncoderCfg::TEX(_) => match TexEncoder::new(config) {
                 Ok(tex) => Ok(Encoder {
                     codec: Box::new(tex),
                 }),
                 Err(e) => {
-                    texcodec_new_check_process();
+                    gpu_video_codec_new_check_process();
                     *ENCODE_CODEC_NAME.lock().unwrap() = CodecName::VP9;
                     Err(e)
                 }
@@ -194,8 +198,8 @@ impl Encoder {
             decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h264 > 0);
         let _h265_useable =
             decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h265 > 0);
-        #[cfg(feature = "texcodec")]
-        if enable_texcodec_option() && !_no_texture {
+        #[cfg(feature = "gpu_video_codec")]
+        if enable_gpu_video_codec_option() && !_no_texture {
             if _h264_useable && h264_name.is_none() {
                 if TexEncoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
                     h264_name = Some("".to_string());
@@ -277,8 +281,8 @@ impl Encoder {
             encoding.h264 |= best.h264.is_some();
             encoding.h265 |= best.h265.is_some();
         }
-        #[cfg(feature = "texcodec")]
-        if enable_texcodec_option() {
+        #[cfg(feature = "gpu_video_codec")]
+        if enable_gpu_video_codec_option() {
             encoding.h264 |=
                 TexEncoder::possible_available(CodecName::H264("".to_string())).len() > 0;
             encoding.h265 |=
@@ -310,9 +314,9 @@ impl Decoder {
             decoding.ability_h264 |= if best.h264.is_some() { 1 } else { 0 };
             decoding.ability_h265 |= if best.h265.is_some() { 1 } else { 0 };
         }
-        #[cfg(feature = "texcodec")]
+        #[cfg(feature = "gpu_video_codec")]
         {
-            if enable_texcodec_option() && _allow_tex {
+            if enable_gpu_video_codec_option() && _allow_tex {
                 decoding.ability_h264 |=
                     if TexDecoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
                         1
@@ -370,8 +374,8 @@ impl Decoder {
             } else {
                 HwDecoders::default()
             },
-            #[cfg(feature = "texcodec")]
-            tex: if enable_texcodec_option() && _luid != INVALID_LUID {
+            #[cfg(feature = "gpu_video_codec")]
+            tex: if enable_gpu_video_codec_option() && _luid != INVALID_LUID {
                 TexDecoder::new_decoders(_luid)
             } else {
                 TexDecoders::default()
@@ -405,9 +409,9 @@ impl Decoder {
             video_frame::Union::Av1s(av1s) => {
                 Decoder::handle_av1s_video_frame(&mut self.av1, av1s, rgb)
             }
-            #[cfg(any(feature = "hwcodec", feature = "texcodec"))]
+            #[cfg(any(feature = "hwcodec", feature = "gpu_video_codec"))]
             video_frame::Union::H264s(h264s) => {
-                #[cfg(feature = "texcodec")]
+                #[cfg(feature = "gpu_video_codec")]
                 {
                     if let Some(decoder) = &mut self.tex.h264 {
                         *_pixelbuffer = false;
@@ -422,9 +426,9 @@ impl Decoder {
                 }
                 Err(anyhow!("don't support h264!"))
             }
-            #[cfg(any(feature = "hwcodec", feature = "texcodec"))]
+            #[cfg(any(feature = "hwcodec", feature = "gpu_video_codec"))]
             video_frame::Union::H265s(h265s) => {
-                #[cfg(feature = "texcodec")]
+                #[cfg(feature = "gpu_video_codec")]
                 {
                     if let Some(decoder) = &mut self.tex.h265 {
                         *_pixelbuffer = false;
@@ -529,7 +533,7 @@ impl Decoder {
         return Ok(ret);
     }
 
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     fn handle_tex_video_frame(
         decoder: &mut TexDecoder,
         frames: &EncodedVideoFrames,
@@ -587,9 +591,9 @@ fn enable_hwcodec_option() -> bool {
     }
     return true; // default is true
 }
-#[cfg(feature = "texcodec")]
-fn enable_texcodec_option() -> bool {
-    if let Some(v) = Config2::get().options.get("enable-texcodec") {
+#[cfg(feature = "gpu_video_codec")]
+fn enable_gpu_video_codec_option() -> bool {
+    if let Some(v) = Config2::get().options.get("enable-gpu_video_codec") {
         return v != "N";
     }
     return true; // default is true

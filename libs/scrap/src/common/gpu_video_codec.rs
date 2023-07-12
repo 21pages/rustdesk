@@ -4,6 +4,13 @@ use crate::{
     codec::{EncoderApi, EncoderCfg},
     AdapterDevice, CaptureOutputFormat, CodecName, Frame,
 };
+use gpu_video_codec::hw_common::{
+    self, Available, DecodeContext, DynamicContext, EncodeContext, FeatureContext, MAX_GOP,
+};
+use gpu_video_codec::{
+    decode::{self, DecodeFrame, Decoder},
+    encode::{self, EncodeFrame, Encoder},
+};
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, bail, Context},
@@ -11,13 +18,6 @@ use hbb_common::{
     log,
     message_proto::{EncodedVideoFrame, EncodedVideoFrames, Message, VideoFrame},
     ResultType,
-};
-use texcodec::hw_common::{self,
-    Available, DecodeContext, DynamicContext, EncodeContext, FeatureContext, MAX_GOP,
-};
-use texcodec::{
-    decode::{self, DecodeFrame, Decoder},
-    encode::{self, EncodeFrame, Encoder},
 };
 
 pub struct TexEncoder {
@@ -251,14 +251,14 @@ pub struct TexDecoderImage<'a> {
 impl TexDecoderImage<'_> {}
 
 fn get_available_config() -> ResultType<Available> {
-    let available = hbb_common::config::TexCodecConfig::load().available;
+    let available = hbb_common::config::GpuVideoCodecConfig::load().available;
     match Available::deserialize(&available) {
         Ok(v) => Ok(v),
         Err(_) => Err(anyhow!("Failed to deserialize:{}", available)),
     }
 }
 
-pub fn check_available_texcodec() {
+pub fn check_available_gpu_video_codec() {
     let d = DynamicContext {
         device: None,
         width: 1920,
@@ -275,25 +275,25 @@ pub fn check_available_texcodec() {
     };
 
     if let Ok(available) = available.serialize() {
-        let mut config = hbb_common::config::TexCodecConfig::load();
+        let mut config = hbb_common::config::GpuVideoCodecConfig::load();
         config.available = available;
         config.store();
         return;
     }
-    log::error!("Failed to serialize texcodec");
+    log::error!("Failed to serialize gpu_video_codec");
 }
 
-pub fn texcodec_new_check_process() {
+pub fn gpu_video_codec_new_check_process() {
     use hbb_common::sysinfo::{ProcessExt, System, SystemExt};
 
     std::thread::spawn(move || {
         // Remove to avoid checking process errors
         // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
-        hbb_common::config::TexCodecConfig::remove();
+        hbb_common::config::GpuVideoCodecConfig::remove();
         if let Ok(exe) = std::env::current_exe() {
             if let Some(file_name) = exe.file_name().to_owned() {
                 let s = System::new_all();
-                let arg = "--check-texcodec-config";
+                let arg = "--check-gpu_video_codec-config";
                 for process in s.processes_by_name(&file_name.to_string_lossy().to_string()) {
                     if process.cmd().iter().any(|cmd| cmd.contains(arg)) {
                         log::warn!("already have process {}", arg);
@@ -312,17 +312,19 @@ pub fn texcodec_new_check_process() {
                     std::thread::sleep(std::time::Duration::from_millis(30));
                     match child.try_wait() {
                         Ok(Some(status)) => {
-                            log::info!("Check texcodec config, exit with: {status}")
+                            log::info!("Check gpu_video_codec config, exit with: {status}")
                         }
                         Ok(None) => {
                             log::info!(
-                                "Check texcodec config, status not ready yet, let's really wait"
+                                "Check gpu_video_codec config, status not ready yet, let's really wait"
                             );
                             let res = child.wait();
-                            log::info!("Check texcodec config, wait result: {res:?}");
+                            log::info!("Check gpu_video_codec config, wait result: {res:?}");
                         }
                         Err(e) => {
-                            log::error!("Check texcodec config, error attempting to wait: {e}")
+                            log::error!(
+                                "Check gpu_video_codec config, error attempting to wait: {e}"
+                            )
                         }
                     }
                 }

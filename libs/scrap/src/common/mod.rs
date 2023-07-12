@@ -40,12 +40,12 @@ cfg_if! {
 
 pub mod codec;
 pub mod convert;
+#[cfg(feature = "gpu_video_codec")]
+pub mod gpu_video_codec;
 #[cfg(feature = "hwcodec")]
 pub mod hwcodec;
 #[cfg(feature = "mediacodec")]
 pub mod mediacodec;
-#[cfg(feature = "texcodec")]
-pub mod texcodec;
 pub mod vpxcodec;
 pub use self::convert::*;
 pub const STRIDE_ALIGN: usize = 64; // commonly used in libvpx vpx_img_alloc caller
@@ -116,7 +116,7 @@ pub trait TraitCapturer {
     #[cfg(windows)]
     fn set_gdi(&mut self) -> bool;
 
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     fn device(&self) -> AdapterDevice;
 }
 

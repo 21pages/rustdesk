@@ -1,4 +1,4 @@
-#[cfg(feature = "texcodec")]
+#[cfg(feature = "gpu_video_codec")]
 use crate::AdapterDevice;
 use crate::{common::TraitCapturer, dxgi, CaptureOutputFormat};
 use std::{
@@ -63,7 +63,7 @@ impl TraitCapturer for Capturer {
         self.inner.set_gdi()
     }
 
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     fn device(&self) -> AdapterDevice {
         self.inner.device()
     }
@@ -186,7 +186,7 @@ impl TraitCapturer for CapturerMag {
         false
     }
 
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     fn device(&self) -> AdapterDevice {
         AdapterDevice::default()
     }

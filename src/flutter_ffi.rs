@@ -1446,11 +1446,11 @@ pub fn main_has_pixelbuffer_texture_render() -> SyncReturn<bool> {
 }
 
 pub fn main_has_gpu_texture_render() -> SyncReturn<bool> {
-    #[cfg(not(feature = "texcodec"))]
+    #[cfg(not(feature = "gpu_video_codec"))]
     {
         SyncReturn(false)
     }
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     {
         SyncReturn(true)
     }

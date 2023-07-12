@@ -1030,7 +1030,7 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn on_voice_call_incoming(&self);
     fn get_rgba(&self) -> *const u8;
     fn next_rgba(&self);
-    #[cfg(all(feature = "texcodec", feature = "flutter"))]
+    #[cfg(all(feature = "gpu_video_codec", feature = "flutter"))]
     fn on_texture(&self, texture: *mut c_void);
 }
 
@@ -1306,7 +1306,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>) {
             if pixelbuffer {
                 ui_handler.on_rgba(data);
             } else {
-                #[cfg(all(feature = "texcodec", feature = "flutter"))]
+                #[cfg(all(feature = "gpu_video_codec", feature = "flutter"))]
                 ui_handler.on_texture(_texture);
             }
         },

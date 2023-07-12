@@ -374,12 +374,12 @@ pub async fn start_server(is_server: bool) {
             scrap::hwcodec::hwcodec_new_check_process();
         })
     }
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     {
         use std::sync::Once;
         static ONCE: Once = Once::new();
         ONCE.call_once(|| {
-            scrap::texcodec::texcodec_new_check_process();
+            scrap::gpu_video_codec::gpu_video_codec_new_check_process();
         })
     }
 

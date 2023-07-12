@@ -1003,9 +1003,9 @@ pub struct VideoHandler {
 impl VideoHandler {
     /// Create a new video handler.
     pub fn new(session_id: &SessionID) -> Self {
-        #[cfg(all(feature = "texcodec", feature = "flutter"))]
+        #[cfg(all(feature = "gpu_video_codec", feature = "flutter"))]
         let luid = crate::flutter::session_get_adapter_luid(session_id);
-        #[cfg(not(all(feature = "texcodec", feature = "flutter")))]
+        #[cfg(not(all(feature = "gpu_video_codec", feature = "flutter")))]
         let luid = scrap::codec::INVALID_LUID;
         println!("new session_get_adapter_luid: {:?}", luid);
         VideoHandler {
@@ -1044,9 +1044,9 @@ impl VideoHandler {
 
     /// Reset the decoder.
     pub fn reset(&mut self) {
-        #[cfg(all(feature = "flutter", feature = "texcodec"))]
+        #[cfg(all(feature = "flutter", feature = "gpu_video_codec"))]
         let luid = crate::flutter::session_get_adapter_luid(&self._session_id);
-        #[cfg(not(all(feature = "flutter", feature = "texcodec")))]
+        #[cfg(not(all(feature = "flutter", feature = "gpu_video_codec")))]
         let luid = scrap::codec::INVALID_LUID;
         self.decoder = Decoder::new(luid);
     }

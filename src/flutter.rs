@@ -4,7 +4,7 @@ use crate::{
     ui_session_interface::{io_loop, InvokeUiSession, Session},
 };
 use flutter_rust_bridge::StreamSink;
-#[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+#[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
 use hbb_common::dlopen::{
     symbor::{Library, Symbol},
     Error as LibError,
@@ -15,7 +15,7 @@ use hbb_common::{
 };
 use serde_json::json;
 
-#[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+#[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
 use std::os::raw::c_void;
 #[cfg(not(feature = "flutter_texture_render"))]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,7 +61,7 @@ lazy_static::lazy_static! {
     pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> = Library::open_self();
 }
 
-#[cfg(all(target_os = "windows", feature = "texcodec"))]
+#[cfg(all(target_os = "windows", feature = "gpu_video_codec"))]
 lazy_static::lazy_static! {
     pub static ref TEXTURE_GPU_RENDERER_PLUGIN: Result<Library, LibError> = Library::open("flutter_gpu_texture_renderer_plugin.dll");
 }
@@ -145,11 +145,11 @@ pub unsafe extern "C" fn free_c_args(ptr: *mut *mut c_char, len: c_int) {
     // Afterwards the vector will be dropped and thus freed.
 }
 
-#[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+#[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum RenderType {
     PixelBuffer,
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     Texture,
 }
 
@@ -158,9 +158,9 @@ pub struct FlutterHandler {
     pub event_stream: Arc<RwLock<Option<StreamSink<EventToUI>>>>,
     #[cfg(feature = "flutter_texture_render")]
     render_pixelbuffer_ready: Arc<RwLock<bool>>,
-    #[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+    #[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
     notify_render_type: Arc<RwLock<Option<RenderType>>>,
-    #[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+    #[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
     renderer: Arc<RwLock<VideoRenderer>>,
     // SAFETY: [rgba] is guarded by [rgba_valid], and it's safe to reach [rgba] with `rgba_valid == true`.
     // We must check the `rgba_valid` before reading [rgba].
@@ -183,15 +183,15 @@ pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
     dst_rgba_stride: c_int,
 );
 
-#[cfg(feature = "texcodec")]
+#[cfg(feature = "gpu_video_codec")]
 pub type FlutterGpuTextureRendererPluginCApiSetTexture =
     unsafe extern "C" fn(output: *mut c_void, texture: *mut c_void);
 
-#[cfg(feature = "texcodec")]
+#[cfg(feature = "gpu_video_codec")]
 pub type FlutterGpuTextureRendererPluginCApiGetAdapterLuid = unsafe extern "C" fn() -> i64;
 
 // Video Texture Renderer in Flutter
-#[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+#[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
 #[derive(Clone)]
 struct VideoRenderer {
     // TextureRgba pointer in flutter native.
@@ -201,15 +201,15 @@ struct VideoRenderer {
     height: usize,
     #[cfg(feature = "flutter_texture_render")]
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     gpu_output_ptr: usize,
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     adapter_luid: i64,
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
 }
 
-#[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+#[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
 impl Default for VideoRenderer {
     fn default() -> Self {
         #[cfg(feature = "flutter_texture_render")]
@@ -231,7 +231,7 @@ impl Default for VideoRenderer {
                 None
             }
         };
-        #[cfg(feature = "texcodec")]
+        #[cfg(feature = "gpu_video_codec")]
         let on_texture_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
             Ok(lib) => {
                 let find_sym_res = unsafe {
@@ -252,7 +252,7 @@ impl Default for VideoRenderer {
                 None
             }
         };
-        #[cfg(feature = "texcodec")]
+        #[cfg(feature = "gpu_video_codec")]
         let get_adapter_luid_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
             Ok(lib) => {
                 let find_sym_res = unsafe {
@@ -273,7 +273,7 @@ impl Default for VideoRenderer {
                 None
             }
         };
-        #[cfg(feature = "texcodec")]
+        #[cfg(feature = "gpu_video_codec")]
         let adapter_luid = match get_adapter_luid_func {
             Some(get_adapter_luid_func) => unsafe { get_adapter_luid_func() },
             None => 0,
@@ -286,17 +286,17 @@ impl Default for VideoRenderer {
             height: 0,
             #[cfg(feature = "flutter_texture_render")]
             on_rgba_func,
-            #[cfg(feature = "texcodec")]
+            #[cfg(feature = "gpu_video_codec")]
             gpu_output_ptr: 0,
-            #[cfg(feature = "texcodec")]
+            #[cfg(feature = "gpu_video_codec")]
             adapter_luid,
-            #[cfg(feature = "texcodec")]
+            #[cfg(feature = "gpu_video_codec")]
             on_texture_func,
         }
     }
 }
 
-#[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+#[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
 impl VideoRenderer {
     #[inline]
     #[cfg(feature = "flutter_texture_render")]
@@ -330,7 +330,7 @@ impl VideoRenderer {
         }
     }
 
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     pub fn on_texture(&self, texture: *mut c_void) {
         if self.gpu_output_ptr == usize::default() {
             return;
@@ -417,12 +417,12 @@ impl FlutterHandler {
         self.renderer.write().unwrap().rgba_ptr = ptr;
     }
 
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     pub fn register_gpu_output(&mut self, output_ptr: usize) {
         self.renderer.write().unwrap().gpu_output_ptr = output_ptr;
     }
 
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     pub fn get_adapter_luid(&self) -> i64 {
         self.renderer.read().unwrap().adapter_luid
     }
@@ -435,7 +435,7 @@ impl FlutterHandler {
     }
 
     pub fn on_waiting_for_image_dialog_show(&self) {
-        #[cfg(any(feature = "flutter_texture_render", feature = "texcodec"))]
+        #[cfg(any(feature = "flutter_texture_render", feature = "gpu_video_codec"))]
         {
             *self.notify_render_type.write().unwrap() = None;
         }
@@ -651,7 +651,7 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     #[inline]
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     fn on_texture(&self, texture: *mut c_void) {
         self.renderer.read().unwrap().on_texture(texture);
         if self.notify_render_type.read().unwrap().clone() != Some(RenderType::Texture) {
@@ -1175,7 +1175,7 @@ pub fn session_register_pixelbuffer_texture(_session_uuid_str: *const char, _ptr
 #[inline]
 #[no_mangle]
 pub fn session_register_gpu_texture(_session_uuid_str: *const char, _output_ptr: usize) {
-    #[cfg(feature = "texcodec")]
+    #[cfg(feature = "gpu_video_codec")]
     {
         if let Ok(session_id) = char_to_session_id(_session_uuid_str) {
             if let Some(session) = SESSIONS.write().unwrap().get_mut(&session_id) {
@@ -1185,7 +1185,7 @@ pub fn session_register_gpu_texture(_session_uuid_str: *const char, _output_ptr:
     }
 }
 
-#[cfg(feature = "texcodec")]
+#[cfg(feature = "gpu_video_codec")]
 pub fn session_get_adapter_luid(session_id: &SessionID) -> i64 {
     if let Some(session) = SESSIONS.write().unwrap().get_mut(session_id) {
         return session.get_adapter_luid();

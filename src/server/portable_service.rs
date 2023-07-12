@@ -8,7 +8,7 @@ use hbb_common::{
     tokio::{self, sync::mpsc},
     ResultType,
 };
-#[cfg(feature = "texcodec")]
+#[cfg(feature = "gpu_video_codec")]
 use scrap::AdapterDevice;
 
 use scrap::{CaptureOutputFormat, Capturer, Frame, TraitCapturer};
@@ -752,7 +752,7 @@ pub mod client {
             true
         }
 
-        #[cfg(feature = "texcodec")]
+        #[cfg(feature = "gpu_video_codec")]
         fn device(&self) -> AdapterDevice {
             AdapterDevice::default()
         }

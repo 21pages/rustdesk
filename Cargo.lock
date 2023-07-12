@@ -101,7 +101,7 @@ dependencies = [
 [[package]]
 name = "amf"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
+source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -2629,6 +2629,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpu_video_codec"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
+dependencies = [
+ "amf",
+ "bindgen 0.59.2",
+ "cc",
+ "hw_common",
+ "log",
+ "mfx",
+ "nv",
+ "serde 1.0.163",
+ "serde_derive",
+ "serde_json 1.0.96",
+]
+
+[[package]]
 name = "gstreamer"
 version = "0.16.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2999,7 +3016,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hw_common"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
+source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -3695,7 +3712,7 @@ dependencies = [
 [[package]]
 name = "mfx"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
+source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -4098,7 +4115,7 @@ dependencies = [
 [[package]]
 name = "nv"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
+source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -5447,6 +5464,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "dbus",
  "docopt",
+ "gpu_video_codec",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",
@@ -5463,7 +5481,6 @@ dependencies = [
  "serde 1.0.163",
  "serde_json 1.0.96",
  "target_build_utils",
- "texcodec",
  "tracing",
  "webm",
  "winapi 0.3.9",
@@ -6067,23 +6084,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "411c5bf740737c7918b8b1fe232dca4dc9f8e754b8ad5e20966814001ed0ac6b"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "texcodec"
-version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#485d252e50dc89fe2e889294917e45a53c350cbb"
-dependencies = [
- "amf",
- "bindgen 0.59.2",
- "cc",
- "hw_common",
- "log",
- "mfx",
- "nv",
- "serde 1.0.163",
- "serde_derive",
- "serde_json 1.0.96",
 ]
 
 [[package]]
