@@ -57,12 +57,12 @@ pub struct HwEncoderConfig {
 
 #[cfg(feature = "gpu_video_codec")]
 #[derive(Debug, Clone)]
-pub struct TexEncoderConfig {
+pub struct GvcEncoderConfig {
     pub device: AdapterDevice,
     pub width: usize,
     pub height: usize,
     pub bitrate: i32,
-    pub feature: gpu_video_codec::hw_common::FeatureContext,
+    pub feature: gpu_video_codec::gvc_common::FeatureContext,
 }
 
 #[derive(Debug)]
@@ -72,7 +72,7 @@ pub enum EncoderCfg {
     #[cfg(feature = "hwcodec")]
     HW(HwEncoderConfig),
     #[cfg(feature = "gpu_video_codec")]
-    TEX(TexEncoderConfig),
+    GVC(GvcEncoderConfig),
 }
 
 pub trait EncoderApi {
@@ -112,7 +112,7 @@ pub struct Decoder {
     #[cfg(feature = "hwcodec")]
     hw: HwDecoders,
     #[cfg(feature = "gpu_video_codec")]
-    tex: TexDecoders,
+    tex: GvcDecoders,
     #[cfg(feature = "hwcodec")]
     i420: Vec<u8>,
     #[cfg(feature = "mediacodec")]
@@ -150,7 +150,7 @@ impl Encoder {
                 }
             },
             #[cfg(feature = "gpu_video_codec")]
-            EncoderCfg::TEX(_) => match TexEncoder::new(config) {
+            EncoderCfg::GVC(_) => match GvcEncoder::new(config) {
                 Ok(tex) => Ok(Encoder {
                     codec: Box::new(tex),
                 }),
@@ -201,12 +201,12 @@ impl Encoder {
         #[cfg(feature = "gpu_video_codec")]
         if enable_gpu_video_codec_option() && !_no_texture {
             if _h264_useable && h264_name.is_none() {
-                if TexEncoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
+                if GvcEncoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
                     h264_name = Some("".to_string());
                 }
             }
             if _h265_useable && h265_name.is_none() {
-                if TexEncoder::possible_available(CodecName::H265("".to_string())).len() > 0 {
+                if GvcEncoder::possible_available(CodecName::H265("".to_string())).len() > 0 {
                     h265_name = Some("".to_string());
                 }
             }
@@ -284,9 +284,9 @@ impl Encoder {
         #[cfg(feature = "gpu_video_codec")]
         if enable_gpu_video_codec_option() {
             encoding.h264 |=
-                TexEncoder::possible_available(CodecName::H264("".to_string())).len() > 0;
+                GvcEncoder::possible_available(CodecName::H264("".to_string())).len() > 0;
             encoding.h265 |=
-                TexEncoder::possible_available(CodecName::H265("".to_string())).len() > 0;
+                GvcEncoder::possible_available(CodecName::H265("".to_string())).len() > 0;
         }
         encoding
     }
@@ -318,13 +318,13 @@ impl Decoder {
         {
             if enable_gpu_video_codec_option() && _allow_tex {
                 decoding.ability_h264 |=
-                    if TexDecoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
+                    if GvcDecoder::possible_available(CodecName::H264("".to_string())).len() > 0 {
                         1
                     } else {
                         0
                     };
                 decoding.ability_h265 |=
-                    if TexDecoder::possible_available(CodecName::H265("".to_string())).len() > 0 {
+                    if GvcDecoder::possible_available(CodecName::H265("".to_string())).len() > 0 {
                         1
                     } else {
                         0
@@ -376,9 +376,9 @@ impl Decoder {
             },
             #[cfg(feature = "gpu_video_codec")]
             tex: if enable_gpu_video_codec_option() && _luid != INVALID_LUID {
-                TexDecoder::new_decoders(_luid)
+                GvcDecoder::new_decoders(_luid)
             } else {
-                TexDecoders::default()
+                GvcDecoders::default()
             },
             #[cfg(feature = "hwcodec")]
             i420: vec![],
@@ -535,7 +535,7 @@ impl Decoder {
 
     #[cfg(feature = "gpu_video_codec")]
     fn handle_tex_video_frame(
-        decoder: &mut TexDecoder,
+        decoder: &mut GvcDecoder,
         frames: &EncodedVideoFrames,
         texture: &mut *mut c_void,
     ) -> ResultType<bool> {

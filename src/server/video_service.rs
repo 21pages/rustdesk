@@ -795,10 +795,11 @@ fn get_encoder_config(c: &CapturerInfo, bitrate: u32, _portable_service: bool) -
             #[cfg(feature = "gpu_video_codec")]
             {
                 if name.is_empty() {
-                    if let Some(feature) =
-                        scrap::gpu_video_codec::TexEncoder::try_get(&c.device(), negotiated_codec.clone())
-                    {
-                        EncoderCfg::TEX(scrap::codec::TexEncoderConfig {
+                    if let Some(feature) = scrap::gpu_video_codec::GvcEncoder::try_get(
+                        &c.device(),
+                        negotiated_codec.clone(),
+                    ) {
+                        EncoderCfg::GVC(scrap::codec::GvcEncoderConfig {
                             device: c.device(),
                             width: c.width,
                             height: c.height,

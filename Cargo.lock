@@ -101,11 +101,11 @@ dependencies = [
 [[package]]
 name = "amf"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
+source = "git+https://github.com/21pages/gpu_video_codec#3622bb4dd65c2727ab50592e3d8c38fa709909a0"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
- "hw_common",
+ "gvc_common",
  "log",
 ]
 
@@ -2631,12 +2631,12 @@ dependencies = [
 [[package]]
 name = "gpu_video_codec"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
+source = "git+https://github.com/21pages/gpu_video_codec#3622bb4dd65c2727ab50592e3d8c38fa709909a0"
 dependencies = [
  "amf",
  "bindgen 0.59.2",
  "cc",
- "hw_common",
+ "gvc_common",
  "log",
  "mfx",
  "nv",
@@ -2834,6 +2834,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gvc_common"
+version = "0.1.0"
+source = "git+https://github.com/21pages/gpu_video_codec#3622bb4dd65c2727ab50592e3d8c38fa709909a0"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "log",
+ "serde 1.0.163",
+ "serde_derive",
+ "serde_json 1.0.96",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3012,19 +3025,6 @@ name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
-
-[[package]]
-name = "hw_common"
-version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
-dependencies = [
- "bindgen 0.59.2",
- "cc",
- "log",
- "serde 1.0.163",
- "serde_derive",
- "serde_json 1.0.96",
-]
 
 [[package]]
 name = "hwcodec"
@@ -3712,11 +3712,11 @@ dependencies = [
 [[package]]
 name = "mfx"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
+source = "git+https://github.com/21pages/gpu_video_codec#3622bb4dd65c2727ab50592e3d8c38fa709909a0"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
- "hw_common",
+ "gvc_common",
  "log",
 ]
 
@@ -4115,11 +4115,11 @@ dependencies = [
 [[package]]
 name = "nv"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpu_video_codec#6a0284501f75725deb56fecc9618bcf8b157f4ba"
+source = "git+https://github.com/21pages/gpu_video_codec#3622bb4dd65c2727ab50592e3d8c38fa709909a0"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
- "hw_common",
+ "gvc_common",
  "log",
 ]
 

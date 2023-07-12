@@ -4,7 +4,7 @@ use crate::{
     codec::{EncoderApi, EncoderCfg},
     AdapterDevice, CaptureOutputFormat, CodecName, Frame,
 };
-use gpu_video_codec::hw_common::{
+use gpu_video_codec::gvc_common::{
     self, Available, DecodeContext, DynamicContext, EncodeContext, FeatureContext, MAX_GOP,
 };
 use gpu_video_codec::{
@@ -20,20 +20,20 @@ use hbb_common::{
     ResultType,
 };
 
-pub struct TexEncoder {
+pub struct GvcEncoder {
     encoder: Encoder,
-    pub format: hw_common::DataFormat,
+    pub format: gvc_common::DataFormat,
     last_bad_len: usize,
     same_bad_len_counter: usize,
 }
 
-impl EncoderApi for TexEncoder {
+impl EncoderApi for GvcEncoder {
     fn new(cfg: EncoderCfg) -> ResultType<Self>
     where
         Self: Sized,
     {
         match cfg {
-            EncoderCfg::TEX(config) => {
+            EncoderCfg::GVC(config) => {
                 let ctx = EncodeContext {
                     f: config.feature.clone(),
                     d: DynamicContext {
@@ -46,7 +46,7 @@ impl EncoderApi for TexEncoder {
                     },
                 };
                 match Encoder::new(ctx.clone()) {
-                    Ok(encoder) => Ok(TexEncoder {
+                    Ok(encoder) => Ok(GvcEncoder {
                         encoder,
                         format: config.feature.data_format,
                         last_bad_len: 0,
@@ -105,8 +105,8 @@ impl EncoderApi for TexEncoder {
                 ..Default::default()
             };
             match self.format {
-                hw_common::DataFormat::H264 => vf.set_h264s(frames),
-                hw_common::DataFormat::H265 => vf.set_h265s(frames),
+                gvc_common::DataFormat::H264 => vf.set_h264s(frames),
+                gvc_common::DataFormat::H265 => vf.set_h265s(frames),
                 _ => bail!("{:?} not supported", self.format),
             }
             msg_out.set_video_frame(vf);
@@ -126,11 +126,11 @@ impl EncoderApi for TexEncoder {
     }
 }
 
-impl TexEncoder {
+impl GvcEncoder {
     pub fn try_get(device: &AdapterDevice, name: CodecName) -> Option<FeatureContext> {
         let data_format = match name {
-            CodecName::H264(_) => hw_common::DataFormat::H264,
-            CodecName::H265(_) => hw_common::DataFormat::H265,
+            CodecName::H264(_) => gvc_common::DataFormat::H264,
+            CodecName::H265(_) => gvc_common::DataFormat::H265,
             _ => return None,
         };
         let v: Vec<_> = get_available_config()
@@ -148,8 +148,8 @@ impl TexEncoder {
 
     pub fn possible_available(name: CodecName) -> Vec<FeatureContext> {
         let data_format = match name {
-            CodecName::H264(_) => hw_common::DataFormat::H264,
-            CodecName::H265(_) => hw_common::DataFormat::H265,
+            CodecName::H264(_) => gvc_common::DataFormat::H264,
+            CodecName::H265(_) => gvc_common::DataFormat::H265,
             _ => return vec![],
         };
         get_available_config()
@@ -172,18 +172,18 @@ impl TexEncoder {
     }
 }
 
-pub struct TexDecoder {
+pub struct GvcDecoder {
     decoder: Decoder,
 }
 
 #[derive(Default)]
-pub struct TexDecoders {
-    pub h264: Option<TexDecoder>,
-    pub h265: Option<TexDecoder>,
+pub struct GvcDecoders {
+    pub h264: Option<GvcDecoder>,
+    pub h265: Option<GvcDecoder>,
 }
 
-impl TexDecoder {
-    pub fn try_get(luid: i64, data_format: hw_common::DataFormat) -> Option<DecodeContext> {
+impl GvcDecoder {
+    pub fn try_get(luid: i64, data_format: gvc_common::DataFormat) -> Option<DecodeContext> {
         let v: Vec<_> = get_available_config()
             .map(|c| c.d)
             .unwrap_or_default()
@@ -199,8 +199,8 @@ impl TexDecoder {
 
     pub fn possible_available(name: CodecName) -> Vec<DecodeContext> {
         let data_format = match name {
-            CodecName::H264(_) => hw_common::DataFormat::H264,
-            CodecName::H265(_) => hw_common::DataFormat::H265,
+            CodecName::H264(_) => gvc_common::DataFormat::H264,
+            CodecName::H265(_) => gvc_common::DataFormat::H265,
             _ => return vec![],
         };
         get_available_config()
@@ -211,13 +211,13 @@ impl TexDecoder {
             .collect()
     }
 
-    pub fn new_decoders(luid: i64) -> TexDecoders {
-        let mut h264: Option<TexDecoder> = None;
-        let mut h265: Option<TexDecoder> = None;
-        if let Ok(decoder) = TexDecoder::new(hw_common::DataFormat::H264, luid) {
+    pub fn new_decoders(luid: i64) -> GvcDecoders {
+        let mut h264: Option<GvcDecoder> = None;
+        let mut h265: Option<GvcDecoder> = None;
+        if let Ok(decoder) = GvcDecoder::new(gvc_common::DataFormat::H264, luid) {
             h264 = Some(decoder);
         }
-        if let Ok(decoder) = TexDecoder::new(hw_common::DataFormat::H265, luid) {
+        if let Ok(decoder) = GvcDecoder::new(gvc_common::DataFormat::H265, luid) {
             h265 = Some(decoder);
         }
         log::info!(
@@ -225,10 +225,10 @@ impl TexDecoder {
             h264.is_some(),
             h265.is_some()
         );
-        TexDecoders { h264, h265 }
+        GvcDecoders { h264, h265 }
     }
 
-    pub fn new(data_format: hw_common::DataFormat, luid: i64) -> ResultType<Self> {
+    pub fn new(data_format: gvc_common::DataFormat, luid: i64) -> ResultType<Self> {
         let ctx =
             Self::try_get(luid, data_format).ok_or(anyhow!("Failed to get decode context"))?;
         match Decoder::new(ctx) {
