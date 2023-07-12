@@ -415,7 +415,7 @@ impl Decoder {
                 {
                     if let Some(decoder) = &mut self.tex.h264 {
                         *_pixelbuffer = false;
-                        return Decoder::handle_tex_video_frame(decoder, h264s, _texture);
+                        return Decoder::handle_gvc_video_frame(decoder, h264s, _texture);
                     }
                 }
                 #[cfg(feature = "hwcodec")]
@@ -432,7 +432,7 @@ impl Decoder {
                 {
                     if let Some(decoder) = &mut self.tex.h265 {
                         *_pixelbuffer = false;
-                        return Decoder::handle_tex_video_frame(decoder, h265s, _texture);
+                        return Decoder::handle_gvc_video_frame(decoder, h265s, _texture);
                     }
                 }
                 #[cfg(feature = "hwcodec")]
@@ -534,7 +534,7 @@ impl Decoder {
     }
 
     #[cfg(feature = "gpu_video_codec")]
-    fn handle_tex_video_frame(
+    fn handle_gvc_video_frame(
         decoder: &mut GvcDecoder,
         frames: &EncodedVideoFrames,
         texture: &mut *mut c_void,

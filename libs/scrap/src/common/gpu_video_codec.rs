@@ -236,19 +236,19 @@ impl GvcDecoder {
             Err(_) => Err(anyhow!(format!("Failed to create decoder"))),
         }
     }
-    pub fn decode(&mut self, data: &[u8]) -> ResultType<Vec<TexDecoderImage>> {
+    pub fn decode(&mut self, data: &[u8]) -> ResultType<Vec<GvcDecoderImage>> {
         match self.decoder.decode(data) {
-            Ok(v) => Ok(v.iter().map(|f| TexDecoderImage { frame: f }).collect()),
+            Ok(v) => Ok(v.iter().map(|f| GvcDecoderImage { frame: f }).collect()),
             Err(_) => Ok(vec![]),
         }
     }
 }
 
-pub struct TexDecoderImage<'a> {
+pub struct GvcDecoderImage<'a> {
     pub frame: &'a DecodeFrame,
 }
 
-impl TexDecoderImage<'_> {}
+impl GvcDecoderImage<'_> {}
 
 fn get_available_config() -> ResultType<Available> {
     let available = hbb_common::config::GpuVideoCodecConfig::load().available;
