@@ -869,15 +869,42 @@ impl<T: InvokeUiSession> Remote<T> {
         let ctl = &mut self.fps_control;
         // Current full speed decoding fps
         let decode_fps = self.decode_fps.load(std::sync::atomic::Ordering::Relaxed);
-        // 500ms
-        let debounce = if decode_fps > 10 { decode_fps / 2 } else { 5 };
-        if len < debounce || decode_fps == 0 {
+        if decode_fps == 0 {
             return;
         }
-        // First setting , or the length of the queue still increases after setting, or exceed the size of the last setting again
-        if ctl.set_times < 10 // enough
-            && (ctl.set_times == 0
-                || (len > ctl.last_queue_size && ctl.last_set_instant.elapsed().as_secs() > 30))
+        // send full speed fps
+        let version = self.handler.lc.read().unwrap().version;
+        if version >= hbb_common::get_version_number("1.2.1") && ctl.last_full_speed_fps.is_none()
+            || (ctl.last_full_speed_fps.unwrap_or_default() - decode_fps as i32).abs() >= 5
+        {
+            let mut misc = Misc::new();
+            misc.set_full_speed_fps(decode_fps as _);
+            let mut msg = Message::new();
+            msg.set_misc(misc);
+            self.sender.send(Data::Message(msg)).ok();
+            ctl.last_full_speed_fps = Some(decode_fps as _);
+        }
+        // decrease judgement
+        let debounce = if decode_fps > 10 { decode_fps / 2 } else { 5 }; // 500ms
+        let should_decrease = len >= debounce && len > ctl.last_queue_size + 5;
+
+        // increase judgement
+        if len <= 1 {
+            ctl.idle_counter += 1;
+        } else {
+            ctl.idle_counter = 0;
+        }
+        let mut should_increase = false;
+        if let Some(last_custom_fps) = ctl.last_custom_fps {
+            if !should_decrease
+                && last_custom_fps + 5 < decode_fps as i32 * 4 / 5
+                && ctl.idle_counter > 3
+            {
+                should_increase = true;
+            }
+        }
+        if ctl.set_times < 30 // enough
+            && (should_decrease || should_increase)
         {
             // 80% fps to ensure decoding is faster than encoding
             let mut custom_fps = decode_fps as i32 * 4 / 5;
@@ -895,7 +922,7 @@ impl<T: InvokeUiSession> Remote<T> {
             self.sender.send(Data::Message(msg)).ok();
             ctl.last_queue_size = len;
             ctl.set_times += 1;
-            ctl.last_set_instant = Instant::now();
+            ctl.last_custom_fps = Some(custom_fps);
         }
         // send refresh
         if ctl.refresh_times < 10 // enough
@@ -1406,7 +1433,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
                 Some(message::Union::PeerInfo(pi)) => {
                     self.handler.set_displays(&pi.displays);
-                },
+                }
                 _ => {}
             }
         }
@@ -1606,8 +1633,10 @@ struct FpsControl {
     last_queue_size: usize,
     set_times: usize,
     refresh_times: usize,
-    last_set_instant: Instant,
     last_refresh_instant: Instant,
+    last_full_speed_fps: Option<i32>,
+    last_custom_fps: Option<i32>,
+    idle_counter: usize,
 }
 
 impl Default for FpsControl {
@@ -1616,8 +1645,10 @@ impl Default for FpsControl {
             last_queue_size: Default::default(),
             set_times: Default::default(),
             refresh_times: Default::default(),
-            last_set_instant: Instant::now(),
             last_refresh_instant: Instant::now(),
+            last_full_speed_fps: None,
+            last_custom_fps: None,
+            idle_counter: 0,
         }
     }
 }

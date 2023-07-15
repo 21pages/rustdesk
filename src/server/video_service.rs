@@ -515,9 +515,10 @@ fn run(sp: GenericService) -> ResultType<()> {
 
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     video_qos.set_size(c.width as _, c.height as _);
+    video_qos.refresh();
     let mut spf = video_qos.spf();
-    let bitrate = video_qos.generate_bitrate()?;
-    let abr = video_qos.check_abr_config();
+    let bitrate = video_qos.bitrate();
+    let abr = VideoQoS::abr_enabled();
     drop(video_qos);
     log::info!("init bitrate={}, abr enabled:{}", bitrate, abr);
 
@@ -603,18 +604,22 @@ fn run(sp: GenericService) -> ResultType<()> {
     #[cfg(target_os = "linux")]
     let mut would_block_count = 0u32;
 
+    let mut last_time = Instant::now();
+    let mut last_counter = 0;
     while sp.ok() {
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
 
         let mut video_qos = VIDEO_QOS.lock().unwrap();
-        if video_qos.check_if_updated() && video_qos.target_bitrate > 0 {
-            log::debug!(
+        if video_qos.check_if_updated() {
+            log::info!(
                 "qos is updated, target_bitrate:{}, fps:{}",
-                video_qos.target_bitrate,
-                video_qos.fps
+                video_qos.bitrate(),
+                video_qos.fps()
             );
-            allow_err!(encoder.set_bitrate(video_qos.target_bitrate));
+            if video_qos.bitrate() > 0 {
+                allow_err!(encoder.set_bitrate(video_qos.bitrate()));
+            }
             spf = video_qos.spf();
         }
         drop(video_qos);
@@ -694,6 +699,7 @@ fn run(sp: GenericService) -> ResultType<()> {
                 let send_conn_ids =
                     handle_one_frame(&sp, &frame, ms, &mut encoder, recorder.clone())?;
                 frame_controller.set_send(now, send_conn_ids);
+                last_counter += 1;
                 #[cfg(windows)]
                 {
                     try_gdi = 0;
@@ -774,6 +780,15 @@ fn run(sp: GenericService) -> ResultType<()> {
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {
             std::thread::sleep(spf - elapsed);
+        }
+        if last_time.elapsed().as_secs() >= 1 {
+            last_time = Instant::now();
+            println!(
+                "encode fps: {}, setting fps:{}",
+                last_counter,
+                1000 / spf.as_millis()
+            );
+            last_counter = 0;
         }
     }
 
