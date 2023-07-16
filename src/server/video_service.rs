@@ -37,6 +37,7 @@ use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
     codec::{Encoder, EncoderCfg, HwEncoderConfig},
+    num_cpus,
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecName, Display, TraitCapturer,

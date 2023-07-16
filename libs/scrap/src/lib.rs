@@ -24,3 +24,5 @@ pub mod dxgi;
 pub mod android;
 
 mod common;
+
+pub use num_cpus;
