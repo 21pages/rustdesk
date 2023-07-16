@@ -47,6 +47,9 @@ extern "C" {
     ) -> BOOL;
     fn MacGetMode(display: u32, width: *mut u32, height: *mut u32) -> BOOL;
     fn MacSetMode(display: u32, width: u32, height: u32) -> BOOL;
+    fn MacOpenInhibit(display: bool, idle: bool, sleep: bool) -> *mut c_void;
+    fn MacUpdateInhibit(sys: *mut c_void) -> BOOL;
+    fn MacCloseInhibit(sys: *mut c_void);
 }
 
 pub fn is_process_trusted(prompt: bool) -> bool {
@@ -703,17 +706,24 @@ pub fn elevate(args: Vec<&str>, prompt: &str) -> ResultType<bool> {
     }
 }
 
-pub struct WakeLock(Option<keepawake::AwakeHandle>);
+pub struct WakeLock(Box<c_void>);
 
 impl WakeLock {
     pub fn new(display: bool, idle: bool, sleep: bool) -> Self {
-        WakeLock(
-            keepawake::Builder::new()
-                .display(display)
-                .idle(idle)
-                .sleep(sleep)
-                .create()
-                .ok(),
-        )
+        unsafe {
+            let sys = MacOpenInhibit(display, idle, sleep);
+            if !sys.is_null() {
+                MacUpdateInhibit(sys);
+            }
+            WakeLock(Box::from_raw(sys))
+        }
+    }
+}
+
+impl Drop for WakeLock {
+    fn drop(&mut self) {
+        unsafe {
+            MacCloseInhibit(&mut *self.0);
+        }
     }
 }
