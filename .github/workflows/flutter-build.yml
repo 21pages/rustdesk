@@ -675,27 +675,11 @@ jobs:
           target: ${{ matrix.job.target }}
           override: true
           profile: minimal # minimal component installation (ie, no documentation)
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: rustdesk-lib-cache
-          key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
-          cache-directories: "/opt/rust-registry"
-
-      - name: Install local registry
+      
+      - name: Save Rust toolchain version
         run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
-      - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
       - name: Disable rust bridge build
         run: |
@@ -729,7 +713,6 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
             --volume "/opt/artifacts:/opt/artifacts"
-            --volume "/opt/rust-registry:/opt/rust-registry"
           shell: /bin/bash
           install: |
             apt update -y
@@ -746,19 +729,15 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.70.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.70.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.70.0-${{ matrix.job.target }}
+            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
               [source.crates-io]
               registry = 'https://github.com/rust-lang/crates.io-index'
-              replace-with = 'local-registry'
-
-              [source.local-registry]
-              local-registry = '/opt/rust-registry/'
             """ > ~/.cargo/config
             cat ~/.cargo/config
             # start build
@@ -846,27 +825,11 @@ jobs:
           target: ${{ matrix.job.target }}
           override: true
           profile: minimal # minimal component installation (ie, no documentation)
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: rustdesk-lib-cache
-          key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
-          cache-directories: "/opt/rust-registry"
-
-      - name: Install local registry
+      
+      - name: Save Rust toolchain version
         run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
-      - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
       - name: Disable rust bridge build
         run: |
@@ -898,7 +861,6 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
             --volume "/opt/artifacts:/opt/artifacts"
-            --volume "/opt/rust-registry:/opt/rust-registry"
           shell: /bin/bash
           install: |
             apt update -y
@@ -915,19 +877,15 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.70.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.70.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.70.0-${{ matrix.job.target }}
+            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
               [source.crates-io]
               registry = 'https://github.com/rust-lang/crates.io-index'
-              replace-with = 'local-registry'
-
-              [source.local-registry]
-              local-registry = '/opt/rust-registry/'
             """ > ~/.cargo/config
             cat ~/.cargo/config
             # start build
@@ -995,27 +953,11 @@ jobs:
           target: ${{ matrix.job.target }}
           override: true
           profile: minimal # minimal component installation (ie, no documentation)
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: rustdesk-lib-cache
-          key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
-          cache-directories: "/opt/rust-registry"
-
-      - name: Install local registry
+      
+      - name: Save Rust toolchain version
         run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
-      - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
       - name: Restore vcpkg files
         uses: actions/download-artifact@master
@@ -1035,7 +977,6 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
             --volume "/opt/artifacts:/opt/artifacts"
-            --volume "/opt/rust-registry:/opt/rust-registry"
           shell: /bin/bash
           install: |
             apt update -y
@@ -1048,19 +989,15 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.70.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.70.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.70.0-${{ matrix.job.target }}
+            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
               [source.crates-io]
               registry = 'https://github.com/rust-lang/crates.io-index'
-              replace-with = 'local-registry'
-
-              [source.local-registry]
-              local-registry = '/opt/rust-registry/'
             """ > ~/.cargo/config
             cat ~/.cargo/config
             
