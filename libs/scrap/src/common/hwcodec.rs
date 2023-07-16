@@ -118,6 +118,8 @@ impl EncoderApi for HwEncoder {
         self.encoder.set_bitrate((bitrate * 1000) as _).ok();
         Ok(())
     }
+
+    fn set_quantizer(&mut self, q: u32) {}
 }
 
 impl HwEncoder {

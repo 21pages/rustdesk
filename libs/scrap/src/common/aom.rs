@@ -262,9 +262,13 @@ impl EncoderApi for AomEncoder {
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {
         let mut new_enc_cfg = unsafe { *self.ctx.config.enc.to_owned() };
         new_enc_cfg.rc_target_bitrate = bitrate;
+        new_enc_cfg.rc_min_quantizer = 0;
+        new_enc_cfg.rc_max_quantizer = 0;
         call_aom!(aom_codec_enc_config_set(&mut self.ctx, &new_enc_cfg));
         return Ok(());
     }
+    
+    fn set_quantizer(&mut self, q: u32) {}
 }
 
 impl AomEncoder {

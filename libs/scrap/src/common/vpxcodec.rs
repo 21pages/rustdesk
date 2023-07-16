@@ -90,6 +90,7 @@ impl EncoderApi for VpxEncoder {
             .encode(ms, frame, STRIDE_ALIGN)
             .with_context(|| "Failed to encode")?
         {
+            println!("encode len:{}", frame.data.len() / 1000);
             frames.push(VpxEncoder::create_frame(frame));
         }
         for ref frame in self.flush().with_context(|| "Failed to flush")? {
@@ -111,9 +112,13 @@ impl EncoderApi for VpxEncoder {
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {
         let mut new_enc_cfg = unsafe { *self.ctx.config.enc.to_owned() };
         new_enc_cfg.rc_target_bitrate = bitrate;
+        // new_enc_cfg.rc_min_quantizer = 0;
+        // new_enc_cfg.rc_max_quantizer = 0;
         call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &new_enc_cfg));
         return Ok(());
     }
+
+    fn set_quantizer(&mut self, q: u32) {}
 }
 
 impl VpxEncoder {
@@ -423,7 +428,7 @@ mod webrtc {
 
     const K_QP_MAX: u32 = 25; // worth adjusting
     const MODE: VideoCodecMode = VideoCodecMode::KScreensharing;
-    const K_RTP_TICKS_PER_SECOND: i32 = 90000;
+    const K_RTP_TICKS_PER_SECOND: i32 = 1000;
     const NUMBER_OF_TEMPORAL_LAYERS: u32 = 1;
     const DENOISING_ON: bool = true;
     const FRAME_DROP_ENABLED: bool = false;
@@ -476,12 +481,12 @@ mod webrtc {
             c.rc_dropframe_thresh = if FRAME_DROP_ENABLED { 30 } else { 0 };
             c.rc_end_usage = vpx_rc_mode::VPX_CBR;
             c.g_pass = vpx_enc_pass::VPX_RC_ONE_PASS;
-            c.rc_min_quantizer = if MODE == VideoCodecMode::KScreensharing {
-                8
-            } else {
-                2
-            };
-            c.rc_max_quantizer = K_QP_MAX;
+            // c.rc_min_quantizer = if MODE == VideoCodecMode::KScreensharing {
+            //     8
+            // } else {
+            //     2
+            // };
+            // c.rc_max_quantizer = K_QP_MAX;
             c.rc_undershoot_pct = 50;
             c.rc_overshoot_pct = 50;
             c.rc_buf_initial_sz = 500;
@@ -540,11 +545,11 @@ mod webrtc {
                 VP9E_SET_NOISE_SENSITIVITY,
                 if denoising { 1 } else { 0 }
             );
-            if MODE == VideoCodecMode::KScreensharing {
-                call_ctl!(ctx, VP9E_SET_TUNE_CONTENT, 1);
-            }
-            // Enable encoder skip of static/low content blocks.
-            call_ctl!(ctx, VP8E_SET_STATIC_THRESHOLD, 1);
+            // if MODE == VideoCodecMode::KScreensharing {
+            //     call_ctl!(ctx, VP9E_SET_TUNE_CONTENT, 1);
+            // }
+            // // Enable encoder skip of static/low content blocks.
+            // call_ctl!(ctx, VP8E_SET_STATIC_THRESHOLD, 1);
 
             Ok(())
         }
@@ -630,12 +635,12 @@ mod webrtc {
             c.rc_end_usage = vpx_rc_mode::VPX_CBR;
             c.g_pass = vpx_enc_pass::VPX_RC_ONE_PASS;
             c.rc_resize_allowed = 0;
-            c.rc_min_quantizer = if MODE == VideoCodecMode::KScreensharing {
-                12
-            } else {
-                2
-            };
-            c.rc_max_quantizer = K_QP_MAX;
+            // c.rc_min_quantizer = if MODE == VideoCodecMode::KScreensharing {
+            //     12
+            // } else {
+            //     2
+            // };
+            // c.rc_max_quantizer = K_QP_MAX;
             c.rc_undershoot_pct = 100;
             c.rc_overshoot_pct = 15;
             c.rc_buf_initial_sz = 500;

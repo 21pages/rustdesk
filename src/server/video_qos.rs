@@ -303,4 +303,33 @@ impl VideoQoS {
         self.users.remove(&id);
         self.refresh();
     }
+
+    fn get_quality(w: usize, h: usize, q: i32) -> (u32, u32, u32, i32) {
+        // https://www.nvidia.com/en-us/geforce/guides/broadcasting-guide/
+        let bitrate = q >> 8 & 0xFF;
+        let quantizer = q & 0xFF;
+        let b = ((w * h) / 1000) as u32;
+        (bitrate as u32 * b / 100, quantizer as _, 56, 7)
+    }
+
+    fn convert_quality(q: i32) -> i32 {
+        let q = {
+            if q == ImageQuality::Balanced.value() {
+                (100 * 2 / 3, 12)
+            } else if q == ImageQuality::Low.value() {
+                (100 / 2, 18)
+            } else if q == ImageQuality::Best.value() {
+                (100, 12)
+            } else {
+                let bitrate = q >> 8 & 0xFF;
+                let quantizer = q & 0xFF;
+                (bitrate * 2, (100 - quantizer) * 36 / 100)
+            }
+        };
+        if q.0 <= 0 {
+            0
+        } else {
+            q.0 << 8 | q.1
+        }
+    }
 }

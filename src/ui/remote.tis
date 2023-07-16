@@ -355,7 +355,7 @@ function scaleCursorImage(img) {
 
 var useSystemCursor = true;
 function updateCursor(system=false) {
-    stdout.println("Update cursor, system: " + system);
+    // stdout.println("Update cursor, system: " + system);
     useSystemCursor = system;
     if (system) {
         handler.style#cursor = undefined;

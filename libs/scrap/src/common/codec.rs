@@ -62,6 +62,8 @@ pub trait EncoderApi {
     fn use_yuv(&self) -> bool;
 
     fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()>;
+
+    fn set_quantizer(&mut self, q: u32);
 }
 
 pub struct Encoder {
