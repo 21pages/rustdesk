@@ -1,6 +1,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AppKit/AppKit.h>
 #import <IOKit/hidsystem/IOHIDLib.h>
+#import <IOKit/pwr_mgt/IOPMLib.h>
 #include <Security/Authorization.h>
 #include <Security/AuthorizationTags.h>
 
@@ -233,4 +234,109 @@ extern "C" bool MacSetMode(CGDirectDisplayID display, uint32_t width, uint32_t h
     CGDisplayModeRelease(currentMode);
     CFRelease(allModes);
     return ret;
+}
+
+// https://github.com/videolan/vlc/blob/f7bb59d9f51cc10b25ff86d34a3eff744e60c46e/modules/misc/inhibit/iokit-inhibit.c#L63
+struct vlc_inhibit_sys
+{
+    bool display;
+    bool idle;
+    bool sleep;
+
+    IOPMAssertionID act_assertion_id;
+    IOPMAssertionID inh_display_assertion_id;
+    IOPMAssertionID inh_idle_assertion_id;
+    IOPMAssertionID inh_sleep_assertion_id;
+};
+typedef struct vlc_inhibit_sys vlc_inhibit_sys_t;
+
+extern "C" void* MacOpenInhibit(bool display, bool idle, bool sleep) {
+    vlc_inhibit_sys_t *sys = (vlc_inhibit_sys_t*)malloc(sizeof(vlc_inhibit_sys_t));
+    if (!sys) {
+        printf("Failed to malloc vlc_inhibit_sys_t\n");
+        return NULL;
+    }
+    sys->display = display;
+    sys->idle = idle;
+    sys->sleep = sleep;
+    sys->act_assertion_id = kIOPMNullAssertionID;
+    sys->inh_display_assertion_id = kIOPMNullAssertionID;
+    sys->inh_idle_assertion_id = kIOPMNullAssertionID;
+    sys->inh_sleep_assertion_id = kIOPMNullAssertionID;
+    return sys;
+}
+
+extern "C" bool MacUpdateInhibit(vlc_inhibit_sys_t *sys) {
+    if (sys == NULL) return false;
+    IOReturn ret;
+    CFStringRef activity_reason = CFSTR("RustDesk");
+    if (sys->display) {
+        // Wake up display
+        ret = IOPMAssertionDeclareUserActivity(activity_reason,
+                                                kIOPMUserActiveLocal,
+                                                &(sys->act_assertion_id));
+        if (ret != kIOReturnSuccess) {
+            printf("Failed to declare user activity (%i)\n", ret);
+            return false;
+        }
+        // Actual display inhibition assertion
+        ret = IOPMAssertionCreateWithName(kIOPMAssertPreventUserIdleDisplaySleep,
+                                            kIOPMAssertionLevelOn,
+                                            activity_reason,
+                                            &(sys->inh_display_assertion_id));
+        if (ret != kIOReturnSuccess) {
+            printf("Failed to IOPMAssertionCreateWithName (%i)\n", ret);
+            return false;
+        }
+    }
+    if (sys->idle) {
+        ret = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep,
+                                            kIOPMAssertionLevelOn,
+                                            activity_reason,
+                                            &(sys->inh_idle_assertion_id));
+        if (ret != kIOReturnSuccess) {
+            printf("Failed to IOPMAssertionCreateWithName (%i)\n", ret);
+            return false;
+        }
+    }
+    if (sys->sleep) {
+        ret = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventSystemSleep,
+                                            kIOPMAssertionLevelOn,
+                                            activity_reason,
+                                            &(sys->inh_sleep_assertion_id));
+        if (ret != kIOReturnSuccess) {
+            printf("Failed to IOPMAssertionCreateWithName (%i)\n", ret);
+            return false;
+        }
+    }
+    return ret == kIOReturnSuccess;
+}
+
+extern "C" void MacCloseInhibit(vlc_inhibit_sys_t *sys) {
+    if (sys == NULL) return;
+
+    if (sys->act_assertion_id != kIOPMNullAssertionID) {
+        if (IOPMAssertionRelease(sys->act_assertion_id) != kIOReturnSuccess) {
+            printf("Failed releasing IOPMAssertion on termination\n");
+        }
+        sys->act_assertion_id = kIOPMNullAssertionID;
+    }
+    if (sys->inh_display_assertion_id != kIOPMNullAssertionID) {
+        if (IOPMAssertionRelease(sys->inh_display_assertion_id) != kIOReturnSuccess) {
+            printf("Failed releasing IOPMAssertion on termination\n");
+        }
+        sys->inh_display_assertion_id = kIOPMNullAssertionID;
+    }
+    if (sys->inh_idle_assertion_id != kIOPMNullAssertionID) {
+        if (IOPMAssertionRelease(sys->inh_idle_assertion_id) != kIOReturnSuccess) {
+            printf("Failed releasing IOPMAssertion on termination\n");
+        }
+        sys->inh_idle_assertion_id = kIOPMNullAssertionID;
+    }
+    if (sys->inh_sleep_assertion_id != kIOPMNullAssertionID) {
+        if (IOPMAssertionRelease(sys->inh_sleep_assertion_id) != kIOReturnSuccess) {
+            printf("Failed releasing IOPMAssertion on termination\n");
+        }
+        sys->inh_sleep_assertion_id = kIOPMNullAssertionID;
+    }
 }

@@ -1,6 +1,6 @@
 use super::*;
 use hbb_common::{allow_err, platform::linux::DISTRO};
-use scrap::{is_cursor_embedded, set_map_err, Capturer, Display, Frame, TraitCapturer};
+use scrap::{is_cursor_embedded, set_map_err, Capturer, Display, Frame, TraitCapturer, num_cpus};
 use std::io;
 
 use crate::client::{
