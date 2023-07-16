@@ -681,25 +681,14 @@ jobs:
           prefix-key: rustdesk-lib-cache
           key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
           cache-directories: "/opt/rust-registry"
-
-      - name: Install local registry
-        run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
       
       - name: Free Space
         run: |
           df
 
       - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+        run: |
+          cargo vendor /opt/rust-registry
       
       - name: Free Space
         run: |
@@ -861,20 +850,9 @@ jobs:
           key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
           cache-directories: "/opt/rust-registry"
 
-      - name: Install local registry
-        run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
       - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+        run: |
+          cargo vendor /opt/rust-registry
 
       - name: Disable rust bridge build
         run: |
@@ -1010,20 +988,9 @@ jobs:
           key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
           cache-directories: "/opt/rust-registry"
 
-      - name: Install local registry
-        run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
       - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+        run: |
+            cargo vendor /opt/rust-registry
 
       - name: Restore vcpkg files
         uses: actions/download-artifact@master
