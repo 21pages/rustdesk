@@ -119,9 +119,9 @@ def make_parser():
             '' if windows or osx else ', need libva-dev, libvdpau-dev.')
     )
     parser.add_argument(
-        '--texcodec',
+        '--gpu_video_codec',
         action='store_true',
-        help='Enable feature texcodec, only available on windows now.'
+        help='Enable feature gpu_video_codec, only available on windows now.'
     )
     parser.add_argument(
         '--portable',
@@ -273,8 +273,8 @@ def get_features(args):
     if args.flutter:
         features.append('flutter')
         features.append('flutter_texture_render')
-    if windows and args.texcodec: 
-        features.append('texcodec')
+    if windows and args.gpu_video_codec: 
+        features.append('gpu_video_codec')
     if args.flatpak:
         features.append('flatpak')
     if args.appimage:
