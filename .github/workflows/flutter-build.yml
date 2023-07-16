@@ -686,6 +686,10 @@ jobs:
         run: |
           mkdir -p /opt/rust-registry
           cargo install cargo-local-registry
+      
+      - name: Free Space
+        run: |
+          df
 
       - name: Build local registry
         uses: nick-fields/retry@v2
@@ -696,6 +700,10 @@ jobs:
           timeout_minutes: 15
           retry_on: error
           command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
+      
+      - name: Free Space
+        run: |
+          df
 
       - name: Disable rust bridge build
         run: |
