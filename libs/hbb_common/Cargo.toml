@@ -32,7 +32,7 @@ sodiumoxide = "0.2"
 regex = "1.8"
 tokio-socks = { git = "https://github.com/open-trade/tokio-socks" }
 chrono = "0.4"
-backtrace = "0.3"
+backtrace = "=0.3.67"
 libc = "0.2"
 dlopen = "0.1"
 toml = "0.7"
