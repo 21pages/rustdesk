@@ -681,12 +681,6 @@ jobs:
           RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
           echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: rustdesk-lib-cache
-          key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
-          cache-directories: "/opt/rust-registry"
-
       - name: Disable rust bridge build
         run: |
           # only build cdylib
@@ -719,7 +713,6 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
             --volume "/opt/artifacts:/opt/artifacts"
-            --volume "/opt/rust-registry:/opt/rust-registry"
           shell: /bin/bash
           install: |
             apt update -y
@@ -838,12 +831,6 @@ jobs:
           RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
           echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: rustdesk-lib-cache
-          key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
-          cache-directories: "/opt/rust-registry"
-
       - name: Disable rust bridge build
         run: |
           # only build cdylib
@@ -874,7 +861,6 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
             --volume "/opt/artifacts:/opt/artifacts"
-            --volume "/opt/rust-registry:/opt/rust-registry"
           shell: /bin/bash
           install: |
             apt update -y
@@ -973,12 +959,6 @@ jobs:
           RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
           echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: rustdesk-lib-cache
-          key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
-          cache-directories: "/opt/rust-registry"
-
       - name: Restore vcpkg files
         uses: actions/download-artifact@master
         with:
@@ -997,7 +977,6 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
             --volume "/opt/artifacts:/opt/artifacts"
-            --volume "/opt/rust-registry:/opt/rust-registry"
           shell: /bin/bash
           install: |
             apt update -y
