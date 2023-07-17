@@ -682,21 +682,6 @@ jobs:
           key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
           cache-directories: "/opt/rust-registry"
 
-      - name: Install local registry
-        run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
-      - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
-
       - name: Disable rust bridge build
         run: |
           # only build cdylib
@@ -719,7 +704,7 @@ jobs:
         id: vcpkg
         with:
           arch: ${{ matrix.job.arch }}
-          distro: ubuntu20.04
+          distro: ubuntu18.04
           # not ready yet
           # distro: ubuntu18.04-rustdesk
           githubToken: ${{ github.token }}
@@ -746,19 +731,15 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.70.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.71.0-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.70.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.70.0-${{ matrix.job.target }}
+            cd rust-1.71.0-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-1.71.0-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
               [source.crates-io]
               registry = 'https://github.com/rust-lang/crates.io-index'
-              replace-with = 'local-registry'
-
-              [source.local-registry]
-              local-registry = '/opt/rust-registry/'
             """ > ~/.cargo/config
             cat ~/.cargo/config
             # start build
@@ -853,21 +834,6 @@ jobs:
           key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
           cache-directories: "/opt/rust-registry"
 
-      - name: Install local registry
-        run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
-      - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
-
       - name: Disable rust bridge build
         run: |
           # only build cdylib
@@ -915,19 +881,15 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.70.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.71.0-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.70.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.70.0-${{ matrix.job.target }}
+            cd rust-1.71.0-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-1.71.0-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
               [source.crates-io]
               registry = 'https://github.com/rust-lang/crates.io-index'
-              replace-with = 'local-registry'
-
-              [source.local-registry]
-              local-registry = '/opt/rust-registry/'
             """ > ~/.cargo/config
             cat ~/.cargo/config
             # start build
@@ -1002,21 +964,6 @@ jobs:
           key: ${{ matrix.job.target }}-${{ matrix.job.extra-build-features }}
           cache-directories: "/opt/rust-registry"
 
-      - name: Install local registry
-        run: |
-          mkdir -p /opt/rust-registry
-          cargo install cargo-local-registry
-
-      - name: Build local registry
-        uses: nick-fields/retry@v2
-        id: build-local-registry
-        continue-on-error: true
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          retry_on: error
-          command: cargo local-registry --sync ./Cargo.lock /opt/rust-registry
-
       - name: Restore vcpkg files
         uses: actions/download-artifact@master
         with:
@@ -1048,19 +995,15 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.70.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.71.0-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.70.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.70.0-${{ matrix.job.target }}
+            cd rust-1.71.0-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-1.71.0-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
               [source.crates-io]
               registry = 'https://github.com/rust-lang/crates.io-index'
-              replace-with = 'local-registry'
-
-              [source.local-registry]
-              local-registry = '/opt/rust-registry/'
             """ > ~/.cargo/config
             cat ~/.cargo/config
             
@@ -1116,21 +1059,21 @@ jobs:
           - {
               arch: aarch64,
               target: aarch64-unknown-linux-gnu,
-              os: ubuntu-20.04, # just for naming package, not running host
+              os: ubuntu-18.04, # just for naming package, not running host
               use-cross: true,
               extra-build-features: "",
             }
           - {
               arch: aarch64,
               target: aarch64-unknown-linux-gnu,
-              os: ubuntu-20.04, # just for naming package, not running host
+              os: ubuntu-18.04, # just for naming package, not running host
               use-cross: true,
               extra-build-features: "appimage",
             }
           # - {
           #     arch: aarch64,
           #     target: aarch64-unknown-linux-gnu,
-          #     os: ubuntu-20.04, # just for naming package, not running host
+          #     os: ubuntu-18.04, # just for naming package, not running host
           #     use-cross: true,
           #     extra-build-features: "flatpak",
           #   }
@@ -1380,19 +1323,19 @@ jobs:
           - {
               arch: x86_64,
               target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04, 
+              os: ubuntu-18.04, 
               extra-build-features: "",
             }
           - {
               arch: x86_64,
               target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
+              os: ubuntu-18.04,
               extra-build-features: "flatpak",
             }
           - {
               arch: x86_64,
               target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
+              os: ubuntu-18.04,
               extra-build-features: "appimage",
             }
           # - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04, use-cross: true }
@@ -1423,7 +1366,7 @@ jobs:
         id: vcpkg
         with:
           arch: ${{ matrix.job.arch }}
-          distro: ubuntu20.04
+          distro: ubuntu18.04
           githubToken: ${{ github.token }}
           setup: |
             ls -l "${PWD}"
@@ -1591,7 +1534,7 @@ jobs:
   #     fail-fast: false
   #     matrix:
   #       job:
-  #         # - { target: aarch64-unknown-linux-gnu   , os: ubuntu-20.04, arch: arm64 }
+  #         # - { target: aarch64-unknown-linux-gnu   , os: ubuntu-18.04, arch: arm64 }
   #         - { target: aarch64-unknown-linux-gnu, os: ubuntu-20.04, arch: arm64  }
   #   steps:
   #     - name: Checkout source code
@@ -1612,7 +1555,7 @@ jobs:
   #       id: rpm
   #       with:
   #         arch: ${{ matrix.job.arch }}
-  #         distro: ubuntu20.04
+  #         distro: ubuntu18.04
   #         githubToken: ${{ github.token }}
   #         setup: |
   #           ls -l "${PWD}"
@@ -1653,7 +1596,7 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-20.04, arch: x86_64 }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-18.04, arch: x86_64 }
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
@@ -1673,7 +1616,7 @@ jobs:
         id: rpm
         with:
           arch: ${{ matrix.job.arch }}
-          distro: ubuntu20.04
+          distro: ubuntu18.04
           githubToken: ${{ github.token }}
           setup: |
             ls -l "${PWD}"
