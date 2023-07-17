@@ -8,7 +8,7 @@ use crate::{
 use hbb_common::{
     allow_err, bail,
     config::{self, Config},
-    log,
+    flog, log,
     message_proto::Resolution,
     sleep, timeout, tokio,
 };
@@ -988,7 +988,11 @@ fn get_after_install(exe: &str) -> String {
 }
 
 pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
+    flog(&format!(
+        "install_me options:{options}, path:${path}, silent:${silent}, debug:${debug}"
+    ));
     let uninstall_str = get_uninstall(false);
+    flog(&format!("install_me uninstall_str:{uninstall_str}"));
     let mut path = path.trim_end_matches('\\').to_owned();
     let (subkey, _path, start_menu, exe) = get_default_install_info();
     let mut exe = exe;
@@ -997,6 +1001,9 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     } else {
         exe = exe.replace(&_path, &path);
     }
+    flog(&format!(
+        "install_me get_default_install_info: exe:{exe}, path:${path}"
+    ));
     let mut version_major = "0";
     let mut version_minor = "0";
     let mut version_build = "0";
@@ -1030,6 +1037,7 @@ oLink.Save
     .to_str()
     .unwrap_or("")
     .to_owned();
+    flog(&format!("install_me mk_shortcut: {mk_shortcut}"));
     // https://superuser.com/questions/392061/how-to-make-a-shortcut-from-cmd
     let uninstall_shortcut = write_cmds(
         format!(
@@ -1050,6 +1058,7 @@ oLink.Save
     .unwrap_or("")
     .to_owned();
     let tray_shortcut = get_tray_shortcut(&exe, &tmp_path)?;
+    flog(&format!("install_me tray_shortcut: {tray_shortcut}"));
     let mut shortcuts = Default::default();
     if options.contains("desktopicon") {
         shortcuts = format!(
@@ -1070,6 +1079,7 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
 
     let meta = std::fs::symlink_metadata(std::env::current_exe()?)?;
     let size = meta.len() / 1024;
+    flog(&format!("install_me size: {size}"));
     // https://docs.microsoft.com/zh-cn/windows/win32/msi/uninstall-registry-key?redirectedfrom=MSDNa
     // https://www.windowscentral.com/how-edit-registry-using-command-prompt-windows-10
     // https://www.tenforums.com/tutorials/70903-add-remove-allowed-apps-through-windows-firewall-windows-10-a.html
@@ -1142,8 +1152,11 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
         copy_exe = copy_exe_cmd(&src_exe, &exe, &path),
         import_config = get_import_config(&exe),
     );
+    flog(&format!("install_me cmds: {cmds}"));
     run_cmds(cmds, debug, "install")?;
+    flog(&format!("install_me run_cmds ok"));
     run_after_run_cmds(silent);
+    flog(&format!("install_me run_after_run_cmds"));
     Ok(())
 }
 
@@ -1262,7 +1275,9 @@ fn get_undone_file(tmp: &PathBuf) -> PathBuf {
 }
 
 fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
+    flog(&format!("run_cmds tip:{tip}"));
     let tmp = write_cmds(cmds, "bat", tip)?;
+    flog(&format!("run_cmds tmp:{:?}", tmp));
     let tmp2 = get_undone_file(&tmp);
     let tmp_fn = tmp.to_str().unwrap_or("");
     let res = runas::Command::new("cmd")
@@ -1273,8 +1288,10 @@ fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
     if !show {
         allow_err!(std::fs::remove_file(tmp));
     }
+    flog(&format!("run_cmds res:{:?}", res));
     let _ = res?;
     if tmp2.exists() {
+        flog(&format!("run_cmds tmp2:{:?} exists", tmp2));
         allow_err!(std::fs::remove_file(tmp2));
         bail!("{} failed", tip);
     }
