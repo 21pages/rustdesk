@@ -736,10 +736,10 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}
+            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
@@ -891,10 +891,10 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}
+            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
@@ -1010,10 +1010,10 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}
+            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
