@@ -675,6 +675,11 @@ jobs:
           target: ${{ matrix.job.target }}
           override: true
           profile: minimal # minimal component installation (ie, no documentation)
+      
+      - name: Save Rust toolchain version
+        run: |
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -731,10 +736,10 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.71.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.71.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.71.0-${{ matrix.job.target }}
+            cd rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
@@ -827,6 +832,11 @@ jobs:
           target: ${{ matrix.job.target }}
           override: true
           profile: minimal # minimal component installation (ie, no documentation)
+      
+      - name: Save Rust toolchain version
+        run: |
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -881,10 +891,10 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.71.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.71.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.71.0-${{ matrix.job.target }}
+            cd rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
@@ -957,6 +967,11 @@ jobs:
           target: ${{ matrix.job.target }}
           override: true
           profile: minimal # minimal component installation (ie, no documentation)
+      
+      - name: Save Rust toolchain version
+        run: |
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -995,10 +1010,10 @@ jobs:
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-1.71.0-${{ matrix.job.target }}.tar.gz
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}.tar.gz
             tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-1.71.0-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-1.71.0-${{ matrix.job.target }}
+            cd rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${RUST_TOOLCHAIN_VERSION}-${{ matrix.job.target }}
             # edit config
             mkdir -p ~/.cargo/
             echo """
