@@ -353,7 +353,10 @@ impl AomEncoder {
             Quality::Balanced => (12, 35, 100 * 2 / 3),
             Quality::Low => (18, 45, 50),
             Quality::Custom(v) => {
-                let q_max = current_q_max.unwrap_or(0); // todo
+                let mut q_max = v.q_max;
+                if q_max < v.q_min || q_max > 63 {
+                    q_max = current_q_max.unwrap_or(0)
+                }
                 (v.q_min, q_max, v.b)
             }
         }

@@ -478,6 +478,7 @@ fn enable_hwcodec_option() -> bool {
 pub struct QualityValue {
     pub b: u32,
     pub q_min: u32,
+    pub q_max: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

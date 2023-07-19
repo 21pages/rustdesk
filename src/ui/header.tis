@@ -429,7 +429,10 @@ function handle_custom_image_quality() {
       </div>", "", function(res=null) {
         if (!res) return;
         if (!res.bitrate) return;
-        handler.save_custom_image_quality(res.bitrate);
+        var q_min = tmp[1] || 12;
+        var q_max = tmp[2] || 56;
+        var quality = (q_min & 0xFF) | (res.bitrate << 8) | (q_max << 16);
+        handler.save_custom_image_quality(quality);
         toggleMenuState();
       });
 }

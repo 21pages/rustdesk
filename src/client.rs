@@ -1362,12 +1362,7 @@ impl LoginConfigHandler {
             n += 1;
         } else if q == "custom" {
             let config = PeerConfig::load(&self.id);
-            let quality = if config.custom_image_quality.is_empty() {
-                50
-            } else {
-                config.custom_image_quality[0]
-            };
-            msg.custom_image_quality = quality << 8;
+            msg.custom_image_quality = PeerConfig::vec_quality_to_i32(&config.custom_image_quality);
             #[cfg(feature = "flutter")]
             if let Some(custom_fps) = self.options.get("custom-fps") {
                 msg.custom_fps = custom_fps.parse().unwrap_or(30);
@@ -1503,19 +1498,18 @@ impl LoginConfigHandler {
     ///
     /// # Arguments
     ///
-    /// * `bitrate` - The given bitrate.
-    /// * `quantizer` - The given quantizer.
+    /// * `image_quality` - The image quality.
     pub fn save_custom_image_quality(&mut self, image_quality: i32) -> Message {
         let mut misc = Misc::new();
         misc.set_option(OptionMessage {
-            custom_image_quality: image_quality << 8,
+            custom_image_quality: image_quality,
             ..Default::default()
         });
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         let mut config = self.load_config();
         config.image_quality = "custom".to_owned();
-        config.custom_image_quality = vec![image_quality as _];
+        config.custom_image_quality = PeerConfig::i32_quality_to_vec(image_quality);
         self.save_config(config);
         msg_out
     }

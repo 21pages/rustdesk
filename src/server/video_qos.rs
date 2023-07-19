@@ -191,20 +191,20 @@ impl VideoQoS {
                     Quality::Custom(v) => match delay {
                         DelayState::LowDelay => {
                             quality = Quality::Custom(QualityValue {
-                                q_min: v.q_min,
                                 b: std::cmp::min(50, v.b),
+                                ..v
                             });
                         }
                         DelayState::HighDelay => {
                             quality = Quality::Custom(QualityValue {
-                                q_min: v.q_min,
                                 b: std::cmp::min(25, v.b),
+                                ..v
                             });
                         }
                         DelayState::Broken => {
                             quality = Quality::Custom(QualityValue {
-                                q_min: v.q_min,
                                 b: std::cmp::min(10, v.b),
+                                ..v
                             });
                         }
                         DelayState::Normal => {}
@@ -258,10 +258,12 @@ impl VideoQoS {
             } else if q == ImageQuality::Best.value() {
                 Quality::Best
             } else {
-                let b = (q >> 8 & 0xFF) * 2;
-                let q = q & 0xFF;
+                let b = ((q >> 8) & 0xFF) * 2; // here double , PeerConfig not double
+                let q_min = q & 0xFF;
+                let q_max = (q >> 16) & 0xFF;
                 Quality::Custom(QualityValue {
-                    q_min: q as _,
+                    q_max: q_max as _,
+                    q_min: q_min as _,
                     b: b as _,
                 })
             }

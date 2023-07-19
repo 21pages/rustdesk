@@ -238,7 +238,7 @@ pub struct PeerConfig {
         deserialize_with = "PeerConfig::deserialize_custom_image_quality",
         skip_serializing_if = "Vec::is_empty"
     )]
-    pub custom_image_quality: Vec<i32>,
+    pub custom_image_quality: Vec<i32>, // [b, q_min, q_max]
     #[serde(flatten)]
     pub show_remote_cursor: ShowRemoteCursor,
     #[serde(flatten)]
@@ -1041,6 +1041,20 @@ impl PeerConfig {
         Default::default()
     }
 
+    pub fn vec_quality_to_i32(v: &[i32]) -> i32 {
+        let b = if v.len() > 0 { v[0] } else { 50 };
+        let q_min = if v.len() > 1 { v[1] } else { 12 };
+        let q_max = if v.len() > 2 { v[2] } else { 56 };
+        (q_min & 0xFF) | ((b & 0xFF) << 8) | ((q_max & 0xFF) << 16)
+    }
+
+    pub fn i32_quality_to_vec(i: i32) -> Vec<i32> {
+        let b = (i >> 8) & 0xFF;
+        let q_min = i & 0xFF;
+        let q_max = (i >> 16) & 0xFF;
+        vec![b, q_min, q_max]
+    }
+
     serde_field_string!(
         default_view_style,
         deserialize_view_style,
@@ -1061,8 +1075,8 @@ impl PeerConfig {
         let f: f64 = UserDefaultConfig::read()
             .get("custom_image_quality")
             .parse()
-            .unwrap_or(50.0);
-        vec![f as _]
+            .unwrap_or(0x38320C as f64);
+        Self::i32_quality_to_vec(f as i32)
     }
 
     fn deserialize_custom_image_quality<'de, D>(deserializer: D) -> Result<Vec<i32>, D::Error>
@@ -1070,11 +1084,8 @@ impl PeerConfig {
         D: de::Deserializer<'de>,
     {
         let v: Vec<i32> = de::Deserialize::deserialize(deserializer)?;
-        if v.len() == 1 && v[0] >= 10 && v[0] <= 100 {
-            Ok(v)
-        } else {
-            Ok(Self::default_custom_image_quality())
-        }
+        let i = Self::vec_quality_to_i32(&v);
+        Ok(Self::i32_quality_to_vec(i))
     }
 
     fn deserialize_options<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
@@ -1394,7 +1405,9 @@ impl UserDefaultConfig {
             "codec-preference" => {
                 self.get_string(key, "auto", vec!["vp8", "vp9", "av1", "h264", "h265"])
             }
-            "custom_image_quality" => self.get_double_string(key, 50.0, 10.0, 100.0),
+            "custom_image_quality" => {
+                self.get_double_string(key, 0x38320C as f64, 0.0, 0xFFFFFF as f64)
+            } // to do
             "custom-fps" => self.get_double_string(key, 30.0, 5.0, 120.0),
             _ => self
                 .options

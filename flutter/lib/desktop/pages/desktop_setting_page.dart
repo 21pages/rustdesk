@@ -1172,10 +1172,37 @@ class _DisplayState extends State<_Display> {
 
     final groupValue = bind.mainGetUserDefaultOption(key: key);
     final qualityKey = 'custom_image_quality';
+    final defaultQualityValue = 12 | (50 << 8) | (56 << 16);
     final qualityValue =
-        (double.tryParse(bind.mainGetUserDefaultOption(key: qualityKey)) ??
-                50.0)
+        (int.tryParse(bind.mainGetUserDefaultOption(key: qualityKey)) ??
+                defaultQualityValue)
             .obs;
+    double getBitrate() {
+      return ((qualityValue.value >> 8) & 0xFF) * 1.0;
+    }
+
+    void setBitrate(double value) async {
+      qualityValue.value =
+          (qualityValue.value & 0xFF00FF) | (value.round() << 8);
+      await bind.mainSetUserDefaultOption(
+          key: qualityKey, value: qualityValue.value.toString());
+    }
+
+    RangeValues getRangeValues() {
+      final min = (qualityValue.value & 0xFF) * 1.0;
+      final max = ((qualityValue.value >> 16) & 0xFF) * 1.0;
+      return RangeValues(min, max);
+    }
+
+    void setRangeValues(RangeValues values) async {
+      qualityValue.value =
+          (qualityValue.value & 0xFFFF00) | values.start.round();
+      qualityValue.value =
+          (qualityValue.value & 0x00FFFF) | (values.end.round() << 16);
+      await bind.mainSetUserDefaultOption(
+          key: qualityKey, value: qualityValue.value.toString());
+    }
+
     final fpsKey = 'custom-fps';
     final fpsValue =
         (double.tryParse(bind.mainGetUserDefaultOption(key: fpsKey)) ?? 30.0)
@@ -1207,52 +1234,93 @@ class _DisplayState extends State<_Display> {
           children: [
             Obx(() => Row(
                   children: [
-                    Slider(
-                      value: qualityValue.value,
-                      min: 10.0,
-                      max: 100.0,
-                      divisions: 18,
-                      onChanged: (double value) async {
-                        qualityValue.value = value;
-                        await bind.mainSetUserDefaultOption(
-                            key: qualityKey, value: value.toString());
-                      },
+                    Expanded(
+                      flex: 3,
+                      child: Slider(
+                        value: getBitrate(),
+                        min: 10.0,
+                        max: 100.0,
+                        divisions: 18,
+                        onChanged: (double value) async {
+                          setBitrate(value);
+                        },
+                      ),
                     ),
-                    SizedBox(
-                        width: 40,
-                        child: Text(
-                          '${qualityValue.value.round()}%',
-                          style: const TextStyle(fontSize: 15),
-                        )),
-                    SizedBox(
-                        width: 50,
-                        child: Text(
-                          translate('Bitrate'),
-                          style: const TextStyle(fontSize: 15),
-                        ))
+                    Expanded(
+                      flex: 1,
+                      child: Text(
+                        '${getBitrate().round()}%',
+                        style: const TextStyle(fontSize: 15),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        translate('Bitrate'),
+                        style: const TextStyle(fontSize: 15),
+                      ),
+                    )
                   ],
                 )),
             Obx(() => Row(
                   children: [
-                    Slider(
-                      value: fpsValue.value,
-                      min: 5.0,
-                      max: 120.0,
-                      divisions: 23,
-                      onChanged: (double value) async {
-                        fpsValue.value = value;
-                        await bind.mainSetUserDefaultOption(
-                            key: fpsKey, value: value.toString());
-                      },
+                    Expanded(
+                      flex: 3,
+                      child: RangeSlider(
+                        values: getRangeValues(),
+                        min: 1,
+                        max: 63,
+                        divisions: 63 - 1,
+                        labels: RangeLabels(
+                          getRangeValues().start.round().toString(),
+                          getRangeValues().end.round().toString(),
+                        ),
+                        onChanged: (RangeValues values) {
+                          setRangeValues(values);
+                        },
+                      ),
                     ),
-                    SizedBox(
-                        width: 40,
+                    Expanded(
+                        flex: 1,
                         child: Text(
-                          '${fpsValue.value.round()}',
+                          '${getRangeValues().start.round()}~${getRangeValues().end.round()}',
                           style: const TextStyle(fontSize: 15),
                         )),
-                    SizedBox(
-                        width: 50,
+                    Expanded(
+                        flex: 2,
+                        child: Text(
+                          translate('Quantizer'),
+                          style: const TextStyle(fontSize: 15),
+                        )),
+                  ],
+                )),
+            Obx(() => Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Slider(
+                        value: fpsValue.value,
+                        min: 5.0,
+                        max: 120.0,
+                        divisions: 23,
+                        onChanged: (double value) async {
+                          fpsValue.value = value;
+                          await bind.mainSetUserDefaultOption(
+                              key: fpsKey, value: value.toString());
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                          width: 40,
+                          child: Text(
+                            '${fpsValue.value.round()}',
+                            style: const TextStyle(fontSize: 15),
+                          )),
+                    ),
+                    Expanded(
+                        flex: 2,
                         child: Text(
                           translate('FPS'),
                           style: const TextStyle(fontSize: 15),

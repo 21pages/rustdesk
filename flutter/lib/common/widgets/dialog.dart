@@ -947,7 +947,9 @@ showSetOSPassword(
   Function()? closeCallback,
 ) async {
   final controller = TextEditingController();
-  osPassword ??= await bind.sessionGetOption(sessionId: sessionId, arg: 'os-password') ?? '';
+  osPassword ??=
+      await bind.sessionGetOption(sessionId: sessionId, arg: 'os-password') ??
+          '';
   var autoLogin =
       await bind.sessionGetOption(sessionId: sessionId, arg: 'auto-login') !=
           '';
@@ -957,6 +959,7 @@ showSetOSPassword(
       close();
       if (closeCallback != null) closeCallback();
     }
+
     submit() {
       var text = controller.text.trim();
       bind.sessionPeerOption(
@@ -1184,15 +1187,27 @@ void showConfirmSwitchSidesDialog(
 }
 
 customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
-  double qualityInitValue = 50;
+  double bitrateInitValue = 50;
   double fpsInitValue = 30;
+  double qMinInitValue = 12;
+  double qMaxInitValue = 56;
   bool qualitySet = false;
   bool fpsSet = false;
-  setCustomValues({double? quality, double? fps}) async {
-    if (quality != null) {
+  final codec = ffi.qualityMonitorModel.data.codecFormat?.toLowerCase() ?? '';
+  bool hasQ = codec == 'vp9' || codec == 'vp8' || codec == 'av1';
+  setCustomValues({
+    double? bitrate,
+    double? q_min,
+    double? q_max,
+    double? fps,
+  }) async {
+    final quality = (q_min ?? qMinInitValue).toInt() |
+        ((bitrate ?? bitrateInitValue).toInt() << 8) |
+        ((q_max ?? qMaxInitValue).toInt() << 16);
+    if (bitrate != null || q_min != null || q_max != null) {
       qualitySet = true;
       await bind.sessionSetCustomImageQuality(
-          sessionId: sessionId, value: quality.toInt());
+          sessionId: sessionId, value: quality);
     }
     if (fps != null) {
       fpsSet = true;
@@ -1201,7 +1216,7 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
     if (!qualitySet) {
       qualitySet = true;
       await bind.sessionSetCustomImageQuality(
-          sessionId: sessionId, value: qualityInitValue.toInt());
+          sessionId: sessionId, value: quality);
     }
     if (!fpsSet) {
       fpsSet = true;
@@ -1215,44 +1230,64 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
     ffi.dialogManager.dismissAll();
   });
 
-  // quality
   final quality = await bind.sessionGetCustomImageQuality(sessionId: sessionId);
-  qualityInitValue =
+  // bitrate
+  bitrateInitValue =
       quality != null && quality.isNotEmpty ? quality[0].toDouble() : 50.0;
-  const qualityMinValue = 10.0;
-  const qualityMaxValue = 100.0;
-  if (qualityInitValue < qualityMinValue) {
-    qualityInitValue = qualityMinValue;
+  const bitrateMinValue = 10.0;
+  const bitrateMaxValue = 100.0;
+  if (bitrateInitValue < bitrateMinValue) {
+    bitrateInitValue = bitrateMinValue;
   }
-  if (qualityInitValue > qualityMaxValue) {
-    qualityInitValue = qualityMaxValue;
+  if (bitrateInitValue > bitrateMaxValue) {
+    bitrateInitValue = bitrateMaxValue;
   }
-  final RxDouble qualitySliderValue = RxDouble(qualityInitValue);
-  final debouncerQuality = Debouncer<double>(
+  final RxDouble bitrateSliderValue = RxDouble(bitrateInitValue);
+  // q_min, q_max
+  qMinInitValue =
+      quality != null && quality.length > 1 ? quality[1].toDouble() : 12.0;
+  qMaxInitValue =
+      quality != null && quality.length > 2 ? quality[2].toDouble() : 56.0;
+  if (qMinInitValue < 1 || qMinInitValue > 63) {
+    qMinInitValue = 12;
+  }
+  if (qMaxInitValue < 1 || qMaxInitValue > 63) {
+    qMinInitValue = 56;
+  }
+  if (qMinInitValue > qMaxInitValue) {
+    qMinInitValue = qMaxInitValue - 1;
+  }
+  final qRangeValues = RangeValues(qMinInitValue, qMaxInitValue).obs;
+
+  // bitrate widget
+  final debouncerBitrate = Debouncer<double>(
     Duration(milliseconds: 1000),
     onChanged: (double v) {
-      setCustomValues(quality: v);
+      setCustomValues(
+          bitrate: v,
+          q_min: qRangeValues.value.start,
+          q_max: qRangeValues.value.end);
     },
-    initialValue: qualityInitValue,
+    initialValue: bitrateInitValue,
   );
-  final qualitySlider = Obx(() => Row(
+  final bitrateSlider = Obx(() => Row(
         children: [
           Expanded(
               flex: 3,
               child: Slider(
-                value: qualitySliderValue.value,
-                min: qualityMinValue,
-                max: qualityMaxValue,
+                value: bitrateSliderValue.value,
+                min: bitrateMinValue,
+                max: bitrateMaxValue,
                 divisions: 18,
                 onChanged: (double value) {
-                  qualitySliderValue.value = value;
-                  debouncerQuality.value = value;
+                  bitrateSliderValue.value = value;
+                  debouncerBitrate.value = value;
                 },
               )),
           Expanded(
               flex: 1,
               child: Text(
-                '${qualitySliderValue.value.round()}%',
+                '${bitrateSliderValue.value.round()}%',
                 style: const TextStyle(fontSize: 15),
               )),
           Expanded(
@@ -1263,6 +1298,50 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
               )),
         ],
       ));
+
+  // q_min, q_max widget
+  final debouncerQ = Debouncer<RangeValues>(
+    Duration(milliseconds: 1000),
+    onChanged: (RangeValues v) {
+      setCustomValues(
+          q_min: v.start, q_max: v.end, bitrate: bitrateSliderValue.value);
+    },
+    initialValue: qRangeValues.value,
+  );
+  final qSlider = Obx(() => Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: RangeSlider(
+              values: qRangeValues.value,
+              min: 1,
+              max: 63,
+              divisions: 63 - 1,
+              labels: RangeLabels(
+                qRangeValues.value.start.round().toString(),
+                qRangeValues.value.end.round().toString(),
+              ),
+              onChanged: (RangeValues values) {
+                qRangeValues.value = values;
+                debouncerQ.value = values;
+              },
+            ),
+          ),
+          Expanded(
+              flex: 1,
+              child: Text(
+                '${qRangeValues.value.start.round()}~${qRangeValues.value.end.round()}',
+                style: const TextStyle(fontSize: 15),
+              )),
+          Expanded(
+              flex: 2,
+              child: Text(
+                translate('Quantizer'),
+                style: const TextStyle(fontSize: 15),
+              )),
+        ],
+      ));
+
   // fps
   final fpsOption =
       await bind.sessionGetOption(sessionId: sessionId, arg: 'custom-fps');
@@ -1276,7 +1355,7 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
     onChanged: (double v) {
       setCustomValues(fps: v);
     },
-    initialValue: qualityInitValue,
+    initialValue: bitrateInitValue,
   );
   bool? direct;
   try {
@@ -1317,7 +1396,7 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
   );
 
   final content = Column(
-    children: [qualitySlider, fpsSlider],
+    children: [bitrateSlider, if (hasQ) qSlider, fpsSlider],
   );
   msgBoxCommon(ffi.dialogManager, 'Custom Image Quality', content, [btnClose]);
 }
