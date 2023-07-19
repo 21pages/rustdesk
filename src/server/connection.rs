@@ -600,7 +600,7 @@ impl Connection {
                         msg_out.set_test_delay(TestDelay{
                             time,
                             last_delay:conn.network_delay.unwrap_or_default(),
-                            target_bitrate:qos.bitrate(),
+                            target_bitrate: qos.bitrate(),
                             ..Default::default()
                         });
                         conn.inner.send(msg_out.into());
