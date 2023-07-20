@@ -11,13 +11,12 @@ use crate::mediacodec::{
     MediaCodecDecoder, MediaCodecDecoders, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT,
 };
 use crate::{
-    aom::{self, AomDecoder, AomDecoderConfig, AomEncoder, AomEncoderConfig},
+    aom::{self, AomDecoder, AomEncoder, AomEncoderConfig},
     common::GoogleImage,
     vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
     CodecName, ImageRgb,
 };
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sysinfo::{System, SystemExt};
 use hbb_common::{
     anyhow::anyhow,
@@ -192,7 +191,6 @@ impl Encoder {
 
         #[allow(unused_mut)]
         let mut auto_codec = CodecName::VP9;
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if vp8_useable && System::new_all().total_memory() <= 4 * 1024 * 1024 * 1024 {
             // 4 Gb
             auto_codec = CodecName::VP8
@@ -276,18 +274,13 @@ impl Decoder {
     pub fn new() -> Decoder {
         let vp8 = VpxDecoder::new(VpxDecoderConfig {
             codec: VpxVideoCodecId::VP8,
-            num_threads: (num_cpus::get() / 2) as _,
         })
         .unwrap();
         let vp9 = VpxDecoder::new(VpxDecoderConfig {
             codec: VpxVideoCodecId::VP9,
-            num_threads: (num_cpus::get() / 2) as _,
         })
         .unwrap();
-        let av1 = AomDecoder::new(AomDecoderConfig {
-            num_threads: (num_cpus::get() / 2) as _,
-        })
-        .unwrap();
+        let av1 = AomDecoder::new().unwrap();
         Decoder {
             vp8,
             vp9,
@@ -502,4 +495,35 @@ pub fn base_bitrate(width: u32, height: u32) -> u32 {
         base_bitrate = base_bitrate * fix;
     }
     base_bitrate
+}
+
+pub fn loadavg_cpu_num() -> usize {
+    let num = num_cpus::get();
+    #[cfg(windows)]
+    return std::cmp::max(1, num / 2);
+    #[cfg(not(windows))]
+    {
+        let s = System::new_all();
+        // https://man7.org/linux/man-pages/man3/getloadavg.3.html
+        let avg = s.load_average();
+        let half_left = (((num as f64) - avg.one) * 0.5).round() as usize;
+        if half_left > 0 && half_left <= num {
+            return half_left;
+        } else {
+            return std::cmp::max(1, num / 2);
+        }
+    }
+}
+
+mod test {
+
+    #[test]
+    fn test_loadavg_cpu_num() {
+        // test with "stress --cpu 4 --timeout 60s"
+        println!(
+            "cpu num: {}, loadavg cpu num: {}",
+            num_cpus::get(),
+            crate::codec::loadavg_cpu_num()
+        );
+    }
 }
