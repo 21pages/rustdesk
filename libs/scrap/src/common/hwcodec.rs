@@ -364,50 +364,57 @@ pub fn check_config() {
 
 pub fn check_config_process() {
     use hbb_common::sysinfo::{ProcessExt, System, SystemExt};
-
-    std::thread::spawn(move || {
-        // Clear to avoid checking process errors
-        // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
-        HwCodecConfig::clear();
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(file_name) = exe.file_name().to_owned() {
-                let s = System::new_all();
-                let arg = "--check-hwcodec-config";
-                for process in s.processes_by_name(&file_name.to_string_lossy().to_string()) {
-                    if process.cmd().iter().any(|cmd| cmd.contains(arg)) {
-                        log::warn!("already have process {}", arg);
-                        return;
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    hbb_common::flog(&format!("check_config_process 1: {:?}", std::env::args()));
+    ONCE.call_once(|| {
+        std::thread::spawn(move || {
+            hbb_common::flog("check_config_process 2");
+            // Clear to avoid checking process errors
+            // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
+            HwCodecConfig::clear();
+            if let Ok(exe) = std::env::current_exe() {
+                if let Some(file_name) = exe.file_name().to_owned() {
+                    let s = System::new_all();
+                    let arg = "--check-hwcodec-config";
+                    for process in s.processes_by_name(&file_name.to_string_lossy().to_string()) {
+                        if process.cmd().iter().any(|cmd| cmd.contains(arg)) {
+                            log::warn!("already have process {}", arg);
+                            return;
+                        }
                     }
-                }
-                if let Ok(mut child) = std::process::Command::new(exe).arg(arg).spawn() {
-                    // wait up to 10 seconds
-                    for _ in 0..10 {
-                        std::thread::sleep(std::time::Duration::from_secs(1));
-                        if let Ok(Some(status)) = child.try_wait() {
-                            if status.success() {
-                                HwCodecConfig::refresh();
+                    if let Ok(mut child) = std::process::Command::new(exe).arg(arg).spawn() {
+                        // wait up to 10 seconds
+                        for _ in 0..10 {
+                            std::thread::sleep(std::time::Duration::from_secs(1));
+                            if let Ok(Some(status)) = child.try_wait() {
+                                if status.success() {
+                                    HwCodecConfig::refresh();
+                                }
+                                break;
                             }
-                            break;
                         }
+                        allow_err!(child.kill());
+                        std::thread::sleep(std::time::Duration::from_millis(30));
+                        match child.try_wait() {
+                            Ok(Some(status)) => {
+                                log::info!("Check hwcodec config, exit with: {status}")
+                            }
+                            Ok(None) => {
+                                log::info!(
+                                    "Check hwcodec config, status not ready yet, let's really wait"
+                                );
+                                let res = child.wait();
+                                log::info!("Check hwcodec config, wait result: {res:?}");
+                            }
+                            Err(e) => {
+                                log::error!("Check hwcodec config, error attempting to wait: {e}")
+                            }
+                        }
+                        HwCodecConfig::refresh();
                     }
-                    allow_err!(child.kill());
-                    std::thread::sleep(std::time::Duration::from_millis(30));
-                    match child.try_wait() {
-                        Ok(Some(status)) => log::info!("Check hwcodec config, exit with: {status}"),
-                        Ok(None) => {
-                            log::info!(
-                                "Check hwcodec config, status not ready yet, let's really wait"
-                            );
-                            let res = child.wait();
-                            log::info!("Check hwcodec config, wait result: {res:?}");
-                        }
-                        Err(e) => {
-                            log::error!("Check hwcodec config, error attempting to wait: {e}")
-                        }
-                    }
-                    HwCodecConfig::refresh();
                 }
-            }
-        };
+            };
+        });
     });
 }
