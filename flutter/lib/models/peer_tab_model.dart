@@ -39,8 +39,7 @@ class PeerTabModel with ChangeNotifier {
   List<int> get indexs => List.generate(tabNames.length, (index) => index);
   List<Peer> _selectedPeers = List.empty(growable: true);
   List<Peer> get selectedPeers => _selectedPeers;
-  bool _multiSelectionMode = false;
-  bool get multiSelectionMode => _multiSelectionMode;
+  RxBool multiSelectionMode = false.obs;
   List<Peer> _currentTabCachedPeers = List.empty(growable: true);
   List<Peer> get currentTabCachedPeers => _currentTabCachedPeers;
   bool _isShiftDown = false;
@@ -89,7 +88,7 @@ class PeerTabModel with ChangeNotifier {
   }
 
   setMultiSelectionMode(bool mode) {
-    _multiSelectionMode = mode;
+    multiSelectionMode.value = mode;
     if (!mode) {
       _selectedPeers.clear();
       _lastId = '';
@@ -98,12 +97,12 @@ class PeerTabModel with ChangeNotifier {
   }
 
   select(Peer peer) {
-    if (!_multiSelectionMode) {
+    if (!multiSelectionMode.value) {
       // https://github.com/flutter/flutter/issues/101275#issuecomment-1604541700
       // After onTap, the shift key should be pressed for a while when not in multiselection mode,
       // because onTap is delayed when onDoubleTap is not null
       if (isDesktop && !_isShiftDown) return;
-      _multiSelectionMode = true;
+      multiSelectionMode.value = true;
     }
     final cached = _currentTabCachedPeers.map((e) => e.id).toList();
     int thisIndex = cached.indexOf(peer.id);
@@ -153,7 +152,7 @@ class PeerTabModel with ChangeNotifier {
   setShiftDown(bool v) {
     if (_isShiftDown != v) {
       _isShiftDown = v;
-      if (_multiSelectionMode) {
+      if (multiSelectionMode.value) {
         notifyListeners();
       }
     }

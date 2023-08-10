@@ -65,7 +65,7 @@ class _PeerCardState extends State<_PeerCard>
         margin: EdgeInsets.symmetric(horizontal: 2),
         child: GestureDetector(
             onTap: () {
-              if (peerTabModel.multiSelectionMode) {
+              if (peerTabModel.multiSelectionMode.value) {
                 peerTabModel.select(peer);
               } else {
                 if (!isWebDesktop) connect(context, peer.id);
@@ -140,7 +140,7 @@ class _PeerCardState extends State<_PeerCard>
       },
       child: GestureDetector(
           onDoubleTap:
-              peerTabModel.multiSelectionMode || peerTabModel.isShiftDown
+              peerTabModel.multiSelectionMode.value || peerTabModel.isShiftDown
                   ? null
                   : () => widget.connect(context, peer.id),
           onTap: () => peerTabModel.select(peer),
@@ -309,54 +309,58 @@ class _PeerCardState extends State<_PeerCard>
   Widget checkBoxOrActionMoreMobile(Peer peer) {
     final PeerTabModel peerTabModel = Provider.of(context);
     final selected = peerTabModel.isPeerSelected(peer.id);
-    if (peerTabModel.multiSelectionMode) {
-      return Padding(
-        padding: const EdgeInsets.all(12),
-        child: selected
-            ? Icon(
-                Icons.check_box,
-                color: MyTheme.accent,
-              )
-            : Icon(Icons.check_box_outline_blank),
-      );
-    } else {
-      return InkWell(
-          child: const Padding(
-              padding: EdgeInsets.all(12), child: Icon(Icons.more_vert)),
-          onTapDown: (e) {
-            final x = e.globalPosition.dx;
-            final y = e.globalPosition.dy;
-            _menuPos = RelativeRect.fromLTRB(x, y, x, y);
-          },
-          onTap: () {
-            _showPeerMenu(peer.id);
-          });
-    }
+    return Obx(() {
+      if (peerTabModel.multiSelectionMode.value) {
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: selected
+              ? Icon(
+                  Icons.check_box,
+                  color: MyTheme.accent,
+                )
+              : Icon(Icons.check_box_outline_blank),
+        );
+      } else {
+        return InkWell(
+            child: const Padding(
+                padding: EdgeInsets.all(12), child: Icon(Icons.more_vert)),
+            onTapDown: (e) {
+              final x = e.globalPosition.dx;
+              final y = e.globalPosition.dy;
+              _menuPos = RelativeRect.fromLTRB(x, y, x, y);
+            },
+            onTap: () {
+              _showPeerMenu(peer.id);
+            });
+      }
+    });
   }
 
   Widget checkBoxOrActionMoreDesktop(Peer peer) {
     final PeerTabModel peerTabModel = Provider.of(context);
     final selected = peerTabModel.isPeerSelected(peer.id);
-    if (peerTabModel.multiSelectionMode) {
-      final icon = selected
-          ? Icon(
-              Icons.check_box,
-              color: MyTheme.accent,
-            )
-          : Icon(Icons.check_box_outline_blank);
-      bool last = peerTabModel.isShiftDown && peer.id == peerTabModel.lastId;
-      if (last) {
-        return Container(
-          decoration: BoxDecoration(
-              border: Border.all(color: MyTheme.accent, width: 1)),
-          child: icon,
-        );
+    return Obx(() {
+      if (peerTabModel.multiSelectionMode.value) {
+        final icon = selected
+            ? Icon(
+                Icons.check_box,
+                color: MyTheme.accent,
+              )
+            : Icon(Icons.check_box_outline_blank);
+        bool last = peerTabModel.isShiftDown && peer.id == peerTabModel.lastId;
+        if (last) {
+          return Container(
+            decoration: BoxDecoration(
+                border: Border.all(color: MyTheme.accent, width: 1)),
+            child: icon,
+          );
+        } else {
+          return icon;
+        }
       } else {
-        return icon;
+        return _actionMore(peer);
       }
-    } else {
-      return _actionMore(peer);
-    }
+    });
   }
 
   Widget _actionMore(Peer peer) => Listener(

@@ -5,10 +5,12 @@ import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
+import 'package:provider/provider.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
 import 'package:get/get.dart';
 
 import '../../common.dart';
+import '../../models/peer_tab_model.dart';
 import 'dialog.dart';
 import 'login.dart';
 
@@ -72,7 +74,8 @@ class _AddressBookState extends State<AddressBook> {
     return Row(
       children: [
         Offstage(
-            offstage: hideAbTagsPanel.value,
+            offstage: hideAbTagsPanel.value ||
+                gFFI.peerTabModel.multiSelectionMode.value,
             child: Container(
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
@@ -105,7 +108,8 @@ class _AddressBookState extends State<AddressBook> {
     return Column(
       children: [
         Offstage(
-            offstage: hideAbTagsPanel.value,
+            offstage: hideAbTagsPanel.value ||
+                gFFI.peerTabModel.multiSelectionMode.value,
             child: Container(
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(6),
