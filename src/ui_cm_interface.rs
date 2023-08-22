@@ -159,6 +159,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             .retain(|_, c| !(c.disconnected && c.peer_id == client.peer_id));
         CLIENTS.write().unwrap().insert(id, client.clone());
         self.ui_handler.add_connection(&client);
+        println!("================= ui cm add_connection");
     }
 
     #[inline]
@@ -207,6 +208,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
 
         self.ui_handler.remove_connection(id, close);
+        println!("================= ui cm remove_connection");
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

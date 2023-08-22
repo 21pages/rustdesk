@@ -422,6 +422,8 @@ class ServerModel with ChangeNotifier {
       return;
     }
 
+    final oldLength = _clients.length;
+
     _clients.clear();
     tabController.state.value.tabs.clear();
 
@@ -434,9 +436,12 @@ class ServerModel with ChangeNotifier {
         debugPrint("Failed to decode clientJson '$clientJson', error $e");
       }
     }
+    print(
+        "================= updateClientState oldLength:$oldLength, newLength:${_clients.length}");
   }
 
   void addConnection(Map<String, dynamic> evt) {
+    print("================= flutter addConnection");
     try {
       final client = Client.fromJson(jsonDecode(evt["client"]));
       if (client.authorized) {
@@ -565,6 +570,7 @@ class ServerModel with ChangeNotifier {
   }
 
   void onClientRemove(Map<String, dynamic> evt) {
+    print("================= flutter onClientRemove");
     try {
       final id = int.parse(evt['id'] as String);
       final close = (evt['close'] as String) == 'true';
