@@ -37,7 +37,7 @@ use hbb_common::{
         Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution, CONNECT_TIMEOUT, READ_TIMEOUT,
         RELAY_PORT,
     },
-    get_version_number, log,
+    flog, get_version_number, log,
     message_proto::{option_message::BoolOption, *},
     protobuf::Message as _,
     rand,
@@ -45,6 +45,7 @@ use hbb_common::{
     socket_client,
     sodiumoxide::base64,
     sodiumoxide::crypto::{box_, secretbox, sign},
+    taglog,
     tcp::FramedStream,
     timeout,
     tokio::time::Duration,
@@ -841,6 +842,11 @@ impl AudioHandler {
         log::info!("Remote input format: {:?}", format0);
         let config: StreamConfig = config.into();
         self.sample_rate = (format0.sample_rate, config.sample_rate.0);
+        flog(&format!(
+            "audio device name: {:?}, config:{:?}",
+            device.name(),
+            config
+        ));
         let mut build_output_stream = |config: StreamConfig| match sample_format {
             cpal::SampleFormat::I8 => self.build_output_stream::<i8>(&config, &device),
             cpal::SampleFormat::I16 => self.build_output_stream::<i16>(&config, &device),
@@ -859,7 +865,9 @@ impl AudioHandler {
                 channels: format0.channels as _,
                 ..config.clone()
             };
-            if let Err(_) = build_output_stream(no_rechannel_config) {
+            flog(&format!("no_rechannel_config: {:?}", no_rechannel_config));
+            if let Err(e) = build_output_stream(no_rechannel_config) {
+                flog(&format!("build no_rechannel_config failed : {:?}", e));
                 build_output_stream(config)?;
             }
         } else {
@@ -871,6 +879,7 @@ impl AudioHandler {
 
     /// Handle audio format and create an audio decoder.
     pub fn handle_format(&mut self, f: AudioFormat) {
+        flog(&format!("recevie audio format:{:?}", f));
         match AudioDecoder::new(f.sample_rate, if f.channels > 1 { Stereo } else { Mono }) {
             Ok(d) => {
                 let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
@@ -879,6 +888,7 @@ impl AudioHandler {
                 allow_err!(self.start_audio(f));
             }
             Err(err) => {
+                flog(&format!("Failed to create audio decoder: {}", err));
                 log::error!("Failed to create audio decoder: {}", err);
             }
         }
@@ -889,6 +899,7 @@ impl AudioHandler {
     pub fn handle_frame(&mut self, frame: AudioFrame) {
         #[cfg(not(any(target_os = "android", target_os = "linux")))]
         if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
+            taglog("handle_frame no ready", "");
             return;
         }
         #[cfg(target_os = "linux")]
@@ -910,6 +921,12 @@ impl AudioHandler {
                     let sample_rate = self.sample_rate.1;
                     let audio_buffer = self.audio_buffer.0.clone();
                     let mut buffer = buffer[0..n].to_owned();
+                    taglog(
+                        "decode_float ok",
+                        &format!(
+                            "data len:{n}, sample_rate:{sample_rate}, sample_rate0:{sample_rate0}, channels:{}, device_channel:{}",self.channels, self.device_channel
+                        ),
+                    );
                     if sample_rate != sample_rate0 {
                         buffer = crate::audio_resample(
                             &buffer[0..n],
@@ -939,6 +956,8 @@ impl AudioHandler {
                         unsafe { std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4) };
                     self.simple.as_mut().map(|x| x.write(data_u8));
                 }
+            } else {
+                taglog("decode_float failed", "");
             }
         });
     }
@@ -950,10 +969,16 @@ impl AudioHandler {
         config: &StreamConfig,
         device: &Device,
     ) -> ResultType<()> {
+        use hbb_common::taglog;
+
         self.device_channel = config.channels;
         let err_fn = move |err| {
             // too many errors, will improve later
             log::trace!("an error occurred on stream: {}", err);
+            taglog(
+                "build_output_stream err callback",
+                &format!("err : {:?}", err),
+            );
         };
         let audio_buffer = self.audio_buffer.0.clone();
         let ready = self.ready.clone();
@@ -965,6 +990,10 @@ impl AudioHandler {
                     *ready.lock().unwrap() = true;
                 }
                 let mut lock = audio_buffer.lock().unwrap();
+                taglog(
+                    "build_output_stream  data_callback",
+                    &format!("data len :{}, buffer len:{} ", data.len(), lock.len()),
+                );
                 let mut n = data.len();
                 if lock.occupied_len() < n {
                     n = lock.occupied_len();
@@ -984,6 +1013,7 @@ impl AudioHandler {
             timeout,
         )?;
         stream.play()?;
+        flog("stream play ok");
         self.audio_stream = Some(Box::new(stream));
         Ok(())
     }
@@ -1874,6 +1904,7 @@ where
 /// Start an audio thread
 /// Return a audio [`MediaSender`]
 pub fn start_audio_thread() -> MediaSender {
+    flog(&format!("This is control side"));
     let (audio_sender, audio_receiver) = mpsc::channel::<MediaData>();
     std::thread::spawn(move || {
         let mut audio_handler = AudioHandler::default();

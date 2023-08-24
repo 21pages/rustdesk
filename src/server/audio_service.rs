@@ -15,6 +15,7 @@
 use super::*;
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 use hbb_common::anyhow::anyhow;
+use hbb_common::taglog;
 use magnum_opus::{Application::*, Channels::*, Encoder};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -108,6 +109,7 @@ mod cpal_impl {
         traits::{DeviceTrait, HostTrait, StreamTrait},
         BufferSize, Device, Host, InputCallbackInfo, StreamConfig, SupportedStreamConfig,
     };
+    use hbb_common::{flog, taglog};
 
     lazy_static::lazy_static! {
         static ref HOST: Host = cpal::default_host();
@@ -150,11 +152,20 @@ mod cpal_impl {
         encoder: &mut Encoder,
         sp: &GenericService,
     ) {
+        taglog(
+            "audio server send",
+            &format!(
+                "datalen:{}, sample_rate0:{sample_rate0}, sample_rate:{sample_rate}, device_channel:{device_channel}, encode_channel:{encode_channel}",
+                data.len()
+            ),
+        );
         let mut data = data;
         if sample_rate0 != sample_rate {
+            taglog("audio_resample", "");
             data = crate::common::audio_resample(&data, sample_rate0, sample_rate, device_channel);
         }
         if device_channel != encode_channel {
+            taglog("audio_rechannel", "");
             data = crate::common::audio_rechannel(
                 data,
                 sample_rate,
@@ -220,8 +231,14 @@ mod cpal_impl {
     }
 
     fn play(sp: &GenericService) -> ResultType<(Box<dyn StreamTrait>, Arc<Message>)> {
+        flog("This is controlled side");
         use cpal::SampleFormat::*;
         let (device, config) = get_device()?;
+        flog(&format!(
+            "audio device name:{:?}, config:{:?}",
+            device.name(),
+            config
+        ));
         let sp = sp.clone();
         // Sample rate must be one of 8000, 12000, 16000, 24000, or 48000.
         let sample_rate_0 = config.sample_rate().0;
@@ -237,6 +254,11 @@ mod cpal_impl {
             48000
         };
         let ch = if config.channels() > 1 { Stereo } else { Mono };
+        flog(&format!(
+            "audio sample_rate_0: {sample_rate_0}, sample_rate:{sample_rate}, ch:{:?}, sample_format:{:?}",
+            ch,
+            config.sample_format(),
+        ));
         let stream = match config.sample_format() {
             I8 => build_input_stream::<i8>(device, &config, sp, sample_rate, ch)?,
             I16 => build_input_stream::<i16>(device, &config, sp, sample_rate, ch)?,
@@ -270,6 +292,7 @@ mod cpal_impl {
         let err_fn = move |err| {
             // too many UnknownErrno, will improve later
             log::trace!("an error occurred on stream: {}", err);
+            taglog("build_input_stream err_fn", &format!("err:{:?}", err));
         };
         let sample_rate_0 = config.sample_rate().0;
         log::debug!("Audio sample rate : {}", sample_rate);
@@ -290,9 +313,20 @@ mod cpal_impl {
             sample_rate: config.sample_rate(),
             buffer_size: BufferSize::Default,
         };
+        flog(&format!(
+            "audio sample_rate_0: {sample_rate_0}, device_channel:{device_channel}, frame_size:{frame_size}, encode_len:{encode_len}, rechannel_len:{rechannel_len}",
+        ));
         let stream = device.build_input_stream(
             &stream_config,
             move |data: &[T], _: &InputCallbackInfo| {
+                taglog(
+                    "build_input_stream data_callback",
+                    &format!(
+                        "data len:{}, buffer len:{}",
+                        data.len(),
+                        INPUT_BUFFER.lock().unwrap().len()
+                    ),
+                );
                 let buffer: Vec<f32> = data.iter().map(|s| T::to_sample(*s)).collect();
                 let mut lock = INPUT_BUFFER.lock().unwrap();
                 lock.extend(buffer);
@@ -347,6 +381,7 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
                     log::debug!("Audio Zero Gate Attack");
                     AUDIO_ZERO_COUNT += 1;
                 }
+                taglog("bigger than MAX_AUDIO_ZERO_COUNT", "return");
                 return;
             }
             AUDIO_ZERO_COUNT += 1;
@@ -392,6 +427,8 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
             });
             sp.send(msg_out);
         }
-        Err(_) => {}
+        Err(e) => {
+            taglog("encoder failed !!!", &format!("err:{:?}", e));
+        }
     }
 }

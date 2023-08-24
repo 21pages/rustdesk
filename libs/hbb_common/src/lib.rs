@@ -7,6 +7,10 @@ pub use futures;
 pub use protobuf;
 pub use protos::message as message_proto;
 pub use protos::rendezvous as rendezvous_proto;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Instant;
 use std::{
     fs::File,
     io::{self, BufRead},
@@ -460,5 +464,35 @@ mod test {
         assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr_v6)), addr_v6);
         let addr_v6 = "[::1]:8080".parse().unwrap();
         assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr_v6)), addr_v6);
+    }
+}
+
+pub fn flog(s: &str) {
+    use chrono::prelude::*;
+    use std::io::Write;
+    let mut option = std::fs::OpenOptions::new();
+    if let Ok(mut f) = option.append(true).create(true).open("D:/log.txt") {
+        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+    }
+}
+
+lazy_static::lazy_static! {
+    static ref TAGS: Arc::<Mutex<HashMap<String, Instant>>> = Default::default();
+}
+
+pub fn taglog(tag: &str, s: &str) {
+    use chrono::prelude::*;
+    use std::io::Write;
+    let mut lock = TAGS.lock().unwrap();
+    if let Some(last) = lock.get(tag) {
+        if last.elapsed().as_secs() < 1 {
+            return;
+        }
+    }
+    lock.insert(tag.to_string(), Instant::now());
+    drop(lock);
+    let mut option = std::fs::OpenOptions::new();
+    if let Ok(mut f) = option.append(true).create(true).open("D:/log.txt") {
+        write!(&mut f, "{:?} TAG:{}, {}\n", Local::now(), tag, s).ok();
     }
 }
