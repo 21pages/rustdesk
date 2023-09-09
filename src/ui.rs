@@ -146,6 +146,8 @@ pub fn start(args: &mut [String]) {
             Box::new(handler)
         });
         page = "remote.html";
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        crate::tray::check_and_start_tray_process();
     } else {
         log::error!("Wrong command: {:?}", args);
         return;

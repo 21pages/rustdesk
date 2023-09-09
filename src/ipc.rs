@@ -235,6 +235,7 @@ pub enum Data {
     SyncWinCpuUsage(Option<f64>),
     FileTransferLog(String),
     SessionCount(usize),
+    CheckProcess((Option<(String, bool)>, Option<bool>)),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -489,6 +490,10 @@ async fn handle(data: Data, stream: &mut Connection) {
                     .send(&Data::SessionCount(crate::Connection::alive_conns().len()))
                     .await
             );
+        }
+        Data::CheckProcess((Some((arg, same_uid)), _)) => {
+            let exist = crate::check_process(&arg, same_uid);
+            allow_err!(stream.send(&Data::CheckProcess((None, Some(exist)))).await);
         }
         _ => {}
     }
