@@ -1,9 +1,71 @@
 use crate::{client::translate, ipc::Data};
-use hbb_common::{allow_err, log, tokio};
+use hbb_common::{allow_err, log, tokio, ResultType};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+
+#[cfg(feature = "flutter")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub fn check_and_start_tray_process() {
+    std::thread::spawn(|| {
+        if let Err(e) = check_and_start_tray_process_exec() {
+            log::error!("start tray failed:{:?}", e);
+        }
+    });
+}
+
+#[cfg(feature = "flutter")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[tokio::main(flavor = "current_thread")]
+async fn check_and_start_tray_process_exec() -> ResultType<()> {
+    let mut server_exist = None;
+    let mut tray_exist = None;
+    let is_root = crate::platform::is_root();
+    if is_root {
+        server_exist = Some(crate::check_process("--server", false, false));
+        // todo: specify current user
+        // the second user will detect the first user's tray, will not pull up tray for incomming connection
+        tray_exist = Some(crate::check_process("--tray", false, false));
+    } else {
+        let mut c = crate::ipc::connect(1000, "").await?;
+        c.send(&Data::CheckProcess((
+            Some(("--server".to_owned(), false, false)),
+            None,
+        )))
+        .await?;
+        if let Some(Data::CheckProcess((_, Some(exist)))) = c.next_timeout(1000).await? {
+            server_exist = Some(exist);
+        }
+        c.send(&Data::CheckProcess((
+            Some(("--tray".to_owned(), true, false)),
+            None,
+        )))
+        .await?;
+        if let Some(Data::CheckProcess((_, Some(exist)))) = c.next_timeout(1000).await? {
+            tray_exist = Some(exist)
+        }
+    };
+    log::info!(
+        "env args: {:?}, --server exist: {:?}, --tray exist: {:?}",
+        std::env::args(),
+        server_exist,
+        tray_exist
+    );
+    if server_exist == Some(true) && tray_exist == Some(false) {
+        #[cfg(target_os = "linux")]
+        hbb_common::allow_err!(crate::platform::check_autostart_config());
+        if is_root {
+            #[cfg(windows)]
+            crate::platform::run_as_user(vec!["--tray"])?;
+            #[cfg(target_os = "linux")]
+            crate::platform::run_as_user(vec!["--tray"], None)?;
+        } else {
+            crate::run_me(vec!["--tray"])?;
+        }
+    }
+    Ok(())
+}
 
 pub fn start_tray() {
     allow_err!(make_tray());

@@ -235,6 +235,8 @@ pub enum Data {
     SyncWinCpuUsage(Option<f64>),
     FileTransferLog(String),
     SessionCount(usize),
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    CheckProcess((Option<(String, bool, bool)>, Option<bool>)),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -489,6 +491,11 @@ async fn handle(data: Data, stream: &mut Connection) {
                     .send(&Data::SessionCount(crate::Connection::alive_conns().len()))
                     .await
             );
+        }
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        Data::CheckProcess((Some((arg, same_uid, exclude_self)), _)) => {
+            let exist = crate::check_process(&arg, same_uid, exclude_self);
+            allow_err!(stream.send(&Data::CheckProcess((None, Some(exist)))).await);
         }
         _ => {}
     }

@@ -786,7 +786,7 @@ pub fn get_sysinfo() -> serde_json::Value {
         "os": os,
         "hostname": hostname,
     });
-    #[cfg(not(any(target_os = "android", target_os = "ios")))] 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         out["username"] = json!(crate::platform::get_active_username());
     }
@@ -1099,7 +1099,7 @@ pub async fn get_next_nonkeyexchange_msg(
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn check_process(arg: &str, same_uid: bool) -> bool {
+pub fn check_process(arg: &str, same_uid: bool, exclude_self: bool) -> bool {
     use hbb_common::sysinfo::{ProcessExt, System, SystemExt};
     let mut sys = System::new();
     sys.refresh_processes();
@@ -1120,7 +1120,7 @@ pub fn check_process(arg: &str, same_uid: bool) -> bool {
         if cur_path.to_string_lossy().to_lowercase() != path {
             continue;
         }
-        if p.pid().to_string() == std::process::id().to_string() {
+        if exclude_self && p.pid().to_string() == std::process::id().to_string() {
             continue;
         }
         if same_uid && p.user_id() != my_uid {
