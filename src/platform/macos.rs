@@ -604,7 +604,7 @@ pub fn hide_dock() {
 }
 
 fn check_main_window() -> bool {
-    if crate::check_process("", true) {
+    if crate::check_process("", true, false) {
         return true;
     }
     let app = format!("/Applications/{}.app", crate::get_app_name());

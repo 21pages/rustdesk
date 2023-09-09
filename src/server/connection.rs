@@ -1351,6 +1351,8 @@ impl Connection {
                     log::error!("ipc to connection manager exit: {}", err);
                 }
             });
+            #[cfg(all(windows, feature = "flutter"))]
+            crate::tray::check_and_start_tray_process();
         }
     }
 
