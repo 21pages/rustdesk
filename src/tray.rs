@@ -1,9 +1,49 @@
 use crate::{client::translate, ipc::Data};
-use hbb_common::{allow_err, log, tokio};
+use hbb_common::{allow_err, bail, log, tokio, ResultType};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub fn check_and_start_tray_process() {
+    if crate::platform::is_installed() {
+        std::thread::spawn(|| {
+            check_and_start_tray_process_exec().ok();
+        });
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[tokio::main(flavor = "current_thread")]
+async fn check_and_start_tray_process_exec() -> ResultType<()> {
+    let should_start = if crate::platform::is_root() {
+        !crate::check_process("--tray", true)
+    } else {
+        let mut c = crate::ipc::connect(1000, "").await?;
+        c.send(&Data::CheckProcess((
+            Some(("--tray".to_owned(), true)),
+            None,
+        )))
+        .await?;
+        if let Some(Data::CheckProcess((_, Some(exist)))) = c.next_timeout(1000).await? {
+            !exist
+        } else {
+            false
+        }
+    };
+    if should_start {
+        #[cfg(target_os = "linux")]
+        hbb_common::allow_err!(crate::platform::check_autostart_config());
+        #[cfg(windows)]
+        hbb_common::allow_err!(crate::platform::run_as_user(vec!["--tray"]));
+        #[cfg(target_os = "linux")]
+        hbb_common::allow_err!(crate::platform::run_as_user(vec!["--tray"], None));
+        Ok(())
+    } else {
+        bail!("not need to start tray");
+    }
+}
 
 pub fn start_tray() {
     allow_err!(make_tray());
