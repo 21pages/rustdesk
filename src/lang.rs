@@ -1,5 +1,7 @@
-use std::ops::Deref;
+use hbb_common::regex::Regex;
+use std::{collections::HashMap, ops::Deref};
 
+mod ar;
 mod ca;
 mod cn;
 mod cs;
@@ -17,6 +19,7 @@ mod it;
 mod ja;
 mod ko;
 mod kz;
+mod lt;
 mod nl;
 mod pl;
 mod ptbr;
@@ -32,8 +35,6 @@ mod tr;
 mod tw;
 mod ua;
 mod vn;
-mod lt;
-mod ar;
 
 pub const LANGS: &[(&str, &str)] = &[
     ("en", "English"),
@@ -137,16 +138,41 @@ pub fn translate_locale(name: String, locale: &str) -> String {
         "ar" => ar::T.deref(),
         _ => en::T.deref(),
     };
+    let (name, placeholder_map) = extract_placeholders(&name);
+    let replace = |s: &&str| {
+        let mut s = s.to_string();
+        for (k, v) in placeholder_map {
+            s = s.replace(&format!("[{}]", k), &v);
+        }
+        s
+    };
     if let Some(v) = m.get(&name as &str) {
         if v.is_empty() {
             if lang != "en" {
                 if let Some(v) = en::T.get(&name as &str) {
-                    return v.to_string();
+                    return replace(v);
                 }
             }
         } else {
-            return v.to_string();
+            return replace(v);
         }
     }
     name
+}
+
+fn extract_placeholders(format_str: &str) -> (String, HashMap<String, String>) {
+    let re = Regex::new(r"\[([^\[\]=]+)=([^\[\]]+)\]").unwrap();
+    let mut replaced_str = format_str.to_string();
+    let mut placeholders = HashMap::new();
+
+    for caps in re.captures_iter(format_str) {
+        let placeholder = &caps[1];
+        let value = &caps[2];
+        let pattern = format!("[{}={}]", placeholder, value);
+        replaced_str = replaced_str.replace(&pattern, &format!("[{}]", placeholder));
+
+        placeholders.insert(placeholder.to_string(), value.to_string());
+    }
+
+    (replaced_str, placeholders)
 }
