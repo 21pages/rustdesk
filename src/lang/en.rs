@@ -82,5 +82,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Start session recording", "Start Session Recording"),
         ("Stop session recording", "Stop Session Recording"),
         ("Enable remote configuration modification", "Enable Remote Configuration Modification"),
+        ("auto_disconnect_option_tip", "Automatically close incoming sessions on user inactivity"),
+        ("Connection failed due to inactivity", "Automatically disconnected due to inactivity"),
         ].iter().cloned().collect();
 }
