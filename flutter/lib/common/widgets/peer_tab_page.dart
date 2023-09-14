@@ -1,3 +1,6 @@
+import 'dart:ui' as ui;
+
+import 'package:bot_toast/bot_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/address_book.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
@@ -6,6 +9,9 @@ import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/common/widgets/peer_card.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
+import 'package:flutter_hbb/desktop/widgets/material_mod_popup_menu.dart'
+    as mod_menu;
+import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
 
 import 'package:flutter_hbb/models/peer_tab_model.dart';
@@ -100,7 +106,9 @@ class _PeerTabPageState extends State<PeerTabPage>
             child: selectionWrap(Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(child: _createSwitchBar(context)),
+                Expanded(
+                    child:
+                        visibleContextMenuListener(_createSwitchBar(context))),
                 const PeerSearchBar().marginOnly(right: isMobile ? 0 : 13),
                 _createRefresh(),
                 _createMultiSelection(),
@@ -145,7 +153,7 @@ class _PeerTabPageState extends State<PeerTabPage>
     return ListView(
         scrollDirection: Axis.horizontal,
         physics: NeverScrollableScrollPhysics(),
-        children: model.indexs.map((t) {
+        children: model.visibleIndexs.map((t) {
           final selected = model.currentTab == t;
           final color = selected
               ? MyTheme.tabbar(context).selectedTextColor
@@ -182,14 +190,15 @@ class _PeerTabPageState extends State<PeerTabPage>
   Widget _createPeersView() {
     final model = Provider.of<PeerTabModel>(context);
     Widget child;
-    if (model.indexs.isEmpty) {
-      child = Center(
+    if (model.visibleIndexs.isEmpty) {
+      child = visibleContextMenuListener(Center(
         child: Text(translate('Right click to select tabs')),
-      );
+      ));
     } else {
-      if (model.indexs.contains(model.currentTab)) {
+      if (model.visibleIndexs.contains(model.currentTab)) {
         child = entries[model.currentTab].widget;
       } else {
+        debugPrint("should not happen! currentTab not in visibleIndexs");
         Future.delayed(Duration.zero, () {
           model.setCurrentTab(model.indexs[0]);
         });
@@ -266,6 +275,52 @@ class _PeerTabPageState extends State<PeerTabPage>
             color: textColor,
           )),
     );
+  }
+
+  Widget visibleContextMenuListener(Widget child) {
+    return Listener(
+        onPointerDown: (e) {
+          if (e.kind != ui.PointerDeviceKind.mouse) {
+            return;
+          }
+          if (e.buttons == 2) {
+            showRightMenu(
+              (CancelFunc cancelFunc) {
+                return visibleContextMenu(cancelFunc);
+              },
+              target: e.position,
+            );
+          }
+        },
+        child: child);
+  }
+
+  Widget visibleContextMenu(CancelFunc cancelFunc) {
+    final model = Provider.of<PeerTabModel>(context);
+    final menu = List<MenuEntrySwitch>.empty(growable: true);
+    for (int i = 0; i < model.tabNames.length; i++) {
+      menu.add(MenuEntrySwitch(
+          switchType: SwitchType.scheckbox,
+          text: model.tabTooltip(i, gFFI.groupModel.groupName.value),
+          getter: () async {
+            return model.isVisible[i];
+          },
+          setter: (show) async {
+            model.setTabVisible(i, show);
+            cancelFunc();
+          }));
+    }
+    return mod_menu.PopupMenu(
+        items: menu
+            .map((entry) => entry.build(
+                context,
+                const MenuConfig(
+                  commonColor: MyTheme.accent,
+                  height: 20.0,
+                  dividerHeight: 12.0,
+                )))
+            .expand((i) => i)
+            .toList());
   }
 
   Widget createMultiSelectionBar() {
