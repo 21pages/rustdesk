@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Cho phép ẩn chỉ khi chấp nhận phiên kết nối bằng mật khẩu vĩnh viễn"),
         ("wayland_experiment_tip", "Hỗ trợ cho Wayland đang trong giai đoạn thử nghiệm, vui lòng dùng DX11 nếu bạn muốn sử dụng kết nối không giám sát."),
         ("Right click to select tabs", "Chuột phải để chọn cửa sổ"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Đã bỏ qua"),
         ("Add to Address Book", "Thêm vào Quyển địa chỉ"),
         ("Group", "Nhóm"),

@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Permite ascunderea ferestrei de gestionare doar dacă accepți începerea sesiunilor folosind parola permanentă"),
         ("wayland_experiment_tip", "Wayland este acceptat doar într-o formă experimentală. Folosește X11 dacă nu ai nevoie de acces supravegheat."),
         ("Right click to select tabs", "Dă clic dreapta pentru a selecta file"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Ignorat"),
         ("Add to Address Book", "Adaugă la agendă"),
         ("Group", "Grup"),

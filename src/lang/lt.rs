@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Leisti paslėpti didžiąją ir mažąją raidę, jei priimamos slaptažodžio sesijos arba naudojamas nuolatinis slaptažodis"),
         ("wayland_experiment_tip", "Wayland palaikymas yra eksperimentinis, naudokite X11, jei jums reikalingas automatinis prisijungimas."),
         ("Right click to select tabs", "Dešiniuoju pelės mygtuku spustelėkite, kad pasirinktumėte skirtukus"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Praleisti"),
         ("Add to Address Book", "Pridėti prie adresų knygos"),
         ("Group", "Grupė"),

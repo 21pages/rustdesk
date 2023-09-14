@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "在只允許密碼連線並且只用固定密碼的情況下才允許隱藏"),
         ("wayland_experiment_tip", "Wayland 支援處於實驗階段，如果您需要使用無人值守存取，請使用 X11。"),
         ("Right click to select tabs", "右鍵選擇分頁"),
+        ("Long press to select tabs", ""),
         ("Skipped", "已跳過"),
         ("Add to Address Book", "新增到通訊錄"),
         ("Group", "群組"),

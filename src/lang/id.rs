@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Izinkan untuk menyembunyikan hanya jika menerima sesi melalui kata sandi dan menggunakan kata sandi permanen"),
         ("wayland_experiment_tip", "Dukungan Wayland masih dalam tahap percobaan, harap gunakan X11 jika Anda memerlukan akses tanpa pengawasan"),
         ("Right click to select tabs", "Klik kanan untuk memilih tab"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Dilewati"),
         ("Add to Address Book", "Tambahkan ke Buku Alamat"),
         ("Group", "Grup"),

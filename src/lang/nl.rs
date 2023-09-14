@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Dit kan alleen als de toegang via een permanent wachtwoord verloopt."),
         ("wayland_experiment_tip", "Wayland ondersteuning is slechts experimenteel. Gebruik alsjeblieft X11 als je onbeheerde toegang nodig hebt."),
         ("Right click to select tabs", "Rechts klikken om tabbladen te selecteren"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Overgeslagen"),
         ("Add to Address Book", "Toevoegen aan Adresboek"),
         ("Group", "Groep"),

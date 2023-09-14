@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Oturumları yalnızca parola ile kabul edebilir ve kalıcı parola kullanıyorsanız gizlemeye izin verin"),
         ("wayland_experiment_tip", "Wayland desteği deneysel aşamada olduğundan, gerektiğinde X11'i kullanmanız önerilir"),
         ("Right click to select tabs", "Sekmeleri seçmek için sağ tıklayın"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Atlandı"),
         ("Add to Address Book", "Adres Defterine Ekle"),
         ("Group", "Grup"),

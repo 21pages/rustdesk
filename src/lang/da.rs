@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", ""),
         ("wayland_experiment_tip", ""),
         ("Right click to select tabs", "Højreklik for at vælge faner"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Sprunget over"),
         ("Add to Address Book", "Tilføj til adressebog"),
         ("Group", "Gruppe"),

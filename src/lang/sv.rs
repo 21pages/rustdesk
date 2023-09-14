@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Tillåt att gömma endast om accepterande sessioner med lösenord och permanenta lösenord"),
         ("wayland_experiment_tip", ""),
         ("Right click to select tabs", ""),
+        ("Long press to select tabs", ""),
         ("Skipped", ""),
         ("Add to Address Book", ""),
         ("Group", ""),

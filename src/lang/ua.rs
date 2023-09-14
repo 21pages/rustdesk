@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Дозволено приховати лише якщо сеанс підтверджується постійним паролем"),
         ("wayland_experiment_tip", "Підтримка Wayland на експериментальній стадії, будь ласка, використовуйте X11, якщо необхідний автоматичний доступ."),
         ("Right click to select tabs", "Правий клік для вибору вкладки"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Пропущено"),
         ("Add to Address Book", "Додати IP до Адресної книги"),
         ("Group", "Група"),

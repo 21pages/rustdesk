@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Skrivanje dozvoljeno samo prihvatanjem sesije preko lozinke i korišćenjem trajne lozinke"),
         ("wayland_experiment_tip", "Wayland eksperiment savet"),
         ("Right click to select tabs", "Desni klik za izbor kartica"),
+        ("Long press to select tabs", ""),
         ("Skipped", ""),
         ("Add to Address Book", "Dodaj u adresar"),
         ("Group", "Grupa"),

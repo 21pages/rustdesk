@@ -411,6 +411,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("hide_cm_tip", "Dovoli skrivanje samo pri sprejemanju sej z geslom"),
         ("wayland_experiment_tip", "Podpora za Wayland je v preizkusni fazi. Uporabite X11, če rabite nespremljan dostop."),
         ("Right click to select tabs", "Desno-kliknite za izbiro zavihkov"),
+        ("Long press to select tabs", ""),
         ("Skipped", "Izpuščeno"),
         ("Add to Address Book", "Dodaj v adresar"),
         ("Group", "Skupina"),
