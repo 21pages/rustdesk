@@ -45,7 +45,7 @@ class UserModel {
       refreshingUser = false;
       final status = response.statusCode;
       if (status == 401 || status == 400) {
-        reset(clearAbCache: status == 401);
+        reset(clearCache: status == 401);
         return;
       }
       final data = json.decode(utf8.decode(response.bodyBytes));
@@ -84,11 +84,13 @@ class UserModel {
     }
   }
 
-  Future<void> reset({bool clearAbCache = false}) async {
+  Future<void> reset({bool clearCache = false}) async {
     await bind.mainSetLocalOption(key: 'access_token', value: '');
     await bind.mainSetLocalOption(key: 'user_info', value: '');
-    if (clearAbCache) await bind.mainClearAb();
-    await gFFI.groupModel.reset();
+    if (clearCache) {
+      await bind.mainClearAb();
+      await bind.mainClearGroup();
+    }
     userName.value = '';
   }
 
@@ -120,7 +122,7 @@ class UserModel {
     } catch (e) {
       debugPrint("request /api/logout failed: err=$e");
     } finally {
-      await reset(clearAbCache: true);
+      await reset(clearCache: true);
       gFFI.dialogManager.dismissByTag(tag);
     }
   }

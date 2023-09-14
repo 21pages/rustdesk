@@ -110,7 +110,11 @@ class _PeerTabPageState extends State<PeerTabPage>
                     child:
                         visibleContextMenuListener(_createSwitchBar(context))),
                 const PeerSearchBar().marginOnly(right: isMobile ? 0 : 13),
-                _createRefresh(),
+                _createRefresh(
+                    index: PeerTabIndex.ab, loading: gFFI.abModel.abLoading),
+                _createRefresh(
+                    index: PeerTabIndex.group,
+                    loading: gFFI.groupModel.groupLoading),
                 _createMultiSelection(),
                 Offstage(
                     offstage: !isDesktop,
@@ -169,11 +173,11 @@ class _PeerTabPageState extends State<PeerTabPage>
           ));
           return Obx(() => InkWell(
                 child: Container(
-                  decoration:
-                      selected ? decoBorder : (hover.value ? deco : null),
+                  decoration: (hover.value
+                      ? (selected ? decoBorder : deco)
+                      : (selected ? decoBorder : null)),
                   child: Tooltip(
-                    message:
-                        model.tabTooltip(t, gFFI.groupModel.groupName.value),
+                    message: model.tabTooltip(t),
                     child: Icon(model.tabIcon(t), color: color),
                   ).paddingSymmetric(horizontal: 4),
                 ).paddingSymmetric(horizontal: 4),
@@ -209,17 +213,19 @@ class _PeerTabPageState extends State<PeerTabPage>
         child: child.marginSymmetric(vertical: isDesktop ? 12.0 : 6.0));
   }
 
-  Widget _createRefresh() {
+  Widget _createRefresh(
+      {required PeerTabIndex index, required RxBool loading}) {
+    final model = Provider.of<PeerTabModel>(context);
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
     return Offstage(
-      offstage: gFFI.peerTabModel.currentTab != PeerTabIndex.ab.index,
+      offstage: model.currentTab != index.index,
       child: RefreshWidget(
           onPressed: () {
             if (gFFI.peerTabModel.currentTab < entries.length) {
               entries[gFFI.peerTabModel.currentTab].load();
             }
           },
-          spinning: gFFI.abModel.abLoading,
+          spinning: loading,
           child: RotatedBox(
               quarterTurns: 2,
               child: Tooltip(
@@ -301,7 +307,7 @@ class _PeerTabPageState extends State<PeerTabPage>
     for (int i = 0; i < model.tabNames.length; i++) {
       menu.add(MenuEntrySwitch(
           switchType: SwitchType.scheckbox,
-          text: model.tabTooltip(i, gFFI.groupModel.groupName.value),
+          text: model.tabTooltip(i),
           getter: () async {
             return model.isVisible[i];
           },
@@ -341,6 +347,9 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   Widget deleteSelection() {
     final model = Provider.of<PeerTabModel>(context);
+    if (model.currentTab == PeerTabIndex.group.index) {
+      return Offstage();
+    }
     return _hoverAction(
         context: context,
         onTap: () {
