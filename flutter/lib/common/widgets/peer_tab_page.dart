@@ -284,21 +284,31 @@ class _PeerTabPageState extends State<PeerTabPage>
   }
 
   Widget visibleContextMenuListener(Widget child) {
-    return Listener(
-        onPointerDown: (e) {
-          if (e.kind != ui.PointerDeviceKind.mouse) {
-            return;
-          }
-          if (e.buttons == 2) {
-            showRightMenu(
-              (CancelFunc cancelFunc) {
-                return visibleContextMenu(cancelFunc);
-              },
-              target: e.position,
-            );
-          }
-        },
-        child: child);
+    return GestureDetector(
+      onLongPressDown: (e) {
+        showRightMenu(
+          (CancelFunc cancelFunc) {
+            return visibleContextMenu(cancelFunc);
+          },
+          target: e.localPosition,
+        );
+      },
+      child: Listener(
+          onPointerDown: (e) {
+            if (e.kind != ui.PointerDeviceKind.mouse) {
+              return;
+            }
+            if (e.buttons == 2) {
+              showRightMenu(
+                (CancelFunc cancelFunc) {
+                  return visibleContextMenu(cancelFunc);
+                },
+                target: e.position,
+              );
+            }
+          },
+          child: child),
+    );
   }
 
   Widget visibleContextMenu(CancelFunc cancelFunc) {
