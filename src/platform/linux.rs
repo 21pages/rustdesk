@@ -324,10 +324,17 @@ fn force_stop_server() {
 }
 
 pub fn start_os_service() {
+    use hbb_common::flog;
+
+    flog(&format!("start_os_service 1"));
     check_if_stop_service();
+    flog(&format!("start_os_service 2"));
     stop_rustdesk_servers();
+    flog(&format!("start_os_service 3"));
     stop_subprocess();
+    flog(&format!("start_os_service 4"));
     start_uinput_service();
+    flog(&format!("start_os_service 5"));
 
     std::thread::spawn(|| {
         allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE));
@@ -349,11 +356,20 @@ pub fn start_os_service() {
     let mut cm0 = false;
     let mut last_restart = Instant::now();
     while running.load(Ordering::SeqCst) {
+        flog(&format!("start_os_service 6"));
         desktop.refresh();
+
+        flog(&format!(
+            "start_os_service 7: {}, {}, {}",
+            desktop.username,
+            !desktop.is_wayland(),
+            desktop.is_login_wayland()
+        ));
 
         // Duplicate logic here with should_start_server
         // Login wayland will try to start a headless --server.
         if desktop.username == "root" || !desktop.is_wayland() || desktop.is_login_wayland() {
+            flog(&format!("start_os_service 8"));
             // try kill subprocess "--server"
             stop_server(&mut user_server);
             // try start subprocess "--server"
@@ -365,11 +381,15 @@ pub fn start_os_service() {
                 &mut last_restart,
                 &mut server,
             ) {
+                flog(&format!("start_os_service 9"));
                 stop_subprocess();
                 force_stop_server();
+                flog(&format!("start_os_service 10"));
                 start_server(None, &mut server);
+                flog(&format!("start_os_service 11"));
             }
         } else if desktop.username != "" {
+            flog(&format!("start_os_service 12"));
             // try kill subprocess "--server"
             stop_server(&mut server);
 
@@ -382,14 +402,19 @@ pub fn start_os_service() {
                 &mut last_restart,
                 &mut user_server,
             ) {
+                flog(&format!("start_os_service 13"));
                 stop_subprocess();
+                flog(&format!("start_os_service 14"));
                 force_stop_server();
+                flog(&format!("start_os_service 15"));
                 start_server(
                     Some((desktop.uid.clone(), desktop.username.clone())),
                     &mut user_server,
                 );
+                flog(&format!("start_os_service 16"));
             }
         } else {
+            flog(&format!("start_os_service 17"));
             force_stop_server();
             stop_server(&mut user_server);
             stop_server(&mut server);

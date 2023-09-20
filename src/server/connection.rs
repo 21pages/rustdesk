@@ -1516,6 +1516,12 @@ impl Connection {
                     .map(|x| x.clone())
                     .unwrap_or((0, 0, 0));
                 let time = (get_time() / 60_000) as i32;
+                log::error!(
+                    "============ ip:{:?}, failure.1:{}, failure.2:{}",
+                    self.ip,
+                    failure.1,
+                    failure.2
+                );
                 if failure.2 > 30 {
                     self.send_login_error("Too many wrong password attempts")
                         .await;
@@ -1530,7 +1536,7 @@ impl Connection {
                 } else if time == failure.0 && failure.1 > 6 {
                     self.send_login_error("Please try 1 minute later").await;
                     Self::post_alarm_audit(
-                        AlarmAuditType::SixAttemptsWithinOneMinute,
+                        AlarmAuditType::SevenAttemptsWithinOneMinute,
                         json!({
                                     "ip":self.ip,
                                     "id":lr.my_id.clone(),
@@ -2640,7 +2646,7 @@ mod privacy_mode {
 pub enum AlarmAuditType {
     IpWhitelist = 0,
     ExceedThirtyAttempts = 1,
-    SixAttemptsWithinOneMinute = 2,
+    SevenAttemptsWithinOneMinute = 2,
 }
 
 pub enum FileAuditType {

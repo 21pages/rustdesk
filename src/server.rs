@@ -357,6 +357,10 @@ pub async fn start_server(_is_server: bool) {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main]
 pub async fn start_server(is_server: bool) {
+    use hbb_common::flog;
+
+    flog(&format!("start_server 1"));
+
     #[cfg(target_os = "linux")]
     {
         log::info!("DISPLAY={:?}", std::env::var("DISPLAY"));
@@ -370,7 +374,9 @@ pub async fn start_server(is_server: bool) {
     if is_server {
         crate::common::set_server_running(true);
         std::thread::spawn(move || {
+            flog(&format!("start_server args:{:?}", std::env::args()));
             if let Err(err) = crate::ipc::start("") {
+                flog(&format!("Failed to start ipc: {}", err));
                 log::error!("Failed to start ipc: {}", err);
                 std::process::exit(-1);
             }
