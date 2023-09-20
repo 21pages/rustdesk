@@ -3,6 +3,7 @@ use desktop::Desktop;
 #[cfg(all(feature = "linux_headless"))]
 #[cfg(not(any(feature = "flatpak", feature = "appimage")))]
 use hbb_common::config::CONFIG_OPTION_ALLOW_LINUX_HEADLESS;
+use hbb_common::flog;
 pub use hbb_common::platform::linux::*;
 use hbb_common::{
     allow_err, bail,
@@ -324,8 +325,6 @@ fn force_stop_server() {
 }
 
 pub fn start_os_service() {
-    use hbb_common::flog;
-
     flog(&format!("start_os_service 1"));
     check_if_stop_service();
     flog(&format!("start_os_service 2"));
@@ -944,6 +943,7 @@ mod desktop {
         }
 
         fn get_display(&mut self) {
+            flog(&format!("get_display 1"));
             let display_envs = vec![GNOME_SESSION_BINARY, XFCE4_PANEL, SDDM_GREETER, PLASMA_X11];
             for diplay_env in display_envs {
                 self.display = get_env_tries("DISPLAY", &self.uid, diplay_env, 10);
@@ -951,10 +951,11 @@ mod desktop {
                     break;
                 }
             }
-
+            flog(&format!("get_display 2"));
             if self.display.is_empty() {
                 self.display = Self::get_display_by_user(&self.username);
             }
+            flog(&format!("get_display 3"));
             if self.display.is_empty() {
                 self.display = ":0".to_owned();
             }
@@ -962,13 +963,16 @@ mod desktop {
                 .display
                 .replace(&whoami::hostname(), "")
                 .replace("localhost", "");
+            flog(&format!("get_display 4"));
         }
 
         fn get_xauth_from_xorg(&mut self) {
+            flog(&format!("get_xauth_from_xorg 1"));
             if let Ok(output) = run_cmds(&format!(
                 "ps -u {} -f | grep 'Xorg' | grep -v 'grep'",
                 &self.uid
             )) {
+                flog(&format!("get_xauth_from_xorg 2"));
                 for line in output.lines() {
                     let mut auth_found = false;
 
@@ -998,14 +1002,17 @@ mod desktop {
                                     // unreachable!
                                 }
                             }
+                            flog(&format!("get_xauth_from_xorg 3"));
                             return;
                         }
                     }
                 }
+                flog(&format!("get_xauth_from_xorg 4"));
             }
         }
 
         fn get_xauth(&mut self) {
+            flog(&format!("get_xauth 1"));
             // try by direct access to window manager process by name
             let display_envs = vec![GNOME_SESSION_BINARY, XFCE4_PANEL, SDDM_GREETER, PLASMA_X11];
             for diplay_env in display_envs {
@@ -1015,11 +1022,13 @@ mod desktop {
                 }
             }
 
+            flog(&format!("get_xauth 2"));
             // get from Xorg process, parameter and environment
             if self.xauth.is_empty() {
                 self.get_xauth_from_xorg();
             }
 
+            flog(&format!("get_xauth 3"));
             // fallback to default file name
             if self.xauth.is_empty() {
                 let gdm = format!("/run/user/{}/gdm/Xauthority", self.uid);
@@ -1049,21 +1058,25 @@ mod desktop {
                     }
                 };
             }
+            flog(&format!("get_xauth 4"));
         }
 
         fn get_display_by_user(user: &str) -> String {
             // log::debug!("w {}", &user);
+            flog(&format!("get_display_by_user 1"));
             if let Ok(output) = std::process::Command::new("w").arg(&user).output() {
                 for line in String::from_utf8_lossy(&output.stdout).lines() {
                     let mut iter = line.split_whitespace();
                     let b = iter.nth(2);
                     if let Some(b) = b {
                         if b.starts_with(":") {
+                            flog(&format!("get_display_by_user 2"));
                             return b.to_owned();
                         }
                     }
                 }
             }
+            flog(&format!("get_display_by_user 3"));
             // above not work for gdm user
             //log::debug!("ls -l /tmp/.X11-unix/");
             let mut last = "".to_owned();
@@ -1078,16 +1091,19 @@ mod desktop {
                         if x.starts_with("X") {
                             last = x.replace("X", ":").to_owned();
                             if user_field == Some(&user) {
+                                flog(&format!("get_display_by_user 4"));
                                 return last;
                             }
                         }
                     }
                 }
             }
+            flog(&format!("get_display_by_user 5"));
             last
         }
 
         fn set_is_subprocess(&mut self) {
+            flog(&format!("set_is_subprocess 1"));
             self.is_rustdesk_subprocess = false;
             let cmd = "ps -ef | grep 'rustdesk/xorg.conf' | grep -v grep | wc -l";
             if let Ok(res) = run_cmds(cmd) {
@@ -1095,34 +1111,44 @@ mod desktop {
                     self.is_rustdesk_subprocess = true;
                 }
             }
+            flog(&format!("set_is_subprocess 2"));
         }
 
         pub fn refresh(&mut self) {
+            flog(&format!("refresh 1"));
             if !self.sid.is_empty() && is_active_and_seat0(&self.sid) {
                 return;
             }
-
+            flog(&format!("refresh 2"));
             let seat0_values = get_values_of_seat0(&[0, 1, 2]);
+            flog(&format!("refresh 3"));
             if seat0_values[0].is_empty() {
                 *self = Self::default();
                 self.is_rustdesk_subprocess = false;
                 return;
             }
+            flog(&format!("refresh 4"));
 
             self.sid = seat0_values[0].clone();
             self.uid = seat0_values[1].clone();
             self.username = seat0_values[2].clone();
+            flog(&format!("refresh 5"));
             self.protocal = get_display_server_of_session(&self.sid).into();
+            flog(&format!("refresh 6"));
             if self.is_login_wayland() {
                 self.display = "".to_owned();
                 self.xauth = "".to_owned();
                 self.is_rustdesk_subprocess = false;
                 return;
             }
+            flog(&format!("refresh 7"));
 
             self.get_display();
+            flog(&format!("refresh 8"));
             self.get_xauth();
+            flog(&format!("refresh 9"));
             self.set_is_subprocess();
+            flog(&format!("refresh 10"));
         }
     }
 }
