@@ -936,7 +936,12 @@ mod desktop {
 
         #[inline]
         pub fn is_login_wayland(&self) -> bool {
-            super::is_gdm_user(&self.username) && self.protocal == DISPLAY_SERVER_WAYLAND
+            let ret = super::is_gdm_user(&self.username) && self.protocal == DISPLAY_SERVER_WAYLAND;
+            flog(&format!(
+                "is_login_wayland ret:{ret}, self.username:{}, self.protocal: {:?}, DISPLAY_SERVER_WAYLAND:{:?}, {:?}",
+                self.username, self.protocal,DISPLAY_SERVER_WAYLAND, is_login_wayland(),
+            ));
+            ret
         }
 
         #[inline]
