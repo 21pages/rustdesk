@@ -664,8 +664,9 @@ pub fn is_installed() -> bool {
 }
 
 pub(super) fn get_env_tries(name: &str, uid: &str, process: &str, n: usize) -> String {
-    for _ in 0..n {
+    for i in 0..n {
         let x = get_env(name, uid, process);
+        flog(&format!("get_env {} return {}", i, x));
         if !x.is_empty() {
             return x;
         }
@@ -677,6 +678,7 @@ pub(super) fn get_env_tries(name: &str, uid: &str, process: &str, n: usize) -> S
 #[inline]
 fn get_env(name: &str, uid: &str, process: &str) -> String {
     let cmd = format!("ps -u {} -f | grep '{}' | grep -v 'grep' | tail -1 | awk '{{print $2}}' | xargs -I__ cat /proc/__/environ 2>/dev/null | tr '\\0' '\\n' | grep '^{}=' | tail -1 | sed 's/{}=//g'", uid, process, name, name);
+    flog(&format!("get_env cmd: {cmd}"));
     if let Ok(x) = run_cmds(&cmd) {
         x.trim_end().to_string()
     } else {
