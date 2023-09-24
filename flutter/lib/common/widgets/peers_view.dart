@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:dynamic_layouts/dynamic_layouts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hbb/common/widgets/Wrap_builder.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -178,29 +179,28 @@ class _PeersViewState extends State<_PeersView> with WindowListener {
           if (snapshot.hasData) {
             final peers = snapshot.data!;
             gFFI.peerTabModel.setCurrentTabCachedPeers(peers);
-            final child = DynamicGridView.builder(
-              gridDelegate: SliverGridDelegateWithWrapping(
-                  mainAxisSpacing: space / 2, crossAxisSpacing: space),
-              itemCount: peers.length,
-              itemBuilder: (BuildContext context, int index) {
-                final visibilityChild = VisibilityDetector(
-                  key: ValueKey(_cardId(peers[index].id)),
-                  onVisibilityChanged: onVisibilityChanged,
-                  child: widget.peerCardBuilder(peers[index]),
-                );
-                return isDesktop
-                    ? Obx(
-                        () => SizedBox(
-                          width: 220,
-                          height: peerCardUiType.value == PeerUiType.grid
-                              ? 140
-                              : 42,
-                          child: visibilityChild,
-                        ),
-                      )
-                    : SizedBox(width: mobileWidth, child: visibilityChild);
-              },
-            );
+            final child = WrapBuilder(
+                itemWidth: 220 + space,
+                items: peers,
+                itemBuilder: (peer) {
+                  final visibilityChild = VisibilityDetector(
+                    key: ValueKey(_cardId(peer.id)),
+                    onVisibilityChanged: onVisibilityChanged,
+                    child: widget.peerCardBuilder(peer),
+                  );
+                  final card = isDesktop
+                      ? Obx(
+                          () => SizedBox(
+                            width: 220,
+                            height: peerCardUiType.value == PeerUiType.grid
+                                ? 140
+                                : 42,
+                            child: visibilityChild,
+                          ),
+                        )
+                      : SizedBox(width: mobileWidth, child: visibilityChild);
+                  return card.marginAll(space / 2);
+                });
             if (updateEvent == UpdateEvent.load) {
               _curPeers.clear();
               _curPeers.addAll(peers.map((e) => e.id));
