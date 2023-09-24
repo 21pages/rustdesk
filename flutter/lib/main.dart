@@ -125,8 +125,8 @@ void runMainApp(bool startService) async {
     bind.pluginSyncUi(syncTo: kAppTypeMain);
     bind.pluginListReload();
   }
-  gFFI.abModel.loadCache();
-  gFFI.groupModel.loadCache();
+  await gFFI.abModel.loadCache();
+  await gFFI.groupModel.loadCache();
   gFFI.userModel.refreshCurrentUser();
   runApp(App());
   // Set window option.
@@ -154,8 +154,8 @@ void runMobileApp() async {
   await initEnv(kAppTypeMain);
   if (isAndroid) androidChannelInit();
   platformFFI.syncAndroidServiceAppDirConfigPath();
-  gFFI.abModel.loadCache();
-  gFFI.groupModel.loadCache();
+  await gFFI.abModel.loadCache();
+  await gFFI.groupModel.loadCache();
   gFFI.userModel.refreshCurrentUser();
   runApp(App());
 }
