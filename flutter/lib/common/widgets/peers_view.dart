@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:dynamic_layouts/dynamic_layouts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hbb/common/widgets/wrap_builder.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -198,14 +198,15 @@ class _PeersViewState extends State<_PeersView> with WindowListener {
 
             final Widget child;
             if (isDesktop) {
-              child = DynamicGridView.builder(
-                gridDelegate: SliverGridDelegateWithWrapping(
-                    mainAxisSpacing: space / 2, crossAxisSpacing: space),
-                itemCount: peers.length,
-                itemBuilder: (BuildContext context, int index) {
-                  return buildOnePeer(peers[index]);
-                },
-              );
+              child = Obx(() => WrapBuilder(
+                    itemWidth: 220,
+                    itemHeight:
+                        peerCardUiType.value == PeerUiType.grid ? 140 : 42,
+                    hSpacing: space,
+                    vSpacing: space,
+                    items: peers,
+                    itemBuilder: (peer) => buildOnePeer(peer),
+                  ));
             } else {
               child = Wrap(
                   spacing: space,
