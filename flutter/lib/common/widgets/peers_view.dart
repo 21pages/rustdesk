@@ -179,28 +179,30 @@ class _PeersViewState extends State<_PeersView> with WindowListener {
           if (snapshot.hasData) {
             final peers = snapshot.data!;
             gFFI.peerTabModel.setCurrentTabCachedPeers(peers);
-            final child = WrapBuilder(
-                itemWidth: 220 + space,
-                items: peers,
-                itemBuilder: (peer) {
-                  final visibilityChild = VisibilityDetector(
-                    key: ValueKey(_cardId(peer.id)),
-                    onVisibilityChanged: onVisibilityChanged,
-                    child: widget.peerCardBuilder(peer),
-                  );
-                  final card = isDesktop
-                      ? Obx(
-                          () => SizedBox(
-                            width: 220,
-                            height: peerCardUiType.value == PeerUiType.grid
-                                ? 140
-                                : 42,
-                            child: visibilityChild,
-                          ),
-                        )
-                      : SizedBox(width: mobileWidth, child: visibilityChild);
-                  return card.marginAll(space / 2);
-                });
+
+            final child = Obx(() {
+              final double itemWidght = isDesktop ? 220 : mobileWidth;
+              final double itemHeight =
+                  peerCardUiType.value == PeerUiType.grid ? 140 : 42;
+              return WrapBuilder(
+                  itemWidth: itemWidght,
+                  itemHeight: itemHeight,
+                  hSpacing: space,
+                  vSpacing: space,
+                  items: peers,
+                  itemBuilder: (peer) {
+                    final visibilityChild = VisibilityDetector(
+                      key: ValueKey(_cardId(peer.id)),
+                      onVisibilityChanged: onVisibilityChanged,
+                      child: widget.peerCardBuilder(peer),
+                    );
+                    return SizedBox(
+                      width: itemWidght,
+                      height: itemHeight,
+                      child: visibilityChild,
+                    );
+                  });
+            });
             if (updateEvent == UpdateEvent.load) {
               _curPeers.clear();
               _curPeers.addAll(peers.map((e) => e.id));
