@@ -110,39 +110,10 @@ class _PeerTabPageState extends State<PeerTabPage>
                 Expanded(
                     child:
                         visibleContextMenuListener(_createSwitchBar(context))),
-                const PeerSearchBar().marginOnly(right: isMobile ? 0 : 13),
-                _createRefresh(
-                    index: PeerTabIndex.ab, loading: gFFI.abModel.abLoading),
-                _createRefresh(
-                    index: PeerTabIndex.group,
-                    loading: gFFI.groupModel.groupLoading),
-                _createMultiSelection(),
-                Offstage(
-                    offstage: !isDesktop,
-                    child: _createPeerViewTypeSwitch(context)),
-                Offstage(
-                  offstage: gFFI.peerTabModel.currentTab == 0,
-                  child: PeerSortDropdown(),
-                ),
-                Offstage(
-                  offstage: gFFI.peerTabModel.currentTab != 3,
-                  child: _hoverAction(
-                    context: context,
-                    hoverableWhenfalse: hideAbTagsPanel,
-                    child: Tooltip(
-                        message: translate('Toggle Tags'),
-                        child: Icon(
-                          Icons.tag_rounded,
-                          size: 18,
-                        )),
-                    onTap: () async {
-                      await bind.mainSetLocalOption(
-                          key: "hideAbTagsPanel",
-                          value: hideAbTagsPanel.value ? "" : "Y");
-                      hideAbTagsPanel.value = !hideAbTagsPanel.value;
-                    },
-                  ),
-                ),
+                if (!isMobile)
+                  ..._desktopRightActions()
+                else
+                  ..._mobileRightActions()
               ],
             )),
           ),
@@ -564,6 +535,42 @@ class _PeerTabPageState extends State<PeerTabPage>
                 Tooltip(message: translate('Close'), child: Icon(Icons.clear)))
         .marginOnly(left: 6);
   }
+
+  List<Widget> _desktopRightActions() {
+    return [
+      const PeerSearchBar().marginOnly(right: isMobile ? 0 : 13),
+      _createRefresh(index: PeerTabIndex.ab, loading: gFFI.abModel.abLoading),
+      _createRefresh(
+          index: PeerTabIndex.group, loading: gFFI.groupModel.groupLoading),
+      _createMultiSelection(),
+      Offstage(offstage: !isDesktop, child: _createPeerViewTypeSwitch(context)),
+      Offstage(
+        offstage: gFFI.peerTabModel.currentTab == 0,
+        child: PeerSortDropdown(),
+      ),
+      Offstage(
+        offstage: gFFI.peerTabModel.currentTab != 3,
+        child: _hoverAction(
+          context: context,
+          hoverableWhenfalse: hideAbTagsPanel,
+          child: Tooltip(
+              message: translate('Toggle Tags'),
+              child: Icon(
+                Icons.tag_rounded,
+                size: 18,
+              )),
+          onTap: () async {
+            await bind.mainSetLocalOption(
+                key: "hideAbTagsPanel",
+                value: hideAbTagsPanel.value ? "" : "Y");
+            hideAbTagsPanel.value = !hideAbTagsPanel.value;
+          },
+        ),
+      )
+    ];
+  }
+
+  List<Widget> _mobileRightActions() {}
 }
 
 class PeerSearchBar extends StatefulWidget {
