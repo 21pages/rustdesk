@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:dynamic_layouts/dynamic_layouts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/formatter/id_formatter.dart';
@@ -170,16 +172,18 @@ class _AddressBookState extends State<AddressBook> {
             });
       }
 
+      final gridView = DynamicGridView.builder(
+          shrinkWrap: isMobile,
+          gridDelegate: SliverGridDelegateWithWrapping(),
+          itemCount: tags.length,
+          itemBuilder: (BuildContext context, int index) {
+            final e = tags[index];
+            return tagBuilder(e);
+          });
+      final maxHeight = max(MediaQuery.of(context).size.height / 6, 100.0);
       return isDesktop
-          ? DynamicGridView.builder(
-              gridDelegate: SliverGridDelegateWithWrapping(
-                  mainAxisSpacing: 0, crossAxisSpacing: 0),
-              itemCount: tags.length,
-              itemBuilder: (BuildContext context, int index) {
-                final e = tags[index];
-                return tagBuilder(e);
-              })
-          : Wrap(children: tags.map((e) => tagBuilder(e)).toList());
+          ? gridView
+          : LimitedBox(maxHeight: maxHeight, child: gridView);
     });
   }
 
@@ -583,3 +587,15 @@ MenuEntryButton<String> getEntry(String title, VoidCallback proc) {
     dismissOnClicked: true,
   );
 }
+
+// extension ShirnkBuilder on DynamicGridView {
+//   /// Creates a scrollable, 2D array of widgets that are created on demand.
+//   Widget shrinkBuilder({
+//     super.key,
+//     super.scrollDirection,
+//     super.reverse,
+//     required super.gridDelegate,
+//     required super.itemBuilder,
+//     super.itemCount,
+//   }) {}
+// }
