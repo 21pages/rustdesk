@@ -195,7 +195,24 @@ class _MyGroupState extends State<MyGroup> {
               children: [
                 Icon(Icons.person_rounded, color: Colors.grey, size: 16)
                     .marginOnly(right: 4),
-                Expanded(child: Text(isMe ? translate('Me') : username)),
+                if (isMe) Flexible(child: Text(username)),
+                if (isMe)
+                  Flexible(
+                    child: Container(
+                      margin: EdgeInsets.only(left: 5),
+                      padding: EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                      decoration: BoxDecoration(
+                          color: Colors.lightBlue.withAlpha(10),
+                          border: Border.all(
+                              color: Colors.lightBlue.withAlpha(100))),
+                      child: Text(
+                        translate('Me'),
+                        style: TextStyle(
+                            color: Colors.blue.withAlpha(200), fontSize: 12),
+                      ),
+                    ),
+                  ),
+                if (!isMe) Expanded(child: Text(username)),
               ],
             ).paddingSymmetric(vertical: 4),
           ),
