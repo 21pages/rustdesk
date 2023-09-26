@@ -110,39 +110,10 @@ class _PeerTabPageState extends State<PeerTabPage>
                 Expanded(
                     child:
                         visibleContextMenuListener(_createSwitchBar(context))),
-                const PeerSearchBar().marginOnly(right: isMobile ? 0 : 13),
-                _createRefresh(
-                    index: PeerTabIndex.ab, loading: gFFI.abModel.abLoading),
-                _createRefresh(
-                    index: PeerTabIndex.group,
-                    loading: gFFI.groupModel.groupLoading),
-                _createMultiSelection(),
-                Offstage(
-                    offstage: !isDesktop,
-                    child: _createPeerViewTypeSwitch(context)),
-                Offstage(
-                  offstage: gFFI.peerTabModel.currentTab == 0,
-                  child: PeerSortDropdown(),
-                ),
-                Offstage(
-                  offstage: gFFI.peerTabModel.currentTab != 3,
-                  child: _hoverAction(
-                    context: context,
-                    hoverableWhenfalse: hideAbTagsPanel,
-                    child: Tooltip(
-                        message: translate('Toggle Tags'),
-                        child: Icon(
-                          Icons.tag_rounded,
-                          size: 18,
-                        )),
-                    onTap: () async {
-                      await bind.mainSetLocalOption(
-                          key: "hideAbTagsPanel",
-                          value: hideAbTagsPanel.value ? "" : "Y");
-                      hideAbTagsPanel.value = !hideAbTagsPanel.value;
-                    },
-                  ),
-                ),
+                if (isMobile)
+                  ..._mobileRightActions(context)
+                else
+                  ..._desktopRightActions(context)
               ],
             )),
           ),
@@ -270,7 +241,6 @@ class _PeerTabPageState extends State<PeerTabPage>
   Widget _createMultiSelection() {
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
     final model = Provider.of<PeerTabModel>(context);
-    if (model.currentTabCachedPeers.isEmpty) return Offstage();
     return _hoverAction(
       context: context,
       onTap: () {
@@ -563,6 +533,121 @@ class _PeerTabPageState extends State<PeerTabPage>
             child:
                 Tooltip(message: translate('Close'), child: Icon(Icons.clear)))
         .marginOnly(left: 6);
+  }
+
+  Widget _toggleTags() {
+    return _hoverAction(
+        context: context,
+        hoverableWhenfalse: hideAbTagsPanel,
+        child: Tooltip(
+            message: translate('Toggle Tags'),
+            child: Icon(
+              Icons.tag_rounded,
+              size: 18,
+            )),
+        onTap: () async {
+          await bind.mainSetLocalOption(
+              key: "hideAbTagsPanel", value: hideAbTagsPanel.value ? "" : "Y");
+          hideAbTagsPanel.value = !hideAbTagsPanel.value;
+        });
+  }
+
+  List<Widget> _desktopRightActions(BuildContext context) {
+    final model = Provider.of<PeerTabModel>(context);
+    return [
+      const PeerSearchBar().marginOnly(right: isMobile ? 0 : 13),
+      _createRefresh(index: PeerTabIndex.ab, loading: gFFI.abModel.abLoading),
+      _createRefresh(
+          index: PeerTabIndex.group, loading: gFFI.groupModel.groupLoading),
+      Offstage(
+        offstage: model.currentTabCachedPeers.isEmpty,
+        child: _createMultiSelection(),
+      ),
+      Offstage(offstage: !isDesktop, child: _createPeerViewTypeSwitch(context)),
+      Offstage(
+        offstage: model.currentTab == PeerTabIndex.recent.index,
+        child: PeerSortDropdown(),
+      ),
+      Offstage(
+        offstage: model.currentTab != PeerTabIndex.ab.index,
+        child: _toggleTags(),
+      ),
+    ];
+  }
+
+  List<Widget> _mobileRightActions(BuildContext context) {
+    final model = Provider.of<PeerTabModel>(context);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final leftIconSize = Theme.of(context).iconTheme.size ?? 24;
+    final leftActionsSize =
+        (leftIconSize + (4 + 4) * 2) * model.visibleIndexs.length;
+    final availableWidth = screenWidth - 10 * 2 - leftActionsSize - 2 * 2;
+    final searchWidth = 120;
+    final rightWidth = availableWidth - searchWidth;
+    final otherActionWidth = 18 + 4 * 2;
+    final canFillCount = rightWidth ~/ otherActionWidth;
+
+    dropDown(List<Widget> menus) {
+      final items = menus.map((e) => PopupMenuItem(child: e)).toList();
+      var menuPos = RelativeRect.fromLTRB(0, 0, 0, 0);
+      return _hoverAction(
+        context: context,
+        child: Tooltip(
+            message: translate('More'),
+            child: Icon(
+              Icons.more_horiz,
+              size: 18,
+            )),
+        onTapDown: (details) {
+          final x = details.globalPosition.dx;
+          final y = details.globalPosition.dy;
+          menuPos = RelativeRect.fromLTRB(x, y, x, y);
+        },
+        onTap: () => showMenu(
+          context: context,
+          position: menuPos,
+          items: items,
+          elevation: 8,
+        ),
+      );
+    }
+
+    final List<Widget> tabActions = [
+      if (model.currentTab == PeerTabIndex.ab.index)
+        _createRefresh(index: PeerTabIndex.ab, loading: gFFI.abModel.abLoading),
+      if (model.currentTab == PeerTabIndex.group.index)
+        _createRefresh(
+            index: PeerTabIndex.group, loading: gFFI.groupModel.groupLoading),
+      if (model.currentTabCachedPeers.isNotEmpty) _createMultiSelection(),
+      if (model.currentTab != PeerTabIndex.recent.index) PeerSortDropdown(),
+      if (model.currentTab == PeerTabIndex.ab.index) _toggleTags()
+    ];
+    List<Widget> actions = [const PeerSearchBar()];
+
+    debugPrint("count:${tabActions.length}, canFillCount: $canFillCount");
+
+    if (tabActions.isNotEmpty) {
+      if (canFillCount >= tabActions.length) {
+        actions.addAll(tabActions);
+      } else {
+        if (tabActions.length == 1) {
+          actions.addAll(tabActions);
+        } else {
+          if (canFillCount < 2) {
+            actions.addAll([
+              dropDown(tabActions),
+            ]);
+          } else {
+            actions.addAll([
+              ...tabActions.sublist(0, canFillCount - 1),
+              dropDown(tabActions.sublist(canFillCount - 1)),
+            ]);
+          }
+        }
+      }
+    }
+
+    return actions;
   }
 }
 
