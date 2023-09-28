@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:ui' as ui;
 
@@ -269,8 +270,17 @@ class DesktopTab extends StatelessWidget {
   }
 
   static RxString tablabelGetter(String peerId) {
-    final alias = bind.mainGetPeerOptionSync(id: peerId, key: 'alias');
-    return RxString(getDesktopTabLabel(peerId, alias));
+    final RxString initOne = PeerStringOption.init(peerId, 'tabLabel', () {
+      // final alias = bind.mainGetPeerOptionSync(id: peerId, key: 'alias');
+      // return getDesktopTabLabel(peerId, alias);
+      final v = Random().nextInt(100).toString();
+      print("============ v:$v");
+      return v;
+    });
+    final findOne = PeerStringOption.find(peerId, 'tabLabel');
+    print(
+        " ================== Current isolate ID: ${Isolate.current.hashCode}, init One:${initOne.value} find One:${findOne.value}");
+    return findOne;
   }
 
   @override

@@ -264,13 +264,15 @@ class PeerBoolOption {
 class PeerStringOption {
   static String tag(String id, String opt) => 'peer_{$opt}_$id';
 
-  static void init(String id, String opt, String Function() init_getter) {
+  static RxString init(String id, String opt, String Function() init_getter) {
     final key = tag(id, opt);
     if (!Get.isRegistered(tag: key)) {
       final RxString value = RxString(init_getter());
       Get.put(value, tag: key);
+      return value;
     } else {
       Get.find<RxString>(tag: key).value = init_getter();
+      return Get.find<RxString>(tag: key);
     }
   }
 
