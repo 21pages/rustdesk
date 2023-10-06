@@ -2591,6 +2591,7 @@ String getDesktopTabLabel(String peerId, String alias) {
 }
 
 void flog(String s) {
+  debugPrint(s);
   var f = File("D:/log.txt");
 
   f.writeAsString('$s \n', mode: FileMode.writeOnlyAppend, flush: true);

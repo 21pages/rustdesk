@@ -297,6 +297,7 @@ void _runApp(
   Widget home,
   ThemeMode themeMode,
 ) {
+  flog("_runApp start");
   final botToastBuilder = BotToastInit();
   runApp(RefreshWrapper(
     builder: (context) => GetMaterialApp(

@@ -9,6 +9,8 @@
 
 void CreateAndAttachConsole() {
   if (::AllocConsole()) {
+    std::cout<< "stdcout test1" << std::endl;
+    std::cerr<< "stdcerr test1" << std::endl;
     FILE *unused;
     if (freopen_s(&unused, "CONOUT$", "w", stdout)) {
       _dup2(_fileno(stdout), 1);
@@ -17,6 +19,8 @@ void CreateAndAttachConsole() {
       _dup2(_fileno(stdout), 2);
     }
     std::ios::sync_with_stdio();
+    std::cout<< "stdcout test" << std::endl;
+    std::cerr<< "stdcerr test" << std::endl;
     FlutterDesktopResyncOutputStreams();
   }
 }
@@ -65,12 +69,12 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
 
 void logfile(std::string s) {
 
-  std::ofstream myfile;
+  // std::ofstream myfile;
 
-  myfile.open ("D:/log.txt", std::ios_base::app);
+  // myfile.open ("D:/log.txt", std::ios_base::app);
 
-  myfile << s << "\n";
+  // myfile << s << "\n";
 
-  myfile.close();
+  // myfile.close();
 
 }
