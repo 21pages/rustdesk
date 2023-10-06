@@ -1,9 +1,8 @@
-name: flutter_hbb
-description: Your Remote Desktop Software
-
+name: misc
+description: A new Flutter project.
 # The following line prevents the package from being accidentally published to
-# pub.dev using `pub publish`. This is preferred for private packages.
-publish_to: "none" # Remove this line if you wish to publish to pub.dev
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
@@ -12,154 +11,60 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # build by specifying --build-name and --build-number, respectively.
 # In Android, build-name is used as versionName while build-number used as versionCode.
 # Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number used as CFBundleVersion.
+# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
 # Read more about iOS versioning at
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# 1.1.9-1 works for android, but for ios it becomes 1.1.91, need to set it to 1.1.9-a.1 for iOS, will get 1.1.9.1, but iOS store not allow 4 numbers
-version: 1.2.3+39
+# In Windows, build-name is used as the major, minor, and patch parts
+# of the product and file versions while build-number is used as the build suffix.
+version: 1.0.0+1
 
 environment:
-  sdk: ">=2.17.0"
+  sdk: '>=3.0.1 <4.0.0'
 
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
 dependencies:
   flutter:
     sdk: flutter
-  flutter_localizations:
-    sdk: flutter
 
-  ffi: ^2.0.1
-  path_provider: ^2.0.12
-  external_path: ^1.0.1
-  provider: ^6.0.3
-  tuple: ^2.0.0
-  wakelock: ^0.6.2
-  # Keep this version for the compatibility of some old systems like win7.
-  device_info_plus: ^4.1.2
-  #firebase_analytics: ^9.1.5
-  package_info_plus: ^3.1.2
-  url_launcher: ^6.0.9
-  toggle_switch: ^2.1.0
-  dash_chat_2: 
-    git:
-      url: https://github.com/rustdesk-org/Dash-Chat-2
-  draggable_float_widget: ^0.0.2
-  settings_ui: ^2.0.2
-  flutter_breadcrumb: ^1.0.1
-  http: ^0.13.4
-  qr_code_scanner: ^1.0.0
-  zxing2: ^0.2.0
-  image_picker: ^0.8.5
-  image: ^4.0.17
-  back_button_interceptor: ^6.0.1
-  flutter_rust_bridge: "<1.76.0"
-  window_manager:
-    git:
-      url: https://github.com/rustdesk-org/window_manager
-  desktop_multi_window:
-    git:
-      url: https://github.com/rustdesk-org/rustdesk_desktop_multi_window
-  freezed_annotation: ^2.0.3
-  flutter_custom_cursor: ^0.0.4
-  window_size:
-    git:
-      url: https://github.com/google/flutter-desktop-embedding.git
-      path: plugins/window_size
-      ref: a738913c8ce2c9f47515382d40827e794a334274
-  get: ^4.6.5
-  visibility_detector: ^0.4.0+2
-  contextmenu: ^3.0.0
-  desktop_drop: 
-    git:
-      url: https://github.com/rustdesk-org/flutter-plugins
-      path: ./packages/desktop_drop
-  scroll_pos: ^0.4.0
-  debounce_throttle: ^2.0.0
-  file_picker: ^5.1.0
-  flutter_svg: ^2.0.5
-  flutter_improved_scrolling:
-    # currently, we use flutter 3.10.0+.
-    #
-    # for flutter 3.0.5, please use official version(just comment code below).
-    # if build rustdesk by flutter >=3.3, please use our custom pub below (uncomment code below).
-    git:
-      url: https://github.com/rustdesk-org/flutter_improved_scrolling
-  uni_links: ^0.5.1
-  uni_links_desktop: 
-    git:
-      url: https://github.com/rustdesk-org/uni_links_desktop
-  path: ^1.8.1
-  auto_size_text: ^3.0.0
-  bot_toast: ^4.0.3
-  win32: any
-  password_strength: ^0.2.0
-  flutter_launcher_icons: ^0.13.1
-  flutter_keyboard_visibility: ^5.4.0
-  texture_rgba_renderer: ^0.0.16
-  percent_indicator: ^4.2.2
-  dropdown_button2: ^2.0.0
-  uuid: ^3.0.7
-  auto_size_text_field: ^2.2.1
-  flex_color_picker: ^3.3.0
-  dynamic_layouts:
-    git:
-      url: https://github.com/21pages/dynamic_layouts.git
-      ref: 24cb88413fa5181d949ddacbb30a65d5c459e7d9
-  pull_down_button: ^0.9.3
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.2
 
 dev_dependencies:
-  icons_launcher: ^2.0.4
-  #flutter_test:
-  #sdk: flutter
-  build_runner: ^2.4.6
-  freezed: ^2.4.2
-  flutter_lints: ^2.0.2
-  ffigen: ^7.2.4
+  flutter_test:
+    sdk: flutter
 
-# rerun: flutter pub run flutter_launcher_icons
-flutter_icons:
-  image_path: "../res/icon.png"
-  remove_alpha_ios: true
-  android: true
-  ios: true
-  windows:
-    generate: true
-  macos:
-    image_path: "../res/mac-icon.png"
-    generate: true
-  linux: true
-  web:
-    generate: true
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^2.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
-# The following section is specific to Flutter.
+# The following section is specific to Flutter packages.
 flutter:
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  assets:
-    - assets/
-
-  fonts:
-    - family: GestureIcons
-      fonts:
-        - asset: assets/gestures.ttf
-    - family: Tabbar
-      fonts:
-        - asset: assets/tabbar.ttf
-    - family: PeerSearchbar
-      fonts:
-        - asset: assets/peer_searchbar.ttf
-    - family: AddressBook
-      fonts:
-        - asset: assets/address_book.ttf
+  # assets:
+  #   - images/a_dot_burr.jpeg
+  #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
-  # https://flutter.dev/assets-and-images/#resolution-aware.
+  # https://flutter.dev/assets-and-images/#resolution-aware
 
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/assets-and-images/#from-packages
