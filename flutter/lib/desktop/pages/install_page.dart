@@ -19,21 +19,21 @@ class InstallPage extends StatefulWidget {
 }
 
 class _InstallPageState extends State<InstallPage> {
-  final tabController = DesktopTabController(tabType: DesktopTabType.main);
+  // final tabController = DesktopTabController(tabType: DesktopTabType.main);
 
   @override
   void initState() {
     flog("install page initState");
     super.initState();
-    Get.put<DesktopTabController>(tabController);
-    const label = "install";
-    tabController.add(TabInfo(
-        key: label,
-        label: label,
-        closable: false,
-        page: _InstallPageBody(
-          key: const ValueKey(label),
-        )));
+    // Get.put<DesktopTabController>(tabController);
+    // const label = "install";
+    //   tabController.add(TabInfo(
+    //       key: label,
+    //       label: label,
+    //       closable: false,
+    //       page: _InstallPageBody(
+    //         key: const ValueKey(label),
+    //       )));
   }
 
   @override
@@ -48,7 +48,7 @@ class _InstallPageState extends State<InstallPage> {
     return Container(
       child: Scaffold(
           backgroundColor: Theme.of(context).colorScheme.background,
-          body: DesktopTab(controller: tabController)),
+          body: _InstallPageBody()),
     );
   }
 }
