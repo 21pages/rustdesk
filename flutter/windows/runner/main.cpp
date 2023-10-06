@@ -19,12 +19,14 @@ const std::vector<std::string> parameters_white_list = {"--install", "--cm"};
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command)
 {
+  logfile("into wWinMain");
   HINSTANCE hInstance = LoadLibraryA("librustdesk.dll");
   if (!hInstance)
   {
     std::cout << "Failed to load librustdesk.dll." << std::endl;
     return EXIT_FAILURE;
   }
+  logfile("load librustdesk.dll");
   FUNC_RUSTDESK_CORE_MAIN rustdesk_core_main =
       (FUNC_RUSTDESK_CORE_MAIN)GetProcAddress(hInstance, "rustdesk_core_main_args");
   if (!rustdesk_core_main)
@@ -32,6 +34,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     std::cout << "Failed to get rustdesk_core_main." << std::endl;
     return EXIT_FAILURE;
   }
+  logfile("get rustdesk_core_main");
   FUNC_RUSTDESK_FREE_ARGS free_c_args =
       (FUNC_RUSTDESK_FREE_ARGS)GetProcAddress(hInstance, "free_c_args");
   if (!free_c_args)
@@ -39,6 +42,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     std::cout << "Failed to get free_c_args." << std::endl;
     return EXIT_FAILURE;
   }
+  logfile("get free_c_args");
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
   // Remove possible trailing whitespace from command line arguments
@@ -57,12 +61,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     // std::cout << "Rustdesk [" << args_str << "], core returns false, exiting without launching Flutter app." << std::endl;
     return EXIT_SUCCESS;
   }
+  logfile("run rustdesk_core_main");
   std::vector<std::string> rust_args(c_args, c_args + args_len);
   free_c_args(c_args, args_len);
 
   // Uri links dispatch
   HWND hwnd = ::FindWindow(_T("FLUTTER_RUNNER_WIN32_WINDOW"), _T("RustDesk"));
   if (hwnd != NULL) {
+    logfile("already have FLUTTER_RUNNER_WIN32_WINDOW");
     // Allow multiple flutter instances when being executed by parameters
     // contained in whitelists.
     bool allow_multiple_instances = false;

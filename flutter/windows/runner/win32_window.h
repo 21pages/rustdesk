@@ -38,6 +38,9 @@ class Win32Window {
                      const Point& origin,
                      const Size& size,
                      bool showOnTaskBar = true);
+					 
+  // Show the current window. Returns true if the window was successfully shown.
+  bool Show();
 
   // Release OS resources associated with window.
   void Destroy();

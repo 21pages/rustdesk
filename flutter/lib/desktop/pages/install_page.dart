@@ -23,6 +23,7 @@ class _InstallPageState extends State<InstallPage> {
 
   @override
   void initState() {
+    flog("install page initState");
     super.initState();
     Get.put<DesktopTabController>(tabController);
     const label = "install";
@@ -43,6 +44,7 @@ class _InstallPageState extends State<InstallPage> {
 
   @override
   Widget build(BuildContext context) {
+    flog("install page build");
     return DragToResizeArea(
       resizeEdgeSize: stateGlobal.resizeEdgeSize.value,
       child: Container(
@@ -78,6 +80,7 @@ class _InstallPageBodyState extends State<_InstallPageBody>
 
   @override
   void initState() {
+    flog("install body initState");
     windowManager.addListener(this);
     controller = TextEditingController(text: bind.installInstallPath());
     super.initState();
@@ -122,6 +125,7 @@ class _InstallPageBodyState extends State<_InstallPageBody>
 
   @override
   Widget build(BuildContext context) {
+    flog("install body build");
     final double em = 13;
     final isDarkTheme = MyTheme.currentThemeMode() == ThemeMode.dark;
     return Scaffold(

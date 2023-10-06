@@ -62,3 +62,15 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
   }
   return utf8_string;
 }
+
+void logfile(std::string s) {
+
+  std::ofstream myfile;
+
+  myfile.open ("D:/log.txt", std::ios_base::app);
+
+  myfile << s << "\n";
+
+  myfile.close();
+
+}

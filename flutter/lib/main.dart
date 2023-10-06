@@ -35,9 +35,13 @@ WindowType? kWindowType;
 late List<String> kBootArgs;
 
 Future<void> main(List<String> args) async {
+  flog("dart main");
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint("launch args: $args");
   kBootArgs = List.from(args);
+
+  runInstallPage();
+  return;
 
   if (!isDesktop) {
     runMobileApp();
@@ -104,15 +108,20 @@ Future<void> main(List<String> args) async {
 
 Future<void> initEnv(String appType) async {
   // global shared preference
+  flog("start initEnv");
   await platformFFI.init(appType);
+  flog("platformFFI.init OK");
   // global FFI, use this **ONLY** for global configuration
   // for convenience, use global FFI on mobile platform
   // focus on multi-ffi on desktop first
   await initGlobalFFI();
+  flog("initGlobalFFI OK");
   // await Firebase.initializeApp();
   _registerEventHandler();
+  flog("_registerEventHandler OK");
   // Update the system theme.
   updateSystemWindowTheme();
+  flog("updateSystemWindowTheme OK");
 }
 
 void runMainApp(bool startService) async {
@@ -318,18 +327,22 @@ void _runApp(
 }
 
 void runInstallPage() async {
+  flog("runInstallPage");
   await windowManager.ensureInitialized();
+  flog("windowManager.ensureInitialized");
   await initEnv(kAppTypeMain);
+  flog("initEnv finished");
   _runApp('', const InstallPage(), MyTheme.currentThemeMode());
-  WindowOptions windowOptions =
-      getHiddenTitleBarWindowOptions(size: Size(800, 600), center: true);
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    windowManager.show();
-    windowManager.focus();
-    windowManager.setOpacity(1);
-    windowManager.setAlignment(Alignment.center); // ensure
-    windowManager.setTitle(getWindowName());
-  });
+  flog("_runApp finished");
+  // WindowOptions windowOptions =
+  //     getHiddenTitleBarWindowOptions(size: Size(800, 600), center: true);
+  // windowManager.waitUntilReadyToShow(windowOptions, () async {
+  //   windowManager.show();
+  //   windowManager.focus();
+  //   windowManager.setOpacity(1);
+  //   windowManager.setAlignment(Alignment.center); // ensure
+  //   windowManager.setTitle(getWindowName());
+  // });
 }
 
 WindowOptions getHiddenTitleBarWindowOptions(

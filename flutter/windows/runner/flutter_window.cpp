@@ -6,6 +6,7 @@
 #include <texture_rgba_renderer/texture_rgba_renderer_plugin_c_api.h>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -13,6 +14,7 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
 FlutterWindow::~FlutterWindow() {}
 
 bool FlutterWindow::OnCreate() {
+  logfile("FlutterWindow::OnCreate()");
   if (!Win32Window::OnCreate()) {
     return false;
   }
@@ -28,6 +30,7 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  logfile("RegisterPlugins OK");
   DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
     auto *flutter_view_controller =
         reinterpret_cast<flutter::FlutterViewController *>(controller);
@@ -36,6 +39,11 @@ bool FlutterWindow::OnCreate() {
         registry->GetRegistrarForPlugin("TextureRgbaRendererPlugin"));
   });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  flutter_controller_->engine()->SetNextFrameCallback([&]() {
+    this->Show();
+  });
+  logfile("OnCreate OK");
   return true;
 }
 
