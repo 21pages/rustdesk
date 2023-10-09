@@ -30,8 +30,8 @@ fn setup(reader: BinaryReader, dir: Option<PathBuf>, clear: bool) -> Option<Path
     for file in reader.files.iter() {
         file.write_to_file(&dir);
     }
-    #[cfg(windows)]
-    windows::copy_runtime_broker(&dir);
+    // #[cfg(windows)]
+    // windows::copy_runtime_broker(&dir);
     #[cfg(linux)]
     reader.configure_permission(&dir);
     Some(dir.join(&reader.exe))

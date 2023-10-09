@@ -82,9 +82,9 @@ def parse_rc_features(feature):
     if isinstance(feature, str) and feature.upper() == 'ALL':
         return get_all_features()
     elif isinstance(feature, list):
-        if windows:
-            # force add PrivacyMode
-            feature.append('PrivacyMode')
+        # if windows:
+        #     # force add PrivacyMode
+        #     feature.append('PrivacyMode')
         for feat in feature:
             if isinstance(feat, str) and feat.upper() == 'ALL':
                 return get_all_features()
@@ -261,8 +261,8 @@ def external_resources(flutter, args, res_dir):
 
 def get_features(args):
     features = ['inline'] if not args.flutter else []
-    if windows:
-        features.append('virtual_display_driver')
+    # if windows:
+    #     features.append('virtual_display_driver')
     if args.hwcodec:
         features.append('hwcodec')
     if args.flutter:
@@ -415,16 +415,16 @@ def build_flutter_arch_manjaro(version, features):
 
 
 def build_flutter_windows(version, features):
-    if not skip_cargo:
-        system2(f'cargo build --features {features} --lib --release')
-        if not os.path.exists("target/release/librustdesk.dll"):
-            print("cargo build failed, please check rust source code.")
-            exit(-1)
+    # if not skip_cargo:
+    #     system2(f'cargo build --features {features} --lib --release')
+    #     if not os.path.exists("target/release/librustdesk.dll"):
+    #         print("cargo build failed, please check rust source code.")
+    #         exit(-1)
     os.chdir('flutter')
-    system2('flutter build windows --release')
+    # system2('flutter build windows --release')
     os.chdir('..')
-    shutil.copy2('target/release/deps/dylib_virtual_display.dll',
-                 flutter_build_dir_2)
+    # shutil.copy2('target/release/deps/dylib_virtual_display.dll',
+    #              flutter_build_dir_2)
     os.chdir('libs/portable')
     system2('pip3 install -r requirements.txt')
     system2(
@@ -470,7 +470,7 @@ def main():
     if windows:
         # build virtual display dynamic library
         os.chdir('libs/virtual_display/dylib')
-        system2('cargo build --release')
+        # system2('cargo build --release')
         os.chdir('../../..')
 
         if flutter:

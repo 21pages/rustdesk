@@ -1,485 +1,125 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:bot_toast/bot_toast.dart';
-import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
-import 'package:flutter_hbb/desktop/pages/install_page.dart';
-import 'package:flutter_hbb/desktop/pages/server_page.dart';
-import 'package:flutter_hbb/desktop/screen/desktop_file_transfer_screen.dart';
-import 'package:flutter_hbb/desktop/screen/desktop_port_forward_screen.dart';
-import 'package:flutter_hbb/desktop/screen/desktop_remote_screen.dart';
-import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
-import 'package:flutter_hbb/models/state_model.dart';
-import 'package:flutter_hbb/plugin/handlers.dart';
-import 'package:flutter_hbb/utils/multi_window_manager.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:get/get.dart';
-import 'package:provider/provider.dart';
-import 'package:window_manager/window_manager.dart';
 
-// import 'package:window_manager/window_manager.dart';
-
-import 'common.dart';
-import 'consts.dart';
-import 'mobile/pages/home_page.dart';
-import 'mobile/pages/server_page.dart';
-import 'models/platform_model.dart';
-
-/// Basic window and launch properties.
-int? kWindowId;
-WindowType? kWindowType;
-late List<String> kBootArgs;
-
-Future<void> main(List<String> args) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  debugPrint("launch args: $args");
-  kBootArgs = List.from(args);
-
-  if (!isDesktop) {
-    runMobileApp();
-    return;
-  }
-  // main window
-  if (args.isNotEmpty && args.first == 'multi_window') {
-    kWindowId = int.parse(args[1]);
-    stateGlobal.setWindowId(kWindowId!);
-    if (!Platform.isMacOS) {
-      WindowController.fromWindowId(kWindowId!).showTitleBar(false);
-    }
-    final argument = args[2].isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(args[2]) as Map<String, dynamic>;
-    int type = argument['type'] ?? -1;
-    // to-do: No need to parse window id ?
-    // Because stateGlobal.windowId is a global value.
-    argument['windowId'] = kWindowId;
-    kWindowType = type.windowType;
-    final windowName = getWindowName();
-    switch (kWindowType) {
-      case WindowType.RemoteDesktop:
-        desktopType = DesktopType.remote;
-        runMultiWindow(
-          argument,
-          kAppTypeDesktopRemote,
-          windowName,
-        );
-        break;
-      case WindowType.FileTransfer:
-        desktopType = DesktopType.fileTransfer;
-        runMultiWindow(
-          argument,
-          kAppTypeDesktopFileTransfer,
-          windowName,
-        );
-        break;
-      case WindowType.PortForward:
-        desktopType = DesktopType.portForward;
-        runMultiWindow(
-          argument,
-          kAppTypeDesktopPortForward,
-          windowName,
-        );
-        break;
-      default:
-        break;
-    }
-  } else if (args.isNotEmpty && args.first == '--cm') {
-    debugPrint("--cm started");
-    desktopType = DesktopType.cm;
-    await windowManager.ensureInitialized();
-    runConnectionManagerScreen(args.contains('--hide'));
-  } else if (args.contains('--install')) {
-    runInstallPage();
-  } else {
-    desktopType = DesktopType.main;
-    await windowManager.ensureInitialized();
-    windowManager.setPreventClose(true);
-    runMainApp(true);
-  }
+void main() {
+  runApp(const MyApp());
 }
 
-Future<void> initEnv(String appType) async {
-  // global shared preference
-  await platformFFI.init(appType);
-  // global FFI, use this **ONLY** for global configuration
-  // for convenience, use global FFI on mobile platform
-  // focus on multi-ffi on desktop first
-  await initGlobalFFI();
-  // await Firebase.initializeApp();
-  _registerEventHandler();
-  // Update the system theme.
-  updateSystemWindowTheme();
-}
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
-void runMainApp(bool startService) async {
-  // register uni links
-  await initEnv(kAppTypeMain);
-  // trigger connection status updater
-  await bind.mainCheckConnectStatus();
-  if (startService) {
-    gFFI.serverModel.startService();
-    bind.pluginSyncUi(syncTo: kAppTypeMain);
-    bind.pluginListReload();
-  }
-  await Future.wait([gFFI.abModel.loadCache(), gFFI.groupModel.loadCache()]);
-  gFFI.userModel.refreshCurrentUser();
-  runApp(App());
-  // Set window option.
-  WindowOptions windowOptions = getHiddenTitleBarWindowOptions();
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    // Restore the location of the main window before window hide or show.
-    await restoreWindowPosition(WindowType.Main);
-    // Check the startup argument, if we successfully handle the argument, we keep the main window hidden.
-    final handledByUniLinks = await initUniLinks();
-    debugPrint("handled by uni links: $handledByUniLinks");
-    if (handledByUniLinks || handleUriLink(cmdArgs: kBootArgs)) {
-      windowManager.hide();
-    } else {
-      windowManager.show();
-      windowManager.focus();
-      // Move registration of active main window here to prevent from async visible check.
-      rustDeskWinManager.registerActiveWindow(kWindowMainId);
-    }
-    windowManager.setOpacity(1);
-    windowManager.setTitle(getWindowName());
-  });
-}
-
-void runMobileApp() async {
-  await initEnv(kAppTypeMain);
-  if (isAndroid) androidChannelInit();
-  platformFFI.syncAndroidServiceAppDirConfigPath();
-  await Future.wait([gFFI.abModel.loadCache(), gFFI.groupModel.loadCache()]);
-  gFFI.userModel.refreshCurrentUser();
-  runApp(App());
-}
-
-void runMultiWindow(
-  Map<String, dynamic> argument,
-  String appType,
-  String title,
-) async {
-  await initEnv(appType);
-  // set prevent close to true, we handle close event manually
-  WindowController.fromWindowId(kWindowId!).setPreventClose(true);
-  late Widget widget;
-  switch (appType) {
-    case kAppTypeDesktopRemote:
-      widget = DesktopRemoteScreen(
-        params: argument,
-      );
-      break;
-    case kAppTypeDesktopFileTransfer:
-      widget = DesktopFileTransferScreen(
-        params: argument,
-      );
-      break;
-    case kAppTypeDesktopPortForward:
-      widget = DesktopPortForwardScreen(
-        params: argument,
-      );
-      break;
-    default:
-      // no such appType
-      exit(0);
-  }
-  _runApp(
-    title,
-    widget,
-    MyTheme.currentThemeMode(),
-  );
-  // we do not hide titlebar on win7 because of the frame overflow.
-  if (kUseCompatibleUiMode) {
-    WindowController.fromWindowId(kWindowId!).showTitleBar(true);
-  }
-  switch (appType) {
-    case kAppTypeDesktopRemote:
-      await restoreWindowPosition(WindowType.RemoteDesktop,
-          windowId: kWindowId!, peerId: argument['id'] as String?);
-      break;
-    case kAppTypeDesktopFileTransfer:
-      await restoreWindowPosition(WindowType.FileTransfer,
-          windowId: kWindowId!);
-      break;
-    case kAppTypeDesktopPortForward:
-      await restoreWindowPosition(WindowType.PortForward, windowId: kWindowId!);
-      break;
-    default:
-      // no such appType
-      exit(0);
-  }
-  // show window from hidden status
-  WindowController.fromWindowId(kWindowId!).show();
-}
-
-void runConnectionManagerScreen(bool hide) async {
-  await initEnv(kAppTypeConnectionManager);
-  _runApp(
-    '',
-    const DesktopServerPage(),
-    MyTheme.currentThemeMode(),
-  );
-  gFFI.serverModel.hideCm = hide;
-  if (hide) {
-    await hideCmWindow(isStartup: true);
-  } else {
-    await showCmWindow(isStartup: true);
-  }
-  windowManager.setResizable(false);
-  // Start the uni links handler and redirect links to Native, not for Flutter.
-  listenUniLinks(handleByFlutter: false);
-}
-
-bool _isCmReadyToShow = false;
-
-showCmWindow({bool isStartup = false}) async {
-  if (isStartup) {
-    WindowOptions windowOptions = getHiddenTitleBarWindowOptions(
-        size: kConnectionManagerWindowSizeClosedChat);
-    await windowManager.waitUntilReadyToShow(windowOptions, null);
-    bind.mainHideDocker();
-    await Future.wait([
-      windowManager.show(),
-      windowManager.focus(),
-      windowManager.setOpacity(1)
-    ]);
-    // ensure initial window size to be changed
-    await windowManager.setSizeAlignment(
-        kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
-    _isCmReadyToShow = true;
-  } else if (_isCmReadyToShow) {
-    if (await windowManager.getOpacity() != 1) {
-      await windowManager.setOpacity(1);
-      await windowManager.focus();
-      await windowManager.minimize(); //needed
-      await windowManager.setSizeAlignment(
-          kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
-      windowOnTop(null);
-    }
-  }
-}
-
-hideCmWindow({bool isStartup = false}) async {
-  if (isStartup) {
-    WindowOptions windowOptions = getHiddenTitleBarWindowOptions(
-        size: kConnectionManagerWindowSizeClosedChat);
-    windowManager.setOpacity(0);
-    await windowManager.waitUntilReadyToShow(windowOptions, null);
-    bind.mainHideDocker();
-    await windowManager.minimize();
-    await windowManager.hide();
-    _isCmReadyToShow = true;
-  } else if (_isCmReadyToShow) {
-    if (await windowManager.getOpacity() != 0) {
-      await windowManager.setOpacity(0);
-      bind.mainHideDocker();
-      await windowManager.minimize();
-      await windowManager.hide();
-    }
-  }
-}
-
-void _runApp(
-  String title,
-  Widget home,
-  ThemeMode themeMode,
-) {
-  final botToastBuilder = BotToastInit();
-  runApp(RefreshWrapper(
-    builder: (context) => GetMaterialApp(
-      navigatorKey: globalKey,
-      debugShowCheckedModeBanner: false,
-      title: title,
-      theme: MyTheme.lightTheme,
-      darkTheme: MyTheme.darkTheme,
-      themeMode: themeMode,
-      home: home,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: supportedLocales,
-      navigatorObservers: [
-        // FirebaseAnalyticsObserver(analytics: analytics),
-        BotToastNavigatorObserver(),
-      ],
-      builder: (context, child) {
-        child = _keepScaleBuilder(context, child);
-        child = botToastBuilder(context, child);
-        return child;
-      },
-    ),
-  ));
-}
-
-void runInstallPage() async {
-  await windowManager.ensureInitialized();
-  await initEnv(kAppTypeMain);
-  _runApp('', const InstallPage(), MyTheme.currentThemeMode());
-  WindowOptions windowOptions =
-      getHiddenTitleBarWindowOptions(size: Size(800, 600), center: true);
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    windowManager.show();
-    windowManager.focus();
-    windowManager.setOpacity(1);
-    windowManager.setAlignment(Alignment.center); // ensure
-    windowManager.setTitle(getWindowName());
-  });
-}
-
-WindowOptions getHiddenTitleBarWindowOptions(
-    {Size? size, bool center = false}) {
-  var defaultTitleBarStyle = TitleBarStyle.hidden;
-  // we do not hide titlebar on win7 because of the frame overflow.
-  if (kUseCompatibleUiMode) {
-    defaultTitleBarStyle = TitleBarStyle.normal;
-  }
-  return WindowOptions(
-    size: size,
-    center: center,
-    backgroundColor: Colors.transparent,
-    skipTaskbar: false,
-    titleBarStyle: defaultTitleBarStyle,
-  );
-}
-
-class App extends StatefulWidget {
+  // This widget is the root of your application.
   @override
-  State<App> createState() => _AppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Flutter Demo',
+      theme: ThemeData(
+        // This is the theme of your application.
+        //
+        // TRY THIS: Try running your application with "flutter run". You'll see
+        // the application has a blue toolbar. Then, without quitting the app,
+        // try changing the seedColor in the colorScheme below to Colors.green
+        // and then invoke "hot reload" (save your changes or press the "hot
+        // reload" button in a Flutter-supported IDE, or press "r" if you used
+        // the command line to start the app).
+        //
+        // Notice that the counter didn't reset back to zero; the application
+        // state is not lost during the reload. To reset the state, use hot
+        // restart instead.
+        //
+        // This works for code too, not just values: Most code changes can be
+        // tested with just a hot reload.
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+    );
+  }
 }
 
-class _AppState extends State<App> {
+class MyHomePage extends StatefulWidget {
+  const MyHomePage({super.key, required this.title});
+
+  // This widget is the home page of your application. It is stateful, meaning
+  // that it has a State object (defined below) that contains fields that affect
+  // how it looks.
+
+  // This class is the configuration for the state. It holds the values (in this
+  // case the title) provided by the parent (in this case the App widget) and
+  // used by the build method of the State. Fields in a Widget subclass are
+  // always marked "final".
+
+  final String title;
+
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.window.onPlatformBrightnessChanged = () {
-      final userPreference = MyTheme.getThemeModePreference();
-      if (userPreference != ThemeMode.system) return;
-      WidgetsBinding.instance.handlePlatformBrightnessChanged();
-      final systemIsDark =
-          WidgetsBinding.instance.platformDispatcher.platformBrightness ==
-              Brightness.dark;
-      final ThemeMode to;
-      if (systemIsDark) {
-        to = ThemeMode.dark;
-      } else {
-        to = ThemeMode.light;
-      }
-      Get.changeThemeMode(to);
-      // Synchronize the window theme of the system.
-      updateSystemWindowTheme();
-      if (desktopType == DesktopType.main) {
-        bind.mainChangeTheme(dark: to.toShortString());
-      }
-    };
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends State<MyHomePage> {
+  int _counter = 0;
+
+  void _incrementCounter() {
+    setState(() {
+      // This call to setState tells the Flutter framework that something has
+      // changed in this State, which causes it to rerun the build method below
+      // so that the display can reflect the updated values. If we changed
+      // _counter without calling setState(), then the build method would not be
+      // called again, and so nothing would appear to happen.
+      _counter++;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // final analytics = FirebaseAnalytics.instance;
-    final botToastBuilder = BotToastInit();
-    return RefreshWrapper(builder: (context) {
-      return MultiProvider(
-        providers: [
-          // global configuration
-          // use session related FFI when in remote control or file transfer page
-          ChangeNotifierProvider.value(value: gFFI.ffiModel),
-          ChangeNotifierProvider.value(value: gFFI.imageModel),
-          ChangeNotifierProvider.value(value: gFFI.cursorModel),
-          ChangeNotifierProvider.value(value: gFFI.canvasModel),
-          ChangeNotifierProvider.value(value: gFFI.peerTabModel),
-        ],
-        child: GetMaterialApp(
-          navigatorKey: globalKey,
-          debugShowCheckedModeBanner: false,
-          title: 'RustDesk',
-          theme: MyTheme.lightTheme,
-          darkTheme: MyTheme.darkTheme,
-          themeMode: MyTheme.currentThemeMode(),
-          home: isDesktop
-              ? const DesktopTabPage()
-              : isWeb
-                  ? WebHomePage()
-                  : HomePage(),
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
+    // This method is rerun every time setState is called, for instance as done
+    // by the _incrementCounter method above.
+    //
+    // The Flutter framework has been optimized to make rerunning build methods
+    // fast, so that you can just rebuild anything that needs updating rather
+    // than having to individually change instances of widgets.
+    return Scaffold(
+      appBar: AppBar(
+        // TRY THIS: Try changing the color here to a specific color (to
+        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
+        // change color while the other colors stay the same.
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        // Here we take the value from the MyHomePage object that was created by
+        // the App.build method, and use it to set our appbar title.
+        title: Text(widget.title),
+      ),
+      body: Center(
+        // Center is a layout widget. It takes a single child and positions it
+        // in the middle of the parent.
+        child: Column(
+          // Column is also a layout widget. It takes a list of children and
+          // arranges them vertically. By default, it sizes itself to fit its
+          // children horizontally, and tries to be as tall as its parent.
+          //
+          // Column has various properties to control how it sizes itself and
+          // how it positions its children. Here we use mainAxisAlignment to
+          // center the children vertically; the main axis here is the vertical
+          // axis because Columns are vertical (the cross axis would be
+          // horizontal).
+          //
+          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
+          // action in the IDE, or press "p" in the console), to see the
+          // wireframe for each widget.
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            const Text(
+              'You have pushed the button this many times:',
+            ),
+            Text(
+              '$_counter',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
           ],
-          supportedLocales: supportedLocales,
-          navigatorObservers: [
-            // FirebaseAnalyticsObserver(analytics: analytics),
-            BotToastNavigatorObserver(),
-          ],
-          builder: isAndroid
-              ? (context, child) => AccessibilityListener(
-                    child: MediaQuery(
-                      data: MediaQuery.of(context).copyWith(
-                        textScaleFactor: 1.0,
-                      ),
-                      child: child ?? Container(),
-                    ),
-                  )
-              : (context, child) {
-                  child = _keepScaleBuilder(context, child);
-                  child = botToastBuilder(context, child);
-                  if (isDesktop && desktopType == DesktopType.main) {
-                    child = keyListenerBuilder(context, child);
-                  }
-                  return child;
-                },
         ),
-      );
-    });
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _incrementCounter,
+        tooltip: 'Increment',
+        child: const Icon(Icons.add),
+      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
   }
-}
-
-Widget _keepScaleBuilder(BuildContext context, Widget? child) {
-  return MediaQuery(
-    data: MediaQuery.of(context).copyWith(
-      textScaleFactor: 1.0,
-    ),
-    child: child ?? Container(),
-  );
-}
-
-_registerEventHandler() {
-  if (isDesktop && desktopType != DesktopType.main) {
-    platformFFI.registerEventHandler('theme', 'theme', (evt) async {
-      String? dark = evt['dark'];
-      if (dark != null) {
-        MyTheme.changeDarkMode(MyTheme.themeModeFromString(dark));
-      }
-    });
-    platformFFI.registerEventHandler('language', 'language', (_) async {
-      reloadAllWindows();
-    });
-  }
-  // Register native handlers.
-  if (isDesktop) {
-    platformFFI.registerEventHandler('native_ui', 'native_ui', (evt) async {
-      NativeUiHandler.instance.onEvent(evt);
-    });
-  }
-}
-
-Widget keyListenerBuilder(BuildContext context, Widget? child) {
-  return RawKeyboardListener(
-    focusNode: FocusNode(),
-    child: child ?? Container(),
-    onKey: (RawKeyEvent event) {
-      if (event.logicalKey == LogicalKeyboardKey.shiftLeft) {
-        if (event is RawKeyDownEvent) {
-          gFFI.peerTabModel.setShiftDown(true);
-        } else if (event is RawKeyUpEvent) {
-          gFFI.peerTabModel.setShiftDown(false);
-        }
-      }
-    },
-  );
 }
