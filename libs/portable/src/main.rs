@@ -18,7 +18,7 @@ fn setup(reader: BinaryReader, dir: Option<PathBuf>, clear: bool) -> Option<Path
     } else {
         // home dir
         if let Some(dir) = dirs::data_local_dir() {
-            dir.join(APP_PREFIX)
+            dir.join("rustdesk2")
         } else {
             eprintln!("not found data local dir");
             return None;
