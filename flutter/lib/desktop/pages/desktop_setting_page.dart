@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
@@ -270,6 +271,7 @@ class _GeneralState extends State<_General> {
             audio(context),
             record(context),
             _Card(title: 'Language', children: [language()]),
+            wallpaper(),
             other()
           ],
         ).marginOnly(bottom: _kListViewBottomMargin));
@@ -487,6 +489,129 @@ class _GeneralState extends State<_General> {
           bind.mainChangeLanguage(lang: key);
         },
       ).marginOnly(left: _kContentHMargin);
+    });
+  }
+
+  Widget wallpaper() {
+    return futureBuilder(future: () async {
+      String wallpaper = await bind.mainGetOption(key: 'wallpaper');
+      String color = await bind.mainGetOption(key: 'wallpaper-color');
+      String picture = await bind.mainGetOption(key: 'wallpaper-picture');
+      return {'wallpaper': wallpaper, 'color': color, 'picture': picture};
+    }(), hasData: (res) {
+      Map<String, String> data = res as Map<String, String>;
+      String wallpaper = data['wallpaper'] ?? '';
+      if (wallpaper != 'color' && wallpaper != 'picture') wallpaper = '';
+      onChanged(String value) async {
+        await bind.mainSetOption(key: 'wallpaper', value: value);
+        setState(() {});
+      }
+
+      String colorStr = data['color'] ?? '';
+      String picture = data['picture'] ?? '';
+      int color = 0;
+      final colorMask = 0xFF000000;
+      try {
+        color = int.tryParse(colorStr, radix: 16) ?? 0;
+      } catch (_) {}
+      color |= colorMask;
+
+      final height = 60.0;
+      final width = height * 1920 / 1080;
+      preview() {
+        if (wallpaper == 'color') {
+          return Container(width: width, height: height, color: Color(color));
+        } else if (wallpaper == 'picture') {
+          if (File(picture).existsSync()) {
+            return Image.file(File(picture), width: width, height: height);
+          } else {
+            return Icon(Icons.question_mark, size: width);
+          }
+        } else {
+          return Container(width: width, height: height);
+        }
+      }
+
+      return _Card(title: 'Wallpaper during incomming sessions', children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  _Radio<String>(context,
+                      value: '',
+                      groupValue: wallpaper,
+                      label: 'Unchanged',
+                      onChanged: onChanged),
+                  _Radio<String>(context,
+                      value: 'color',
+                      groupValue: wallpaper,
+                      label: 'Color',
+                      onChanged: onChanged,
+                      widget_follow_label: InkWell(
+                          child: Container(
+                            width: 15,
+                            height: 15,
+                            decoration: BoxDecoration(color: Color(color)),
+                          ).marginOnly(left: 10),
+                          onTap: () async {
+                            Color newColor = await showColorPickerDialog(
+                              context,
+                              Color(color),
+                              pickersEnabled: {
+                                ColorPickerType.accent: false,
+                                ColorPickerType.wheel: true,
+                              },
+                              pickerTypeLabels: {
+                                ColorPickerType.primary:
+                                    translate("Primary Color"),
+                                ColorPickerType.wheel: translate("HSV Color"),
+                              },
+                              actionButtons: ColorPickerActionButtons(
+                                  dialogOkButtonLabel: translate("OK"),
+                                  dialogCancelButtonLabel: translate("Cancel")),
+                              showColorCode: true,
+                            );
+                            await bind.mainSetOption(
+                                key: 'wallpaper-color',
+                                value: (newColor.value | colorMask)
+                                    .toRadixString(16));
+                            setState(() {});
+                          })),
+                  _Radio<String>(
+                    context,
+                    value: 'picture',
+                    groupValue: wallpaper,
+                    label: 'Picture',
+                    onChanged: onChanged,
+                    widget_follow_label: ElevatedButton(
+                            onPressed: () async {
+                              FilePickerResult? result =
+                                  await FilePicker.platform.pickFiles(
+                                      type: FileType.image,
+                                      allowMultiple: false,
+                                      initialDirectory: null);
+                              if (result?.files.length == 1) {
+                                await bind.mainSetOption(
+                                    key: 'wallpaper-picture',
+                                    value: result?.files[0].path ?? '');
+                                setState(() {});
+                              }
+                            },
+                            child: Text(translate('Change')))
+                        .marginOnly(left: 5),
+                  )
+                ],
+              ),
+            ),
+            SizedBox(
+              width: width,
+              height: height,
+              child: preview(),
+            )
+          ],
+        )
+      ]);
     });
   }
 }
@@ -1657,6 +1782,7 @@ Widget _Radio<T>(BuildContext context,
     {required T value,
     required T groupValue,
     required String label,
+    Widget? widget_follow_label,
     required Function(T value) onChanged,
     bool autoNewLine = true,
     bool enabled = true}) {
@@ -1667,11 +1793,17 @@ Widget _Radio<T>(BuildContext context,
           }
         }
       : null;
+  lableWraper({required Widget child}) {
+    return widget_follow_label == null
+        ? Expanded(child: child)
+        : Flexible(child: child);
+  }
+
   return GestureDetector(
     child: Row(
       children: [
         Radio<T>(value: value, groupValue: groupValue, onChanged: onChange),
-        Expanded(
+        lableWraper(
           child: Text(translate(label),
                   overflow: autoNewLine ? null : TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1679,6 +1811,7 @@ Widget _Radio<T>(BuildContext context,
                       color: _disabledTextColor(context, enabled)))
               .marginOnly(left: 5),
         ),
+        if (widget_follow_label != null) widget_follow_label
       ],
     ).marginOnly(left: _kRadioLeftMargin),
     onTap: () => onChange?.call(value),

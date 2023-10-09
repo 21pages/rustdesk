@@ -123,6 +123,12 @@ pub fn create_1px_png(rgba: u32) -> ResultType<PathBuf> {
     Ok(path)
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum WallpaperRemoverType {
+    Color(u32),
+    Picture(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

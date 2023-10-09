@@ -1238,7 +1238,7 @@ pub struct WallPaperRemover {
 impl WallPaperRemover {
     pub fn new() -> ResultType<Self> {
         let old_path = Self::get_wallpaper()?;
-        let new_path = super::create_1px_png(0x00000FF)?;
+        let new_path = super::create_1px_png(0xFF00000)?;
         wallpaper::set_mode(wallpaper::Mode::Stretch)?; // TODO: recover mode
         Self::set_wallpaper(Some(new_path.to_string_lossy().to_string()))?;
         Ok(Self { old_path })

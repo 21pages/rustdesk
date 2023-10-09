@@ -1,4 +1,4 @@
-use super::{CursorData, ResultType};
+use super::{CursorData, ResultType, WallpaperRemoverType};
 use crate::common::PORTABLE_APPNAME_RUNTIME_ENV_KEY;
 use crate::{
     ipc,
@@ -2338,55 +2338,86 @@ fn get_license() -> Option<License> {
 }
 
 #[derive(Debug, Clone)]
-enum RemoverType {
+enum WallPaperReset {
     SolidColor(u32),
-    PNG(Option<wallpaper::Mode>),
+    Picture(Option<wallpaper::Mode>),
 }
 
 pub struct WallPaperRemover {
     old_path: String,
-    typ: RemoverType,
+    bak: bool,
+    reset: WallPaperReset,
 }
 
 impl WallPaperRemover {
-    pub fn new() -> ResultType<Self> {
+    pub fn new(typ: WallpaperRemoverType) -> ResultType<Self> {
+        log::info!("try create wallpaper remover, type:{:?}", typ);
+        let start = std::time::Instant::now();
         let old_path = Self::get_wallpaper()?;
-        let color = 0x00000FF;
-        let typ = if let Ok(old_color) = Self::get_color() {
-            // solid color
-            Self::set_wallpaper(None)?;
-            Self::set_color(color)?;
-            RemoverType::SolidColor(old_color)
-        } else {
-            // 1px png
-            let new_path = super::create_1px_png(color)?;
-            let old_mode = wallpaper::get_mode().ok();
-            wallpaper::set_mode(wallpaper::Mode::Stretch)?;
-            Self::set_wallpaper(Some(new_path.to_string_lossy().to_string()))?;
-            RemoverType::PNG(old_mode)
+        let mut bak = false;
+        // C:\Users\<username>\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper, Transcoded_N
+        // Cached file may change when set
+        if PathBuf::from(&old_path)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+            .to_lowercase()
+            .contains("transcoded")
+        {
+            std::fs::copy(&old_path, old_path.clone() + ".bak")?;
+            bak = true;
+        }
+        let set_picture = |picture: String, change_mode: bool| -> ResultType<WallPaperReset> {
+            // AnyDesk doesn't change mode when using picture, change mode only for 1px
+            let mut old_mode = None;
+            if change_mode {
+                let current_mode = wallpaper::get_mode().ok();
+                if current_mode == Some(wallpaper::Mode::Center)
+                    || current_mode == Some(wallpaper::Mode::Fit)
+                {
+                    old_mode = current_mode;
+                    wallpaper::set_mode(wallpaper::Mode::Stretch)?;
+                }
+            }
+            Self::set_wallpaper(Some(picture))?;
+            Ok(WallPaperReset::Picture(old_mode))
         };
-
-        Ok(Self { old_path, typ })
+        let reset = match typ {
+            WallpaperRemoverType::Color(color) => {
+                if let Ok(old_color) = Self::get_color() {
+                    // solid color
+                    Self::set_wallpaper(None)?;
+                    Self::set_color(color)?;
+                    WallPaperReset::SolidColor(old_color)
+                } else {
+                    // 1px png
+                    let new_path = super::create_1px_png(color)?;
+                    set_picture(new_path.to_string_lossy().to_string(), true)?
+                }
+            }
+            WallpaperRemoverType::Picture(picture) => set_picture(picture, false)?,
+        };
+        log::info!(
+            "created wallpaper remover, reset:{:?}, old_path:{:?}, bak:{}, elapsed:{:?}",
+            reset,
+            old_path,
+            bak,
+            start.elapsed(),
+        );
+        Ok(Self {
+            old_path,
+            reset,
+            bak,
+        })
     }
 
     fn get_wallpaper() -> ResultType<String> {
-        unsafe {
-            let buffer: [u16; MAX_PATH] = std::mem::zeroed();
-            if SystemParametersInfoW(
-                SPI_GETDESKWALLPAPER,
-                buffer.len() as _,
-                buffer.as_ptr() as _,
-                0,
-            ) == TRUE
-            {
-                Ok(String::from_utf16(&buffer)?.trim_end_matches('\x00').into())
-            } else {
-                Err(io::Error::last_os_error().into())
-            }
-        }
+        wallpaper::get().map_err(|e| anyhow!(e.to_string()))
     }
 
     fn set_wallpaper(path: Option<String>) -> ResultType<()> {
+        // wallpaper::set_from_path(&path.unwrap_or_default()).map_err(|e| anyhow!(e.to_string()))
         unsafe {
             let path = path.unwrap_or_default();
             let path = wide_string(&path);
@@ -2402,15 +2433,15 @@ impl WallPaperRemover {
         // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsyscolor
         // Windows 10 or greater: This value is not supported. But it still works.
         let color = unsafe { GetSysColor(COLOR_DESKTOP) };
-        let rgba = ((GetRValue(color) as u32) << 24)
-            | ((GetGValue(color) as u32) << 16)
-            | ((GetBValue(color) as u32) << 8)
-            | (0xFF as u32);
-        Ok(rgba)
+        let argb = ((0xFF as u32) << 24)
+            | ((GetRValue(color) as u32) << 16)
+            | ((GetGValue(color) as u32) << 8)
+            | (GetBValue(color) as u32);
+        Ok(argb)
     }
 
     fn set_color(rgba: u32) -> ResultType<()> {
-        let rgb = RGB((rgba >> 24) as u8, (rgba >> 16) as u8, (rgba >> 8) as u8);
+        let rgb = RGB((rgba >> 16) as u8, (rgba >> 8) as u8, rgba as u8);
         let elements = vec![COLOR_BACKGROUND];
         let colors = vec![rgb];
         if let TRUE = unsafe { SetSysColors(1, elements.as_ptr(), colors.as_ptr()) } {
@@ -2423,15 +2454,21 @@ impl WallPaperRemover {
 
 impl Drop for WallPaperRemover {
     fn drop(&mut self) {
-        match self.typ.clone() {
-            RemoverType::SolidColor(old_color) => {
+        match self.reset.clone() {
+            WallPaperReset::SolidColor(old_color) => {
                 allow_err!(Self::set_color(old_color));
             }
-            RemoverType::PNG(old_mode) => {
+            WallPaperReset::Picture(old_mode) => {
                 if let Some(old_mode) = old_mode {
                     allow_err!(wallpaper::set_mode(old_mode));
                 }
             }
+        }
+        if self.bak {
+            allow_err!(std::fs::rename(
+                self.old_path.clone() + ".bak",
+                &self.old_path
+            ));
         }
         allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
     }

@@ -753,7 +753,7 @@ impl WallPaperRemover {
         } else if transparent_wallpaper.exists() {
             transparent_wallpaper
         } else {
-            super::create_1px_png(0x00000FF)?
+            super::create_1px_png(0xFF00000)?
         };
         Self::set_wallpaper(Some(new_path.to_string_lossy().to_string()))?;
         Ok(Self { old_path })

@@ -47,6 +47,7 @@ use sha2::{Digest, Sha256};
 use std::sync::atomic::Ordering;
 use std::{
     num::NonZeroI64,
+    path::PathBuf,
     sync::{atomic::AtomicI64, mpsc as std_mpsc},
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1182,15 +1183,37 @@ impl Connection {
         use std::sync::Once;
         static ONCE: Once = Once::new();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        if !Config::get_option("allow-remove-wallpaper").is_empty() {
-            // multi connections set once
-            let mut wallpaper = WALLPAPER_REMOVER.lock().unwrap();
-            if wallpaper.is_none() {
-                if let Ok(remover) = crate::platform::WallPaperRemover::new() {
-                    *wallpaper = Some(remover);
-                    ONCE.call_once(|| {
-                        shutdown_hooks::add_shutdown_hook(shutdown_hook);
-                    });
+        {
+            let typ = Config::get_option("wallpaper");
+            if typ == "color" || typ == "picture" {
+                // multi connections set once
+                let mut wallpaper = WALLPAPER_REMOVER.lock().unwrap();
+                if wallpaper.is_none() {
+                    let mut wallpaper_type = None;
+                    if typ == "picture" {
+                        let path = PathBuf::from(Config::get_option("wallpaper-picture"));
+                        if path.is_file() && path.exists() {
+                            wallpaper_type = Some(crate::platform::WallpaperRemoverType::Picture(
+                                path.to_string_lossy().to_string(),
+                            ));
+                        }
+                    }
+                    // accept fallback
+                    if wallpaper_type == None {
+                        let mut color =
+                            u32::from_str_radix(&Config::get_option("wallpaper-color"), 16)
+                                .unwrap_or_default();
+                        color |= 0xFF000000;
+                        wallpaper_type = Some(crate::platform::WallpaperRemoverType::Color(color));
+                    }
+                    if let Some(typ) = wallpaper_type {
+                        if let Ok(remover) = crate::platform::WallPaperRemover::new(typ) {
+                            *wallpaper = Some(remover);
+                            ONCE.call_once(|| {
+                                shutdown_hooks::add_shutdown_hook(shutdown_hook);
+                            });
+                        }
+                    }
                 }
             }
         }
