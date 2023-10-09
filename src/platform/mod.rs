@@ -23,7 +23,10 @@ pub mod linux_desktop_manager;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::{message_proto::CursorData, ResultType};
-use std::sync::{Arc, Mutex};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 #[cfg(not(any(target_os = "macos", target_os = "android", target_os = "ios")))]
 const SERVICE_INTERVAL: u64 = 300;
 
@@ -93,6 +96,31 @@ impl Drop for InstallingService {
     fn drop(&mut self) {
         *INSTALLING_SERVICE.lock().unwrap() = false;
     }
+}
+
+pub fn create_1px_png(rgba: u32) -> ResultType<PathBuf> {
+    let dir;
+    #[cfg(windows)]
+    {
+        dir = crate::platform::user_accessible_folder()?.join(crate::get_app_name());
+        if !dir.exists() {
+            std::fs::create_dir(&dir)?;
+            set_path_permission(&dir, "F").ok();
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        dir = PathBuf::from("/tmp");
+    }
+    let path = dir.join("1px.png");
+    let mut bytes = vec![];
+    bytes.push((rgba >> 24) as u8);
+    bytes.push((rgba >> 16) as u8);
+    bytes.push((rgba >> 8) as u8);
+    bytes.push(rgba as u8);
+    let file = std::fs::File::create(&path)?;
+    repng::encode(file, 1, 1, &bytes)?;
+    Ok(path)
 }
 
 #[cfg(test)]

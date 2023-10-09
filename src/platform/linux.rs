@@ -5,7 +5,9 @@ use desktop::Desktop;
 use hbb_common::config::CONFIG_OPTION_ALLOW_LINUX_HEADLESS;
 pub use hbb_common::platform::linux::*;
 use hbb_common::{
-    allow_err, bail,
+    allow_err,
+    anyhow::anyhow,
+    bail,
     config::Config,
     libc::{c_char, c_int, c_long, c_void},
     log,
@@ -25,6 +27,7 @@ use std::{
     time::{Duration, Instant},
 };
 use users::{get_user_by_name, os::unix::UserExt};
+use wallpaper;
 
 type Xdo = *const c_void;
 
@@ -1226,4 +1229,32 @@ NoDisplay=false
         )?;
     }
     Ok(())
+}
+
+pub struct WallPaperRemover {
+    old_path: String,
+}
+
+impl WallPaperRemover {
+    pub fn new() -> ResultType<Self> {
+        let old_path = Self::get_wallpaper()?;
+        let new_path = super::create_1px_png(0x00000FF)?;
+        wallpaper::set_mode(wallpaper::Mode::Stretch)?; // TODO: recover mode
+        Self::set_wallpaper(Some(new_path.to_string_lossy().to_string()))?;
+        Ok(Self { old_path })
+    }
+
+    fn get_wallpaper() -> ResultType<String> {
+        wallpaper::get().map_err(|e| anyhow!(e.to_string()))
+    }
+
+    fn set_wallpaper(path: Option<String>) -> ResultType<()> {
+        wallpaper::set_from_path(&path.unwrap_or_default()).map_err(|e| anyhow!(e.to_string()))
+    }
+}
+
+impl Drop for WallPaperRemover {
+    fn drop(&mut self) {
+        allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
+    }
 }

@@ -322,6 +322,9 @@ class _GeneralState extends State<_General> {
           'enable-confirm-closing-tabs',
           isServer: false),
       _OptionCheckBox(context, 'Adaptive bitrate', 'enable-abr'),
+      if (isDesktop)
+        _OptionCheckBox(context, 'Remove wallpaper during incoming sessions',
+            'allow-remove-wallpaper'),
       _OptionCheckBox(
         context,
         'Open connection in new tab',
