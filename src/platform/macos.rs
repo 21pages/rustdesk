@@ -2,7 +2,7 @@
 // https://github.com/servo/core-foundation-rs
 // https://github.com/rust-windowing/winit
 
-use super::{CursorData, ResultType};
+use super::{CursorData, ResultType, WallpaperRemoverType};
 use cocoa::{
     appkit::{NSApp, NSApplication, NSApplicationActivationPolicy::*},
     base::{id, nil, BOOL, NO, YES},
@@ -738,25 +738,28 @@ impl WakeLock {
 
 pub struct WallPaperRemover {
     old_path: String,
+    bak:bool,
 }
 
 impl WallPaperRemover {
-    pub fn new() -> ResultType<Self> {
+    pub fn new(typ: WallpaperRemoverType) -> ResultType<Self> {
         let old_path = Self::get_wallpaper()?;
-        let black_wallpaper =
-            PathBuf::from("/System/Library/Desktop Pictures/Solid Colors/Black.png");
-        // https://github.com/sindresorhus/macos-wallpaper/blob/417a12e606b68215c4aa94586b5c9d910af1c25e/Sources/wallpaper/Wallpaper.swift#L129
-        // fillColor doesn't work
-        let transparent_wallpaper = PathBuf::from("/System/Library/ExtensionKit/Extensions/Wallpaper.appex/Contents/Resources/Transparent.tiff");
-        let new_path = if !black_wallpaper.exists() {
-            black_wallpaper
-        } else if transparent_wallpaper.exists() {
-            transparent_wallpaper
-        } else {
-            super::create_1px_png(0xFF00000)?
+        let mut bak = false;
+        // let black_wallpaper =
+        //     PathBuf::from("/System/Library/Desktop Pictures/Solid Colors/Black.png");
+        // // https://github.com/sindresorhus/macos-wallpaper/blob/417a12e606b68215c4aa94586b5c9d910af1c25e/Sources/wallpaper/Wallpaper.swift#L129
+        // // fillColor doesn't work
+        // let transparent_wallpaper = PathBuf::from("/System/Library/ExtensionKit/Extensions/Wallpaper.appex/Contents/Resources/Transparent.tiff");
+        let new_path = match typ {
+            WallpaperRemoverType::Color(color) => {
+                let (new_path, bak2) = super::create_1px_png(color, old_path.clone())?;
+                bak = bak2;
+                new_path.to_string_lossy().to_string()
+            }
+            WallpaperRemoverType::Picture(picture) => picture,
         };
-        Self::set_wallpaper(Some(new_path.to_string_lossy().to_string()))?;
-        Ok(Self { old_path })
+        Self::set_wallpaper(Some(new_path))?;
+        Ok(Self { old_path ,bak})
     }
 
     fn get_wallpaper() -> ResultType<String> {
@@ -770,6 +773,12 @@ impl WallPaperRemover {
 
 impl Drop for WallPaperRemover {
     fn drop(&mut self) {
+        if self.bak {
+            allow_err!(std::fs::rename(
+                self.old_path.clone() + ".bak",
+                &self.old_path
+            ));
+        }
         allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
     }
 }

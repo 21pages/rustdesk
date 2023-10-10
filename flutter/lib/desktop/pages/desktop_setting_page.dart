@@ -516,7 +516,7 @@ class _GeneralState extends State<_General> {
       } catch (_) {}
       color |= colorMask;
 
-      final height = 60.0;
+      final height = 40.0;
       final width = height * 1920 / 1080;
       preview() {
         if (wallpaper == 'color') {

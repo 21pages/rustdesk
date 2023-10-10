@@ -1,4 +1,4 @@
-use super::{CursorData, ResultType};
+use super::{CursorData, ResultType, WallpaperRemoverType};
 use desktop::Desktop;
 #[cfg(all(feature = "linux_headless"))]
 #[cfg(not(any(feature = "flatpak", feature = "appimage")))]
@@ -1233,15 +1233,24 @@ NoDisplay=false
 
 pub struct WallPaperRemover {
     old_path: String,
+    bak:bool,
 }
 
 impl WallPaperRemover {
-    pub fn new() -> ResultType<Self> {
+    pub fn new(typ: WallpaperRemoverType) -> ResultType<Self> {
         let old_path = Self::get_wallpaper()?;
-        let new_path = super::create_1px_png(0xFF00000)?;
-        wallpaper::set_mode(wallpaper::Mode::Stretch)?; // TODO: recover mode
-        Self::set_wallpaper(Some(new_path.to_string_lossy().to_string()))?;
-        Ok(Self { old_path })
+        let mut bak = false;
+        let new_path = match typ {
+            WallpaperRemoverType::Color(color) => {
+                let (new_path, bak2) = super::create_1px_png(color, old_path.clone())?;
+                bak = bak2;
+                wallpaper::set_mode(wallpaper::Mode::Stretch)?; // TODO: recover mode
+                new_path.to_string_lossy().to_string()
+            }
+            WallpaperRemoverType::Picture(picture) => picture,
+        };
+        Self::set_wallpaper(Some(new_path))?;
+        Ok(Self { old_path ,bak})
     }
 
     fn get_wallpaper() -> ResultType<String> {
@@ -1255,6 +1264,12 @@ impl WallPaperRemover {
 
 impl Drop for WallPaperRemover {
     fn drop(&mut self) {
+        if self.bak {
+            allow_err!(std::fs::rename(
+                self.old_path.clone() + ".bak",
+                &self.old_path
+            ));
+        }
         allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
     }
 }

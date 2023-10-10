@@ -2392,7 +2392,10 @@ impl WallPaperRemover {
                     WallPaperReset::SolidColor(old_color)
                 } else {
                     // 1px png
-                    let new_path = super::create_1px_png(color)?;
+                    let (new_path, bak2) = super::create_1px_png(color, old_path.clone())?;
+                    if !bak {
+                        bak = bak2;
+                    }
                     set_picture(new_path.to_string_lossy().to_string(), true)?
                 }
             }

@@ -98,7 +98,7 @@ impl Drop for InstallingService {
     }
 }
 
-pub fn create_1px_png(rgba: u32) -> ResultType<PathBuf> {
+pub fn create_1px_png(argb: u32, old_path:String) -> ResultType<(PathBuf, bool)> {
     let dir;
     #[cfg(windows)]
     {
@@ -114,13 +114,18 @@ pub fn create_1px_png(rgba: u32) -> ResultType<PathBuf> {
     }
     let path = dir.join("1px.png");
     let mut bytes = vec![];
-    bytes.push((rgba >> 24) as u8);
-    bytes.push((rgba >> 16) as u8);
-    bytes.push((rgba >> 8) as u8);
-    bytes.push(rgba as u8);
+    bytes.push((argb >> 16) as u8);
+    bytes.push((argb >> 8) as u8);
+    bytes.push(argb as u8);
+    bytes.push((argb >> 24) as u8);
+    let mut bak = false;
+    if path.to_string_lossy().to_string() == old_path {
+        std::fs::copy(&old_path, old_path.clone() + ".bak")?;
+        bak = true;
+    }
     let file = std::fs::File::create(&path)?;
     repng::encode(file, 1, 1, &bytes)?;
-    Ok(path)
+    Ok((path, bak))
 }
 
 #[derive(Debug, Eq, PartialEq)]
