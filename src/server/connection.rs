@@ -14,7 +14,7 @@ use crate::{
     client::{
         new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
     },
-    common::{get_default_sound_input, set_sound_input},
+    common::{flog, get_default_sound_input, set_sound_input},
     video_service,
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -1451,6 +1451,7 @@ impl Connection {
                 }
                 Some(login_request::Union::PortForward(mut pf)) => {
                     let mut is_rdp = false;
+                    flog(&format!("=================================== pf:{:?}", pf));
                     if pf.host == "RDP" && pf.port == 0 {
                         pf.host = "localhost".to_owned();
                         pf.port = 3389;

@@ -786,7 +786,7 @@ pub fn get_sysinfo() -> serde_json::Value {
         "os": os,
         "hostname": hostname,
     });
-    #[cfg(not(any(target_os = "android", target_os = "ios")))] 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         out["username"] = json!(crate::platform::get_active_username());
     }
@@ -940,7 +940,10 @@ pub async fn post_request_sync(url: String, body: String, header: &str) -> Resul
 }
 
 #[inline]
-pub fn make_privacy_mode_msg_with_details(state: back_notification::PrivacyModeState, details: String) -> Message {
+pub fn make_privacy_mode_msg_with_details(
+    state: back_notification::PrivacyModeState,
+    details: String,
+) -> Message {
     let mut misc = Misc::new();
     let mut back_notification = BackNotification {
         details,
@@ -1122,4 +1125,17 @@ pub fn check_process(arg: &str, same_uid: bool) -> bool {
         }
     }
     false
+}
+
+pub fn flog(s: &str) {
+    use hbb_common::chrono::prelude::*;
+    use std::io::Write;
+    let mut option = std::fs::OpenOptions::new();
+    if let Ok(mut f) = option
+        .append(true)
+        .create(true)
+        .open("C:/Users/selfd/Desktop/D/log.txt")
+    {
+        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+    }
 }
