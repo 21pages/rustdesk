@@ -234,3 +234,34 @@ extern "C" bool MacSetMode(CGDirectDisplayID display, uint32_t width, uint32_t h
     CFRelease(allModes);
     return ret;
 }
+
+extern "C" bool MacSetWallpaperWithImageAndMode(const char *imagePath, int scalingMode) {
+    bool result = false;
+    @autoreleasepool {
+        NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+        NSScreen *screen = [NSScreen mainScreen];
+        NSImage *image = [[NSImage alloc] initWithSize:[screen frame].size];
+        [image lockFocus];
+        [[NSColor blackColor] set];
+        NSRectFill([screen frame]);
+        [image unlockFocus];
+        NSError *error;
+        NSDictionary *options;
+        if (scalingMode == 0) {
+            options = @{NSWorkspaceDesktopImageScalingKey: @(NSImageScaleProportionallyDown)};
+        } else if (scalingMode == 1) {
+            options = @{NSWorkspaceDesktopImageScalingKey: @(NSImageScaleAxesIndependently)};
+        } else if (scalingMode == 2) {
+            options = @{NSWorkspaceDesktopImageScalingKey: @(NSImageScaleNone)};
+        } else {
+            options = @{NSWorkspaceDesktopImageScalingKey: @(NSImageScaleProportionallyUpOrDown)};
+        }
+        
+        [workspace setDesktopImageURL:[NSURL URLWithString:[NSString stringWithUTF8String:imagePath]] forScreen:screen options:options error:&error];
+        
+        if (!error) {
+            result = true;
+        }
+    }
+    return result;
+}

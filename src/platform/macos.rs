@@ -17,11 +17,11 @@ use core_graphics::{
     display::{kCGNullWindowID, kCGWindowListOptionOnScreenOnly, CGWindowListCopyWindowInfo},
     window::{kCGWindowName, kCGWindowOwnerPID},
 };
-use hbb_common::{allow_err, anyhow::anyhow, bail, log, message_proto::Resolution};
+use hbb_common::{allow_err, anyhow::anyhow, bail, log, message_proto::Resolution, libc::c_char};
 use include_dir::{include_dir, Dir};
 use objc::{class, msg_send, sel, sel_impl};
 use scrap::{libc::c_void, quartz::ffi::*};
-use std::path::PathBuf;
+use std::{path::PathBuf, ffi::CString};
 use wallpaper;
 
 static PRIVILEGES_SCRIPTS_DIR: Dir =
@@ -48,6 +48,7 @@ extern "C" {
     ) -> BOOL;
     fn MacGetMode(display: u32, width: *mut u32, height: *mut u32) -> BOOL;
     fn MacSetMode(display: u32, width: u32, height: u32) -> BOOL;
+    fn MacSetWallpaperWithImageAndMode(imagePath:*const c_char, scalingMode:i32) -> BOOL; 
 }
 
 pub fn is_process_trusted(prompt: bool) -> bool {
@@ -750,15 +751,21 @@ impl WallPaperRemover {
         // // https://github.com/sindresorhus/macos-wallpaper/blob/417a12e606b68215c4aa94586b5c9d910af1c25e/Sources/wallpaper/Wallpaper.swift#L129
         // // fillColor doesn't work
         // let transparent_wallpaper = PathBuf::from("/System/Library/ExtensionKit/Extensions/Wallpaper.appex/Contents/Resources/Transparent.tiff");
-        let new_path = match typ {
+        match typ {
             WallpaperRemoverType::Color(color) => {
                 let (new_path, bak2) = super::create_1px_png(color, old_path.clone())?;
                 bak = bak2;
-                new_path.to_string_lossy().to_string()
+                let new_path = format!("file://{}", new_path.to_string_lossy().to_string());
+                unsafe {
+                   if MacSetWallpaperWithImageAndMode(CString::new(new_path.as_str())?.as_ptr(), 1) == false {
+                    bail!("Failed to set wallpaper");
+                   }
+                }
             }
-            WallpaperRemoverType::Picture(picture) => picture,
-        };
-        Self::set_wallpaper(Some(new_path))?;
+            WallpaperRemoverType::Picture(picture) => {
+                Self::set_wallpaper(Some(picture))?;
+            }
+        }
         Ok(Self { old_path ,bak})
     }
 
