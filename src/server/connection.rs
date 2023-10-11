@@ -6,6 +6,8 @@ use crate::common::update_clipboard;
 #[cfg(all(target_os = "linux", feature = "linux_headless"))]
 #[cfg(not(any(feature = "flatpak", feature = "appimage")))]
 use crate::platform::linux_desktop_manager;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::platform::WallPaperRemover;
 #[cfg(windows)]
 use crate::portable_service::client as portable_client;
 use crate::{
@@ -60,7 +62,13 @@ lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: Arc::<Mutex<HashMap<String, (i32, i32, i32)>>> = Default::default();
     static ref SESSIONS: Arc::<Mutex<HashMap<String, Session>>> = Default::default();
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
+    static ref AUTHED_CONNS: Arc::<Mutex<Vec<(i32, ConnType)>>> = Default::default();
     static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+lazy_static::lazy_static! {
+    static ref WALLPAPER_REMOVER: Arc<Mutex<Option<WallPaperRemover>>> = Default::default();
 }
 pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -205,6 +213,7 @@ pub struct Connection {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     start_cm_ipc_para: Option<StartCmIpcPara>,
     auto_disconnect_timer: Option<(Instant, u64)>,
+    authed_conn_id: Option<self::raii::AuthedConnID>,
 }
 
 impl ConnInner {
@@ -345,6 +354,7 @@ impl Connection {
                 tx_cm_stream_ready,
             }),
             auto_disconnect_timer: None,
+            authed_conn_id: None,
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -976,13 +986,26 @@ impl Connection {
         if self.authorized {
             return;
         }
-        let conn_type = if self.file_transfer.is_some() {
-            1
+        let (conn_type, auth_conn_type) = if self.file_transfer.is_some() {
+            (1, ConnType::FILE_TRANSFER)
         } else if self.port_forward_socket.is_some() {
-            2
+            let pf = self.lr.port_forward();
+            let is_rdp = pf.host == "RDP" && pf.port == 0;
+            (
+                2,
+                if is_rdp {
+                    ConnType::RDP
+                } else {
+                    ConnType::PORT_FORWARD
+                },
+            )
         } else {
-            0
+            (0, ConnType::DEFAULT_CONN)
         };
+        self.authed_conn_id = Some(self::raii::AuthedConnID::new(
+            self.inner.id(),
+            auth_conn_type,
+        ));
         self.post_conn_audit(
             json!({"peer": ((&self.lr.my_id, &self.lr.my_name)), "type": conn_type}),
         );
@@ -1117,6 +1140,7 @@ impl Connection {
                     *super::video_service::LAST_SYNC_DISPLAYS.write().unwrap() = displays;
                 }
             }
+            Self::on_remote_authorized();
         }
         let mut msg_out = Message::new();
         msg_out.set_login_response(res);
@@ -1151,6 +1175,24 @@ impl Connection {
                 let _h = try_start_record_cursor_pos();
                 self.auto_disconnect_timer = Self::get_auto_disconenct_timer();
                 s.add_connection(self.inner.clone(), &noperms);
+            }
+        }
+    }
+
+    fn on_remote_authorized() {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if !Config::get_option("allow-remove-wallpaper").is_empty() {
+            // multi connections set once
+            let mut wallpaper = WALLPAPER_REMOVER.lock().unwrap();
+            if wallpaper.is_none() {
+                if let Ok(remover) = crate::platform::WallPaperRemover::new() {
+                    *wallpaper = Some(remover);
+                    ONCE.call_once(|| {
+                        shutdown_hooks::add_shutdown_hook(shutdown_hook);
+                    });
+                }
             }
         }
     }
@@ -2736,6 +2778,11 @@ impl LinuxHeadlessHandle {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+extern "C" fn shutdown_hook() {
+    *WALLPAPER_REMOVER.lock().unwrap() = None;
+}
+
 mod raii {
     use super::*;
     pub struct ConnectionID(i32);
@@ -2767,6 +2814,33 @@ mod raii {
                 .lock()
                 .unwrap()
                 .on_connection_close(self.0);
+        }
+    }
+
+    pub struct AuthedConnID(i32);
+
+    impl AuthedConnID {
+        pub fn new(id: i32, conn_type: ConnType) -> Self {
+            AUTHED_CONNS.lock().unwrap().push((id, conn_type));
+            Self(id)
+        }
+    }
+
+    impl Drop for AuthedConnID {
+        fn drop(&mut self) {
+            let mut lock = AUTHED_CONNS.lock().unwrap();
+            lock.retain(|&c| c.0 != self.0);
+            if lock
+                .iter()
+                .filter(|c| c.1 == ConnType::DEFAULT_CONN)
+                .count()
+                == 0
+            {
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                {
+                    *WALLPAPER_REMOVER.lock().unwrap() = None;
+                }
+            }
         }
     }
 }

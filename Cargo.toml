@@ -88,6 +88,8 @@ clipboard = { path = "libs/clipboard" }
 ctrlc = "3.2"
 arboard = "3.2"
 system_shutdown = "4.0"
+wallpaper = { git = "https://github.com/21pages/wallpaper.rs" }
+shutdown_hooks = "0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "wincrypt", "shellscalingapi"] }
@@ -96,7 +98,6 @@ windows-service = "0.6"
 virtual_display = { path = "libs/virtual_display", optional = true }
 impersonate_system = { git = "https://github.com/21pages/impersonate-system" }
 shared_memory = "0.12"
-shutdown_hooks = "0.1"
 tauri-winrt-notification = "0.1.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]

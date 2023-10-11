@@ -1613,6 +1613,15 @@ pub fn main_start_ipc_url_server() {
     std::thread::spawn(move || crate::server::start_ipc_url_server());
 }
 
+pub fn main_test_wallpaper(second: u64) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    std::thread::spawn(move || {
+        if let Ok(_remover) = crate::platform::WallPaperRemover::new() {
+            std::thread::sleep(std::time::Duration::from_secs(second));
+        }
+    });
+}
+
 /// Send a url scheme throught the ipc.
 ///
 /// * macOS only

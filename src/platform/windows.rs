@@ -26,6 +26,7 @@ use std::{
     sync::{atomic::Ordering, Arc, Mutex},
     time::{Duration, Instant},
 };
+use wallpaper;
 use winapi::{
     ctypes::c_void,
     shared::{minwindef::*, ntdef::NULL, windef::*, winerror::*},
@@ -2334,4 +2335,54 @@ fn get_license() -> Option<License> {
         return None;
     }
     Some(lic)
+}
+
+pub struct WallPaperRemover {
+    old_path: String,
+}
+
+impl WallPaperRemover {
+    pub fn new() -> ResultType<Self> {
+        let start = std::time::Instant::now();
+        if !Self::need_remove() {
+            bail!("already solid color");
+        }
+        let old_path = Self::get_recent_wallpaper()?;
+        Self::set_wallpaper(None)?;
+        log::info!(
+            "created wallpaper remover,  old_path:{:?},  elapsed:{:?}",
+            old_path,
+            start.elapsed(),
+        );
+        Ok(Self { old_path })
+    }
+
+    fn get_recent_wallpaper() -> ResultType<String> {
+        // SystemParametersInfoW may return %appdata%\Microsoft\Windows\Themes\TranscodedWallpaper, not real path and may not real cache
+        // https://www.makeuseof.com/find-desktop-wallpapers-file-location-windows-11/
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let explorer_key = hkcu.open_subkey_with_flags(
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Wallpapers",
+            KEY_READ,
+        )?;
+        Ok(explorer_key.get_value("BackgroundHistoryPath0")?)
+    }
+
+    fn need_remove() -> bool {
+        if let Ok(wallpaper) = wallpaper::get() {
+            return !wallpaper.is_empty();
+        }
+        false
+    }
+
+    fn set_wallpaper(path: Option<String>) -> ResultType<()> {
+        wallpaper::set_from_path(&path.unwrap_or_default()).map_err(|e| anyhow!(e.to_string()))
+    }
+}
+
+impl Drop for WallPaperRemover {
+    fn drop(&mut self) {
+        // If the old background is a slideshow, it will be converted into an image. AnyDesk does the same.
+        allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
+    }
 }

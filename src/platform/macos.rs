@@ -22,6 +22,7 @@ use include_dir::{include_dir, Dir};
 use objc::{class, msg_send, sel, sel_impl};
 use scrap::{libc::c_void, quartz::ffi::*};
 use std::path::PathBuf;
+use wallpaper;
 
 static PRIVILEGES_SCRIPTS_DIR: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/platform/privileges_scripts");
@@ -732,5 +733,43 @@ impl WakeLock {
                 .create()
                 .ok(),
         )
+    }
+}
+
+pub struct WallPaperRemover {
+    old_path: String,
+}
+
+impl WallPaperRemover {
+    pub fn new() -> ResultType<Self> {
+        let start = std::time::Instant::now();
+        let old_path = Self::get_wallpaper()?;
+        // https://github.com/sindresorhus/macos-wallpaper/blob/417a12e606b68215c4aa94586b5c9d910af1c25e/Sources/wallpaper/Wallpaper.swift#L129
+        // fillColor doesn't work
+        let transparent_wallpaper = "/System/Library/PreferencePanes/DesktopScreenEffectsPref.prefPane/Contents/Resources/DesktopPictures.prefPane/Contents/Resources/Transparent.tiff";
+        if !PathBuf::from(&transparent_wallpaper).exists() {
+            bail!("transparent wallpaper not exist");
+        }
+        Self::set_wallpaper(Some(transparent_wallpaper.to_owned()))?;
+        log::info!(
+            "created wallpaper remover,  old_path:{:?},  elapsed:{:?}",
+            old_path,
+            start.elapsed(),
+        );
+        Ok(Self { old_path })
+    }
+
+    fn get_wallpaper() -> ResultType<String> {
+        wallpaper::get().map_err(|e| anyhow!(e.to_string()))
+    }
+
+    fn set_wallpaper(path: Option<String>) -> ResultType<()> {
+        wallpaper::set_from_path(&path.unwrap_or_default()).map_err(|e| anyhow!(e.to_string()))
+    }
+}
+
+impl Drop for WallPaperRemover {
+    fn drop(&mut self) {
+        allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
     }
 }
