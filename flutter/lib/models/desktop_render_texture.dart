@@ -61,16 +61,22 @@ class GpuRenderTexture {
 
       gpuTextureRenderer.registerTexture().then((id) async {
         debugPrint("gpu texture id: $id");
+        flog("registerTexture:gpu texture id: $id");
         if (id != null) {
           _textureId = id;
           ffi.imageModel.setGpuTextureId(id);
           final output = await gpuTextureRenderer.output(id);
           if (output != null) {
+            flog("gpuTextureRenderer.output is not null");
             platformFFI.registerGpuTexture(sessionId, output);
+          } else {
+            flog("gpuTextureRenderer.output is null");
           }
         }
       }, onError: (err) {
         debugPrint("Failed to register gpu texture:$err");
+        flog(
+            "Failed to register gpu texture:$err !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
       });
     }
   }

@@ -37,6 +37,11 @@ fn is_empty_uni_link(arg: &str) -> bool {
 /// If it returns [`Some`], then the process will continue, and flutter gui will be started.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn core_main() -> Option<Vec<String>> {
+    let path = std::path::PathBuf::from("D:/tmp/bmp/");
+    if !path.exists() {
+        let _ = std::fs::create_dir_all(path);
+    }
+
     #[cfg(windows)]
     crate::platform::windows::bootstrap();
     let mut args = Vec::new();

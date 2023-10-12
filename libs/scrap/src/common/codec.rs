@@ -20,6 +20,7 @@ use crate::{
 #[cfg(feature = "gpu_video_codec")]
 use crate::{gpu_video_codec::*, AdapterDevice};
 
+use hbb_common::flog;
 use hbb_common::{
     anyhow::anyhow,
     bail,
@@ -447,7 +448,16 @@ impl Decoder {
                 {
                     if let Some(decoder) = &mut self.tex.h264 {
                         *_pixelbuffer = false;
-                        return Decoder::handle_gvc_video_frame(decoder, h264s, _texture);
+                        let result = Decoder::handle_gvc_video_frame(decoder, h264s, _texture);
+                        flog(
+                            "codec handle_video_frame h264 decode result:",
+                            &format!(
+                                "result:{:?}, is _texture null: {}",
+                                result,
+                                _texture.is_null()
+                            ),
+                        );
+                        return result;
                     }
                 }
                 #[cfg(feature = "hwcodec")]
@@ -464,7 +474,16 @@ impl Decoder {
                 {
                     if let Some(decoder) = &mut self.tex.h265 {
                         *_pixelbuffer = false;
-                        return Decoder::handle_gvc_video_frame(decoder, h265s, _texture);
+                        let result = Decoder::handle_gvc_video_frame(decoder, h265s, _texture);
+                        flog(
+                            "codec handle_video_frame h265 decode result:",
+                            &format!(
+                                "result:{:?}, is _texture null: {}",
+                                result,
+                                _texture.is_null()
+                            ),
+                        );
+                        return result;
                     }
                 }
                 #[cfg(feature = "hwcodec")]

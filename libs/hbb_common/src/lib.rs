@@ -7,6 +7,9 @@ pub use futures;
 pub use protobuf;
 pub use protos::message as message_proto;
 pub use protos::rendezvous as rendezvous_proto;
+use std::fs::OpenOptions;
+use std::sync::Mutex;
+use std::time::Instant;
 use std::{
     fs::File,
     io::{self, BufRead},
@@ -461,4 +464,28 @@ mod test {
         let addr_v6 = "[::1]:8080".parse().unwrap();
         assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr_v6)), addr_v6);
     }
+}
+
+use std::collections::HashMap;
+use std::io::Write;
+
+lazy_static::lazy_static! {
+    static ref LAST_ENTRY_TIMES: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
+}
+
+pub fn flog(tag: &str, s: &str) {
+    let now = Instant::now();
+    let mut last_entry_times = LAST_ENTRY_TIMES.lock().unwrap();
+
+    if let Some(last_entry_time) = last_entry_times.get(tag) {
+        if now.duration_since(*last_entry_time) < time::Duration::from_secs(1) {
+            return;
+        }
+    }
+
+    let mut option = OpenOptions::new();
+    if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
+        writeln!(&mut f, "{} {}", tag, s).ok();
+    }
+    last_entry_times.insert(tag.to_string(), now);
 }

@@ -826,18 +826,24 @@ class ImageModel with ChangeNotifier {
 
   setTextureType({bool gpuTexture = false}) {
     debugPrint("setTextureType:isGpuTexture:$gpuTexture");
+    flog("setTextureType:isGpuTexture:$gpuTexture");
+    flog("setTextureType:isGpuTexture:$gpuTexture");
     _isGpuTexture = gpuTexture;
     textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
   }
 
   setRgbaTextureId(int id) {
     debugPrint("setRgbaTextureId:$id");
+    flog("setRgbaTextureId::$id");
+    flog("setRgbaTextureId::$id");
     _rgbaTextureId = id;
     textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
   }
 
   setGpuTextureId(int id) {
     debugPrint("setGpuTextureId:$id");
+    flog("setGpuTextureId::$id");
+    flog("setGpuTextureId::$id");
     _gpuTextureId = id;
     textureID.value = _isGpuTexture ? gpuTextureId : rgbaTextureId;
   }

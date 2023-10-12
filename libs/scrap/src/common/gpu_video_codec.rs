@@ -18,7 +18,7 @@ use hbb_common::{
     allow_err,
     anyhow::{anyhow, bail, Context},
     bytes::Bytes,
-    log,
+    flog, log,
     message_proto::{EncodedVideoFrame, EncodedVideoFrames, Message, VideoFrame},
     ResultType,
 };
@@ -284,6 +284,14 @@ impl GvcDecoder {
             h264.is_some(),
             h265.is_some()
         );
+        flog(
+            "gpu video codec new deocoders:",
+            &format!(
+                "tex new_decoders device: {}, {}",
+                h264.is_some(),
+                h265.is_some()
+            ),
+        );
         GvcDecoders { h264, h265 }
     }
 
@@ -297,7 +305,10 @@ impl GvcDecoder {
     pub fn decode(&mut self, data: &[u8]) -> ResultType<Vec<GvcDecoderImage>> {
         match self.decoder.decode(data) {
             Ok(v) => Ok(v.iter().map(|f| GvcDecoderImage { frame: f }).collect()),
-            Err(_) => Ok(vec![]),
+            Err(e) => {
+                flog("gpu video codec decode failed:", &format!("{e}"));
+                Ok(vec![])
+            }
         }
     }
 }
@@ -331,6 +342,11 @@ pub fn check_available_gpu_video_codec() {
         e: encoders,
         d: decoders,
     };
+
+    flog(
+        "check_available_gpu_video_codec:",
+        &format!("available:{:?}", available),
+    );
 
     if let Ok(available) = available.serialize() {
         let mut config = hbb_common::config::GpuVideoCodecConfig::load();

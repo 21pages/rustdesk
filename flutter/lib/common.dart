@@ -2590,3 +2590,9 @@ String getDesktopTabLabel(String peerId, String alias) {
   }
   return label;
 }
+
+void flog(String s) {
+  var f = File("D:/tmp/log.txt");
+  f.writeAsString('flutter, $s \n',
+      mode: FileMode.writeOnlyAppend, flush: true);
+}

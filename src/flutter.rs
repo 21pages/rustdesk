@@ -43,6 +43,7 @@ pub(crate) const APP_TYPE_CM: &str = "main";
 // pub(crate) const APP_TYPE_DESKTOP_PORT_FORWARD: &str = "port forward";
 
 pub type FlutterSession = Arc<Session<FlutterHandler>>;
+use hbb_common::flog;
 
 lazy_static::lazy_static! {
     pub(crate) static ref CUR_SESSION_ID: RwLock<SessionID> = Default::default();
@@ -437,12 +438,18 @@ impl FlutterHandler {
 
     #[cfg(feature = "gpu_video_codec")]
     pub fn register_gpu_output(&self, output_ptr: usize) {
+        flog(
+            "session register_gpu_output, output_ptr:",
+            &format!("{output_ptr}"),
+        );
         self.renderer.write().unwrap().gpu_output_ptr = output_ptr;
     }
 
     #[cfg(feature = "gpu_video_codec")]
     pub fn get_adapter_luid(&self) -> i64 {
-        self.renderer.read().unwrap().adapter_luid
+        let luid = self.renderer.read().unwrap().adapter_luid;
+        flog("session get_adapter_luid, luid:", &format!("{luid}"));
+        luid
     }
 
     #[inline]
