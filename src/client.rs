@@ -1725,6 +1725,7 @@ impl LoginConfigHandler {
         // no matter if change, for update file time
         self.save_config(config);
         self.supported_encoding = pi.encoding.clone().unwrap_or_default();
+        log::info!("peer info supported_encoding:{:?}", self.supported_encoding);
     }
 
     pub fn get_remote_dir(&self) -> String {

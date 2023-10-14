@@ -1024,7 +1024,9 @@ impl Connection {
             }
         }
 
-        pi.encoding = Some(scrap::codec::Encoder::supported_encoding()).into();
+        let supported_encoding = scrap::codec::Encoder::supported_encoding();
+        log::info!("peer info supported_encoding: {:?}", supported_encoding);
+        pi.encoding = Some(supported_encoding).into();
 
         if self.port_forward_socket.is_some() {
             let mut msg_out = Message::new();

@@ -192,39 +192,43 @@ impl Encoder {
 
         let vp8_useable = decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_vp8 > 0);
         let av1_useable = decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_av1 > 0);
-        let _h264_useable =
+        let _all_support_h264_decoding =
             decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h264 > 0);
-        let _h265_useable =
+        let _all_support_h265_decoding =
             decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_h265 > 0);
-        let mut h264g = false;
-        let mut h265g = false;
+        let mut h264g_encoding = false;
+        let mut h265g_encoding = false;
         #[cfg(feature = "gpu_video_codec")]
         if enable_gpu_video_codec_option() {
-            if _h264_useable {
+            if _all_support_h264_decoding {
                 if GvcEncoder::possible_available(CodecName::H264G).len() > 0 {
-                    h264g = true;
+                    h264g_encoding = true;
                 }
             }
-            if _h265_useable {
+            if _all_support_h265_decoding {
                 if GvcEncoder::possible_available(CodecName::H265G).len() > 0 {
-                    h265g = true;
+                    h265g_encoding = true;
                 }
             }
         }
         #[allow(unused_mut)]
-        let mut h264_name = None;
+        let mut h264_hwcodec_encoding = None;
         #[allow(unused_mut)]
-        let mut h265_name = None;
+        let mut h265_hwcodec_encoding = None;
         #[cfg(feature = "hwcodec")]
         if enable_hwcodec_option() {
             let best = HwEncoder::best();
-            if _h264_useable && h264_name.is_none() {
-                h264_name = best.h264.map_or(None, |c| Some(c.name));
+            if _all_support_h264_decoding {
+                h264_hwcodec_encoding = best.h264.map_or(None, |c| Some(c.name));
             }
-            if _h265_useable && h265_name.is_none() {
-                h265_name = best.h265.map_or(None, |c| Some(c.name));
+            if _all_support_h265_decoding {
+                h265_hwcodec_encoding = best.h265.map_or(None, |c| Some(c.name));
             }
         }
+        let h264_useable =
+            _all_support_h264_decoding && (h264g_encoding || h264_hwcodec_encoding.is_some());
+        let h265_useable =
+            _all_support_h265_decoding && (h265g_encoding || h265_hwcodec_encoding.is_some());
         let mut name = ENCODE_CODEC_NAME.lock().unwrap();
         let mut preference = PreferCodec::Auto;
         let preferences: Vec<_> = decodings
@@ -233,8 +237,8 @@ impl Encoder {
                 s.prefer == PreferCodec::VP9.into()
                     || s.prefer == PreferCodec::VP8.into() && vp8_useable
                     || s.prefer == PreferCodec::AV1.into() && av1_useable
-                    || s.prefer == PreferCodec::H264.into() && (h264_name.is_some() || h264g)
-                    || s.prefer == PreferCodec::H265.into() && (h265_name.is_some() || h265g)
+                    || s.prefer == PreferCodec::H264.into() && h264_useable
+                    || s.prefer == PreferCodec::H265.into() && h265_useable
             })
             .map(|(_, s)| s.prefer)
             .collect();
@@ -257,18 +261,18 @@ impl Encoder {
             PreferCodec::VP9 => CodecName::VP9,
             PreferCodec::AV1 => CodecName::AV1,
             PreferCodec::H264 => {
-                if h264g {
+                if h264g_encoding {
                     CodecName::H264G
-                } else if let Some(v) = h264_name {
+                } else if let Some(v) = h264_hwcodec_encoding {
                     CodecName::H264(v)
                 } else {
                     auto_codec
                 }
             }
             PreferCodec::H265 => {
-                if h265g {
+                if h265g_encoding {
                     CodecName::H265G
-                } else if let Some(v) = h265_name {
+                } else if let Some(v) = h265_hwcodec_encoding {
                     CodecName::H265(v)
                 } else {
                     auto_codec
@@ -276,7 +280,9 @@ impl Encoder {
             }
             PreferCodec::Auto => auto_codec,
         };
-
+        log::info!(
+            "usable: vp8={vp8_useable}, av1={av1_useable}, h264={h264_useable}, h265={h265_useable}",
+        );
         log::info!(
             "connection count:{}, used preference:{:?}, encoder:{:?}",
             decodings.len(),

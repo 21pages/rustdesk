@@ -359,6 +359,12 @@ impl<T: InvokeUiSession> Session<T> {
         av1 = av1 && enc.av1;
         h264 = h264 && enc.h264;
         h265 = h265 && enc.h265;
+        log::info!(
+            "alternative_codecs, luid:{:?}, supported_decodings:{:?}, supported_encoding:{:?}",
+            luid,
+            decoder,
+            enc,
+        );
         (vp8, av1, h264, h265)
     }
 

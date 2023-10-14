@@ -1428,6 +1428,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.handler.msgbox("custom-nocancel", &name, &p.msg, "");
                     }
                     Some(misc::Union::SupportedEncoding(e)) => {
+                        log::info!("update supported encoding:{:?}", e);
                         self.handler.lc.write().unwrap().supported_encoding = e;
                     }
 

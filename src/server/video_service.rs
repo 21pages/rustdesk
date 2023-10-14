@@ -780,7 +780,9 @@ impl Drop for RunCleaner {
 
 fn update_supported_encoding(sp: &GenericService) {
     let mut misc: Misc = Misc::new();
-    misc.set_supported_encoding(scrap::codec::Encoder::supported_encoding());
+    let supported_encoding = scrap::codec::Encoder::supported_encoding();
+    log::info!("update_supported_encoding: {:?}", supported_encoding);
+    misc.set_supported_encoding(supported_encoding);
     let mut msg = Message::new();
     msg.set_misc(misc);
     sp.send(msg);
@@ -825,6 +827,7 @@ fn get_encoder_config(
                     keyframe_interval,
                 })
             } else {
+                log::info!("negotiated codec is {:?}, but fallback", negotiated_codec);
                 handle_hw_encoder(
                     negotiated_codec.clone(),
                     c.width,

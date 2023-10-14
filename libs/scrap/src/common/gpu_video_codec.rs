@@ -171,9 +171,10 @@ impl GvcEncoder {
     }
 
     pub fn possible_available(name: CodecName) -> Vec<FeatureContext> {
-        if VIDEO_SERVICE_NOT_USE.lock().unwrap().clone()
-            || THIS_PROCESS_ENCODING_NOT_USE.lock().unwrap().clone()
-        {
+        let not_use = VIDEO_SERVICE_NOT_USE.lock().unwrap().clone()
+            || THIS_PROCESS_ENCODING_NOT_USE.lock().unwrap().clone();
+        if not_use {
+            log::info!("currently not use gpu video encoders");
             return vec![];
         }
         let data_format = match name {
@@ -191,6 +192,7 @@ impl GvcEncoder {
             .lock()
             .unwrap()
             .unwrap_or_default();
+        log::info!("VIDEO_SERVICE_ADAPTER_LUID:{luid}");
         if luid != 0 {
             v.retain(|e| e.luid == luid);
         }
@@ -219,14 +221,17 @@ impl GvcEncoder {
     }
 
     pub fn set_video_service_adapter_luid(luid: Option<i64>) {
+        log::info!("set_video_service_adapter_luid:{:?}", luid);
         *VIDEO_SERVICE_ADAPTER_LUID.lock().unwrap() = luid;
     }
 
     pub fn set_video_service_not_use(not_use: bool) {
+        log::info!("set_video_service_not_use:{not_use}");
         *VIDEO_SERVICE_NOT_USE.lock().unwrap() = not_use;
     }
 
     pub fn set_this_process_not_use(not_use: bool) {
+        log::info!("set_this_process_not_use:{not_use}");
         *THIS_PROCESS_ENCODING_NOT_USE.lock().unwrap() = not_use;
     }
 }
