@@ -861,6 +861,8 @@ class FfiModel with ChangeNotifier {
 
   // Directly switch to the new display without waiting for the response.
   switchToNewDisplay(int display, SessionID sessionId, String peerId) {
+    // VideoHandler creation is upon when video frames are received, so either caching commands or stopping recording when switching displays.
+    parent.target?.recordingModel.stop();
     // no need to wait for the response
     pi.currentDisplay = display;
     updateCurDisplay(sessionId);
@@ -869,7 +871,6 @@ class FfiModel with ChangeNotifier {
     } catch (e) {
       //
     }
-    parent.target?.recordingModel.onSwitchDisplay();
   }
 
   updateBlockInputState(Map<String, dynamic> evt, String peerId) {
@@ -1862,6 +1863,10 @@ class RecordingModel with ChangeNotifier {
     }
   }
 
+  // Since version 1.2.4, the video_service::run function no longer sends SwitchDisplay every time.
+  // For compatibility:
+  //    server side: send SwitchDisplay to old version when receive refresh, but will send to 1.2.4 When there are multiple connections.
+  //    client side: start record right now without waiting SwitchDispaly message.
   toggle() async {
     if (isIOS) return;
     final sessionId = parent.target?.sessionId;
@@ -1873,6 +1878,7 @@ class RecordingModel with ChangeNotifier {
       final pi = parent.target?.ffiModel.pi;
       if (pi != null) {
         sessionRefreshVideo(sessionId, pi);
+        onSwitchDisplay();
       }
     } else {
       final currentDisplay = parent.target?.ffiModel.pi.currentDisplay;
@@ -1887,10 +1893,11 @@ class RecordingModel with ChangeNotifier {
     }
   }
 
-  onClose() {
+  stop() {
     if (isIOS) return;
     final sessionId = parent.target?.sessionId;
     if (sessionId == null) return;
+    if (!_start) return;
     _start = false;
     final currentDisplay = parent.target?.ffiModel.pi.currentDisplay;
     if (currentDisplay != kAllDisplayValue) {

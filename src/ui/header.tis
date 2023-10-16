@@ -299,14 +299,16 @@ class Header: Reactor.Component {
         header.update();
         handler.record_status(recording);
         // 0 is just a dummy value. It will be ignored by the handler.
-        if (recording)
-            handler.refresh_video(0);
-        else
-            handler.record_screen(false, 0, display_width, display_height);
+        if (recording) handler.refresh_video(0);
+        handler.record_screen(recording, 0, display_width, display_height);
     }
 
     event click $(#screen) (_, me) {
         if (pi.current_display == me.index) return;
+        if (recording) {
+            recording = false;
+            handler.record_screen(false, 0, 0, 0);
+        }
         handler.switch_display(me.index);
     }
     
