@@ -2102,7 +2102,17 @@ impl Connection {
                 display,
                 video_service::OPTION_REFRESH,
                 super::service::SERVICE_OPTION_VALUE_TRUE,
-            )
+            );
+            // old version's record video is started by switch display message
+            if hbb_common::get_version_number(&self.lr.version)
+                < hbb_common::get_version_number("1.2.4")
+            {
+                s.read().unwrap().set_video_service_opt(
+                    display,
+                    video_service::OPTION_DISPLAY_CHANGED,
+                    service::SERVICE_OPTION_VALUE_TRUE,
+                );
+            }
         });
     }
 

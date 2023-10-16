@@ -218,7 +218,7 @@ class _RemotePageState extends State<RemotePage>
     _ffi.inputModel.enterOrLeave(false);
     DesktopMultiWindow.removeListener(this);
     _ffi.dialogManager.hideMobileActionsOverlay();
-    _ffi.recordingModel.onClose();
+    _ffi.recordingModel.stop();
     _rawKeyFocusNode.dispose();
     await _ffi.close(closeSession: closeSession);
     _timer?.cancel();
@@ -677,7 +677,8 @@ class _ImagePaintState extends State<ImagePaint> {
     } else {
       final key = cache.updateGetKey(scale);
       if (!cursor.cachedKeys.contains(key)) {
-        debugPrint("Register custom cursor with key $key (${cache.hotx},${cache.hoty})");
+        debugPrint(
+            "Register custom cursor with key $key (${cache.hotx},${cache.hoty})");
         // [Safety]
         // It's ok to call async registerCursor in current synchronous context,
         // because activating the cursor is also an async call and will always
