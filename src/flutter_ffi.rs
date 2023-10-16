@@ -206,6 +206,12 @@ pub fn session_record_status(session_id: SessionID, status: bool) {
     }
 }
 
+pub fn session_display_record_status(session_id: SessionID, display: i32, status: bool) {
+    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.display_record_status(display, status);
+    }
+}
+
 pub fn session_reconnect(session_id: SessionID, force_relay: bool) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.reconnect(force_relay);

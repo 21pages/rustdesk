@@ -28,7 +28,7 @@ struct Delay {
     slower_than_old_state: Option<bool>,
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Clone)]
 struct UserData {
     full_speed_fps: Option<u32>,
     auto_adjust_fps: Option<u32>,
@@ -37,6 +37,7 @@ struct UserData {
     delay: Option<Delay>,
     response_delayed: bool,
     record: bool,
+    record_displays: Vec<usize>,
 }
 
 pub struct VideoQoS {
@@ -115,7 +116,15 @@ impl VideoQoS {
         self.quality
     }
 
-    pub fn record(&self) -> bool {
+    pub fn record(&self, display: usize) -> bool {
+        self.users
+            .iter()
+            .any(|u| u.1.record || u.1.record_displays.contains(&display))
+    }
+
+    // Whether there are clients lower than 1.2.4 recording, which need SwitchDisplay message at the beginning of video_service::run()
+    // There may be compatibility issues for 1.2.4, because when returns true, extra SwitchDisplay will be sent, which may cause problems in certain situations, but I can't reproduce one.
+    pub fn send_switch_display_for_record(&self) -> bool {
         self.users.iter().any(|u| u.1.record)
     }
 
@@ -396,6 +405,18 @@ impl VideoQoS {
     pub fn user_record(&mut self, id: i32, v: bool) {
         if let Some(user) = self.users.get_mut(&id) {
             user.record = v;
+        }
+    }
+
+    pub fn user_record_display(&mut self, id: i32, display: usize, v: bool) {
+        if let Some(user) = self.users.get_mut(&id) {
+            if v {
+                if !user.record_displays.contains(&display) {
+                    user.record_displays.push(display);
+                }
+            } else {
+                user.record_displays.retain(|d| *d != display);
+            }
         }
     }
 

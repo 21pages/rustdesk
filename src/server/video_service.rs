@@ -436,7 +436,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     log::info!("init quality={:?}, abr enabled:{}", quality, abr);
     let codec_name = Encoder::negotiated_codec();
     let recorder = get_recorder(c.width, c.height, &codec_name);
-    let last_recording = recorder.lock().unwrap().is_some() || video_qos.record();
+    let last_recording = recorder.lock().unwrap().is_some() || video_qos.record(display_idx);
     drop(video_qos);
     let encoder_cfg = get_encoder_config(&c, quality, last_recording);
 
@@ -447,6 +447,13 @@ fn run(vs: VideoService) -> ResultType<()> {
     }
     c.set_use_yuv(encoder.use_yuv());
     VIDEO_QOS.lock().unwrap().store_bitrate(encoder.bitrate());
+
+    if VIDEO_QOS.lock().unwrap().send_switch_display_for_record() {
+        if let Some(msg) = make_display_changed_msg(display_idx, None) {
+            log::info!("extra switch display message for compatibility");
+            sp.send(msg);
+        }
+    }
 
     if sp.is_option_true(OPTION_REFRESH) {
         sp.set_option_bool(OPTION_REFRESH, false);
@@ -478,7 +485,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             allow_err!(encoder.set_quality(quality));
             video_qos.store_bitrate(encoder.bitrate());
         }
-        let recording = recorder.lock().unwrap().is_some() || video_qos.record();
+        let recording = recorder.lock().unwrap().is_some() || video_qos.record(display_idx);
         if recording != last_recording {
             bail!("SWITCH");
         }

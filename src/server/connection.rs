@@ -2063,6 +2063,16 @@ impl Connection {
                         .lock()
                         .unwrap()
                         .user_record(self.inner.id(), status),
+                    Some(misc::Union::ClientDisplayRecordStatus(status)) => {
+                        video_service::VIDEO_QOS
+                            .lock()
+                            .unwrap()
+                            .user_record_display(
+                                self.inner.id(),
+                                status.display as _,
+                                status.status,
+                            )
+                    }
                     _ => {}
                 },
                 Some(message::Union::AudioFrame(frame)) => {
@@ -2104,7 +2114,7 @@ impl Connection {
                 display,
                 video_service::OPTION_REFRESH,
                 super::service::SERVICE_OPTION_VALUE_TRUE,
-            )
+            );
         });
     }
 
