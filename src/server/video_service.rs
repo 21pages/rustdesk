@@ -49,7 +49,6 @@ use std::{
 };
 
 pub const NAME: &'static str = "video";
-pub const OPTION_DISPLAY_CHANGED: &'static str = "changed";
 pub const OPTION_REFRESH: &'static str = "refresh";
 
 lazy_static::lazy_static! {
@@ -470,15 +469,12 @@ fn run(vs: VideoService) -> ResultType<()> {
     c.set_use_yuv(encoder.use_yuv());
     VIDEO_QOS.lock().unwrap().store_bitrate(encoder.bitrate());
 
-    if sp.is_option_true(OPTION_DISPLAY_CHANGED) {
-        log::debug!("Broadcasting display changed");
-        broadcast_display_changed(
-            display_idx,
-            &sp,
-            Some((c.name.clone(), c.origin.clone(), c.width, c.height)),
-        );
-        sp.set_option_bool(OPTION_DISPLAY_CHANGED, false);
-    }
+    log::debug!("Broadcasting display changed");
+    broadcast_display_changed(
+        display_idx,
+        &sp,
+        Some((c.name.clone(), c.origin.clone(), c.width, c.height)),
+    );
 
     if sp.is_option_true(OPTION_REFRESH) {
         sp.set_option_bool(OPTION_REFRESH, false);
@@ -516,7 +512,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
         drop(video_qos);
 
-        if sp.is_option_true(OPTION_DISPLAY_CHANGED) || sp.is_option_true(OPTION_REFRESH) {
+        if sp.is_option_true(OPTION_REFRESH) {
             bail!("SWITCH");
         }
         if codec_name != Encoder::negotiated_codec() {
@@ -542,7 +538,6 @@ fn run(vs: VideoService) -> ResultType<()> {
             // Capturer on macos does not return Err event the solution is changed.
             #[cfg(target_os = "macos")]
             if check_display_changed(c.ndisplay, c.current, c.width, c.height) {
-                sp.set_option_bool(OPTION_DISPLAY_CHANGED, true);
                 log::info!("Displays changed");
                 bail!("SWITCH");
             }
@@ -626,7 +621,6 @@ fn run(vs: VideoService) -> ResultType<()> {
                     log::info!("Displays changed");
                     #[cfg(target_os = "linux")]
                     super::wayland::clear();
-                    sp.set_option_bool(OPTION_DISPLAY_CHANGED, true);
                     bail!("SWITCH");
                 }
 
