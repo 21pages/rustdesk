@@ -490,6 +490,7 @@ message SwitchDisplay {
   SupportedResolutions resolutions = 7;
   // Do not care about the origin point for now.
   Resolution original_resolution = 8;
+  bool for_compatible_before_1_2_4 = 9;
 }
 
 message CaptureDisplays {

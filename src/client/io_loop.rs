@@ -1334,6 +1334,10 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(misc::Union::SwitchDisplay(s)) => {
+                        if s.for_compatible_before_1_2_4 {
+                            log::info!("ignore SwitchDisplay");
+                            return true;
+                        }
                         self.handler.handle_peer_switch_display(&s);
                         self.video_sender
                             .send(MediaData::Reset(s.display as _))

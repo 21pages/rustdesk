@@ -448,6 +448,11 @@ fn run(vs: VideoService) -> ResultType<()> {
     c.set_use_yuv(encoder.use_yuv());
     VIDEO_QOS.lock().unwrap().store_bitrate(encoder.bitrate());
 
+    if let Some(msg) = make_display_changed_msg(display_idx, None, true) {
+        log::info!("extra switch display message for compatibility");
+        sp.send(msg);
+    }
+
     if sp.is_option_true(OPTION_REFRESH) {
         sp.set_option_bool(OPTION_REFRESH, false);
     }
@@ -854,7 +859,7 @@ fn try_broadcast_display_changed(
         (cap.origin.0, cap.origin.1, cap.width, cap.height),
     ) {
         log::info!("Display {} changed", display);
-        if let Some(msg_out) = make_display_changed_msg(display_idx, Some(display)) {
+        if let Some(msg_out) = make_display_changed_msg(display_idx, Some(display), false) {
             sp.send(msg_out);
             bail!("SWITCH");
         }
@@ -865,6 +870,7 @@ fn try_broadcast_display_changed(
 pub fn make_display_changed_msg(
     display_idx: usize,
     opt_display: Option<DisplayInfo>,
+    for_compatible_before_1_2_4: bool,
 ) -> Option<Message> {
     let display = match opt_display {
         Some(d) => d,
@@ -889,6 +895,7 @@ pub fn make_display_changed_msg(
         })
         .into(),
         original_resolution: display.original_resolution,
+        for_compatible_before_1_2_4,
         ..Default::default()
     });
     let mut msg_out = Message::new();
