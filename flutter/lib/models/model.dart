@@ -1871,6 +1871,8 @@ class RecordingModel with ChangeNotifier {
     if (isIOS) return;
     final sessionId = parent.target?.sessionId;
     if (sessionId == null) return;
+    final currentDisplay = parent.target?.ffiModel.pi.currentDisplay;
+    if (currentDisplay == kAllDisplayValue) return;
     _start = !_start;
     notifyListeners();
     await bind.sessionRecordStatus(sessionId: sessionId, status: _start);
@@ -1881,15 +1883,12 @@ class RecordingModel with ChangeNotifier {
         onSwitchDisplay();
       }
     } else {
-      final currentDisplay = parent.target?.ffiModel.pi.currentDisplay;
-      if (currentDisplay != kAllDisplayValue) {
-        bind.sessionRecordScreen(
-            sessionId: sessionId,
-            start: false,
-            display: currentDisplay!,
-            width: 0,
-            height: 0);
-      }
+      bind.sessionRecordScreen(
+          sessionId: sessionId,
+          start: false,
+          display: currentDisplay!,
+          width: 0,
+          height: 0);
     }
   }
 
