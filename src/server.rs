@@ -422,16 +422,22 @@ pub async fn start_server(is_server: bool) {
         log::info!("DISPLAY={:?}", std::env::var("DISPLAY"));
         log::info!("XAUTHORITY={:?}", std::env::var("XAUTHORITY"));
     }
-    #[cfg(feature = "hwcodec")]
-    scrap::hwcodec::check_config_process();
-    #[cfg(windows)]
-    hbb_common::platform::windows::start_cpu_performance_monitor();
+    hbb_common::flog(&format!(
+        "start_server is_server: {:?}, {:?}",
+        is_server,
+        std::env::args()
+    ));
 
     if is_server {
         crate::common::set_server_running(true);
         std::thread::spawn(move || {
             if let Err(err) = crate::ipc::start("") {
                 log::error!("Failed to start ipc: {}", err);
+                hbb_common::flog(&format!(
+                    "Failed to start ipc for server, {:?}, {:?}",
+                    err,
+                    std::env::args()
+                ));
                 std::process::exit(-1);
             }
         });
@@ -448,6 +454,7 @@ pub async fn start_server(is_server: bool) {
     } else {
         match crate::ipc::connect(1000, "").await {
             Ok(mut conn) => {
+                codec_check();
                 if conn.send(&Data::SyncConfig(None)).await.is_ok() {
                     if let Ok(Some(data)) = conn.next_timeout(1000).await {
                         match data {
@@ -585,4 +592,11 @@ async fn sync_and_watch_config_dir() {
         }
     }
     log::warn!("skipped config sync");
+}
+
+pub fn codec_check() {
+    #[cfg(feature = "hwcodec")]
+    scrap::hwcodec::check_config_process();
+    #[cfg(windows)]
+    hbb_common::platform::windows::start_cpu_performance_monitor();
 }

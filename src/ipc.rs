@@ -246,6 +246,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                 Ok(stream) => {
                     let mut stream = Connection::new(stream);
                     let postfix = postfix.to_owned();
+                    crate::codec_check();
                     tokio::spawn(async move {
                         loop {
                             match stream.next().await {
