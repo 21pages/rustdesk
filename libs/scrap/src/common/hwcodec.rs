@@ -2,6 +2,10 @@ use crate::{
     codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg},
     hw, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
 };
+#[cfg(target_os = "linux")]
+pub use hbb_common::platform::linux::get_last_boot_timestamp;
+#[cfg(target_os = "windows")]
+pub use hbb_common::platform::windows::get_last_boot_timestamp;
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
@@ -22,6 +26,7 @@ use hwcodec::{
 
 const CFG_KEY_ENCODER: &str = "bestHwEncoders";
 const CFG_KEY_DECODER: &str = "bestHwDecoders";
+const CFG_KEY_BOOT_TIMESTAMP: &str = "lastBootTimeStamp";
 
 const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_NV12;
 pub const DEFAULT_TIME_BASE: [i32; 2] = [1, 30];
@@ -350,6 +355,10 @@ pub fn check_config() {
             let mut config = HwCodecConfig::load();
             config.options.insert(CFG_KEY_ENCODER.to_owned(), encoders);
             config.options.insert(CFG_KEY_DECODER.to_owned(), decoders);
+            config.options.insert(
+                CFG_KEY_BOOT_TIMESTAMP.to_owned(),
+                get_last_boot_timestamp().unwrap_or_default(),
+            );
             config.store();
             return;
         }
@@ -360,6 +369,18 @@ pub fn check_config() {
 pub fn check_config_process() {
     use std::sync::Once;
     let f = || {
+        if let Ok(timestamp) = get_last_boot_timestamp() {
+            if !timestamp.is_empty()
+                && timestamp
+                    == HwCodecConfig::load()
+                        .options
+                        .get(CFG_KEY_BOOT_TIMESTAMP)
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+            {
+                return;
+            }
+        }
         // Clear to avoid checking process errors
         // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
         HwCodecConfig::clear();

@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    os::windows::raw::HANDLE,
+    os::windows::{process::CommandExt, raw::HANDLE},
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -14,9 +14,11 @@ use winapi::{
             PDH_HCOUNTER, PDH_HQUERY,
         },
         synchapi::{CreateEventA, WaitForSingleObject},
-        winbase::{INFINITE, WAIT_OBJECT_0},
+        winbase::{CREATE_NO_WINDOW, INFINITE, WAIT_OBJECT_0},
     },
 };
+
+use crate::ResultType;
 
 lazy_static::lazy_static! {
     static ref CPU_USAGE_ONE_MINUTE: Arc<Mutex<Option<(f64, Instant)>>> = Arc::new(Mutex::new(None));
@@ -151,4 +153,22 @@ pub fn sync_cpu_usage(cpu_usage: Option<f64>) {
     };
     *CPU_USAGE_ONE_MINUTE.lock().unwrap() = v;
     log::info!("cpu usage synced: {:?}", cpu_usage);
+}
+
+pub fn get_last_boot_timestamp() -> ResultType<String> {
+    let output = std::process::Command::new("wmic")
+        .args(&["os", "get", "lastbootuptime", "/value"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::piped())
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let boot_time_line = stdout
+        .lines()
+        .find(|line| line.starts_with("LastBootUpTime="))
+        .ok_or(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Boot time not found",
+        ))?;
+    let binding = boot_time_line.replace("LastBootUpTime=", "");
+    Ok(binding.trim().to_string())
 }

@@ -257,3 +257,12 @@ pub fn system_message(title: &str, msg: &str, forever: bool) -> ResultType<()> {
     }
     crate::bail!("failed to post system message");
 }
+
+pub fn get_last_boot_timestamp() -> ResultType<String> {
+    let output = std::process::Command::new("uptime")
+        .args(&["-s"])
+        .stdout(std::process::Stdio::piped())
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.trim().to_string())
+}
