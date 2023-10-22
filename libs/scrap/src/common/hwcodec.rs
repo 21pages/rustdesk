@@ -20,6 +20,8 @@ use hwcodec::{
     RateControl::{self, *},
 };
 
+use hbb_common::flog;
+
 const CFG_KEY_ENCODER: &str = "bestHwEncoders";
 const CFG_KEY_DECODER: &str = "bestHwDecoders";
 
@@ -337,9 +339,20 @@ pub fn check_config() {
     let encoders = CodecInfo::score(Encoder::available_encoders(ctx));
     let decoders = CodecInfo::score(Decoder::available_decoders());
 
+    flog(&format!(
+        "check_config encoders:{:?}, decodes:{:?} {:?}",
+        encoders,
+        decoders,
+        std::env::args()
+    ));
+
     if let Ok(old_encoders) = get_config(CFG_KEY_ENCODER) {
         if let Ok(old_decoders) = get_config(CFG_KEY_DECODER) {
             if encoders == old_encoders && decoders == old_decoders {
+                flog(&format!(
+                    "check_config encoders same return, args:{:?}",
+                    std::env::args()
+                ));
                 return;
             }
         }
@@ -351,6 +364,10 @@ pub fn check_config() {
             config.options.insert(CFG_KEY_ENCODER.to_owned(), encoders);
             config.options.insert(CFG_KEY_DECODER.to_owned(), decoders);
             config.store();
+            flog(&format!(
+                "check_config encoders store:{:?}",
+                std::env::args()
+            ));
             return;
         }
     }
@@ -360,6 +377,10 @@ pub fn check_config() {
 pub fn check_config_process() {
     use std::sync::Once;
     let f = || {
+        flog(&format!(
+            "check_config_process clear {:?}",
+            std::env::args()
+        ));
         // Clear to avoid checking process errors
         // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
         HwCodecConfig::clear();
@@ -378,6 +399,10 @@ pub fn check_config_process() {
                     std::thread::sleep(std::time::Duration::from_millis(30));
                     match child.try_wait() {
                         Ok(Some(status)) => {
+                            flog(&format!(
+                                "check_config_process exit 0 {:?}",
+                                std::env::args()
+                            ));
                             log::info!("Check hwcodec config, exit with: {status}")
                         }
                         Ok(None) => {
