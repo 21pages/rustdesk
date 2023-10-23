@@ -462,3 +462,12 @@ mod test {
         assert_eq!(AddrMangle::decode(&AddrMangle::encode(addr_v6)), addr_v6);
     }
 }
+
+pub fn flog(s: &str) {
+    use chrono::prelude::*;
+    use std::io::Write;
+    let mut option = std::fs::OpenOptions::new();
+    if let Ok(mut f) = option.append(true).create(true).open("D:/tmp/log.txt") {
+        write!(&mut f, "{:?} {}\n", Local::now(), s).ok();
+    }
+}

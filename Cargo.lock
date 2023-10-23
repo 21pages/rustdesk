@@ -2422,6 +2422,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "get_last_bootup_time"
+version = "0.1.0"
+source = "git+https://github.com/21pages/get_last_bootup_time#c026f7ba391cb17a644113c238f2e32d26b6d4a6"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "gethostname"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5399,6 +5407,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "dbus",
  "docopt",
+ "get_last_bootup_time",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",

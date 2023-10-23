@@ -1,5 +1,9 @@
 pub use self::vpxcodec::*;
-use hbb_common::message_proto::{video_frame, VideoFrame};
+use hbb_common::{
+    anyhow::{anyhow, bail},
+    message_proto::{video_frame, VideoFrame},
+    ResultType,
+};
 use std::slice;
 
 cfg_if! {
@@ -337,4 +341,20 @@ pub trait GoogleImage {
             (y, u, v)
         }
     }
+}
+
+pub fn get_last_bootup_timestamp() -> ResultType<String> {
+    #[cfg(target_os = "windows")]
+    return get_last_bootup_time::get().map_err(|e| anyhow!(e));
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("uptime")
+            .args(&["-s"])
+            .stdout(std::process::Stdio::piped())
+            .output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Ok(stdout.trim().to_string());
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    bail!("not implemented")
 }

@@ -1,11 +1,7 @@
 use crate::{
     codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg},
-    hw, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
+    get_last_bootup_timestamp, hw, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
 };
-#[cfg(target_os = "linux")]
-pub use hbb_common::platform::linux::get_last_boot_timestamp;
-#[cfg(target_os = "windows")]
-pub use hbb_common::platform::windows::get_last_boot_timestamp;
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
@@ -15,6 +11,7 @@ use hbb_common::{
     message_proto::{EncodedVideoFrame, EncodedVideoFrames, VideoFrame},
     ResultType,
 };
+use hbb_common::{flog, get_time};
 use hwcodec::{
     decode::{DecodeContext, DecodeFrame, Decoder},
     encode::{EncodeContext, EncodeFrame, Encoder},
@@ -326,6 +323,34 @@ fn get_config(k: &str) -> ResultType<CodecInfos> {
 }
 
 pub fn check_config() {
+    let sec = get_time();
+    let args = std::env::args();
+    flog(&format!(
+        "[{sec}] check_config before get timestamp, args:{args:?}"
+    ));
+    let current_timestamp = get_last_bootup_timestamp();
+    flog(&format!(
+        "[{sec}] check_config after get timestamp, args:{args:?}"
+    ));
+    let load_timestamp = HwCodecConfig::load()
+        .options
+        .get(CFG_KEY_BOOT_TIMESTAMP)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    flog(&format!(
+            "[{sec}] current_timestamp:{current_timestamp:?}, load_timestamp:{load_timestamp:?}, args:{args:?}",
+        ));
+    if let Ok(timestamp) = &current_timestamp {
+        if !timestamp.is_empty() && timestamp.to_string() == load_timestamp {
+            flog(&format!("[{sec}] return, args:{:?}", std::env::args()));
+            return;
+        }
+    }
+    // Clear to avoid checking process errors
+    // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
+    HwCodecConfig::clear();
+    flog(&format!("[{sec}] clear, args:{args:?}"));
     let ctx = EncodeContext {
         name: String::from(""),
         width: 1920,
@@ -339,67 +364,82 @@ pub fn check_config() {
         rc: DEFAULT_RC,
         thread_count: 4,
     };
+    flog(&format!("[{sec}] check_config start, args:{args:?}"));
     let encoders = CodecInfo::score(Encoder::available_encoders(ctx));
+    flog(&format!(
+        "[{sec}] check_config encode finish,encoders:{encoders:?} , args:{args:?}"
+    ));
     let decoders = CodecInfo::score(Decoder::available_decoders());
+    flog(&format!(
+        "[{sec}] check_config decode finish,decoders:{decoders:?} , args:{args:?}"
+    ));
 
-    if let Ok(old_encoders) = get_config(CFG_KEY_ENCODER) {
-        if let Ok(old_decoders) = get_config(CFG_KEY_DECODER) {
-            if encoders == old_encoders && decoders == old_decoders {
-                return;
-            }
-        }
-    }
+    // if let Ok(old_encoders) = get_config(CFG_KEY_ENCODER) {
+    //     if let Ok(old_decoders) = get_config(CFG_KEY_DECODER) {
+    //         if encoders == old_encoders && decoders == old_decoders {
+    //             flog(&format!("[{sec}] check_config same return , args:{args:?}"));
+    //             return;
+    //         }
+    //     }
+    // }
 
     if let Ok(encoders) = encoders.serialize() {
+        flog(&format!(
+            "[{sec}] check_config  encoders.serialize , args:{args:?}"
+        ));
         if let Ok(decoders) = decoders.serialize() {
+            flog(&format!(
+                "[{sec}] check_config  decoders.serialize , args:{args:?}"
+            ));
             let mut config = HwCodecConfig::load();
+            flog(&format!(
+                "[{sec}] check_config HwCodecConfig::load() , args:{args:?}"
+            ));
             config.options.insert(CFG_KEY_ENCODER.to_owned(), encoders);
             config.options.insert(CFG_KEY_DECODER.to_owned(), decoders);
             config.options.insert(
                 CFG_KEY_BOOT_TIMESTAMP.to_owned(),
-                get_last_boot_timestamp().unwrap_or_default(),
+                current_timestamp.unwrap_or_default(),
             );
+            flog(&format!("[{sec}] check_config ok save , args:{args:?}"));
             config.store();
             return;
         }
     }
+    flog(&format!("[{sec}] check_config not save , args:{args:?}"));
     log::error!("Failed to serialize codec info");
 }
 
 pub fn check_config_process() {
     use std::sync::Once;
     let f = || {
-        if let Ok(timestamp) = get_last_boot_timestamp() {
-            if !timestamp.is_empty()
-                && timestamp
-                    == HwCodecConfig::load()
-                        .options
-                        .get(CFG_KEY_BOOT_TIMESTAMP)
-                        .map(|s| s.to_string())
-                        .unwrap_or_default()
-            {
-                return;
-            }
-        }
-        // Clear to avoid checking process errors
-        // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
-        HwCodecConfig::clear();
+        let sec = get_time();
+        let args = std::env::args();
         if let Ok(exe) = std::env::current_exe() {
             if let Some(_) = exe.file_name().to_owned() {
                 let arg = "--check-hwcodec-config";
                 if let Ok(mut child) = std::process::Command::new(exe).arg(arg).spawn() {
                     // wait up to 10 seconds
-                    for _ in 0..10 {
+                    flog(&format!("[{sec}] started, args:{args:?}"));
+                    for i in 0..30 {
                         std::thread::sleep(std::time::Duration::from_secs(1));
+                        flog(&format!("[{sec}] i:{i}, args:{args:?}"));
                         if let Ok(Some(_)) = child.try_wait() {
+                            flog(&format!("[{sec}] break, args:{args:?}"));
                             break;
                         }
                     }
                     allow_err!(child.kill());
+                    flog(&format!("[{sec}] kill, args:{args:?}"));
                     std::thread::sleep(std::time::Duration::from_millis(30));
-                    match child.try_wait() {
+                    let result = child.try_wait();
+                    flog(&format!("[{sec}] result:{result:?}, args:{args:?}"));
+                    match result {
                         Ok(Some(status)) => {
-                            log::info!("Check hwcodec config, exit with: {status}")
+                            log::info!("Check hwcodec config, exit with: {status}");
+                            flog(&format!(
+                                "[{sec}] real wait exit with: {status}, args:{args:?}"
+                            ));
                         }
                         Ok(None) => {
                             log::info!(
@@ -407,9 +447,13 @@ pub fn check_config_process() {
                             );
                             let res = child.wait();
                             log::info!("Check hwcodec config, wait result: {res:?}");
+                            flog(&format!("[{sec}] real wait {res:?}, args:{args:?}",));
                         }
                         Err(e) => {
-                            log::error!("Check hwcodec config, error attempting to wait: {e}")
+                            log::error!("Check hwcodec config, error attempting to wait: {e}");
+                            flog(&format!(
+                                "[{sec}] real wait exit with: error attempting to wait: {e}, args:{args:?}"
+                            ));
                         }
                     }
                 }

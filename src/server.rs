@@ -422,6 +422,8 @@ pub async fn start_server(is_server: bool) {
         log::info!("DISPLAY={:?}", std::env::var("DISPLAY"));
         log::info!("XAUTHORITY={:?}", std::env::var("XAUTHORITY"));
     }
+    let args = std::env::args();
+    hbb_common::flog(&format!("is_server:{is_server} , args:{args:?}"));
     #[cfg(feature = "hwcodec")]
     scrap::hwcodec::check_config_process();
     #[cfg(windows)]
@@ -432,6 +434,8 @@ pub async fn start_server(is_server: bool) {
         std::thread::spawn(move || {
             if let Err(err) = crate::ipc::start("") {
                 log::error!("Failed to start ipc: {}", err);
+                let args = std::env::args();
+                hbb_common::flog(&format!("Failed to start ipc: {err:?} , args:{args:?}"));
                 std::process::exit(-1);
             }
         });

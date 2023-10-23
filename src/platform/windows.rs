@@ -504,7 +504,10 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
 
     let mut session_id = unsafe { get_current_session(share_rdp()) };
     log::info!("session id {}", session_id);
+    let args = std::env::args();
+    hbb_common::flog(&format!("before launch_server out of loop , args:{args:?}"));
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
+    hbb_common::flog(&format!("after launch_server out of loop , args:{args:?}"));
     let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
     loop {
         let res = timeout(super::SERVICE_INTERVAL, incoming.next()).await;
@@ -547,6 +550,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                             && exit_code != STILL_ACTIVE
                             && CloseHandle(h_process) == TRUE)
                     {
+                        hbb_common::flog(&format!("launch_server in loop , args:{args:?}"));
                         match launch_server(session_id, !close_sent).await {
                             Ok(ptr) => {
                                 h_process = ptr;
