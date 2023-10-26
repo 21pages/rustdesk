@@ -23,7 +23,8 @@ class FileManagerTabPage extends StatefulWidget {
   State<FileManagerTabPage> createState() => _FileManagerTabPageState(params);
 }
 
-class _FileManagerTabPageState extends State<FileManagerTabPage> {
+class _FileManagerTabPageState extends State<FileManagerTabPage>
+    with MultiWindowListener {
   DesktopTabController get tabController => Get.find<DesktopTabController>();
 
   static const IconData selectedIcon = Icons.file_copy_sharp;
@@ -86,6 +87,16 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
     Future.delayed(Duration.zero, () {
       restoreWindowPosition(WindowType.FileTransfer, windowId: windowId());
     });
+    DesktopMultiWindow.addListener(this);
+  }
+
+  @override
+  void onWindowClose() {
+    super.onWindowClose();
+    debugPrint("file manager tab page onWindowClose, clear tab");
+    tabController.clear();
+    rustDeskWinManager.call(
+        WindowType.Main, kWindowEventMultiWindowClose, {"id": windowId()});
   }
 
   @override

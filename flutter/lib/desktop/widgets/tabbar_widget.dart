@@ -448,6 +448,7 @@ class DesktopTab extends StatelessWidget {
           isMainWindow: isMainWindow,
           tabType: tabType,
           state: state,
+          controller: controller,
           tail: tail,
           showMinimize: showMinimize,
           showMaximize: showMaximize,
@@ -463,6 +464,7 @@ class WindowActionPanel extends StatefulWidget {
   final bool isMainWindow;
   final DesktopTabType tabType;
   final Rx<DesktopTabState> state;
+  final DesktopTabController controller;
 
   final bool showMinimize;
   final bool showMaximize;
@@ -475,6 +477,7 @@ class WindowActionPanel extends StatefulWidget {
       required this.isMainWindow,
       required this.tabType,
       required this.state,
+      required this.controller,
       this.tail,
       this.showMinimize = true,
       this.showMaximize = true,
@@ -580,9 +583,20 @@ class WindowActionPanelState extends State<WindowActionPanel>
   void onWindowClose() async {
     mainWindowClose() async => await windowManager.hide();
     notMainWindowClose(WindowController controller) async {
-      await controller.hide();
-      await rustDeskWinManager
-          .call(WindowType.Main, kWindowEventHide, {"id": kWindowId!});
+      if (widget.controller.length == 0) {
+        await controller.hide();
+        await rustDeskWinManager
+            .call(WindowType.Main, kWindowEventHide, {"id": kWindowId!});
+      } else {
+        await controller.show();
+        await controller.focus();
+        final res = await widget.onClose?.call() ?? true;
+        if (res) {
+          Future.delayed(Duration.zero, () async {
+            await WindowController.fromWindowId(kWindowId!).close();
+          });
+        }
+      }
     }
 
     macOSWindowClose(

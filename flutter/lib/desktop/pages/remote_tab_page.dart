@@ -39,7 +39,8 @@ class ConnectionTabPage extends StatefulWidget {
   State<ConnectionTabPage> createState() => _ConnectionTabPageState(params);
 }
 
-class _ConnectionTabPageState extends State<ConnectionTabPage> {
+class _ConnectionTabPageState extends State<ConnectionTabPage>
+    with MultiWindowListener {
   final tabController =
       Get.put(DesktopTabController(tabType: DesktopTabType.remoteScreen));
   final contentKey = UniqueKey();
@@ -99,6 +100,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
       ));
       _update_remote_count();
     }
+    DesktopMultiWindow.addListener(this);
   }
 
   @override
@@ -225,6 +227,15 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
   void dispose() {
     super.dispose();
     _toolbarState.save();
+  }
+
+  @override
+  void onWindowClose() {
+    // super.onWindowClose();
+    debugPrint("remote tab page onWindowClose, clear tab");
+    // tabController.clear();
+    // rustDeskWinManager.call(
+    //     WindowType.Main, kWindowEventMultiWindowClose, {"id": windowId()});
   }
 
   @override

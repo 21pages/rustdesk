@@ -155,6 +155,8 @@ class RustDeskMultiWindowManager {
     String msg, {
     Rect? screenRect,
   }) async {
+    debugPrint(
+        "_newSession openInTabs:$openInTabs, _inactiveWindows:$_inactiveWindows");
     if (openInTabs) {
       if (windows.isEmpty) {
         final windowId = await newSessionWindow(
@@ -167,6 +169,8 @@ class RustDeskMultiWindowManager {
       if (_inactiveWindows.isNotEmpty) {
         for (final windowId in windows) {
           if (_inactiveWindows.contains(windowId)) {
+            debugPrint(
+                "_newSession _inactiveWindows contains windowId:$windowId, restoreWindowPosition");
             if (screenRect == null) {
               await restoreWindowPosition(type,
                   windowId: windowId, peerId: remoteId);
@@ -409,11 +413,19 @@ class RustDeskMultiWindowManager {
   /// For other windows, please post a unregister(hide) event to main window handler:
   /// `rustDeskWinManager.call(WindowType.Main, kWindowEventHide, {"id": windowId!});`
   Future<void> unregisterActiveWindow(int windowId) async {
-    _activeWindows.remove(windowId);
-    if (windowId != kMainWindowId) {
+    if (_activeWindows.remove(windowId) && windowId != kMainWindowId) {
       _inactiveWindows.add(windowId);
     }
     await _notifyActiveWindow();
+  }
+
+  Future<void> removeWindowId(int windowId) async {
+    if (windowId != kMainWindowId) {
+      debugPrint("remove window id:$windowId");
+      _inactiveWindows.remove(windowId);
+      _activeWindows.remove(windowId);
+      await _notifyActiveWindow();
+    }
   }
 
   void registerActiveWindowListener(AsyncCallback callback) {

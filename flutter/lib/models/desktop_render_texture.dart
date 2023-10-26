@@ -36,9 +36,9 @@ class RenderTexture {
 
   destroy(bool unregisterTexture) async {
     if (useTextureRender && _textureKey != -1 && _sessionId != null) {
-      if (unregisterTexture) {
-        platformFFI.registerTexture(_sessionId!, display, 0);
-      }
+      // if (unregisterTexture) {
+      platformFFI.registerTexture(_sessionId!, display, 0);
+      // }
       await textureRenderer.closeTexture(_textureKey);
       _textureKey = -1;
     }

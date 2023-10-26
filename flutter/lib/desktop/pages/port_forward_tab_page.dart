@@ -20,7 +20,8 @@ class PortForwardTabPage extends StatefulWidget {
   State<PortForwardTabPage> createState() => _PortForwardTabPageState(params);
 }
 
-class _PortForwardTabPageState extends State<PortForwardTabPage> {
+class _PortForwardTabPageState extends State<PortForwardTabPage>
+    with MultiWindowListener {
   late final DesktopTabController tabController;
   late final bool isRDP;
 
@@ -92,6 +93,16 @@ class _PortForwardTabPageState extends State<PortForwardTabPage> {
     Future.delayed(Duration.zero, () {
       restoreWindowPosition(WindowType.PortForward, windowId: windowId());
     });
+    DesktopMultiWindow.addListener(this);
+  }
+
+  @override
+  void onWindowClose() {
+    super.onWindowClose();
+    debugPrint("port forward tab page onWindowClose, clear tab");
+    tabController.clear();
+    rustDeskWinManager.call(
+        WindowType.Main, kWindowEventMultiWindowClose, {"id": windowId()});
   }
 
   @override
