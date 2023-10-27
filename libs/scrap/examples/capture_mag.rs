@@ -32,9 +32,13 @@ fn record(i: usize) {
     let (w, h) = (display.width(), display.height());
 
     {
-        let mut capture_mag =
-            CapturerMag::new(display.origin(), display.width(), display.height(), false)
-                .expect("Couldn't begin capture.");
+        let mut capture_mag = CapturerMag::new(
+            display.origin(),
+            display.width(),
+            display.height(),
+            scrap::Pixfmt::BGRA,
+        )
+        .expect("Couldn't begin capture.");
         let wnd_cls = "";
         let wnd_name = "RustDeskPrivacyWindow";
         if false == capture_mag.exclude(wnd_cls, wnd_name).unwrap() {
@@ -68,9 +72,13 @@ fn record(i: usize) {
     }
 
     {
-        let mut capture_mag =
-            CapturerMag::new(display.origin(), display.width(), display.height(), true)
-                .expect("Couldn't begin capture.");
+        let mut capture_mag = CapturerMag::new(
+            display.origin(),
+            display.width(),
+            display.height(),
+            scrap::Pixfmt::I420,
+        )
+        .expect("Couldn't begin capture.");
         let wnd_cls = "";
         let wnd_title = "RustDeskPrivacyWindow";
         if false == capture_mag.exclude(wnd_cls, wnd_title).unwrap() {

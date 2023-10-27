@@ -77,9 +77,10 @@ impl TraitCapturer for CapturerPtr {
         unsafe { (*self.0).frame(timeout) }
     }
 
-    fn set_use_yuv(&mut self, use_yuv: bool) {
+    fn set_output_pixfmt(&mut self, pixfmt: Pixfmt) {
         unsafe {
             (*self.0).set_use_yuv(use_yuv);
+            (*self.0).set_output_pixfmt(pixfmt);
         }
     }
 }
@@ -192,7 +193,8 @@ pub(super) async fn check_init() -> ResultType<()> {
                 maxy = max_height;
 
                 let capturer = Box::into_raw(Box::new(
-                    Capturer::new(display, true).with_context(|| "Failed to create capturer")?,
+                    Capturer::new(display, Pixfmt::I420)
+                        .with_context(|| "Failed to create capturer")?,
                 ));
                 let capturer = CapturerPtr(capturer);
                 let cap_display_info = Box::into_raw(Box::new(CapDisplayInfo {

@@ -1,4 +1,4 @@
-use crate::quartz;
+use crate::{quartz, Pixfmt};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
 use std::{io, mem, ops};
@@ -6,13 +6,13 @@ use std::{io, mem, ops};
 pub struct Capturer {
     inner: quartz::Capturer,
     frame: Arc<Mutex<Option<quartz::Frame>>>,
-    use_yuv: bool,
+    pixfmt: Pixfmt,
     i420: Vec<u8>,
     saved_raw_data: Vec<u8>, // for faster compare and copy
 }
 
 impl Capturer {
-    pub fn new(display: Display, use_yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, pixfmt: Pixfmt) -> io::Result<Capturer> {
         let frame = Arc::new(Mutex::new(None));
 
         let f = frame.clone();
@@ -20,7 +20,8 @@ impl Capturer {
             display.0,
             display.width(),
             display.height(),
-            if use_yuv {
+            if pixfmt == Pixfmt::I420 {
+                // TODO
                 quartz::PixelFormat::YCbCr420Video
             } else {
                 quartz::PixelFormat::Argb8888
@@ -37,7 +38,7 @@ impl Capturer {
         Ok(Capturer {
             inner,
             frame,
-            use_yuv,
+            pixfmt,
             i420: Vec::new(),
             saved_raw_data: Vec::new(),
         })
@@ -53,8 +54,8 @@ impl Capturer {
 }
 
 impl crate::TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.use_yuv = use_yuv;
+    fn set_output_pixfmt(&mut self, pixfmt: Pixfmt) {
+        self.pixfmt = pixfmt;
     }
 
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
@@ -66,7 +67,8 @@ impl crate::TraitCapturer for Capturer {
                 match frame {
                     Some(mut frame) => {
                         crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())?;
-                        if self.use_yuv {
+                        if self.pixfmt == Pixfmt::I420 {
+                            // TODO
                             frame.nv12_to_i420(self.width(), self.height(), &mut self.i420);
                         }
                         Ok(Frame(frame, PhantomData))

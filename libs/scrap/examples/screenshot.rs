@@ -28,7 +28,8 @@ fn record(i: usize) {
     }
 
     let display = get_display(i);
-    let mut capturer = Capturer::new(display, false).expect("Couldn't begin capture.");
+    let mut capturer =
+        Capturer::new(display, scrap::Pixfmt::BGRA).expect("Couldn't begin capture.");
     let (w, h) = (capturer.width(), capturer.height());
 
     loop {
@@ -77,7 +78,8 @@ fn record(i: usize) {
 
     drop(capturer);
     let display = get_display(i);
-    let mut capturer = Capturer::new(display, true).expect("Couldn't begin capture.");
+    let mut capturer =
+        Capturer::new(display, scrap::Pixfmt::I420).expect("Couldn't begin capture.");
     let (w, h) = (capturer.width(), capturer.height());
 
     loop {

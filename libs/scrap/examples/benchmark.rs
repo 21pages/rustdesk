@@ -88,7 +88,7 @@ fn capture_yuv(yuv_count: usize) -> (Vec<Vec<u8>>, usize, usize) {
         }
     }
     let d = displays.remove(index);
-    let mut c = Capturer::new(d, true).unwrap();
+    let mut c = Capturer::new(d, scrap::Pixfmt::I420).unwrap();
     let mut v = vec![];
     loop {
         if let Ok(frame) = c.frame(std::time::Duration::from_millis(30)) {
@@ -118,7 +118,7 @@ fn test_vpx(
         codec: codec_id,
         keyframe_interval: None,
     });
-    let mut encoder = VpxEncoder::new(config).unwrap();
+    let mut encoder = VpxEncoder::new(config, false).unwrap();
     let mut vpxs = vec![];
     let start = Instant::now();
     let mut size = 0;
@@ -163,7 +163,7 @@ fn test_av1(yuvs: &Vec<Vec<u8>>, width: usize, height: usize, quality: Q, yuv_co
         quality,
         keyframe_interval: None,
     });
-    let mut encoder = AomEncoder::new(config).unwrap();
+    let mut encoder = AomEncoder::new(config, false).unwrap();
     let start = Instant::now();
     let mut size = 0;
     let mut av1s = vec![];

@@ -14,7 +14,7 @@ use crate::{
     aom::{self, AomDecoder, AomEncoder, AomEncoderConfig},
     common::GoogleImage,
     vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
-    CodecName, ImageRgb,
+    CodecName, ImageRgb, Pixfmt,
 };
 
 use hbb_common::{
@@ -23,8 +23,8 @@ use hbb_common::{
     config::PeerConfig,
     log,
     message_proto::{
-        supported_decoding::PreferCodec, video_frame, EncodedVideoFrames,
-        SupportedDecoding, SupportedEncoding, VideoFrame,
+        supported_decoding::PreferCodec, video_frame, CodecAbility, EncodedVideoFrames,
+        SupportedDecoding, SupportedEncoding, VideoFrame, YuvFmt,
     },
     sysinfo::{System, SystemExt},
     tokio::time::Instant,
@@ -56,13 +56,13 @@ pub enum EncoderCfg {
 }
 
 pub trait EncoderApi {
-    fn new(cfg: EncoderCfg) -> ResultType<Self>
+    fn new(cfg: EncoderCfg, i444: bool) -> ResultType<Self>
     where
         Self: Sized;
 
     fn encode_to_message(&mut self, frame: &[u8], ms: i64) -> ResultType<VideoFrame>;
 
-    fn use_yuv(&self) -> bool;
+    fn input_pixfmt(&self) -> Pixfmt;
 
     fn set_quality(&mut self, quality: Quality) -> ResultType<()>;
 
@@ -107,18 +107,18 @@ pub enum EncodingUpdate {
 }
 
 impl Encoder {
-    pub fn new(config: EncoderCfg) -> ResultType<Encoder> {
-        log::info!("new encoder:{:?}", config);
+    pub fn new(config: EncoderCfg, i444: bool) -> ResultType<Encoder> {
+        log::info!("new encoder:{:?}, i444:{i444}", config);
         match config {
             EncoderCfg::VPX(_) => Ok(Encoder {
-                codec: Box::new(VpxEncoder::new(config)?),
+                codec: Box::new(VpxEncoder::new(config, i444)?),
             }),
             EncoderCfg::AOM(_) => Ok(Encoder {
-                codec: Box::new(AomEncoder::new(config)?),
+                codec: Box::new(AomEncoder::new(config, i444)?),
             }),
 
             #[cfg(feature = "hwcodec")]
-            EncoderCfg::HW(_) => match HwEncoder::new(config) {
+            EncoderCfg::HW(_) => match HwEncoder::new(config, i444) {
                 Ok(hw) => Ok(Encoder {
                     codec: Box::new(hw),
                 }),
@@ -230,6 +230,12 @@ impl Encoder {
         let mut encoding = SupportedEncoding {
             vp8: true,
             av1: true,
+            i444: Some(CodecAbility {
+                vp9: true,
+                av1: true,
+                ..Default::default()
+            })
+            .into(),
             ..Default::default()
         };
         #[cfg(feature = "hwcodec")]
@@ -240,18 +246,41 @@ impl Encoder {
         }
         encoding
     }
+
+    pub fn use_i444(config: &EncoderCfg) -> bool {
+        let decodings = PEER_DECODINGS.lock().unwrap().clone();
+        let prefer_i444 = decodings
+            .iter()
+            .all(|d| d.1.prefer_yuvfmt == hbb_common::protos::message::YuvFmt::I444.into());
+        let i444_useable = match config {
+            EncoderCfg::VPX(vpx) => match vpx.codec {
+                VpxVideoCodecId::VP8 => false,
+                VpxVideoCodecId::VP9 => decodings.iter().all(|d| d.1.i444.vp9),
+            },
+            EncoderCfg::AOM(_) => decodings.iter().all(|d| d.1.i444.av1),
+            EncoderCfg::HW(_) => false,
+        };
+        prefer_i444 && i444_useable && !decodings.is_empty()
+    }
 }
 
 impl Decoder {
     pub fn supported_decodings(id_for_perfer: Option<&str>) -> SupportedDecoding {
+        let (prefer, prefer_yuvfmt) = Self::preference(id_for_perfer);
+
         #[allow(unused_mut)]
         let mut decoding = SupportedDecoding {
             ability_vp8: 1,
             ability_vp9: 1,
             ability_av1: 1,
-            prefer: id_for_perfer
-                .map_or(PreferCodec::Auto, |id| Self::codec_preference(id))
-                .into(),
+            i444: Some(CodecAbility {
+                vp9: true,
+                av1: true,
+                ..Default::default()
+            })
+            .into(),
+            prefer: prefer.into(),
+            prefer_yuvfmt: prefer_yuvfmt.into(),
             ..Default::default()
         };
         #[cfg(feature = "hwcodec")]
@@ -457,12 +486,16 @@ impl Decoder {
         return Ok(false);
     }
 
-    fn codec_preference(id: &str) -> PreferCodec {
-        let codec = PeerConfig::load(id)
-            .options
+    fn preference(id: Option<&str>) -> (PreferCodec, YuvFmt) {
+        let id = id.unwrap_or_default();
+        if id.is_empty() {
+            return (PreferCodec::Auto, YuvFmt::I420);
+        }
+        let options = PeerConfig::load(id).options;
+        let codec = options
             .get("codec-preference")
             .map_or("".to_owned(), |c| c.to_owned());
-        if codec == "vp8" {
+        let codec = if codec == "vp8" {
             PreferCodec::VP8
         } else if codec == "vp9" {
             PreferCodec::VP9
@@ -474,7 +507,13 @@ impl Decoder {
             PreferCodec::H265
         } else {
             PreferCodec::Auto
-        }
+        };
+        let yuvfmt = if options.get("i444") == Some(&"Y".to_string()) {
+            YuvFmt::I444
+        } else {
+            YuvFmt::I420
+        };
+        (codec, yuvfmt)
     }
 }
 

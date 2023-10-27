@@ -1,5 +1,6 @@
 use crate::android::ffi::*;
 use crate::rgba_to_i420;
+use crate::Pixfmt;
 use lazy_static::lazy_static;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -17,7 +18,7 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new(display: Display, _yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, _pixfmt: Pixfmt) -> io::Result<Capturer> {
         Ok(Capturer {
             display,
             bgra: Vec::new(),
@@ -35,7 +36,7 @@ impl Capturer {
 }
 
 impl crate::TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, _use_yuv: bool) {}
+    fn set_output_pixfmt(&mut self, _pixfmt: Pixfmt) {}
 
     fn frame<'a>(&'a mut self, _timeout: Duration) -> io::Result<Frame<'a>> {
         if let Some(buf) = get_video_raw() {

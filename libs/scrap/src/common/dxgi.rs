@@ -1,4 +1,4 @@
-use crate::{common::TraitCapturer, dxgi};
+use crate::{common::TraitCapturer, dxgi, Pixfmt};
 use std::{
     io::{
         self,
@@ -15,10 +15,10 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new(display: Display, yuv: bool) -> io::Result<Capturer> {
+    pub fn new(display: Display, format: Pixfmt) -> io::Result<Capturer> {
         let width = display.width();
         let height = display.height();
-        let inner = dxgi::Capturer::new(display.0, yuv)?;
+        let inner = dxgi::Capturer::new(display.0, format)?;
         Ok(Capturer {
             inner,
             width,
@@ -40,8 +40,8 @@ impl Capturer {
 }
 
 impl TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.inner.set_use_yuv(use_yuv);
+    fn set_output_pixfmt(&mut self, pixfmt: Pixfmt) {
+        self.inner.set_output_pixfmt(pixfmt);
     }
 
     fn frame<'a>(&'a mut self, timeout: Duration) -> io::Result<Frame<'a>> {
@@ -134,9 +134,14 @@ impl CapturerMag {
         dxgi::mag::CapturerMag::is_supported()
     }
 
-    pub fn new(origin: (i32, i32), width: usize, height: usize, use_yuv: bool) -> io::Result<Self> {
+    pub fn new(
+        origin: (i32, i32),
+        width: usize,
+        height: usize,
+        format: Pixfmt,
+    ) -> io::Result<Self> {
         Ok(CapturerMag {
-            inner: dxgi::mag::CapturerMag::new(origin, width, height, use_yuv)?,
+            inner: dxgi::mag::CapturerMag::new(origin, width, height, format)?,
             data: Vec::new(),
         })
     }
@@ -151,8 +156,8 @@ impl CapturerMag {
 }
 
 impl TraitCapturer for CapturerMag {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
-        self.inner.set_use_yuv(use_yuv)
+    fn set_output_pixfmt(&mut self, pixfmt: Pixfmt) {
+        self.inner.set_output_pixfmt(pixfmt)
     }
 
     fn frame<'a>(&'a mut self, _timeout_ms: Duration) -> io::Result<Frame<'a>> {

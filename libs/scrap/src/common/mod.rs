@@ -1,5 +1,8 @@
 pub use self::vpxcodec::*;
-use hbb_common::message_proto::{video_frame, VideoFrame};
+use hbb_common::{
+    log,
+    message_proto::{video_frame, VideoFrame, YuvFmt},
+};
 use std::slice;
 
 cfg_if! {
@@ -96,7 +99,7 @@ pub fn would_block_if_equal(old: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> 
 }
 
 pub trait TraitCapturer {
-    fn set_use_yuv(&mut self, use_yuv: bool);
+    fn set_output_pixfmt(&mut self, pixfmt: Pixfmt);
 
     // We doesn't support
     #[cfg(not(any(target_os = "ios")))]
@@ -106,6 +109,13 @@ pub trait TraitCapturer {
     fn is_gdi(&self) -> bool;
     #[cfg(windows)]
     fn set_gdi(&mut self) -> bool;
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Pixfmt {
+    BGRA,
+    I420,
+    I444,
 }
 
 #[cfg(x11)]
@@ -260,6 +270,7 @@ pub trait GoogleImage {
     fn height(&self) -> usize;
     fn stride(&self) -> Vec<i32>;
     fn planes(&self) -> Vec<*mut u8>;
+    fn fmt(&self) -> YuvFmt;
     fn get_bytes_per_row(w: usize, fmt: ImageFormat, stride: usize) -> usize {
         let bytes_per_pixel = match fmt {
             ImageFormat::Raw => 3,
@@ -278,8 +289,8 @@ pub trait GoogleImage {
         let stride = self.stride();
         let planes = self.planes();
         unsafe {
-            match rgb.fmt() {
-                ImageFormat::Raw => {
+            match (self.fmt(), rgb.fmt()) {
+                (YuvFmt::I420, ImageFormat::Raw) => {
                     super::I420ToRAW(
                         planes[0],
                         stride[0],
@@ -293,7 +304,7 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
-                ImageFormat::ARGB => {
+                (YuvFmt::I420, ImageFormat::ARGB) => {
                     super::I420ToARGB(
                         planes[0],
                         stride[0],
@@ -307,7 +318,7 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
-                ImageFormat::ABGR => {
+                (YuvFmt::I420, ImageFormat::ABGR) => {
                     super::I420ToABGR(
                         planes[0],
                         stride[0],
@@ -321,6 +332,36 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
+                (YuvFmt::I444, ImageFormat::ARGB) => {
+                    super::I444ToARGB(
+                        planes[0],
+                        stride[0],
+                        planes[1],
+                        stride[1],
+                        planes[2],
+                        stride[2],
+                        rgb.raw.as_mut_ptr(),
+                        bytes_per_row as _,
+                        self.width() as _,
+                        self.height() as _,
+                    );
+                }
+                (YuvFmt::I444, ImageFormat::ABGR) => {
+                    super::I444ToABGR(
+                        planes[0],
+                        stride[0],
+                        planes[1],
+                        stride[1],
+                        planes[2],
+                        stride[2],
+                        rgb.raw.as_mut_ptr(),
+                        bytes_per_row as _,
+                        self.width() as _,
+                        self.height() as _,
+                    );
+                }
+                // (YuvFmt::I444, ImageFormat::Raw), new version libyuv have I444ToRAW
+                _ => log::error!("unsupported pixfmt:{:?}", self.fmt()),
             }
         }
     }

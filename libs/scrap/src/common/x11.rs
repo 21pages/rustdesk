@@ -1,4 +1,4 @@
-use crate::{common::TraitCapturer, x11};
+use crate::{common::TraitCapturer, x11, Pixfmt};
 use std::{io, ops, time::Duration};
 
 pub struct Capturer(x11::Capturer);
@@ -20,7 +20,8 @@ impl Capturer {
 }
 
 impl TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
+    fn set_output_pixfmt(&mut self, pixfmt: Pixfmt) {
+        let use_yuv = pixfmt == Pixfmt::I420;
         self.0.set_use_yuv(use_yuv);
     }
 

@@ -44,7 +44,7 @@ use scrap::{
     codec::{Encoder, EncoderCfg, HwEncoderConfig, Quality},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
-    CodecName, Display, TraitCapturer,
+    CodecName, Display, Pixfmt, TraitCapturer,
 };
 #[cfg(windows)]
 use std::sync::Once;
@@ -171,7 +171,7 @@ pub fn new(idx: usize) -> GenericService {
 fn create_capturer(
     privacy_mode_id: i32,
     display: Display,
-    use_yuv: bool,
+    format: Pixfmt,
     _current: usize,
     _portable_service_running: bool,
 ) -> ResultType<Box<dyn TraitCapturer>> {
@@ -186,7 +186,7 @@ fn create_capturer(
                 display.origin(),
                 display.width(),
                 display.height(),
-                use_yuv,
+                format,
             ) {
                 Ok(mut c1) => {
                     let mut ok = false;
@@ -236,12 +236,12 @@ fn create_capturer(
             return crate::portable_service::client::create_capturer(
                 _current,
                 display,
-                use_yuv,
+                format,
                 _portable_service_running,
             );
             #[cfg(not(windows))]
             return Ok(Box::new(
-                Capturer::new(display, use_yuv).with_context(|| "Failed to create capturer")?,
+                Capturer::new(display, format).with_context(|| "Failed to create capturer")?,
             ));
         }
     };
@@ -265,7 +265,13 @@ pub fn test_create_capturer(
                     )
                 } else {
                     let display = displays.remove(display_idx);
-                    match create_capturer(privacy_mode_id, display, true, display_idx, false) {
+                    match create_capturer(
+                        privacy_mode_id,
+                        display,
+                        Pixfmt::I420,
+                        display_idx,
+                        false,
+                    ) {
                         Ok(_) => return "".to_owned(),
                         Err(e) => e,
                     }
@@ -322,7 +328,7 @@ impl DerefMut for CapturerInfo {
 
 fn get_capturer(
     current: usize,
-    use_yuv: bool,
+    format: Pixfmt,
     portable_service_running: bool,
 ) -> ResultType<CapturerInfo> {
     #[cfg(target_os = "linux")]
@@ -382,7 +388,7 @@ fn get_capturer(
     let capturer = create_capturer(
         capturer_privacy_mode_id,
         display,
-        use_yuv,
+        format,
         current,
         portable_service_running,
     )?;
@@ -424,7 +430,7 @@ fn run(vs: VideoService) -> ResultType<()> {
 
     let display_idx = vs.idx;
     let sp = vs.sp;
-    let mut c = get_capturer(display_idx, true, last_portable_service_running)?;
+    let mut c = get_capturer(display_idx, Pixfmt::I420, last_portable_service_running)?;
 
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     video_qos.refresh(None);
@@ -439,11 +445,12 @@ fn run(vs: VideoService) -> ResultType<()> {
     let encoder_cfg = get_encoder_config(&c, quality, last_recording);
 
     let mut encoder;
-    match Encoder::new(encoder_cfg) {
+    let use_i444 = Encoder::use_i444(&encoder_cfg);
+    match Encoder::new(encoder_cfg.clone(), use_i444) {
         Ok(x) => encoder = x,
         Err(err) => bail!("Failed to create encoder: {}", err),
     }
-    c.set_use_yuv(encoder.use_yuv());
+    c.set_output_pixfmt(encoder.input_pixfmt());
     VIDEO_QOS.lock().unwrap().store_bitrate(encoder.bitrate());
 
     if sp.is_option_true(OPTION_REFRESH) {
@@ -491,6 +498,9 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
         #[cfg(windows)]
         if last_portable_service_running != crate::portable_service::client::running() {
+            bail!("SWITCH");
+        }
+        if Encoder::use_i444(&encoder_cfg) != use_i444 {
             bail!("SWITCH");
         }
         check_privacy_mode_changed(&sp, c.privacy_mode_id)?;

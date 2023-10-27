@@ -60,7 +60,8 @@ impl Capturer {
 }
 
 impl TraitCapturer for Capturer {
-    fn set_use_yuv(&mut self, use_yuv: bool) {
+    fn set_output_pixfmt(&mut self, pixfmt: Pixfmt) {
+        let use_yuv = pixfmt == Pixfmt::I420;
         self.2 = use_yuv;
     }
 

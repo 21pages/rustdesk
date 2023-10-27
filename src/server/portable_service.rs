@@ -8,7 +8,7 @@ use hbb_common::{
     tokio::{self, sync::mpsc},
     ResultType,
 };
-use scrap::{Capturer, Frame, TraitCapturer};
+use scrap::{Capturer, Frame, Pixfmt, TraitCapturer};
 use shared_memory::*;
 use std::{
     mem::size_of,
@@ -222,6 +222,7 @@ mod utils {
 // functions called in separate SYSTEM user process.
 pub mod server {
     use hbb_common::message_proto::PointerDeviceEvent;
+    use scrap::Pixfmt;
 
     use crate::display_service;
 
@@ -300,7 +301,7 @@ pub mod server {
     fn run_capture(shmem: Arc<SharedMemory>) {
         let mut c = None;
         let mut last_current_display = usize::MAX;
-        let mut last_use_yuv = false;
+        let mut last_output_format = Pixfmt::I420;
         let mut last_timeout_ms: i32 = 33;
         let mut spf = Duration::from_millis(last_timeout_ms as _);
         let mut first_frame_captured = false;
@@ -316,10 +317,10 @@ pub mod server {
                 let para = para_ptr as *const CapturerPara;
                 let recreate = (*para).recreate;
                 let current_display = (*para).current_display;
-                let use_yuv = (*para).use_yuv;
-                let use_yuv_set = (*para).use_yuv_set;
+                let output_format = (*para).output_pixfmt;
+                let output_format_set = (*para).output_pixfmt_set;
                 let timeout_ms = (*para).timeout_ms;
-                if !use_yuv_set {
+                if !output_format_set {
                     c = None;
                     std::thread::sleep(spf);
                     continue;
@@ -338,11 +339,11 @@ pub mod server {
                     let display = displays.remove(current_display);
                     display_width = display.width();
                     display_height = display.height();
-                    match Capturer::new(display, use_yuv) {
+                    match Capturer::new(display, output_format) {
                         Ok(mut v) => {
                             c = {
                                 last_current_display = current_display;
-                                last_use_yuv = use_yuv;
+                                last_output_format = output_format;
                                 first_frame_captured = false;
                                 if dxgi_failed_times > MAX_DXGI_FAIL_TIME {
                                     dxgi_failed_times = 0;
@@ -353,8 +354,8 @@ pub mod server {
                                     CapturerPara {
                                         recreate: false,
                                         current_display: (*para).current_display,
-                                        use_yuv: (*para).use_yuv,
-                                        use_yuv_set: (*para).use_yuv_set,
+                                        output_pixfmt: (*para).output_pixfmt,
+                                        output_pixfmt_set: (*para).output_pixfmt_set,
                                         timeout_ms: (*para).timeout_ms,
                                     },
                                 );
@@ -370,14 +371,14 @@ pub mod server {
                 } else {
                     if recreate
                         || current_display != last_current_display
-                        || use_yuv != last_use_yuv
+                        || output_format != last_output_format
                     {
                         log::info!(
-                            "create capturer, display:{}->{}, use_yuv:{}->{}",
+                            "create capturer, display:{}->{}, use_yuv:{:?}->{:?}",
                             last_current_display,
                             current_display,
-                            last_use_yuv,
-                            use_yuv
+                            last_output_format,
+                            output_format
                         );
                         c = None;
                         continue;
@@ -527,6 +528,7 @@ pub mod server {
 // functions called in main process.
 pub mod client {
     use hbb_common::{anyhow::Context, message_proto::PointerDeviceEvent};
+    use scrap::Pixfmt;
 
     use crate::display_service;
 
@@ -651,7 +653,7 @@ pub mod client {
     }
 
     impl CapturerPortable {
-        pub fn new(current_display: usize, use_yuv: bool) -> Self
+        pub fn new(current_display: usize, format: Pixfmt) -> Self
         where
             Self: Sized,
         {
@@ -665,8 +667,8 @@ pub mod client {
                     CapturerPara {
                         recreate: true,
                         current_display,
-                        use_yuv,
-                        use_yuv_set: false,
+                        output_pixfmt: format,
+                        output_pixfmt_set: false,
                         timeout_ms: 33,
                     },
                 );
@@ -684,7 +686,7 @@ pub mod client {
     }
 
     impl TraitCapturer for CapturerPortable {
-        fn set_use_yuv(&mut self, use_yuv: bool) {
+        fn set_output_pixfmt(&mut self, pixfmt: Pixfmt) {
             let mut option = SHMEM.lock().unwrap();
             if let Some(shmem) = option.as_mut() {
                 unsafe {
@@ -695,8 +697,8 @@ pub mod client {
                         CapturerPara {
                             recreate: (*para).recreate,
                             current_display: (*para).current_display,
-                            use_yuv,
-                            use_yuv_set: true,
+                            output_pixfmt: pixfmt,
+                            output_pixfmt_set: true,
                             timeout_ms: (*para).timeout_ms,
                         },
                     );
@@ -720,8 +722,8 @@ pub mod client {
                         CapturerPara {
                             recreate: (*para).recreate,
                             current_display: (*para).current_display,
-                            use_yuv: (*para).use_yuv,
-                            use_yuv_set: (*para).use_yuv_set,
+                            output_pixfmt: (*para).output_pixfmt,
+                            output_pixfmt_set: (*para).output_pixfmt_set,
                             timeout_ms: timeout.as_millis() as _,
                         },
                     );
@@ -910,7 +912,7 @@ pub mod client {
     pub fn create_capturer(
         current_display: usize,
         display: scrap::Display,
-        use_yuv: bool,
+        format: Pixfmt,
         portable_service_running: bool,
     ) -> ResultType<Box<dyn TraitCapturer>> {
         if portable_service_running != RUNNING.lock().unwrap().clone() {
@@ -919,7 +921,7 @@ pub mod client {
         if portable_service_running {
             log::info!("Create shared memory capturer");
             if current_display == *display_service::PRIMARY_DISPLAY_IDX {
-                return Ok(Box::new(CapturerPortable::new(current_display, use_yuv)));
+                return Ok(Box::new(CapturerPortable::new(current_display, format)));
             } else {
                 bail!(
                     "Ignore capture display index: {}, the primary display index is: {}",
@@ -930,7 +932,7 @@ pub mod client {
         } else {
             log::debug!("Create capturer dxgi|gdi");
             return Ok(Box::new(
-                Capturer::new(display, use_yuv).with_context(|| "Failed to create capturer")?,
+                Capturer::new(display, format).with_context(|| "Failed to create capturer")?,
             ));
         }
     }
@@ -981,8 +983,8 @@ pub mod client {
 pub struct CapturerPara {
     recreate: bool,
     current_display: usize,
-    use_yuv: bool,
-    use_yuv_set: bool,
+    output_pixfmt: Pixfmt,
+    output_pixfmt_set: bool,
     timeout_ms: i32,
 }
 

@@ -1,6 +1,6 @@
 use crate::{
     codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg},
-    hw, ImageFormat, ImageRgb, HW_STRIDE_ALIGN,
+    hw, ImageFormat, ImageRgb, Pixfmt, HW_STRIDE_ALIGN,
 };
 use hbb_common::{
     allow_err,
@@ -40,7 +40,7 @@ pub struct HwEncoder {
 }
 
 impl EncoderApi for HwEncoder {
-    fn new(cfg: EncoderCfg) -> ResultType<Self>
+    fn new(cfg: EncoderCfg, _i444: bool) -> ResultType<Self>
     where
         Self: Sized,
     {
@@ -118,8 +118,8 @@ impl EncoderApi for HwEncoder {
         }
     }
 
-    fn use_yuv(&self) -> bool {
-        false
+    fn input_pixfmt(&self) -> Pixfmt {
+        Pixfmt::BGRA
     }
 
     fn set_quality(&mut self, quality: crate::codec::Quality) -> ResultType<()> {
@@ -245,7 +245,7 @@ impl HwDecoder {
     pub fn decode(&mut self, data: &[u8]) -> ResultType<Vec<HwDecoderImage>> {
         match self.decoder.decode(data) {
             Ok(v) => Ok(v.iter().map(|f| HwDecoderImage { frame: f }).collect()),
-            Err(_) => Ok(vec![]),
+            Err(e) => Err(anyhow!(e)),
         }
     }
 }
