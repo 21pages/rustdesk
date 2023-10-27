@@ -547,5 +547,20 @@ Future<List<TToggleMenu>> toolbarDisplayToggle(
         child: Text(translate('Use all my displays for the remote session'))));
   }
 
+  // 444
+  if (versionCmp(pi.version, "1.2.4") >= 0) {
+    final option = 'i444';
+    final value =
+        bind.sessionGetToggleOptionSync(sessionId: sessionId, arg: option);
+    v.add(TToggleMenu(
+        value: value,
+        onChanged: (value) async {
+          if (value == null) return;
+          await bind.sessionToggleOption(sessionId: sessionId, value: option);
+          bind.sessionChangePreferCodec(sessionId: sessionId);
+        },
+        child: Text(translate('True color(4:4:4)'))));
+  }
+
   return v;
 }
