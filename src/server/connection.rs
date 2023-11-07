@@ -3,6 +3,8 @@ use super::{input_service::*, *};
 use crate::clipboard_file::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::update_clipboard;
+#[cfg(target_os = "android")]
+use crate::keyboard::client::map_key_to_control_key;
 #[cfg(all(target_os = "linux", feature = "linux_headless"))]
 #[cfg(not(any(feature = "flatpak", feature = "appimage")))]
 use crate::platform::linux_desktop_manager;
@@ -24,6 +26,8 @@ use cidr_utils::cidr::IpCidr;
 #[cfg(all(target_os = "linux", feature = "linux_headless"))]
 #[cfg(not(any(feature = "flatpak", feature = "appimage")))]
 use hbb_common::platform::linux::run_cmds;
+#[cfg(target_os = "android")]
+use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
     config::Config,
     fs,
@@ -38,12 +42,10 @@ use hbb_common::{
         sync::mpsc,
         time::{self, Duration, Instant, Interval},
     },
-    tokio_util::codec::{BytesCodec, Framed}, protobuf::EnumOrUnknown,
+    tokio_util::codec::{BytesCodec, Framed},
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
-use scrap::android::{call_main_service_pointer_input, call_main_service_key_event};
-#[cfg(target_os = "android")]
-use crate::keyboard::client::map_key_to_control_key;
+use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
 use serde_derive::Serialize;
 use serde_json::{json, value::Value};
 use sha2::{Digest, Sha256};
@@ -2777,8 +2779,11 @@ async fn start_ipc(
         #[allow(unused_mut)]
         #[allow(unused_assignments)]
         let mut args = vec!["--cm"];
+        let hide_cm_env = "HIDE_CM";
         if crate::hbbs_http::sync::is_pro() && password::hide_cm() {
-            args.push("--hide");
+            std::env::set_var(hide_cm_env, "true");
+        } else {
+            std::env::remove_var(hide_cm_env);
         }
         #[allow(unused_mut)]
         #[cfg(target_os = "linux")]
@@ -2844,6 +2849,7 @@ async fn start_ipc(
                 .unwrap()
                 .push(crate::run_me(args)?);
         }
+        std::env::remove_var(hide_cm_env);
         for _ in 0..20 {
             sleep(0.3).await;
             if let Ok(s) = crate::ipc::connect(1000, "_cm").await {
