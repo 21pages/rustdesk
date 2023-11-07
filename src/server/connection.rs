@@ -441,6 +441,12 @@ impl Connection {
                             conn.on_close("connection manager", true).await;
                             break;
                         }
+                        ipc::Data::CmErr(e) => {
+                            if !e.contains("expected") {
+                                conn.on_close(&format!("connection manager error: {}", e), false).await;
+                                break;
+                            }
+                        }
                         ipc::Data::ChatMessage{text} => {
                             let mut misc = Misc::new();
                             misc.set_chat_message(ChatMessage {
@@ -818,7 +824,11 @@ impl Connection {
                     Some(data) = rx_from_cm.recv() => {
                         match data {
                             ipc::Data::Close => {
-                                bail!("Close requested from selection manager");
+                                bail!("Close requested from connection manager");
+                            }
+                            ipc::Data::CmErr(e) => {
+                                log::error!("Connection manager error: {e}");
+                                bail!("{e}");
                             }
                             _ => {}
                         }
@@ -1385,15 +1395,15 @@ impl Connection {
     }
 
     fn is_recent_session(&mut self) -> bool {
+        SESSIONS
+            .lock()
+            .unwrap()
+            .retain(|_, s| s.last_recv_time.lock().unwrap().elapsed() < SESSION_TIMEOUT);
         let session = SESSIONS
             .lock()
             .unwrap()
             .get(&self.lr.my_id)
             .map(|s| s.to_owned());
-        SESSIONS
-            .lock()
-            .unwrap()
-            .retain(|_, s| s.last_recv_time.lock().unwrap().elapsed() < SESSION_TIMEOUT);
         // last_recv_time is a mutex variable shared with connection, can be updated lively.
         if let Some(session) = session {
             if session.name == self.lr.my_name
@@ -1463,6 +1473,7 @@ impl Connection {
     fn try_start_cm_ipc(&mut self) {
         if let Some(p) = self.start_cm_ipc_para.take() {
             tokio::spawn(async move {
+                let tx_from_cm_clone = p.tx_from_cm.clone();
                 if let Err(err) = start_ipc(
                     p.rx_to_cm,
                     p.tx_from_cm,
@@ -1472,6 +1483,7 @@ impl Connection {
                 .await
                 {
                     log::error!("ipc to connection manager exit: {}", err);
+                    allow_err!(tx_from_cm_clone.send(Data::CmErr(err.to_string())));
                 }
             });
             #[cfg(all(windows, feature = "flutter"))]
