@@ -2,45 +2,36 @@ import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
 
 customImageQualityWidget(
-    {required double initQuality,
-    required double initFps,
-    required Function(double) setQuality,
-    required Function(double) setFps,
-    required bool showFps,
+    {required int initQuality,
+    required Function(int) setQuality,
     required bool showMoreQuality}) {
-  if (!showMoreQuality && initQuality > 100) {
-    initQuality = 50;
+  final maxVal = showMoreQuality ? kMaxMoreQuality : kMaxQuality;
+  if (initQuality < kMinQuality || initQuality > maxVal) {
+    initQuality = kDefaultQuality;
   }
   final qualityValue = initQuality.obs;
-  final fpsValue = initFps.obs;
 
-  final RxBool moreQualityChecked = RxBool(qualityValue.value > 100);
+  final RxBool moreQualityChecked = RxBool(qualityValue.value > kMaxQuality);
   final debouncerQuality = Debouncer<double>(
     Duration(milliseconds: 1000),
     onChanged: (double v) {
-      setQuality(v);
+      setQuality(v.round());
     },
-    initialValue: qualityValue.value,
-  );
-  final debouncerFps = Debouncer<double>(
-    Duration(milliseconds: 1000),
-    onChanged: (double v) {
-      setFps(v);
-    },
-    initialValue: fpsValue.value,
+    initialValue: qualityValue.value.toDouble(),
   );
 
   onMoreChanged(bool? value) {
     if (value == null) return;
     moreQualityChecked.value = value;
-    if (!value && qualityValue.value > 100) {
-      qualityValue.value = 100;
+    if (!value && qualityValue.value > kMaxQuality) {
+      qualityValue.value = kMaxQuality;
     }
-    debouncerQuality.value = qualityValue.value;
+    debouncerQuality.value = qualityValue.value.toDouble();
   }
 
   return Column(
@@ -50,12 +41,16 @@ customImageQualityWidget(
               Expanded(
                 flex: 3,
                 child: Slider(
-                  value: qualityValue.value,
-                  min: 10.0,
-                  max: moreQualityChecked.value ? 2000 : 100,
-                  divisions: moreQualityChecked.value ? 199 : 18,
+                  value: qualityValue.value.toDouble(),
+                  min: kMinQuality.toDouble(),
+                  max: moreQualityChecked.value
+                      ? kMaxMoreQuality.toDouble()
+                      : kMaxQuality.toDouble(),
+                  divisions: moreQualityChecked.value
+                      ? ((kMaxMoreQuality - kMinQuality) / 5).round()
+                      : ((kMaxQuality - kMinQuality) / 5).round(),
                   onChanged: (double value) async {
-                    qualityValue.value = value;
+                    qualityValue.value = value.round();
                     debouncerQuality.value = value;
                   },
                 ),
@@ -66,16 +61,17 @@ customImageQualityWidget(
                     '${qualityValue.value.round()}%',
                     style: const TextStyle(fontSize: 15),
                   )),
-              Expanded(
-                  flex: isMobile ? 2 : 1,
-                  child: Text(
-                    translate('Bitrate'),
-                    style: const TextStyle(fontSize: 15),
-                  )),
-              // mobile doesn't have enough space
-              if (showMoreQuality && !isMobile)
+              // mobile hide it for space and beauty
+              if (isDesktop)
                 Expanded(
                     flex: 1,
+                    child: Text(
+                      translate('Bitrate'),
+                      style: const TextStyle(fontSize: 15),
+                    )),
+              if (showMoreQuality)
+                Expanded(
+                    flex: isMobile ? 3 : 1,
                     child: Row(
                       children: [
                         Checkbox(
@@ -89,83 +85,74 @@ customImageQualityWidget(
                     ))
             ],
           )),
-      if (showMoreQuality && isMobile)
-        Obx(() => Row(
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Checkbox(
-                      value: moreQualityChecked.value,
-                      onChanged: onMoreChanged,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(translate('More')),
-                )
-              ],
-            )),
-      if (showFps)
-        Obx(() => Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Slider(
-                    value: fpsValue.value,
-                    min: 5.0,
-                    max: 120.0,
-                    divisions: 23,
-                    onChanged: (double value) async {
-                      fpsValue.value = value;
-                      debouncerFps.value = value;
-                    },
-                  ),
-                ),
-                Expanded(
-                    flex: 1,
-                    child: Text(
-                      '${fpsValue.value.round()}',
-                      style: const TextStyle(fontSize: 15),
-                    )),
-                Expanded(
-                    flex: 2,
-                    child: Text(
-                      translate('FPS'),
-                      style: const TextStyle(fontSize: 15),
-                    ))
-              ],
-            )),
     ],
   );
 }
 
 customImageQualitySetting() {
   final qualityKey = 'custom_image_quality';
-  final fpsKey = 'custom-fps';
-
   var initQuality =
-      (double.tryParse(bind.mainGetUserDefaultOption(key: qualityKey)) ?? 50.0);
-  if (initQuality < 10 || initQuality > 2000) {
-    initQuality = 50;
-  }
-  var initFps =
-      (double.tryParse(bind.mainGetUserDefaultOption(key: fpsKey)) ?? 30.0);
-  if (initFps < 5 || initFps > 120) {
-    initFps = 30;
-  }
-
+      (int.tryParse(bind.mainGetUserDefaultOption(key: qualityKey)) ??
+          kDefaultQuality);
   return customImageQualityWidget(
       initQuality: initQuality,
-      initFps: initFps,
       setQuality: (v) {
         bind.mainSetUserDefaultOption(key: qualityKey, value: v.toString());
       },
-      setFps: (v) {
-        bind.mainSetUserDefaultOption(key: fpsKey, value: v.toString());
-      },
-      showFps: true,
       showMoreQuality: true);
+}
+
+customFpsWidget({
+  required RxInt rxFps,
+  required Function(int) setFps,
+}) {
+  return ObxValue((p0) {
+    return Row(
+      children: [
+        Expanded(
+          flex: 4,
+          child: Slider(
+            value: p0.value.toDouble(),
+            min: kMinFps.toDouble(),
+            max: kMaxFps.toDouble(),
+            divisions: ((kMaxFps - kMinFps) / 5).round(),
+            onChanged: (double value) async {
+              p0.value = value.round();
+              await setFps(p0.value);
+            },
+          ),
+        ),
+        Expanded(
+            flex: 1,
+            child: Text(
+              '${p0.value}',
+              style: const TextStyle(fontSize: 15),
+            )),
+      ],
+    );
+  }, rxFps);
+}
+
+RxInt getSettingsInitialFps() {
+  RxInt rxValue = kDefaultFps.obs;
+  final fpsKey = 'custom-fps';
+  int initFps =
+      (int.tryParse(bind.mainGetUserDefaultOption(key: fpsKey)) ?? kDefaultFps);
+  if (initFps < kMinFps || initFps > kMaxFps) {
+    initFps = kDefaultFps;
+  }
+  rxValue.value = initFps;
+  return rxValue;
+}
+
+customFpsSetting(RxInt rxFps) {
+  return customFpsWidget(
+    rxFps: rxFps,
+    setFps: (v) async {
+      final fpsKey = 'custom-fps';
+      await bind.mainSetUserDefaultOption(key: fpsKey, value: v.toString());
+    },
+  );
 }
 
 Future<bool> setServerConfig(

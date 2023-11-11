@@ -317,6 +317,43 @@ Future<List<TRadioMenu<String>>> toolbarImageQuality(
   ];
 }
 
+Future<RxInt> getInitialToolbarRxFps(SessionID sessionId) async {
+  RxInt initValue = kDefaultFps.obs;
+  final strValue =
+      await bind.sessionGetOption(sessionId: sessionId, arg: 'custom-fps');
+  initValue.value =
+      strValue == null ? kDefaultFps : int.tryParse(strValue) ?? kDefaultFps;
+  if (initValue.value < kMinFps || initValue.value > kMaxFps) {
+    initValue.value = kDefaultFps;
+  }
+  return initValue;
+}
+
+Future<TTextMenu?> toolbarFps(BuildContext context, String id, FFI ffi) async {
+  bool? direct;
+  try {
+    direct =
+        ConnectionTypeState.find(id).direct.value == ConnectionType.strDirect;
+  } catch (_) {}
+  bool hideFps = (await bind.mainIsUsingPublicServer() && direct != true) ||
+      versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;
+  if (hideFps) return null;
+  final initValue = await getInitialToolbarRxFps(ffi.sessionId);
+
+  return TTextMenu(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('${translate('Max FPS')}${isDesktop ? ':' : ''} '),
+          Obx(() =>
+              Text('${initValue.value}').marginOnly(right: isMobile ? 12 : 0)),
+        ],
+      ),
+      onPressed: () {
+        customFpsDialog(ffi.sessionId, id, ffi, initValue);
+      });
+}
+
 Future<List<TRadioMenu<String>>> toolbarCodec(
     BuildContext context, String id, FFI ffi) async {
   final sessionId = ffi.sessionId;

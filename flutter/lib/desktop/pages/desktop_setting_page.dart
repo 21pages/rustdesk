@@ -1150,6 +1150,7 @@ class _DisplayState extends State<_Display> {
               viewStyle(context),
               scrollStyle(context),
               imageQuality(context),
+              fps(context),
               codec(context),
               other(context),
             ]).marginOnly(bottom: _kListViewBottomMargin));
@@ -1233,6 +1234,12 @@ class _DisplayState extends State<_Display> {
         child: customImageQualitySetting(),
       )
     ]);
+  }
+
+  Widget fps(BuildContext context) {
+    return _Card(
+        title: 'Default max FPS',
+        children: [customFpsSetting(getSettingsInitialFps())]);
   }
 
   Widget codec(BuildContext context) {

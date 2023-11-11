@@ -570,5 +570,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("True color (4:4:4)", "真彩模式（4:4:4）"),
         ("Enable blocking user input", "允许阻止用户输入"),
         ("id_input_tip", ""),
+        ("Max FPS", "最大帧率"),
+        ("Default max FPS", "默认最大帧率"),
     ].iter().cloned().collect();
 }

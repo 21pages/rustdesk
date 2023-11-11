@@ -1121,23 +1121,43 @@ class _DisplayMenuState extends State<_DisplayMenu> {
   }
 
   imageQuality() {
-    return futureBuilder(
-        future: toolbarImageQuality(context, widget.id, widget.ffi),
-        hasData: (data) {
-          final v = data as List<TRadioMenu<String>>;
-          return _SubmenuButton(
-            ffi: widget.ffi,
-            child: Text(translate('Image Quality')),
-            menuChildren: v
-                .map((e) => RdoMenuButton<String>(
-                    value: e.value,
-                    groupValue: e.groupValue,
-                    onChanged: e.onChanged,
-                    child: e.child,
-                    ffi: ffi))
-                .toList(),
-          );
-        });
+    return futureBuilder(future: () async {
+      final imageQuality =
+          await toolbarImageQuality(context, widget.id, widget.ffi);
+      final fps = await toolbarFps(context, id, ffi);
+      return {
+        'imageQuality': imageQuality,
+        'fps': fps,
+      };
+    }(), hasData: (data) {
+      final imageQuality = data['imageQuality'] as List<TRadioMenu<String>>;
+      final fps = data['fps'] as TTextMenu?;
+      final imageQualityRadios = imageQuality
+          .map((e) => RdoMenuButton<String>(
+              value: e.value,
+              groupValue: e.groupValue,
+              onChanged: e.onChanged,
+              child: e.child,
+              ffi: ffi))
+          .toList();
+      MenuButton? fpsButton;
+      if (fps != null) {
+        fpsButton = MenuButton(
+          ffi: ffi,
+          child: fps.child,
+          onPressed: fps.onPressed,
+        );
+      }
+      return _SubmenuButton(
+        ffi: widget.ffi,
+        child: Text(translate('Image Quality')),
+        menuChildren: [
+          ...imageQualityRadios,
+          if (fpsButton != null) Divider(),
+          if (fpsButton != null) fpsButton
+        ],
+      );
+    });
   }
 
   codec() {

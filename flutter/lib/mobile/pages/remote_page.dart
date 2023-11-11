@@ -803,6 +803,14 @@ void showOptions(
       await toolbarViewStyle(context, id, gFFI);
   List<TRadioMenu<String>> imageQualityRadios =
       await toolbarImageQuality(context, id, gFFI);
+  TTextMenu? fps = await toolbarFps(context, id, gFFI);
+  final fpsWidget = fps == null
+      ? Offstage()
+      : ListTile(
+          title: fps.child,
+          onTap: fps.onPressed,
+          contentPadding: EdgeInsets.zero,
+        );
   List<TRadioMenu<String>> codecRadios = await toolbarCodec(context, id, gFFI);
   List<TToggleMenu> displayToggles =
       await toolbarDisplayToggle(context, id, gFFI);
@@ -826,6 +834,7 @@ void showOptions(
               e.onChanged?.call(v);
               if (v != null) imageQuality.value = v;
             })),
+      fpsWidget,
       const Divider(color: MyTheme.border),
       for (var e in codecRadios)
         Obx(() => getRadio<String>(e.child, e.value, codec.value, (v) {

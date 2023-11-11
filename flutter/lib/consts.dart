@@ -102,6 +102,15 @@ const int kDesktopMaxDisplaySize = 3840;
 const double kDesktopFileTransferRowHeight = 30.0;
 const double kDesktopFileTransferHeaderHeight = 25.0;
 
+const int kMinFps = 5;
+const int kDefaultFps = 30;
+const int kMaxFps = 120;
+
+const int kMinQuality = 10;
+const int kDefaultQuality = 50;
+const int kMaxQuality = 100;
+const int kMaxMoreQuality = 2000;
+
 double kNewWindowOffset = Platform.isWindows
     ? 56.0
     : Platform.isLinux

@@ -775,6 +775,7 @@ class __DisplayPageState extends State<_DisplayPage> {
               showTail: showCustomImageQuality,
               notCloseValue: kRemoteImageQualityCustom,
             ),
+            fps(),
             _getPopupDialogRadioEntry(
               title: 'Default Codec',
               list: codecList,
@@ -813,6 +814,26 @@ class __DisplayPageState extends State<_DisplayPage> {
         await bind.mainSetUserDefaultOption(key: key, value: b ? 'Y' : '');
         setState(() {});
       },
+    );
+  }
+
+  fps() {
+    RxInt rxValue = getSettingsInitialFps();
+    Future<void> showDialog() async {
+      gFFI.dialogManager.show((setState, close, context) {
+        return CustomAlertDialog(content: customFpsSetting(rxValue));
+      }, backDismiss: true, clickMaskDismiss: true);
+    }
+
+    return SettingsTile(
+      title: Text(translate('Default max FPS')),
+      onPressed: (context) async {
+        showDialog();
+      },
+      value: Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Obx(() => Text('${rxValue.value.round()}')),
+      ),
     );
   }
 }

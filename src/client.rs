@@ -1113,6 +1113,7 @@ pub struct LoginConfigHandler {
     switch_uuid: Option<String>,
     pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub other_server: Option<(String, String, String)>,
+    pub custom_fps: Arc<Mutex<Option<usize>>>,
 }
 
 impl Deref for LoginConfigHandler {
@@ -1486,13 +1487,30 @@ impl LoginConfigHandler {
             let quality = if config.custom_image_quality.is_empty() {
                 50
             } else {
-                config.custom_image_quality[0]
+                let mut tmp = config.custom_image_quality[0];
+                // doesn't know version here
+                if crate::ui_interface::using_public_server()
+                    && self.direct != Some(true)
+                    && tmp > 100
+                {
+                    tmp = 50;
+                }
+                tmp
             };
             msg.custom_image_quality = quality << 8;
-            #[cfg(feature = "flutter")]
-            if let Some(custom_fps) = self.options.get("custom-fps") {
-                msg.custom_fps = custom_fps.parse().unwrap_or(30);
+            n += 1;
+        }
+        #[cfg(feature = "flutter")]
+        if let Some(custom_fps) = self.options.get("custom-fps") {
+            let mut custom_fps = custom_fps.parse().unwrap_or(30);
+            if crate::ui_interface::using_public_server()
+                && self.direct != Some(true)
+                && custom_fps > 30
+            {
+                custom_fps = 30;
             }
+            msg.custom_fps = custom_fps;
+            *self.custom_fps.lock().unwrap() = Some(msg.custom_fps as _);
             n += 1;
         }
         let view_only = self.get_toggle_option("view-only");
