@@ -677,6 +677,7 @@ impl<T: InvokeUiSession> Session<T> {
         let mut msg = evt.clone();
         self.swab_modifier_key(&mut msg);
         let mut msg_out = Message::new();
+        log::info!("send key event:{msg:?}");
         msg_out.set_key_event(msg);
         self.send(Data::Message(msg_out));
     }

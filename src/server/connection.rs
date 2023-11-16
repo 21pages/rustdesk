@@ -1743,6 +1743,7 @@ impl Connection {
         } else if self.authorized {
             match msg.union {
                 Some(message::Union::MouseEvent(me)) => {
+                    log::info!("recv mouse event:{me:?}");
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
                         log::debug!("call_main_service_pointer_input fail:{}", e);
@@ -1849,6 +1850,7 @@ impl Connection {
                 }
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 Some(message::Union::KeyEvent(me)) => {
+                    log::info!("recv key event:{me:?}");
                     if self.peer_keyboard_enabled() {
                         if is_enter(&me) {
                             CLICK_TIME.store(get_time(), Ordering::SeqCst);

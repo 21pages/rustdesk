@@ -2269,6 +2269,7 @@ pub fn send_mouse(
         mouse_event.y *= factor;
     }
     interface.swap_modifier_mouse(&mut mouse_event);
+    log::info!("final mouse event: {mouse_event:?}");
     msg_out.set_mouse_event(mouse_event);
     interface.send(Data::Message(msg_out));
 }
