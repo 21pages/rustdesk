@@ -277,15 +277,18 @@ class InputModel {
 
   /// Send a mouse tap event(down and up).
   void tap(MouseButtons button) {
+    print("tap sendMouse button:$button");
     sendMouse('down', button);
     sendMouse('up', button);
   }
 
   void tapDown(MouseButtons button) {
+    print("tapDown sendMouse");
     sendMouse('down', button);
   }
 
   void tapUp(MouseButtons button) {
+    print("tapUp sendMouse");
     sendMouse('up', button);
   }
 
@@ -313,6 +316,7 @@ class InputModel {
 
   /// Send mouse press event.
   void sendMouse(String type, MouseButtons button) {
+    print("sendMouse type:$type, button:button");
     if (!keyboardPerm) return;
     bind.sessionSendMouse(
         sessionId: sessionId,
@@ -331,6 +335,7 @@ class InputModel {
   /// Send mouse movement event with distance in [x] and [y].
   void moveMouse(double x, double y) {
     if (!keyboardPerm) return;
+    print("moveMouse x:$x, y:$y");
     var x2 = x.toInt();
     var y2 = y.toInt();
     bind.sessionSendMouse(
@@ -396,7 +401,8 @@ class InputModel {
     }
     if (x != 0 || y != 0) {
       if (peerPlatform == kPeerPlatformAndroid) {
-        handlePointerEvent('touch', 'pan_update', Offset(x.toDouble(), y.toDouble()));
+        handlePointerEvent(
+            'touch', 'pan_update', Offset(x.toDouble(), y.toDouble()));
       } else {
         bind.sessionSendMouse(
             sessionId: sessionId,
@@ -495,6 +501,7 @@ class InputModel {
   }
 
   void onPointUpImage(PointerUpEvent e) {
+    debugPrint("PointerUpEvent ${e.kind}");
     if (e.kind != ui.PointerDeviceKind.mouse) return;
     if (isPhysicalMouse.value) {
       handleMouse(_getMouseEvent(e, _kMouseEventUp), e.position);
@@ -637,9 +644,11 @@ class InputModel {
     Offset offset, {
     bool onExit = false,
   }) {
+    print("handleMouse");
     double x = offset.dx;
     double y = max(0.0, offset.dy);
     if (_checkPeerControlProtected(x, y)) {
+      print("handleMouse return");
       return;
     }
 

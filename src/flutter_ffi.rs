@@ -41,14 +41,14 @@ fn initialize(app_dir: &str) {
     #[cfg(target_os = "android")]
     {
         // flexi_logger can't work when android_logger initialized.
-        #[cfg(debug_assertions)]
+        // #[cfg(debug_assertions)]
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug) // limit log level
                 .with_tag("ffi"), // logs will show under mytag tag
         );
-        #[cfg(not(debug_assertions))]
-        hbb_common::init_log(false, "");
+        // #[cfg(not(debug_assertions))]
+        // hbb_common::init_log(false, "");
         #[cfg(feature = "mediacodec")]
         scrap::mediacodec::check_mediacodec();
         crate::common::test_rendezvous_server();
@@ -1323,6 +1323,7 @@ pub fn session_send_pointer(session_id: SessionID, msg: String) {
 }
 
 pub fn session_send_mouse(session_id: SessionID, msg: String) {
+    log::info!("session_send_mouse, msg: {msg}");
     if let Ok(m) = serde_json::from_str::<HashMap<String, String>>(&msg) {
         let alt = m.get("alt").is_some();
         let ctrl = m.get("ctrl").is_some();

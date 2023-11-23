@@ -88,6 +88,7 @@ class _RawTouchGestureDetectorRegionState
   }
 
   onTapDown(TapDownDetails d) {
+    print("onTapDown, kind:${d.kind}, handleTouch:$handleTouch");
     lastDeviceKind = d.kind;
     if (lastDeviceKind != PointerDeviceKind.touch) {
       return;
@@ -100,6 +101,7 @@ class _RawTouchGestureDetectorRegionState
   }
 
   onTapUp(TapUpDetails d) {
+    print("onTapDown, last_kind:$lastDeviceKind, handleTouch:$handleTouch");
     if (lastDeviceKind != PointerDeviceKind.touch) {
       return;
     }
@@ -120,6 +122,7 @@ class _RawTouchGestureDetectorRegionState
   }
 
   onDoubleTapDown(TapDownDetails d) {
+    print("onDoubleTapDown");
     lastDeviceKind = d.kind;
     if (lastDeviceKind != PointerDeviceKind.touch) {
       return;
@@ -138,6 +141,7 @@ class _RawTouchGestureDetectorRegionState
   }
 
   onLongPressDown(LongPressDownDetails d) {
+    print("onLongPressDown");
     lastDeviceKind = d.kind;
     if (lastDeviceKind != PointerDeviceKind.touch) {
       return;
@@ -159,6 +163,7 @@ class _RawTouchGestureDetectorRegionState
 
   // for mobiles
   onLongPress() {
+    print("onLongPress");
     if (lastDeviceKind != PointerDeviceKind.touch) {
       return;
     }
@@ -193,6 +198,7 @@ class _RawTouchGestureDetectorRegionState
       return;
     }
     if (!handleTouch) {
+      print("onHoldDragStart sendMouse");
       inputModel.sendMouse('down', MouseButtons.left);
     }
   }
@@ -211,6 +217,7 @@ class _RawTouchGestureDetectorRegionState
       return;
     }
     if (!handleTouch) {
+      print("onHoldDragEnd sendMouse");
       inputModel.sendMouse('up', MouseButtons.left);
     }
   }
@@ -221,6 +228,7 @@ class _RawTouchGestureDetectorRegionState
       return;
     }
     if (handleTouch) {
+      print("onOneFingerPanStart sendMouse");
       inputModel.sendMouse('down', MouseButtons.left);
       ffi.cursorModel.move(d.localPosition.dx, d.localPosition.dy);
     } else {
@@ -247,6 +255,7 @@ class _RawTouchGestureDetectorRegionState
     if (lastDeviceKind != PointerDeviceKind.touch) {
       return;
     }
+    print("onTwoFingerScaleEnd sendMouse");
     inputModel.sendMouse('up', MouseButtons.left);
   }
 
@@ -295,6 +304,7 @@ class _RawTouchGestureDetectorRegionState
       _scale = 1;
       bind.sessionSetViewStyle(sessionId: sessionId, value: "");
     }
+    print("onOneFingerPanEnd sendMouse");
     inputModel.sendMouse('up', MouseButtons.left);
   }
 

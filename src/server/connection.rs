@@ -1741,6 +1741,7 @@ impl Connection {
         } else if self.authorized {
             match msg.union {
                 Some(message::Union::MouseEvent(me)) => {
+                    log::info!("MouseEvent: mask={:?}, x={:?}, y={:?}", me.mask, me.x, me.y);
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
                         log::debug!("call_main_service_pointer_input fail:{}", e);
@@ -1796,6 +1797,7 @@ impl Connection {
                 Some(message::Union::KeyEvent(..)) => {}
                 #[cfg(any(target_os = "android"))]
                 Some(message::Union::KeyEvent(mut me)) => {
+                    log::info!("KeyEvent: {me:?}");
                     let is_press = (me.press || me.down) && !crate::is_modifier(&me);
 
                     let key = match me.mode.enum_value() {
@@ -2372,7 +2374,8 @@ impl Connection {
 
         if t.on {
             if !virtual_display_manager::is_virtual_display_supported() {
-                self.send(make_msg("idd_not_support_under_win10_2004_tip".to_string())).await;
+                self.send(make_msg("idd_not_support_under_win10_2004_tip".to_string()))
+                    .await;
             } else {
                 if let Err(e) =
                     virtual_display_manager::plug_in_index_modes(t.display as _, Vec::new())

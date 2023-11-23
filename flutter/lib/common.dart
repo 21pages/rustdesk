@@ -814,6 +814,7 @@ class OverlayDialogManager {
         onBackPressed: () => session.inputModel.tap(MouseButtons.right),
         onHomePressed: () => session.inputModel.tap(MouseButtons.wheel),
         onRecentPressed: () async {
+          print("onRecentPressed");
           session.inputModel.sendMouse('down', MouseButtons.wheel);
           await Future.delayed(const Duration(milliseconds: 500));
           session.inputModel.sendMouse('up', MouseButtons.wheel);
@@ -959,7 +960,6 @@ class CustomAlertDialog extends StatelessWidget {
 void msgBox(SessionID sessionId, String type, String title, String text,
     String link, OverlayDialogManager dialogManager,
     {bool? hasCancel, ReconnectHandle? reconnect, int? reconnectTimeout}) {
-
   dialogManager.dismissAll();
   List<Widget> buttons = [];
   bool hasOk = false;
