@@ -330,13 +330,13 @@ pub fn is_domain_port_str(id: &str) -> bool {
 }
 
 pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHandle> {
-    #[cfg(debug_assertions)]
+    #[cfg(not(debug_assertions))]
     {
         use env_logger::*;
         init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
         None
     }
-    #[cfg(not(debug_assertions))]
+    #[cfg(debug_assertions)]
     {
         // https://docs.rs/flexi_logger/latest/flexi_logger/error_info/index.html#write
         // though async logger more efficient, but it also causes more problems, disable it for now
