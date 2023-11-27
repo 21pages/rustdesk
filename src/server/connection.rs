@@ -70,7 +70,7 @@ lazy_static::lazy_static! {
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     static ref AUTHED_CONNS: Arc::<Mutex<Vec<(i32, AuthConnType)>>> = Default::default();
     static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
-    static ref WAKE_LOCK: Arc::<Mutex<Option<(crate::platform::WakeLock, bool)>>> = Default::default();
+    static ref WAKELOCK: Arc::<Mutex<Option<(crate::platform::WakeLock, bool)>>> = Default::default();
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -3230,7 +3230,7 @@ impl LinuxHeadlessHandle {
 extern "C" fn connection_shutdown_hook() {
     // https://stackoverflow.com/questions/35980148/why-does-an-atexit-handler-panic-when-it-accesses-stdout
     // Please make sure there is no print in the call stack
-    *WAKE_LOCK.lock().unwrap() = None;
+    *WAKELOCK.lock().unwrap() = None;
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         *WALLPAPER_REMOVER.lock().unwrap() = None;
@@ -3264,7 +3264,7 @@ mod raii {
     impl AuthedConnID {
         pub fn new(id: i32, conn_type: AuthConnType) -> Self {
             AUTHED_CONNS.lock().unwrap().push((id, conn_type));
-            Self::check_wake_lock();
+            Self::check_wakelock();
             use std::sync::Once;
             static _ONCE: Once = Once::new();
             _ONCE.call_once(|| {
@@ -3273,26 +3273,33 @@ mod raii {
             Self(id, conn_type)
         }
 
-        fn check_wake_lock() {
-            let mut wake_lock = WAKE_LOCK.lock().unwrap();
-            let remote_count = AUTHED_CONNS
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|c| c.1 == AuthConnType::Remote)
-                .count();
-            let display = remote_count > 0;
-            if let Some((_, last_display)) = *wake_lock {
+        fn check_wakelock() {
+            let mut wakelock = WAKELOCK.lock().unwrap();
+            let display = if cfg!(windows) || cfg!(target_os = "macos") {
+                AUTHED_CONNS
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|c| c.1 == AuthConnType::Remote)
+                    .count()
+                    > 0
+            } else {
+                true
+            };
+            #[cfg(windows)]
+            if let Some((_, last_display)) = *wakelock {
                 if last_display != display {
-                    *wake_lock = None;
+                    if let Some(wakelock) = wakelock.as_mut() {
+                        wakelock.0.set_display(display);
+                    }
                 }
             }
-            let empty = AUTHED_CONNS.lock().unwrap().is_empty();
-            if empty {
-                *wake_lock = None;
+            let conn_count = AUTHED_CONNS.lock().unwrap().len();
+            if conn_count == 0 {
+                *wakelock = None;
             } else {
-                if wake_lock.is_none() {
-                    *wake_lock = Some((crate::platform::get_wake_lock(display), display));
+                if wakelock.is_none() {
+                    *wakelock = Some((crate::platform::get_wakelock("server", display), display));
                 }
             }
         }
@@ -3320,7 +3327,7 @@ mod raii {
                 #[cfg(all(windows, feature = "virtual_display_driver"))]
                 let _ = virtual_display_manager::reset_all();
             }
-            Self::check_wake_lock();
+            Self::check_wakelock();
         }
     }
 }

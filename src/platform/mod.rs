@@ -98,10 +98,10 @@ impl WakeLock {
     }
 }
 
-pub fn get_wake_lock(_display: bool) -> WakeLock {
+pub fn get_wakelock(_tag: &str, _display: bool) -> WakeLock {
     hbb_common::log::info!("new wakelock, require display on: {_display}");
     #[cfg(target_os = "android")]
-    return crate::platform::WakeLock::new("server");
+    return crate::platform::WakeLock::new(_tag);
     #[cfg(not(target_os = "android"))]
     return crate::platform::WakeLock::new(_display, true, true);
 }
