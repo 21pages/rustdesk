@@ -46,6 +46,7 @@ fn map_err<E: ToString>(err: E) -> io::Error {
 
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
+        hbb_common::log::info!("new wayland capture");
         let r = display.0.recorder(false).map_err(map_err)?;
         Ok(Capturer(display, r, Default::default()))
     }
@@ -63,7 +64,7 @@ impl TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, timeout: Duration) -> io::Result<Frame<'a>> {
         match self.1.capture(timeout.as_millis() as _).map_err(map_err)? {
             PixelProvider::BGR0(w, h, x) => Ok(Frame::new(x, crate::Pixfmt::BGRA, w, h)),
-            PixelProvider::RGB0(w, h, x) => Ok(Frame::new(x, crate::Pixfmt::RGBA, w,h)),
+            PixelProvider::RGB0(w, h, x) => Ok(Frame::new(x, crate::Pixfmt::RGBA, w, h)),
             PixelProvider::NONE => Err(std::io::ErrorKind::WouldBlock.into()),
             _ => Err(map_err("Invalid data")),
         }

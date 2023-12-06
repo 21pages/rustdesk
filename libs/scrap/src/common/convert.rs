@@ -222,10 +222,13 @@ pub fn convert_to_yuv(
             );
         }
     }
-    let align = |x:usize| {
-        (x + 63) / 64 * 64
-    };
+    let align = |x: usize| (x + 63) / 64 * 64;
 
+    use std::sync::Once;
+    static once: Once = Once::new();
+    once.call_once(|| {
+        log::info!("convert_to_yuv src_pixfmt:{src_pixfmt:?}, src_stride:{src_stride:?}, src_width:{src_width:?}, src_height:{src_height:?}, dst_fmt:{dst_fmt:?}");
+    });
     match (src_pixfmt, dst_fmt.pixfmt) {
         (crate::Pixfmt::BGRA, crate::Pixfmt::I420) | (crate::Pixfmt::RGBA, crate::Pixfmt::I420) => {
             let dst_stride_y = dst_fmt.stride[0];
@@ -282,7 +285,8 @@ pub fn convert_to_yuv(
             let dst_stride_u = dst_fmt.stride[1];
             let dst_stride_v = dst_fmt.stride[2];
             dst.resize(
-                align(dst_fmt.h) * (align(dst_stride_y) + align(dst_stride_u) + align(dst_stride_v)),
+                align(dst_fmt.h)
+                    * (align(dst_stride_y) + align(dst_stride_u) + align(dst_stride_v)),
                 0,
             );
             let dst_y = dst.as_mut_ptr();

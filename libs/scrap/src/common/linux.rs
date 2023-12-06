@@ -12,6 +12,7 @@ pub enum Capturer {
 
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
+        hbb_common::log::info!("is_x11: {}", super::is_x11());
         Ok(match display {
             Display::X11(d) => Capturer::X11(x11::Capturer::new(d)?),
             Display::WAYLAND(d) => Capturer::WAYLAND(wayland::Capturer::new(d)?),

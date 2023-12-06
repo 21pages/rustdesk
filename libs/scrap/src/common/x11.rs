@@ -7,6 +7,7 @@ pub const IS_CURSOR_EMBEDDED: bool = false;
 
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
+        hbb_common::log::info!("new X11 capture");
         x11::Capturer::new(display.0).map(Capturer)
     }
 

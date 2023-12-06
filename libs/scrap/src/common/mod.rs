@@ -50,7 +50,7 @@ pub mod record;
 mod vpx;
 
 #[repr(usize)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum ImageFormat {
     Raw,
     ABGR,
@@ -309,6 +309,18 @@ pub trait GoogleImage {
         rgb.raw.resize(rgb.h * bytes_per_row, 0);
         let stride = self.stride();
         let planes = self.planes();
+
+        use std::sync::Once;
+        static once: Once = Once::new();
+        once.call_once(|| {
+            log::info!(
+                "yuv to rgb: chroma:{:?}, w:{:?}, h:{:?}, stride:{stride:?}, fmt:{:?}",
+                self.chroma(),
+                rgb.w,
+                rgb.h,
+                rgb.fmt()
+            );
+        });
         unsafe {
             match (self.chroma(), rgb.fmt()) {
                 (Chroma::I420, ImageFormat::Raw) => {
