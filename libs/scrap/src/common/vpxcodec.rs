@@ -4,10 +4,12 @@
 
 use hbb_common::anyhow::{anyhow, Context};
 use hbb_common::log;
-use hbb_common::message_proto::{Chroma, EncodedVideoFrame, EncodedVideoFrames, VideoFrame};
+use hbb_common::message_proto::{
+    Chroma, ColorRange, EncodedVideoFrame, EncodedVideoFrames, VideoFrame,
+};
 use hbb_common::ResultType;
 
-use crate::codec::{base_bitrate, codec_thread_num, EncoderApi, Quality};
+use crate::codec::{base_bitrate, codec_thread_num, EncoderApi, ExtraEncoderCfg, Quality};
 use crate::{EncodeYuvFormat, GoogleImage, Pixfmt, STRIDE_ALIGN};
 
 use super::vpx::{vp8e_enc_control_id::*, vpx_codec_err_t::*, *};
@@ -39,7 +41,8 @@ pub struct VpxEncoder {
     width: usize,
     height: usize,
     id: VpxVideoCodecId,
-    i444: bool,
+    chroma: Chroma,
+    range: ColorRange,
     yuvfmt: EncodeYuvFormat,
 }
 
@@ -48,7 +51,7 @@ pub struct VpxDecoder {
 }
 
 impl EncoderApi for VpxEncoder {
-    fn new(cfg: crate::codec::EncoderCfg, i444: bool) -> ResultType<Self>
+    fn new(cfg: crate::codec::EncoderCfg, extra: ExtraEncoderCfg) -> ResultType<Self>
     where
         Self: Sized,
     {
@@ -102,11 +105,12 @@ impl EncoderApi for VpxEncoder {
                 }
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
-                c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
-                    1
-                } else {
-                    0
-                };
+                c.g_profile =
+                    if extra.chroma == Chroma::I444 && config.codec == VpxVideoCodecId::VP9 {
+                        1
+                    } else {
+                        0
+                    };
 
                 /*
                 The VPX encoder supports two-pass encoding for rate control purposes.
@@ -164,6 +168,22 @@ impl EncoderApi for VpxEncoder {
                         VP9E_SET_TILE_COLUMNS as _,
                         4 as c_int
                     ));
+
+                    call_vpx!(vpx_codec_control_(
+                        &mut ctx,
+                        VP9E_SET_COLOR_RANGE as _,
+                        if extra.range == ColorRange::Full {
+                            vpx_color_range::VPX_CR_FULL_RANGE
+                        } else {
+                            vpx_color_range::VPX_CR_STUDIO_RANGE
+                        }
+                    ));
+
+                    call_vpx!(vpx_codec_control_(
+                        &mut ctx,
+                        VP9E_SET_COLOR_SPACE as _,
+                        vpx_color_space::VPX_CS_BT_601
+                    ));
                 } else if config.codec == VpxVideoCodecId::VP8 {
                     // https://github.com/webmproject/libvpx/blob/972149cafeb71d6f08df89e91a0130d6a38c4b15/vpx/vp8cx.h#L172
                     // https://groups.google.com/a/webmproject.org/g/webm-discuss/c/DJhSrmfQ61M
@@ -175,8 +195,14 @@ impl EncoderApi for VpxEncoder {
                     width: config.width as _,
                     height: config.height as _,
                     id: config.codec,
-                    i444,
-                    yuvfmt: Self::get_yuvfmt(config.width, config.height, i444),
+                    chroma: extra.chroma,
+                    range: extra.range,
+                    yuvfmt: Self::get_yuvfmt(
+                        config.width,
+                        config.height,
+                        extra.chroma,
+                        extra.range,
+                    ),
                 })
             }
             _ => Err(anyhow!("encoder type mismatch")),
@@ -230,16 +256,13 @@ impl EncoderApi for VpxEncoder {
 
 impl VpxEncoder {
     pub fn encode(&mut self, pts: i64, data: &[u8], stride_align: usize) -> Result<EncodeFrames> {
-        let bpp = if self.i444 { 24 } else { 12 };
+        let (fmt, bpp) = match self.chroma {
+            Chroma::I420 => (vpx_img_fmt::VPX_IMG_FMT_I420, 12),
+            Chroma::I444 => (vpx_img_fmt::VPX_IMG_FMT_I444, 24),
+        };
         if data.len() < self.width * self.height * bpp / 8 {
             return Err(Error::FailedCall("len not enough".to_string()));
         }
-        let fmt = if self.i444 {
-            vpx_img_fmt::VPX_IMG_FMT_I444
-        } else {
-            vpx_img_fmt::VPX_IMG_FMT_I420
-        };
-
         let mut image = Default::default();
         call_vpx_ptr!(vpx_img_wrap(
             &mut image,
@@ -337,12 +360,11 @@ impl VpxEncoder {
         (q_min, q_max)
     }
 
-    fn get_yuvfmt(width: u32, height: u32, i444: bool) -> EncodeYuvFormat {
+    fn get_yuvfmt(width: u32, height: u32, chroma: Chroma, range: ColorRange) -> EncodeYuvFormat {
         let mut img = Default::default();
-        let fmt = if i444 {
-            vpx_img_fmt::VPX_IMG_FMT_I444
-        } else {
-            vpx_img_fmt::VPX_IMG_FMT_I420
+        let (fmt, pixfmt) = match chroma {
+            Chroma::I420 => (vpx_img_fmt::VPX_IMG_FMT_I420, Pixfmt::I420),
+            Chroma::I444 => (vpx_img_fmt::VPX_IMG_FMT_I444, Pixfmt::I444),
         };
         unsafe {
             vpx_img_wrap(
@@ -354,9 +376,9 @@ impl VpxEncoder {
                 0x1 as _,
             );
         }
-        let pixfmt = if i444 { Pixfmt::I444 } else { Pixfmt::I420 };
         EncodeYuvFormat {
             pixfmt,
+            range,
             w: img.w as _,
             h: img.h as _,
             stride: img.stride.map(|s| s as usize).to_vec(),
@@ -528,6 +550,10 @@ impl<'a> Iterator for DecodeFrames<'a> {
         if img.is_null() {
             return None;
         } else {
+            unsafe {
+                log::info!("range: {:?}, cs: {:?}", (*img).range, (*img).cs);
+            }
+
             return Some(Image(img));
         }
     }
@@ -583,6 +609,13 @@ impl GoogleImage for Image {
         match self.inner().fmt {
             vpx_img_fmt::VPX_IMG_FMT_I444 => Chroma::I444,
             _ => Chroma::I420,
+        }
+    }
+
+    fn range(&self) -> ColorRange {
+        match self.inner().range {
+            vpx_color_range::VPX_CR_STUDIO_RANGE => ColorRange::Studio,
+            vpx_color_range::VPX_CR_FULL_RANGE => ColorRange::Full,
         }
     }
 }

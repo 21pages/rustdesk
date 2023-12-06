@@ -1,5 +1,5 @@
 use crate::{
-    codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg},
+    codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg, ExtraEncoderCfg},
     hw, ImageFormat, ImageRgb, Pixfmt, HW_STRIDE_ALIGN,
 };
 use hbb_common::{
@@ -8,7 +8,7 @@ use hbb_common::{
     bytes::Bytes,
     config::HwCodecConfig,
     log,
-    message_proto::{EncodedVideoFrame, EncodedVideoFrames, VideoFrame},
+    message_proto::{Chroma, ColorRange, EncodedVideoFrame, EncodedVideoFrames, VideoFrame},
     ResultType,
 };
 use hwcodec::{
@@ -36,10 +36,12 @@ pub struct HwEncoder {
     width: u32,
     height: u32,
     bitrate: u32, //kbs
+    chroma: Chroma,
+    range: ColorRange,
 }
 
 impl EncoderApi for HwEncoder {
-    fn new(cfg: EncoderCfg, _i444: bool) -> ResultType<Self>
+    fn new(cfg: EncoderCfg, extra: ExtraEncoderCfg) -> ResultType<Self>
     where
         Self: Sized,
     {
@@ -82,6 +84,8 @@ impl EncoderApi for HwEncoder {
                         width: ctx.width as _,
                         height: ctx.height as _,
                         bitrate,
+                        chroma: extra.chroma,
+                        range: extra.range,
                     }),
                     Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
                 }
@@ -131,6 +135,7 @@ impl EncoderApi for HwEncoder {
             .collect();
         crate::EncodeYuvFormat {
             pixfmt,
+            range: self.range,
             w: self.encoder.ctx.width as _,
             h: self.encoder.ctx.height as _,
             stride,

@@ -22,6 +22,16 @@ enum Chroma {
   I444 = 1;
 }
 
+enum ColorRange {
+  Studio = 0;
+  Full = 1;
+}
+
+enum ColorSpace {
+  BT601 = 0;
+  BT709 = 1;
+}
+
 message VideoFrame {
   oneof union {
     EncodedVideoFrames vp9s = 6;
@@ -96,12 +106,28 @@ message CodecAbility {
   bool h265 = 5;
 }
 
+message ColorAbility {
+  bool i420_bt601_studio = 1;
+  bool i420_bt601_full = 2;
+  bool i444_bt601_studio = 3;
+  bool i444_bt601_full = 4;
+}
+
+message CodecColorAbility {
+  ColorAbility vp8 = 1;
+  ColorAbility vp9 = 2;
+  ColorAbility av1 = 3;
+  ColorAbility h264 = 4;
+  ColorAbility h265 = 5;
+}
+
 message SupportedEncoding {
   bool h264 = 1;
   bool h265 = 2;
   bool vp8 = 3;
   bool av1 = 4;
   CodecAbility i444 = 5;
+  CodecColorAbility codec_color_ability = 6;
 }
 
 message PeerInfo {
@@ -563,6 +589,7 @@ message SupportedDecoding {
   int32 ability_av1 = 6;
   CodecAbility i444 = 7;
   Chroma prefer_chroma = 8;
+  CodecColorAbility codec_color_ability = 9;
 }
 
 message OptionMessage {

@@ -200,6 +200,8 @@ pub fn convert_to_yuv(
     dst: &mut Vec<u8>,
     mid_data: &mut Vec<u8>,
 ) -> ResultType<()> {
+    use hbb_common::message_proto::ColorRange;
+
     let src = captured.data();
     let src_stride = captured.stride();
     let src_pixfmt = captured.pixfmt();
@@ -222,22 +224,36 @@ pub fn convert_to_yuv(
             );
         }
     }
-    let align = |x:usize| {
-        (x + 63) / 64 * 64
-    };
+    let align = |x: usize| (x + 63) / 64 * 64;
 
-    match (src_pixfmt, dst_fmt.pixfmt) {
-        (crate::Pixfmt::BGRA, crate::Pixfmt::I420) | (crate::Pixfmt::RGBA, crate::Pixfmt::I420) => {
+    match (src_pixfmt, dst_fmt.pixfmt, dst_fmt.range) {
+        (crate::Pixfmt::BGRA, crate::Pixfmt::I420, _)
+        | (crate::Pixfmt::RGBA, crate::Pixfmt::I420, _) => {
             let dst_stride_y = dst_fmt.stride[0];
             let dst_stride_uv = dst_fmt.stride[1];
             dst.resize(dst_fmt.h * dst_stride_y * 2, 0); // waste some memory to ensure memory safety
             let dst_y = dst.as_mut_ptr();
             let dst_u = dst[dst_fmt.u..].as_mut_ptr();
             let dst_v = dst[dst_fmt.v..].as_mut_ptr();
-            let f = if src_pixfmt == crate::Pixfmt::BGRA {
-                ARGBToI420
-            } else {
-                ABGRToI420
+            let mut src = src;
+            let f = match (src_pixfmt, dst_fmt.pixfmt, dst_fmt.range) {
+                (crate::Pixfmt::BGRA, crate::Pixfmt::I420, ColorRange::Studio) => ARGBToI420,
+                (crate::Pixfmt::RGBA, crate::Pixfmt::I420, ColorRange::Studio) => ABGRToI420,
+                (crate::Pixfmt::BGRA, crate::Pixfmt::I420, ColorRange::Full) => ARGBToJ420,
+                (crate::Pixfmt::RGBA, crate::Pixfmt::I420, ColorRange::Full) => {
+                    mid_data.resize(src.len(), 0);
+                    call_yuv!(ABGRToARGB(
+                        src.as_ptr(),
+                        src_stride[0] as _,
+                        mid_data.as_mut_ptr(),
+                        src_stride[0] as _,
+                        src_width as _,
+                        src_height as _,
+                    ));
+                    src = mid_data;
+                    ARGBToJ420
+                }
+                _ => bail!("unreachable"),
             };
             call_yuv!(f(
                 src.as_ptr(),
@@ -252,7 +268,8 @@ pub fn convert_to_yuv(
                 src_height as _,
             ));
         }
-        (crate::Pixfmt::BGRA, crate::Pixfmt::NV12) | (crate::Pixfmt::RGBA, crate::Pixfmt::NV12) => {
+        (crate::Pixfmt::BGRA, crate::Pixfmt::NV12, _)
+        | (crate::Pixfmt::RGBA, crate::Pixfmt::NV12, _) => {
             let dst_stride_y = dst_fmt.stride[0];
             let dst_stride_uv = dst_fmt.stride[1];
             dst.resize(
@@ -277,12 +294,14 @@ pub fn convert_to_yuv(
                 src_height as _,
             ));
         }
-        (crate::Pixfmt::BGRA, crate::Pixfmt::I444) | (crate::Pixfmt::RGBA, crate::Pixfmt::I444) => {
+        (crate::Pixfmt::BGRA, crate::Pixfmt::I444, _)
+        | (crate::Pixfmt::RGBA, crate::Pixfmt::I444, _) => {
             let dst_stride_y = dst_fmt.stride[0];
             let dst_stride_u = dst_fmt.stride[1];
             let dst_stride_v = dst_fmt.stride[2];
             dst.resize(
-                align(dst_fmt.h) * (align(dst_stride_y) + align(dst_stride_u) + align(dst_stride_v)),
+                align(dst_fmt.h)
+                    * (align(dst_stride_y) + align(dst_stride_u) + align(dst_stride_v)),
                 0,
             );
             let dst_y = dst.as_mut_ptr();

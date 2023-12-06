@@ -1,7 +1,7 @@
 pub use self::vpxcodec::*;
 use hbb_common::{
     log,
-    message_proto::{video_frame, Chroma, VideoFrame},
+    message_proto::{video_frame, Chroma, ColorRange, VideoFrame},
 };
 use std::slice;
 
@@ -124,7 +124,8 @@ pub trait TraitFrame {
 pub enum Pixfmt {
     BGRA,
     RGBA,
-    I420,
+    I420, // 601, limited
+    J420, // 601, full
     NV12,
     I444,
 }
@@ -132,6 +133,7 @@ pub enum Pixfmt {
 #[derive(Debug, Clone)]
 pub struct EncodeYuvFormat {
     pub pixfmt: Pixfmt,
+    pub range: ColorRange,
     pub w: usize,
     pub h: usize,
     pub stride: Vec<usize>,
@@ -292,6 +294,7 @@ pub trait GoogleImage {
     fn stride(&self) -> Vec<i32>;
     fn planes(&self) -> Vec<*mut u8>;
     fn chroma(&self) -> Chroma;
+    fn range(&self) -> ColorRange;
     fn get_bytes_per_row(w: usize, fmt: ImageFormat, stride: usize) -> usize {
         let bytes_per_pixel = match fmt {
             ImageFormat::Raw => 3,
@@ -310,8 +313,8 @@ pub trait GoogleImage {
         let stride = self.stride();
         let planes = self.planes();
         unsafe {
-            match (self.chroma(), rgb.fmt()) {
-                (Chroma::I420, ImageFormat::Raw) => {
+            match (self.chroma(), self.range(), rgb.fmt()) {
+                (Chroma::I420, _, ImageFormat::Raw) => {
                     super::I420ToRAW(
                         planes[0],
                         stride[0],
@@ -325,7 +328,7 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
-                (Chroma::I420, ImageFormat::ARGB) => {
+                (Chroma::I420, ColorRange::Studio, ImageFormat::ARGB) => {
                     super::I420ToARGB(
                         planes[0],
                         stride[0],
@@ -339,7 +342,21 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
-                (Chroma::I420, ImageFormat::ABGR) => {
+                (Chroma::I420, ColorRange::Full, ImageFormat::ARGB) => {
+                    super::J420ToARGB(
+                        planes[0],
+                        stride[0],
+                        planes[1],
+                        stride[1],
+                        planes[2],
+                        stride[2],
+                        rgb.raw.as_mut_ptr(),
+                        bytes_per_row as _,
+                        self.width() as _,
+                        self.height() as _,
+                    );
+                }
+                (Chroma::I420, ColorRange::Studio, ImageFormat::ABGR) => {
                     super::I420ToABGR(
                         planes[0],
                         stride[0],
@@ -353,7 +370,21 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
-                (Chroma::I444, ImageFormat::ARGB) => {
+                (Chroma::I420, ColorRange::Full, ImageFormat::ABGR) => {
+                    super::J420ToABGR(
+                        planes[0],
+                        stride[0],
+                        planes[1],
+                        stride[1],
+                        planes[2],
+                        stride[2],
+                        rgb.raw.as_mut_ptr(),
+                        bytes_per_row as _,
+                        self.width() as _,
+                        self.height() as _,
+                    );
+                }
+                (Chroma::I444, _, ImageFormat::ARGB) => {
                     super::I444ToARGB(
                         planes[0],
                         stride[0],
@@ -367,7 +398,7 @@ pub trait GoogleImage {
                         self.height() as _,
                     );
                 }
-                (Chroma::I444, ImageFormat::ABGR) => {
+                (Chroma::I444, _, ImageFormat::ABGR) => {
                     super::I444ToABGR(
                         planes[0],
                         stride[0],

@@ -23,8 +23,9 @@ use hbb_common::{
     config::PeerConfig,
     log,
     message_proto::{
-        supported_decoding::PreferCodec, video_frame, Chroma, CodecAbility, EncodedVideoFrames,
-        SupportedDecoding, SupportedEncoding, VideoFrame,
+        supported_decoding::PreferCodec, video_frame, Chroma, CodecAbility, CodecColorAbility,
+        ColorAbility, ColorRange, EncodedVideoFrames, SupportedDecoding, SupportedEncoding,
+        VideoFrame,
     },
     sysinfo::System,
     tokio::time::Instant,
@@ -55,8 +56,14 @@ pub enum EncoderCfg {
     HW(HwEncoderConfig),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExtraEncoderCfg {
+    pub chroma: Chroma,
+    pub range: ColorRange,
+}
+
 pub trait EncoderApi {
-    fn new(cfg: EncoderCfg, i444: bool) -> ResultType<Self>
+    fn new(cfg: EncoderCfg, extra: ExtraEncoderCfg) -> ResultType<Self>
     where
         Self: Sized;
 
@@ -107,18 +114,18 @@ pub enum EncodingUpdate {
 }
 
 impl Encoder {
-    pub fn new(config: EncoderCfg, i444: bool) -> ResultType<Encoder> {
-        log::info!("new encoder: {config:?}, i444: {i444}");
+    pub fn new(config: EncoderCfg, extra: ExtraEncoderCfg) -> ResultType<Encoder> {
+        log::info!("new encoder: {config:?}, extra: {extra:?}");
         match config {
             EncoderCfg::VPX(_) => Ok(Encoder {
-                codec: Box::new(VpxEncoder::new(config, i444)?),
+                codec: Box::new(VpxEncoder::new(config, extra)?),
             }),
             EncoderCfg::AOM(_) => Ok(Encoder {
-                codec: Box::new(AomEncoder::new(config, i444)?),
+                codec: Box::new(AomEncoder::new(config, extra)?),
             }),
 
             #[cfg(feature = "hwcodec")]
-            EncoderCfg::HW(_) => match HwEncoder::new(config, i444) {
+            EncoderCfg::HW(_) => match HwEncoder::new(config, extra) {
                 Ok(hw) => Ok(Encoder {
                     codec: Box::new(hw),
                 }),
@@ -249,7 +256,7 @@ impl Encoder {
         encoding
     }
 
-    pub fn use_i444(config: &EncoderCfg) -> bool {
+    pub fn extra(config: &EncoderCfg) -> ExtraEncoderCfg {
         let decodings = PEER_DECODINGS.lock().unwrap().clone();
         let prefer_i444 = decodings
             .iter()
@@ -262,7 +269,13 @@ impl Encoder {
             EncoderCfg::AOM(_) => decodings.iter().all(|d| d.1.i444.av1),
             EncoderCfg::HW(_) => false,
         };
-        prefer_i444 && i444_useable && !decodings.is_empty()
+        let chroma = if prefer_i444 && i444_useable && !decodings.is_empty() {
+            Chroma::I444
+        } else {
+            Chroma::I420
+        };
+        let range = ColorRange::Full;
+        ExtraEncoderCfg { chroma, range }
     }
 }
 
@@ -281,6 +294,7 @@ impl Decoder {
                 ..Default::default()
             })
             .into(),
+            codec_color_ability: Some(Self::color_ability()).into(),
             prefer: prefer.into(),
             prefer_chroma: prefer_chroma.into(),
             ..Default::default()
@@ -525,6 +539,39 @@ impl Decoder {
             Chroma::I420
         };
         (codec, chroma)
+    }
+
+    fn color_ability() -> CodecColorAbility {
+        CodecColorAbility {
+            vp8: Some(ColorAbility {
+                i420_bt601_studio: true,
+                ..Default::default()
+            })
+            .into(),
+            vp9: Some(ColorAbility {
+                i420_bt601_studio: true,
+                i420_bt601_full: true,
+                ..Default::default()
+            })
+            .into(),
+            av1: Some(ColorAbility {
+                i420_bt601_studio: true,
+                i420_bt601_full: true,
+                ..Default::default()
+            })
+            .into(),
+            h264: Some(ColorAbility {
+                i420_bt601_studio: true,
+                ..Default::default()
+            })
+            .into(),
+            h265: Some(ColorAbility {
+                i420_bt601_studio: true,
+                ..Default::default()
+            })
+            .into(),
+            ..Default::default()
+        }
     }
 }
 
