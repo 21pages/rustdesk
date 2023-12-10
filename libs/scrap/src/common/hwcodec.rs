@@ -5,6 +5,7 @@ use crate::{
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
+    bail,
     bytes::Bytes,
     config::HwCodecConfig,
     log,
@@ -293,6 +294,9 @@ impl HwDecoderImage<'_> {
                     frame.linesize[2] as _,
                     &mut rgb.raw as _,
                 )?;
+            }
+            _ => {
+                bail!("Unsupported pixfmt:{:?}", frame.pixfmt);
             }
         }
         Ok(())

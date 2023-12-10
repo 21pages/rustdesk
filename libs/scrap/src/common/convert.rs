@@ -9,7 +9,7 @@ include!(concat!(env!("OUT_DIR"), "/yuv_ffi.rs"));
 #[cfg(not(target_os = "ios"))]
 use crate::Frame;
 use crate::{generate_call_macro, EncodeYuvFormat, TraitFrame};
-use hbb_common::{bail, log, ResultType};
+use hbb_common::{bail, log, message_proto::ColorRange, ResultType};
 
 generate_call_macro!(call_yuv, false);
 
@@ -333,6 +333,123 @@ pub fn convert_to_yuv(
                 src_width as _,
                 src_height as _,
             ));
+        }
+        _ => {
+            bail!(
+                "convert not support, {src_pixfmt:?} -> {:?}",
+                dst_fmt.pixfmt
+            );
+        }
+    }
+    Ok(())
+}
+
+pub fn get_scaler(captured: &Frame, dst_fmt: &EncodeYuvFormat) -> hwcodec::scale::Scaler {
+    let dstFormat = match dst_fmt.pixfmt {
+        crate::Pixfmt::I420 => hwcodec::AVPixelFormat::AV_PIX_FMT_YUV420P,
+        crate::Pixfmt::NV12 => hwcodec::AVPixelFormat::AV_PIX_FMT_NV12,
+        crate::Pixfmt::I444 => hwcodec::AVPixelFormat::AV_PIX_FMT_YUV444P,
+        crate::Pixfmt::BGRA => hwcodec::AVPixelFormat::AV_PIX_FMT_BGRA,
+        crate::Pixfmt::RGBA => hwcodec::AVPixelFormat::AV_PIX_FMT_RGBA,
+    };
+    let ctx = hwcodec::scale::ScaleContext {
+        srcW: captured.width() as _,
+        srcH: captured.height() as _,
+        srcFormat: hwcodec::AVPixelFormat::AV_PIX_FMT_BGRA,
+        srcFullRange: true,
+        srcSpace: hwcodec::SWS_CS_ITU601 as _,
+        dstW: dst_fmt.w as _,
+        dstH: dst_fmt.h as _,
+        dstFormat,
+        dstFullRange: dst_fmt.range == ColorRange::Full,
+        dstSpace: hwcodec::SWS_CS_ITU601 as _,
+    };
+    hwcodec::scale::Scaler::new(ctx).unwrap()
+}
+
+#[cfg(not(target_os = "ios"))]
+pub fn convert_to_yuv2(
+    captured: &Frame,
+    dst_fmt: EncodeYuvFormat,
+    dst: &mut Vec<u8>,
+    mid_data: &mut Vec<u8>,
+) -> ResultType<()> {
+    let scaler = get_scaler(captured, &dst_fmt);
+
+    let src = captured.data();
+    let src_stride = captured.stride();
+    let src_pixfmt = captured.pixfmt();
+    let src_width = captured.width();
+    let src_height = captured.height();
+    if src_width > dst_fmt.w || src_height > dst_fmt.h {
+        bail!(
+            "src rect > dst rect: ({src_width}, {src_height}) > ({},{})",
+            dst_fmt.w,
+            dst_fmt.h
+        );
+    }
+    if src_pixfmt == crate::Pixfmt::BGRA || src_pixfmt == crate::Pixfmt::RGBA {
+        if src.len() < src_stride[0] * src_height {
+            bail!(
+                "wrong src len, {} < {} * {}",
+                src.len(),
+                src_stride[0],
+                src_height
+            );
+        }
+    }
+    let align = |x: usize| (x + 63) / 64 * 64;
+
+    match (src_pixfmt, dst_fmt.pixfmt, dst_fmt.range) {
+        (crate::Pixfmt::BGRA, crate::Pixfmt::I420, _)
+        | (crate::Pixfmt::RGBA, crate::Pixfmt::I420, _) => {
+            let dst_stride_y = dst_fmt.stride[0];
+            dst.resize(dst_fmt.h * dst_stride_y * 2, 0); // waste some memory to ensure memory safety
+            let dst_y = dst.as_mut_ptr();
+            let dst_u = dst[dst_fmt.u..].as_mut_ptr();
+            let dst_v = dst[dst_fmt.v..].as_mut_ptr();
+
+            let srcSlice = vec![src.as_ptr()];
+            let dstSlice = vec![dst_y, dst_u, dst_v];
+            let src_strides: Vec<i32> = src_stride.iter().map(|e| *e as i32).collect();
+            let dstStride: Vec<i32> = dst_fmt.stride.iter().map(|e| *e as i32).collect();
+
+            let _ = scaler.scale(
+                srcSlice.as_ptr(),
+                src_strides.as_ptr(),
+                0,
+                src_height as _,
+                dstSlice.as_ptr(),
+                dstStride.as_ptr(),
+            );
+        }
+        (crate::Pixfmt::BGRA, crate::Pixfmt::I444, _)
+        | (crate::Pixfmt::RGBA, crate::Pixfmt::I444, _) => {
+            let dst_stride_y = dst_fmt.stride[0];
+            let dst_stride_u = dst_fmt.stride[1];
+            let dst_stride_v = dst_fmt.stride[2];
+            dst.resize(
+                align(dst_fmt.h)
+                    * (align(dst_stride_y) + align(dst_stride_u) + align(dst_stride_v)),
+                0,
+            );
+            let dst_y = dst.as_mut_ptr();
+            let dst_u = dst[dst_fmt.u..].as_mut_ptr();
+            let dst_v = dst[dst_fmt.v..].as_mut_ptr();
+
+            let srcSlice = vec![src.as_ptr()];
+            let dstSlice = vec![dst_y, dst_u, dst_v];
+            let src_strides: Vec<i32> = src_stride.iter().map(|e| *e as i32).collect();
+            let dstStride: Vec<i32> = dst_fmt.stride.iter().map(|e| *e as i32).collect();
+
+            let _ = scaler.scale(
+                srcSlice.as_ptr(),
+                src_strides.as_ptr(),
+                0,
+                src_height as _,
+                dstSlice.as_ptr(),
+                dstStride.as_ptr(),
+            );
         }
         _ => {
             bail!(

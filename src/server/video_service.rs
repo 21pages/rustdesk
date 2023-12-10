@@ -47,7 +47,7 @@ use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
     codec::{Encoder, EncoderCfg, HwEncoderConfig, Quality},
-    convert_to_yuv,
+    convert_to_yuv, convert_to_yuv2, get_scaler,
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecName, Display, Frame, TraitCapturer, TraitFrame,
@@ -426,6 +426,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut would_block_count = 0u32;
     let mut yuv = Vec::new();
     let mut mid_data = Vec::new();
+    // let mut scaler = None;
 
     while sp.ok() {
         #[cfg(windows)]
@@ -484,6 +485,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                 let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
                 if frame.data().len() != 0 {
                     let send_conn_ids = handle_one_frame(
+                        // &mut scaler,
                         display_idx,
                         &sp,
                         frame,
@@ -661,6 +663,7 @@ fn check_privacy_mode_changed(sp: &GenericService, privacy_mode_id: i32) -> Resu
 
 #[inline]
 fn handle_one_frame(
+    // scaler: &mut Option<scrap::hwcodec::scale::Scaler>,
     display: usize,
     sp: &GenericService,
     frame: Frame,
@@ -679,7 +682,12 @@ fn handle_one_frame(
     })?;
 
     let mut send_conn_ids: HashSet<i32> = Default::default();
-    convert_to_yuv(&frame, encoder.yuvfmt(), yuv, mid_data)?;
+    // let Some(sc) = scaler else {
+    //     scaler = Some(get_scaler(&frame, encoder.yuvfmt()));
+    // };
+    let start = Instant::now();
+    convert_to_yuv2(&frame, encoder.yuvfmt(), yuv, mid_data)?;
+    log::info!("elapsed:{:?}", start.elapsed());
     if let Ok(mut vf) = encoder.encode_to_message(yuv, ms) {
         vf.display = display as _;
         let mut msg = Message::new();

@@ -5,6 +5,8 @@ use hbb_common::{
 };
 use std::slice;
 
+use ::hwcodec as hwcodec2;
+
 cfg_if! {
     if #[cfg(quartz)] {
         mod quartz;
@@ -125,7 +127,7 @@ pub enum Pixfmt {
     BGRA,
     RGBA,
     I420, // 601, limited
-    J420, // 601, full
+    // J420, // 601, full
     NV12,
     I444,
 }
@@ -343,17 +345,42 @@ pub trait GoogleImage {
                     );
                 }
                 (Chroma::I420, ColorRange::Full, ImageFormat::ARGB) => {
-                    super::J420ToARGB(
-                        planes[0],
-                        stride[0],
-                        planes[1],
-                        stride[1],
-                        planes[2],
-                        stride[2],
-                        rgb.raw.as_mut_ptr(),
-                        bytes_per_row as _,
-                        self.width() as _,
+                    // super::J420ToARGB(
+                    //     planes[0],
+                    //     stride[0],
+                    //     planes[1],
+                    //     stride[1],
+                    //     planes[2],
+                    //     stride[2],
+                    //     rgb.raw.as_mut_ptr(),
+                    //     bytes_per_row as _,
+                    //     self.width() as _,
+                    //     self.height() as _,
+                    // );
+                    let ctx = hwcodec2::scale::ScaleContext {
+                        srcW: self.width() as _,
+                        srcH: self.height() as _,
+                        srcFormat: hwcodec2::AVPixelFormat::AV_PIX_FMT_YUV420P,
+                        srcFullRange: true,
+                        srcSpace: hwcodec2::SWS_CS_ITU601 as _,
+                        dstW: self.width() as _,
+                        dstH: self.height() as _,
+                        dstFormat: hwcodec2::AVPixelFormat::AV_PIX_FMT_BGRA,
+                        dstFullRange: true,
+                        dstSpace: hwcodec2::SWS_CS_ITU601 as _,
+                    };
+                    let scaler = hwcodec2::scale::Scaler::new(ctx).unwrap();
+                    let dstStride: Vec<i32> = vec![bytes_per_row as i32];
+                    let srcSlice: Vec<*const u8> =
+                        self.planes().iter().map(|p| *p as *const u8).collect();
+                    let dst = vec![rgb.raw.as_mut_ptr()];
+                    scaler.scale(
+                        srcSlice.as_ptr(),
+                        self.stride().as_ptr(),
+                        0,
                         self.height() as _,
+                        dst.as_ptr(),
+                        dstStride.as_ptr(),
                     );
                 }
                 (Chroma::I420, ColorRange::Studio, ImageFormat::ABGR) => {
@@ -385,21 +412,46 @@ pub trait GoogleImage {
                     );
                 }
                 (Chroma::I444, _, ImageFormat::ARGB) => {
-                    super::I444ToARGB(
-                        planes[0],
-                        stride[0],
-                        planes[1],
-                        stride[1],
-                        planes[2],
-                        stride[2],
-                        rgb.raw.as_mut_ptr(),
-                        bytes_per_row as _,
-                        self.width() as _,
+                    let ctx = hwcodec2::scale::ScaleContext {
+                        srcW: self.width() as _,
+                        srcH: self.height() as _,
+                        srcFormat: hwcodec2::AVPixelFormat::AV_PIX_FMT_YUV444P,
+                        srcFullRange: true,
+                        srcSpace: hwcodec2::SWS_CS_ITU601 as _,
+                        dstW: self.width() as _,
+                        dstH: self.height() as _,
+                        dstFormat: hwcodec2::AVPixelFormat::AV_PIX_FMT_BGRA,
+                        dstFullRange: true,
+                        dstSpace: hwcodec2::SWS_CS_ITU601 as _,
+                    };
+                    let scaler = hwcodec2::scale::Scaler::new(ctx).unwrap();
+                    let dstStride: Vec<i32> = vec![bytes_per_row as i32];
+                    let srcSlice: Vec<*const u8> =
+                        self.planes().iter().map(|p| *p as *const u8).collect();
+                    let dst = vec![rgb.raw.as_mut_ptr()];
+                    scaler.scale(
+                        srcSlice.as_ptr(),
+                        self.stride().as_ptr(),
+                        0,
                         self.height() as _,
+                        dst.as_ptr(),
+                        dstStride.as_ptr(),
                     );
+                    // super::J444ToARGB(
+                    //     planes[0],
+                    //     stride[0],
+                    //     planes[1],
+                    //     stride[1],
+                    //     planes[2],
+                    //     stride[2],
+                    //     rgb.raw.as_mut_ptr(),
+                    //     bytes_per_row as _,
+                    //     self.width() as _,
+                    //     self.height() as _,
+                    // );
                 }
                 (Chroma::I444, _, ImageFormat::ABGR) => {
-                    super::I444ToABGR(
+                    super::J444ToABGR(
                         planes[0],
                         stride[0],
                         planes[1],
