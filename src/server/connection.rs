@@ -5,6 +5,8 @@ use crate::clipboard_file::*;
 use crate::common::update_clipboard;
 #[cfg(target_os = "android")]
 use crate::keyboard::client::map_key_to_control_key;
+#[cfg(target_os = "linux")]
+use crate::platform::linux::is_x11;
 #[cfg(all(target_os = "linux", feature = "linux_headless"))]
 #[cfg(not(any(feature = "flatpak", feature = "appimage")))]
 use crate::platform::linux_desktop_manager;
@@ -12,8 +14,6 @@ use crate::platform::linux_desktop_manager;
 use crate::platform::WallPaperRemover;
 #[cfg(windows)]
 use crate::portable_service::client as portable_client;
-#[cfg(target_os = "linux")]
-use crate::platform::linux::is_x11;
 use crate::{
     client::{
         new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
@@ -422,7 +422,7 @@ impl Connection {
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         std::thread::spawn(move || Self::handle_input(_rx_input, tx_cloned));
-        let mut second_timer = time::interval(Duration::from_secs(1));
+        let mut second_timer = time::interval(Duration::from_secs(60));
 
         loop {
             tokio::select! {
@@ -648,16 +648,21 @@ impl Connection {
                     }
                 },
                 _ = second_timer.tick() => {
+                    log::info!("second timer");
                     #[cfg(windows)]
                     conn.portable_check();
+                    log::info!("second timer portable_check ok");
                     if let Some((instant, minute)) = conn.auto_disconnect_timer.as_ref() {
                         if instant.elapsed().as_secs() > minute * 60 {
+                            log::info!("elapsed:{:?}, minute:{}", instant.elapsed().as_secs(), minute);
                             conn.send_close_reason_no_retry("Connection failed due to inactivity").await;
                             conn.on_close("auto disconnect", true).await;
                             break;
                         }
                     }
+                    log::info!("second timer auto disconnect check ok");
                     conn.file_remove_log_control.on_timer().drain(..).map(|x| conn.send_to_cm(x)).count();
+                    log::info!("second timer file remove log check ok");
                 }
                 _ = test_delay_timer.tick() => {
                     if last_recv_time.elapsed() >= SEC30 {
@@ -728,6 +733,7 @@ impl Connection {
             match receiver.recv_timeout(std::time::Duration::from_millis(500)) {
                 Ok(v) => match v {
                     MessageInput::Mouse((msg, id)) => {
+                        log::info!("rx_input receive mouse");
                         handle_mouse(&msg, id);
                     }
                     MessageInput::Key((mut msg, press)) => {
@@ -1230,6 +1236,11 @@ impl Connection {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 let _h = try_start_record_cursor_pos();
                 self.auto_disconnect_timer = Self::get_auto_disconenct_timer();
+                log::info!(
+                    "is_installed:{}, auto_disconnect_timer is some:{}",
+                    crate::platform::is_installed(),
+                    self.auto_disconnect_timer.is_some()
+                );
                 s.try_add_primay_video_service();
                 s.add_connection(self.inner.clone(), &noperms);
             }
@@ -1356,7 +1367,9 @@ impl Connection {
     #[inline]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn input_mouse(&self, msg: MouseEvent, conn_id: i32) {
-        self.tx_input.send(MessageInput::Mouse((msg, conn_id))).ok();
+        log::info!("input_mouse before tx_input send");
+        allow_err!(self.tx_input.send(MessageInput::Mouse((msg, conn_id))));
+        log::info!("input_mouse after tx_input send");
     }
 
     #[inline]
@@ -1750,6 +1763,7 @@ impl Connection {
         } else if self.authorized {
             match msg.union {
                 Some(message::Union::MouseEvent(me)) => {
+                    log::info!("receive mouse event message");
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
                         log::debug!("call_main_service_pointer_input fail:{}", e);
@@ -1766,6 +1780,7 @@ impl Connection {
                     self.update_auto_disconnect_timer();
                 }
                 Some(message::Union::PointerDeviceEvent(pde)) => {
+                    log::info!("receive pointer device event message");
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     if let Err(e) = match pde.union {
                         Some(pointer_device_event::Union::TouchEvent(touch)) => match touch.union {
@@ -1800,6 +1815,7 @@ impl Connection {
                         self.input_pointer(pde, self.inner.id());
                     }
                     self.update_auto_disconnect_timer();
+                    log::info!("receive pointer device event finish");
                 }
                 #[cfg(any(target_os = "ios"))]
                 Some(message::Union::KeyEvent(..)) => {}
@@ -1856,6 +1872,7 @@ impl Connection {
                 }
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 Some(message::Union::KeyEvent(me)) => {
+                    log::info!("remove key event");
                     if self.peer_keyboard_enabled() {
                         if is_enter(&me) {
                             CLICK_TIME.store(get_time(), Ordering::SeqCst);
@@ -1907,6 +1924,7 @@ impl Connection {
                         }
                     }
                     self.update_auto_disconnect_timer();
+                    log::info!("receive key event finish");
                 }
                 Some(message::Union::Clipboard(_cb)) =>
                 {
@@ -2837,6 +2855,7 @@ impl Connection {
         {
             return;
         }
+        log::info!("portable_check not installed");
         let running = portable_client::running();
         let show_elevation = !running;
         self.send_to_cm(ipc::Data::DataPortableService(
@@ -3013,6 +3032,8 @@ async fn start_ipc(
             bail!("Failed to connect to connection manager");
         }
     }
+
+    log::info!("start cm ipc ok");
 
     let _res = tx_stream_ready.send(()).await;
     let mut stream = stream.ok_or(anyhow!("none stream"))?;

@@ -811,6 +811,7 @@ pub fn handle_pointer_(evt: &PointerDeviceEvent, conn: i32) {
 }
 
 pub fn handle_mouse_(evt: &MouseEvent, conn: i32) {
+    log::info!("handle_mouse_ start");
     if !active_mouse_(conn) {
         return;
     }
@@ -821,6 +822,7 @@ pub fn handle_mouse_(evt: &MouseEvent, conn: i32) {
 
     #[cfg(windows)]
     crate::platform::windows::try_change_desktop();
+    log::info!("try_change_desktop ok");
     let buttons = evt.mask >> 3;
     let evt_type = evt.mask & 0x7;
     let mut en = ENIGO.lock().unwrap();
@@ -950,6 +952,7 @@ pub fn handle_mouse_(evt: &MouseEvent, conn: i32) {
     for key in to_release {
         en.key_up(key.clone());
     }
+    log::info!("handle_mouse_ finish");
 }
 
 #[cfg(target_os = "windows")]
