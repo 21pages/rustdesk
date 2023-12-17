@@ -1076,7 +1076,10 @@ pub fn make_privacy_mode_msg_with_details(
 }
 
 #[inline]
-pub fn make_privacy_mode_msg(state: back_notification::PrivacyModeState, impl_key: String) -> Message {
+pub fn make_privacy_mode_msg(
+    state: back_notification::PrivacyModeState,
+    impl_key: String,
+) -> Message {
     make_privacy_mode_msg_with_details(state, "".to_owned(), impl_key)
 }
 
@@ -1211,14 +1214,50 @@ pub async fn get_next_nonkeyexchange_msg(
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn check_process(arg: &str, same_uid: bool) -> bool {
+    log::info!(
+        "======== check_process arg: {arg:?}, same_uid: {same_uid}, env args: {:?}",
+        std::env::args()
+    );
+    let should_log = arg == "--tray";
     use hbb_common::sysinfo::System;
     let mut sys = System::new();
     sys.refresh_processes();
+
+    if should_log {
+        for (_, p) in sys.processes().iter() {
+            if p.exe()
+                .to_string_lossy()
+                .to_lowercase()
+                .contains("rustdesk")
+                || p.name().to_lowercase().contains("rustdesk")
+                || p.exe().read_link().is_ok()
+            {
+                log::info!(
+                    "dump pid: {}, name: {}, exe: {:?}, cmd: {:?} user: {:?}",
+                    p.pid(),
+                    p.name(),
+                    p.exe(),
+                    p.cmd(),
+                    p.user_id(),
+                );
+            }
+        }
+    }
+
     let mut path = std::env::current_exe().unwrap_or_default();
+    if should_log {
+        log::info!("======== check_process path: {path:?}");
+    }
     if let Ok(linked) = path.read_link() {
         path = linked;
+        if should_log {
+            log::info!("======== check_process path = linked: {path:?}");
+        }
     }
     let path = path.to_string_lossy().to_lowercase();
+    if should_log {
+        log::info!("======== check_process path lower case: {path:?}");
+    }
     let my_uid = sys
         .process((std::process::id() as usize).into())
         .map(|x| x.user_id())
@@ -1226,21 +1265,81 @@ pub fn check_process(arg: &str, same_uid: bool) -> bool {
     for (_, p) in sys.processes().iter() {
         let mut cur_path = p.exe().to_path_buf();
         if let Ok(linked) = cur_path.read_link() {
+            if should_log {
+                log::info!(
+                    "======== check_process pid: {:?} current linked: {:?}",
+                    p.pid().to_string(),
+                    linked
+                );
+            }
             cur_path = linked;
         }
         if cur_path.to_string_lossy().to_lowercase() != path {
+            if should_log {
+                if cur_path
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .contains("rustdesk")
+                {
+                    log::info!(
+                        "======== check_process pid: {:?}, path not equal: {:?} !=  {:?}",
+                        p.pid().to_string(),
+                        cur_path.to_string_lossy().to_lowercase(),
+                        path
+                    );
+                }
+            }
             continue;
         }
         if p.pid().to_string() == std::process::id().to_string() {
+            if should_log {
+                log::info!(
+                    "======== check_process pid: {:?}, pid equal: {:?} ==  {:?}",
+                    p.pid().to_string(),
+                    p.pid().to_string(),
+                    std::process::id().to_string()
+                );
+            }
             continue;
         }
+        if should_log {
+            log::info!(
+                "======== check_process pid: {:?}, uid: {:?},  {:?}",
+                p.pid().to_string(),
+                p.user_id(),
+                my_uid,
+            );
+        }
         if same_uid && p.user_id() != my_uid {
+            if should_log {
+                log::info!(
+                    "======== check_process pid: {:?}, uid not equal",
+                    p.pid().to_string(),
+                );
+            }
             continue;
         }
         let parg = if p.cmd().len() <= 1 { "" } else { &p.cmd()[1] };
+        if should_log {
+            log::info!(
+                "======== check_process pid: {:?}, cmd: {:?}, parg: {:?}",
+                p.pid().to_string(),
+                p.cmd(),
+                parg,
+            );
+        }
         if arg == parg {
+            if should_log {
+                log::info!(
+                    "======== check_process pid: {:?}, arg equal, return true",
+                    p.pid().to_string(),
+                );
+            }
             return true;
         }
+    }
+    if should_log {
+        log::info!("======== check_process, {} not found, return false", arg);
     }
     false
 }

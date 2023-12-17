@@ -5,6 +5,8 @@ use crate::clipboard_file::*;
 use crate::common::update_clipboard;
 #[cfg(target_os = "android")]
 use crate::keyboard::client::map_key_to_control_key;
+#[cfg(target_os = "linux")]
+use crate::platform::linux::is_x11;
 #[cfg(all(target_os = "linux", feature = "linux_headless"))]
 #[cfg(not(any(feature = "flatpak", feature = "appimage")))]
 use crate::platform::linux_desktop_manager;
@@ -12,8 +14,6 @@ use crate::platform::linux_desktop_manager;
 use crate::platform::WallPaperRemover;
 #[cfg(windows)]
 use crate::portable_service::client as portable_client;
-#[cfg(target_os = "linux")]
-use crate::platform::linux::is_x11;
 use crate::{
     client::{
         new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
@@ -1510,7 +1510,15 @@ impl Connection {
             });
             #[cfg(all(windows, feature = "flutter"))]
             std::thread::spawn(|| {
-                if crate::is_server() && !crate::check_process("--tray", false) {
+                let is_server = crate::is_server();
+                let tray_exist = crate::check_process("--tray", false);
+                log::info!(
+                    "======== start_cm_ipc: is_server={}, tray_exist={}",
+                    is_server,
+                    tray_exist
+                );
+                if is_server && !tray_exist {
+                    log::info!("======== start_cm_ipc: start new --tray process");
                     crate::platform::run_as_user(vec!["--tray"]).ok();
                 }
             });
