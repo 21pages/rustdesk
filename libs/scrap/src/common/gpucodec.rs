@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     ffi::c_void,
+    io::Write,
     sync::{Arc, Mutex},
 };
 
@@ -52,6 +53,8 @@ pub struct GpuEncoder {
     bitrate: u32,
     last_frame_len: usize,
     same_bad_len_counter: usize,
+    f: std::fs::File,
+    f2: std::fs::File,
 }
 
 impl EncoderApi for GpuEncoder {
@@ -79,6 +82,36 @@ impl EncoderApi for GpuEncoder {
                         gop,
                     },
                 };
+                let f = std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .append(true)
+                    .open(format!(
+                        "gpu_{}_{}.{}",
+                        config.width,
+                        config.height,
+                        if config.feature.data_format == gpu_common::DataFormat::H264 {
+                            "h264"
+                        } else {
+                            "h265"
+                        }
+                    ))
+                    .unwrap();
+                let f2 = std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .append(true)
+                    .open(format!(
+                        "gpu_{}_{}_{}.txt",
+                        config.width,
+                        config.height,
+                        if config.feature.data_format == gpu_common::DataFormat::H264 {
+                            "h264"
+                        } else {
+                            "h265"
+                        }
+                    ))
+                    .unwrap();
                 match Encoder::new(ctx.clone()) {
                     Ok(encoder) => Ok(GpuEncoder {
                         encoder,
@@ -87,6 +120,8 @@ impl EncoderApi for GpuEncoder {
                         bitrate,
                         last_frame_len: 0,
                         same_bad_len_counter: 0,
+                        f,
+                        f2,
                     }),
                     Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
                 }
@@ -104,6 +139,10 @@ impl EncoderApi for GpuEncoder {
         let mut vf = VideoFrame::new();
         let mut frames = Vec::new();
         for frame in self.encode(texture).with_context(|| "Failed to encode")? {
+            self.f.write_all(&frame.data).unwrap();
+            self.f2
+                .write_all(format!("{},", frame.data.len()).as_bytes())
+                .unwrap();
             frames.push(EncodedVideoFrame {
                 data: Bytes::from(frame.data),
                 pts: frame.pts as _,
@@ -213,6 +252,11 @@ impl GpuEncoder {
     }
 
     pub fn encode(&mut self, texture: *mut c_void) -> ResultType<Vec<EncodeFrame>> {
+        // log::info!(
+        //     "encode width: {},, height:{}",
+        //     self.ctx.d.width,
+        //     self.ctx.d.height
+        // );
         match self.encoder.encode(texture) {
             Ok(v) => {
                 let mut data = Vec::<EncodeFrame>::new();

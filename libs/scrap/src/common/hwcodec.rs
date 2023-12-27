@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::{
     codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg, Quality as Q},
     hw, EncodeInput, ImageFormat, ImageRgb, Pixfmt, HW_STRIDE_ALIGN,
@@ -45,6 +47,8 @@ pub struct HwEncoder {
     width: u32,
     height: u32,
     bitrate: u32, //kbs
+    f: std::fs::File,
+    f2: std::fs::File,
 }
 
 impl EncoderApi for HwEncoder {
@@ -83,6 +87,36 @@ impl EncoderApi for HwEncoder {
                         )))
                     }
                 };
+                let f = std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .append(true)
+                    .open(format!(
+                        "hw_{}_{}.{}",
+                        config.width,
+                        config.height,
+                        if config.name.contains("264") {
+                            "h264"
+                        } else {
+                            "h265"
+                        }
+                    ))
+                    .unwrap();
+                let f2 = std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .append(true)
+                    .open(format!(
+                        "hw_{}_{}_{}.txt",
+                        config.width,
+                        config.height,
+                        if config.name.contains("264") {
+                            "h264"
+                        } else {
+                            "h265"
+                        }
+                    ))
+                    .unwrap();
                 match Encoder::new(ctx.clone()) {
                     Ok(encoder) => Ok(HwEncoder {
                         encoder,
@@ -91,6 +125,8 @@ impl EncoderApi for HwEncoder {
                         width: ctx.width as _,
                         height: ctx.height as _,
                         bitrate,
+                        f,
+                        f2,
                     }),
                     Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
                 }
@@ -106,6 +142,10 @@ impl EncoderApi for HwEncoder {
             .encode(input.yuv()?)
             .with_context(|| "Failed to encode")?
         {
+            self.f.write_all(&frame.data).unwrap();
+            self.f2
+                .write_all(format!("{},", frame.data.len()).as_bytes())
+                .unwrap();
             frames.push(EncodedVideoFrame {
                 data: Bytes::from(frame.data),
                 pts: frame.pts as _,
