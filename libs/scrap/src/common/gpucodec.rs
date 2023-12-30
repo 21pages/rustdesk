@@ -31,7 +31,6 @@ const OUTPUT_SHARED_HANDLE: bool = false;
 // https://cybersided.com/two-monitors-two-gpus/
 // https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-getadapterluid#remarks
 lazy_static::lazy_static! {
-    static ref ENCODE_ADAPTER_LUID: Arc<Mutex<Option<i64>>> = Default::default(); // Assume one adapter for different monitors
     static ref ENOCDE_NOT_USE: Arc<Mutex<HashMap<usize, bool>>> = Default::default();
 }
 
@@ -207,13 +206,33 @@ impl GpuEncoder {
             CodecName::H265GPU => gpu_common::DataFormat::H265,
             _ => return vec![],
         };
-        let luid = ENCODE_ADAPTER_LUID.lock().unwrap().unwrap_or_default();
-        get_available_config()
+        let Ok(displays) = crate::Display::all() else {
+            log::error!("failed to get displays");
+            return vec![];
+        };
+        if displays.is_empty() {
+            log::error!("no display found");
+            return vec![];
+        }
+        let luids = displays
+            .iter()
+            .map(|d| d.adapter_luid())
+            .collect::<Vec<_>>();
+        let v: Vec<_> = get_available_config()
             .map(|c| c.e)
             .unwrap_or_default()
             .drain(..)
-            .filter(|c| c.data_format == data_format && c.luid == luid)
-            .collect()
+            .filter(|c| c.data_format == data_format)
+            .collect();
+        if luids
+            .iter()
+            .all(|luid| v.iter().any(|f| Some(f.luid) == *luid))
+        {
+            v
+        } else {
+            log::info!("not all adapters support {data_format:?}, luids = {luids:?}");
+            vec![]
+        }
     }
 
     pub fn encode(&mut self, texture: *mut c_void) -> ResultType<Vec<EncodeFrame>> {
@@ -258,15 +277,6 @@ impl GpuEncoder {
             }
             Quality::Custom(b) => b,
         }
-    }
-
-    pub fn set_adapter_luid(luid: Option<i64>) {
-        log::info!("set encode adapter luid:{:?}", luid);
-        *ENCODE_ADAPTER_LUID.lock().unwrap() = luid;
-    }
-
-    pub fn adapter_luid() -> Option<i64> {
-        *ENCODE_ADAPTER_LUID.lock().unwrap()
     }
 
     pub fn set_not_use(display: usize, not_use: bool) {

@@ -234,7 +234,7 @@ pub struct Connection {
     authed_conn_id: Option<self::raii::AuthedConnID>,
     file_remove_log_control: FileRemoveLogControl,
     #[cfg(feature = "gpucodec")]
-    last_luid: (bool, Option<i64>, Option<bool>),
+    supported_encoding_flag: (bool, Option<bool>),
 }
 
 impl ConnInner {
@@ -380,7 +380,7 @@ impl Connection {
             authed_conn_id: None,
             file_remove_log_control: FileRemoveLogControl::new(id),
             #[cfg(feature = "gpucodec")]
-            last_luid: (false, None, None),
+            supported_encoding_flag: (false, None),
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -2908,10 +2908,9 @@ impl Connection {
 
     #[cfg(feature = "gpucodec")]
     fn update_supported_encoding(&mut self) {
-        let luid = scrap::gpucodec::GpuEncoder::adapter_luid();
         let not_use = Some(scrap::gpucodec::GpuEncoder::not_use());
         if !self.authorized
-            || self.last_luid.0 && self.last_luid.1 == luid && self.last_luid.2 == not_use
+            || self.supported_encoding_flag.0 && self.supported_encoding_flag.1 == not_use
         {
             return;
         }
@@ -2922,7 +2921,7 @@ impl Connection {
         let mut msg = Message::new();
         msg.set_misc(misc);
         self.inner.send(msg.into());
-        self.last_luid = (true, luid, not_use);
+        self.supported_encoding_flag = (true, not_use);
     }
 }
 

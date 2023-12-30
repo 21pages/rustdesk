@@ -75,7 +75,6 @@ lazy_static::lazy_static! {
     pub static ref VIDEO_QOS: Arc<Mutex<VideoQoS>> = Default::default();
     pub static ref IS_UAC_RUNNING: Arc<Mutex<bool>> = Default::default();
     pub static ref IS_FOREGROUND_WINDOW_ELEVATED: Arc<Mutex<bool>> = Default::default();
-    static ref RUNNING_DISPLAYS: Mutex<Vec<usize>> = Default::default();
 }
 
 #[inline]
@@ -601,21 +600,12 @@ struct Raii(usize);
 
 impl Raii {
     fn new(display_idx: usize) -> Self {
-        let mut displays = RUNNING_DISPLAYS.lock().unwrap();
-        if !displays.contains(&display_idx) {
-            displays.push(display_idx)
-        }
         Raii(display_idx)
     }
 }
 
 impl Drop for Raii {
     fn drop(&mut self) {
-        RUNNING_DISPLAYS.lock().unwrap().retain(|i| *i != self.0);
-        #[cfg(feature = "gpucodec")]
-        if RUNNING_DISPLAYS.lock().unwrap().is_empty() {
-            GpuEncoder::set_adapter_luid(None);
-        }
         #[cfg(feature = "gpucodec")]
         GpuEncoder::set_not_use(self.0, false);
     }
@@ -634,25 +624,7 @@ fn get_encoder_config(
         GpuEncoder::set_not_use(display_idx, true);
     }
     #[cfg(feature = "gpucodec")]
-    {
-        let mut gpucodec_luid = None;
-        if let Ok(displays) = Display::all() {
-            let capture_luid = Some(c.device().luid);
-            let all_running_displays_have_same_luid = displays
-                .iter()
-                .enumerate()
-                .filter(|(idx, _)| RUNNING_DISPLAYS.lock().unwrap().contains(idx))
-                .all(|(_, d)| d.adapter_luid() == capture_luid);
-            if all_running_displays_have_same_luid && !displays.is_empty() {
-                gpucodec_luid = capture_luid;
-            } else {
-                let luids: Vec<_> = displays.iter().map(|d| d.adapter_luid()).collect();
-                log::info!("Not all running displays have the same luid, capture:{capture_luid:?}, displays:{luids:?}");
-            }
-        }
-        GpuEncoder::set_adapter_luid(gpucodec_luid);
-        Encoder::update(EncodingUpdate::Check);
-    }
+    Encoder::update(EncodingUpdate::Check);
     // https://www.wowza.com/community/t/the-correct-keyframe-interval-in-obs-studio/95162
     let keyframe_interval = if record { Some(240) } else { None };
     let negotiated_codec = Encoder::negotiated_codec();
