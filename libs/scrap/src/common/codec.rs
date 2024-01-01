@@ -130,7 +130,8 @@ impl Encoder {
                     codec: Box::new(hw),
                 }),
                 Err(e) => {
-                    hwcodec_new_check_process();
+                    log::error!("new hw encoder failed: {e:?}, clear config");
+                    hbb_common::config::HwCodecConfig::clear();
                     *ENCODE_CODEC_NAME.lock().unwrap() = CodecName::VP9;
                     Err(e)
                 }
@@ -141,7 +142,8 @@ impl Encoder {
                     codec: Box::new(tex),
                 }),
                 Err(e) => {
-                    gpucodec_new_check_process();
+                    log::error!("new gpu encoder failed: {e:?}, clear config");
+                    hbb_common::config::GpucodecConfig::clear();
                     *ENCODE_CODEC_NAME.lock().unwrap() = CodecName::VP9;
                     Err(e)
                 }
