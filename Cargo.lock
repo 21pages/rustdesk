@@ -118,7 +118,7 @@ dependencies = [
 [[package]]
 name = "amf"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#10a45c385d637ee9863cffe1d7bbc9c3e8977f3c"
+source = "git+https://github.com/21pages/gpucodec#90800ce41bee33cd898ec36a86c2e32a407e3f02"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -2646,7 +2646,7 @@ dependencies = [
 [[package]]
 name = "gpu_common"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#10a45c385d637ee9863cffe1d7bbc9c3e8977f3c"
+source = "git+https://github.com/21pages/gpucodec#90800ce41bee33cd898ec36a86c2e32a407e3f02"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -2659,7 +2659,7 @@ dependencies = [
 [[package]]
 name = "gpucodec"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#10a45c385d637ee9863cffe1d7bbc9c3e8977f3c"
+source = "git+https://github.com/21pages/gpucodec#90800ce41bee33cd898ec36a86c2e32a407e3f02"
 dependencies = [
  "amf",
  "bindgen 0.59.2",
@@ -4096,7 +4096,7 @@ dependencies = [
 [[package]]
 name = "nv"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#10a45c385d637ee9863cffe1d7bbc9c3e8977f3c"
+source = "git+https://github.com/21pages/gpucodec#90800ce41bee33cd898ec36a86c2e32a407e3f02"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -6750,7 +6750,7 @@ dependencies = [
 [[package]]
 name = "vpl"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#10a45c385d637ee9863cffe1d7bbc9c3e8977f3c"
+source = "git+https://github.com/21pages/gpucodec#90800ce41bee33cd898ec36a86c2e32a407e3f02"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
