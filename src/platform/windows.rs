@@ -1221,11 +1221,19 @@ fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
     let tmp = write_cmds(cmds, "bat", tip)?;
     let tmp2 = get_undone_file(&tmp)?;
     let tmp_fn = tmp.to_str().unwrap_or("");
-    let res = runas::Command::new("cmd")
-        .args(&["/C", &tmp_fn])
-        .show(show)
-        .force_prompt(true)
-        .status();
+    let res = std::process::Command::new("powershell")
+        .args(&[
+            // "-WindowStyle hidden",
+            "-Command",
+            "Start-Process",
+            "-FilePath",
+            &tmp_fn,
+            "-Verb runAs",
+            // "-NoNewWindow",
+            "-Wait",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
     if !show {
         allow_err!(std::fs::remove_file(tmp));
     }
