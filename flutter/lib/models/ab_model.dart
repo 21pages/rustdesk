@@ -62,7 +62,7 @@ class AbModel {
   }
 
   Future<void> pullAb({force = true, quiet = false}) async {
-    debugPrint("pullAb, force:$force, quiet:$quiet");
+    print("===== pullAb, force:$force, quiet:$quiet");
     if (!gFFI.userModel.isLogin) return;
     if (abLoading.value) return;
     if (!force && initialized) return;
@@ -70,6 +70,7 @@ class AbModel {
       try {
         // push to retry
         await pushAb(toastIfFail: false, toastIfSucc: false);
+        print("===== pullAb, pushAb for error");
       } catch (_) {}
     }
     if (!quiet) {
@@ -84,26 +85,36 @@ class AbModel {
       authHeaders['Accept-Encoding'] = "gzip";
       final resp = await http.get(Uri.parse(api), headers: authHeaders);
       statusCode = resp.statusCode;
+      print("===== pullAb, statusCode:$statusCode");
       if (resp.body.toLowerCase() == "null") {
+        print("===== pullAb, null body");
         // normal reply, emtpy ab return null
         tags.clear();
         tagColors.clear();
         peers.clear();
       } else if (resp.body.isNotEmpty) {
+        print("===== pullAb, body not empty");
         Map<String, dynamic> json =
             _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
+          print("===== pullAb, json contains error");
           throw json['error'];
         } else if (json.containsKey('data')) {
           try {
             gFFI.abModel.licensedDevices = json['licensed_devices'];
+            print("===== pullAb, licensedDevices:$licensedDevices");
             // ignore: empty_catches
           } catch (e) {}
           final data = jsonDecode(json['data']);
           if (data != null) {
+            print("===== pullAb, _deserialize");
             _deserialize(data);
             _saveCache(); // save on success
+          } else {
+            print("===== pullAb, jsonDecode data is null");
           }
+        } else {
+          print("===== pullAb, json doesn't contains data");
         }
       }
     } catch (err) {
@@ -122,6 +133,8 @@ class AbModel {
         }
       }
       platformFFI.tryHandle({'name': LoadEvent.addressBook});
+      print(
+          "===== pullAb tags len: ${tags.length}, peers len: ${peers.length}");
     }
   }
 
@@ -214,7 +227,7 @@ class AbModel {
       {bool toastIfFail = true,
       bool toastIfSucc = true,
       bool isRetry = false}) async {
-    debugPrint(
+    print(
         "pushAb: toastIfFail:$toastIfFail, toastIfSucc:$toastIfSucc, isRetry:$isRetry");
     if (!gFFI.userModel.isLogin) return false;
     pushError.value = '';
@@ -429,7 +442,7 @@ class AbModel {
         }
         return recents;
       } catch (e) {
-        debugPrint('getRecentPeers:$e');
+        print('getRecentPeers:$e');
       }
       return [];
     }
@@ -467,7 +480,7 @@ class AbModel {
         peers.refresh();
       }
     } catch (e) {
-      debugPrint('syncFromRecent:$e');
+      print('syncFromRecent:$e');
     }
   }
 
@@ -479,23 +492,39 @@ class AbModel {
       });
       bind.mainSaveAb(json: jsonEncode(m));
     } catch (e) {
-      debugPrint('ab save:$e');
+      print('ab save:$e');
     }
   }
 
   Future<void> loadCache() async {
     try {
-      if (_cacheLoadOnceFlag || abLoading.value || initialized) return;
+      print("===== loadCache");
+      if (_cacheLoadOnceFlag || abLoading.value || initialized) {
+        print(
+            "===== loadCache return _cacheLoadOnceFlag:$_cacheLoadOnceFlag, abLoading: $abLoading, initialized: $initialized");
+        return;
+      }
       _cacheLoadOnceFlag = true;
       final access_token = bind.mainGetLocalOption(key: 'access_token');
-      if (access_token.isEmpty) return;
+      if (access_token.isEmpty) {
+        print("===== loadCache return access_token.isEmpty");
+        return;
+      }
       final cache = await bind.mainLoadAb();
-      if (abLoading.value) return;
+      if (abLoading.value) {
+        print("===== loadCache return ab is loading");
+        return;
+      }
       final data = jsonDecode(cache);
-      if (data == null || data['access_token'] != access_token) return;
+      if (data == null || data['access_token'] != access_token) {
+        print(
+            "===== loadCache return data == null :${data == null}, data['access_token'] != access_token: ${data['access_token'] != access_token}");
+        return;
+      }
+      print("===== loadCache _deserialize");
       _deserialize(data);
     } catch (e) {
-      debugPrint("load ab cache: $e");
+      print("load ab cache: $e");
     }
   }
 
@@ -523,7 +552,10 @@ class AbModel {
   }
 
   _deserialize(dynamic data) {
-    if (data == null) return;
+    if (data == null) {
+      print("===== _deserialize, data is null");
+      return;
+    }
     final oldOnlineIDs = peers.where((e) => e.online).map((e) => e.id).toList();
     tags.clear();
     tagColors.clear();
@@ -531,12 +563,15 @@ class AbModel {
     if (data['tags'] is List) {
       tags.value = data['tags'];
     }
+    print("===== _deserialize, tags.len: ${tags.length}");
     if (data['peers'] is List) {
       for (final peer in data['peers']) {
         peers.add(Peer.fromJson(peer));
       }
     }
+    print("===== _deserialize, peers count: ${peers.length}");
     if (isFull(false)) {
+      print("===== _deserialize, peers is full");
       peers.removeRange(licensedDevices, peers.length);
     }
     // restore online
@@ -570,6 +605,7 @@ class AbModel {
   }
 
   reset() async {
+    print("===== reset");
     pullError.value = '';
     pushError.value = '';
     tags.clear();
