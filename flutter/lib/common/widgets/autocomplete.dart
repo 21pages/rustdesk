@@ -182,7 +182,7 @@ class _AutocompletePeerTileState extends State<AutocompletePeerTile> {
                   ],
                 ))));
     final colors = _frontN(widget.peer.tags, 25)
-        .map((e) => gFFI.abModel.getTagColor(e))
+        .map((e) => gFFI.abModel.getCurrentAbTagColor(e))
         .toList();
     return Tooltip(
       message: isMobile

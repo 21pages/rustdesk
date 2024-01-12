@@ -188,3 +188,34 @@ class RequestException implements Exception {
     return "RequestException, statusCode: $statusCode, error: $cause";
   }
 }
+
+class SharedAbProfile {
+  String guid;
+  String name;
+  String creator;
+  String? note;
+  bool? edit;
+  bool? pwd;
+
+  SharedAbProfile(
+      this.guid, this.name, this.creator, this.note, this.edit, this.pwd);
+
+  SharedAbProfile.fromJson(Map<String, dynamic> json)
+      : guid = json['guid'] ?? '',
+        name = json['name'] ?? '',
+        creator = json['creator'] ?? '',
+        note = json['note'] ?? '',
+        edit = json['edit'] ?? false,
+        pwd = json['pwd'] ?? false;
+}
+
+class SharedAbTag {
+  String name;
+  int color;
+
+  SharedAbTag(this.name, this.color);
+
+  SharedAbTag.fromJson(Map<String, dynamic> json)
+      : name = json['name'] ?? '',
+        color = json['color'] ?? '';
+}
