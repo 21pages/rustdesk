@@ -2085,13 +2085,17 @@ connectMainDesktop(
   required bool isTcpTunneling,
   required bool isRDP,
   bool? forceRelay,
+  String? password,
 }) async {
   if (isFileTransfer) {
-    await rustDeskWinManager.newFileTransfer(id, forceRelay: forceRelay);
+    await rustDeskWinManager.newFileTransfer(id,
+        password: password, forceRelay: forceRelay);
   } else if (isTcpTunneling || isRDP) {
-    await rustDeskWinManager.newPortForward(id, isRDP, forceRelay: forceRelay);
+    await rustDeskWinManager.newPortForward(id, isRDP,
+        password: password, forceRelay: forceRelay);
   } else {
-    await rustDeskWinManager.newRemoteDesktop(id, forceRelay: forceRelay);
+    await rustDeskWinManager.newRemoteDesktop(id,
+        password: password, forceRelay: forceRelay);
   }
 }
 
@@ -2099,14 +2103,12 @@ connectMainDesktop(
 /// If [isFileTransfer], starts a session only for file transfer.
 /// If [isTcpTunneling], starts a session only for tcp tunneling.
 /// If [isRDP], starts a session only for rdp.
-connect(
-  BuildContext context,
-  String id, {
-  bool isFileTransfer = false,
-  bool isTcpTunneling = false,
-  bool isRDP = false,
-  bool forceRelay = false,
-}) async {
+connect(BuildContext context, String id,
+    {bool isFileTransfer = false,
+    bool isTcpTunneling = false,
+    bool isRDP = false,
+    bool forceRelay = false,
+    String? password}) async {
   if (id == '') return;
   if (!isDesktop || desktopType == DesktopType.main) {
     try {
@@ -2134,6 +2136,7 @@ connect(
         isFileTransfer: isFileTransfer,
         isTcpTunneling: isTcpTunneling,
         isRDP: isRDP,
+        password: password,
         forceRelay: forceRelay2,
       );
     } else {
@@ -2142,6 +2145,7 @@ connect(
         'isFileTransfer': isFileTransfer,
         'isTcpTunneling': isTcpTunneling,
         'isRDP': isRDP,
+        'password': password,
         'forceRelay': forceRelay,
       });
     }
@@ -2155,14 +2159,16 @@ connect(
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (BuildContext context) => FileManagerPage(id: id),
+          builder: (BuildContext context) =>
+              FileManagerPage(id: id, password: password),
         ),
       );
     } else {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (BuildContext context) => RemotePage(id: id),
+          builder: (BuildContext context) =>
+              RemotePage(id: id, password: password),
         ),
       );
     }
