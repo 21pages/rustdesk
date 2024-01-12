@@ -2621,15 +2621,17 @@ pub async fn handle_hash(
         let ab = hbb_common::config::Ab::load();
         if !access_token.is_empty() && access_token == ab.access_token {
             let id = lc.read().unwrap().id.clone();
-            if let Some(p) = ab
-                .peers
-                .iter()
-                .find_map(|p| if p.id == id { Some(p) } else { None })
-            {
-                if let Ok(hash) = base64::decode(p.hash.clone(), base64::Variant::Original) {
-                    if !hash.is_empty() {
-                        password = hash;
-                        lc.write().unwrap().save_ab_password_to_recent = true;
+            if let Some(ab) = ab.ab_entries.iter().find(|a| a.personal()) {
+                if let Some(p) = ab
+                    .peers
+                    .iter()
+                    .find_map(|p| if p.id == id { Some(p) } else { None })
+                {
+                    if let Ok(hash) = base64::decode(p.hash.clone(), base64::Variant::Original) {
+                        if !hash.is_empty() {
+                            password = hash;
+                            lc.write().unwrap().save_ab_password_to_recent = true;
+                        }
                     }
                 }
             }
