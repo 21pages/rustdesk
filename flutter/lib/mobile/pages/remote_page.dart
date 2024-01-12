@@ -25,9 +25,10 @@ import '../widgets/dialog.dart';
 final initText = '1' * 1024;
 
 class RemotePage extends StatefulWidget {
-  RemotePage({Key? key, required this.id}) : super(key: key);
+  RemotePage({Key? key, required this.id, this.password}) : super(key: key);
 
   final String id;
+  final String? password;
 
   @override
   State<RemotePage> createState() => _RemotePageState();
@@ -54,7 +55,7 @@ class _RemotePageState extends State<RemotePage> {
   @override
   void initState() {
     super.initState();
-    gFFI.start(widget.id);
+    gFFI.start(widget.id, password: widget.password);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       gFFI.dialogManager

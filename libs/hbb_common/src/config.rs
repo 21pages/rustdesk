@@ -1654,13 +1654,19 @@ pub struct AbPeer {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct Ab {
+pub struct AbEntry {
     #[serde(
         default,
         deserialize_with = "deserialize_string",
         skip_serializing_if = "String::is_empty"
     )]
-    pub access_token: String,
+    pub guid: String,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_string",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub name: String,
     #[serde(default, deserialize_with = "deserialize_vec_abpeer")]
     pub peers: Vec<AbPeer>,
     #[serde(default, deserialize_with = "deserialize_vec_string")]
@@ -1671,6 +1677,18 @@ pub struct Ab {
         skip_serializing_if = "String::is_empty"
     )]
     pub tag_colors: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct Ab {
+    #[serde(
+        default,
+        deserialize_with = "deserialize_string",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub access_token: String,
+    #[serde(default, deserialize_with = "deserialize_vec_abentry")]
+    pub ab_entries: Vec<AbEntry>,
 }
 
 impl Ab {
@@ -1685,6 +1703,7 @@ impl Ab {
             let max_len = 64 * 1024 * 1024;
             if data.len() > max_len {
                 // maxlen of function decompress
+                log::error!("ab data too large, {} > {}", data.len(), max_len);
                 return;
             }
             if let Ok(data) = symmetric_crypt(&data, true) {
@@ -1834,6 +1853,7 @@ deserialize_default!(deserialize_vec_string, Vec<String>);
 deserialize_default!(deserialize_vec_i32_string_i32, Vec<(i32, String, i32)>);
 deserialize_default!(deserialize_vec_discoverypeer, Vec<DiscoveryPeer>);
 deserialize_default!(deserialize_vec_abpeer, Vec<AbPeer>);
+deserialize_default!(deserialize_vec_abentry, Vec<AbEntry>);
 deserialize_default!(deserialize_vec_groupuser, Vec<GroupUser>);
 deserialize_default!(deserialize_vec_grouppeer, Vec<GroupPeer>);
 deserialize_default!(deserialize_keypair, KeyPair);
