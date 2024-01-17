@@ -909,7 +909,7 @@ jobs:
                 if ${{ matrix.job.enable-headless }}; then
                   export DEFAULT_FEAT=linux_headless
                 fi
-                cargo build --lib --features hwcodec,flutter,flutter_texture_render,${{ matrix.job.extra-build-features }},$DEFAULT_FEAT --release
+                cargo build --lib --features flutter,flutter_texture_render,${{ matrix.job.extra-build-features }},$DEFAULT_FEAT --release
                 ;;
             esac
 
