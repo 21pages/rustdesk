@@ -248,9 +248,9 @@ impl HwDecoder {
                 fail = true;
             }
         }
-        if fail {
-            hwcodec_new_check_process();
-        }
+        // if fail {
+        //     hwcodec_new_check_process();
+        // }
         HwDecoders { h264, h265 }
     }
 

@@ -431,8 +431,8 @@ pub async fn start_server(is_server: bool) {
         log::info!("DISPLAY={:?}", std::env::var("DISPLAY"));
         log::info!("XAUTHORITY={:?}", std::env::var("XAUTHORITY"));
     }
-    #[cfg(feature = "hwcodec")]
-    scrap::hwcodec::hwcodec_new_check_process();
+    // #[cfg(feature = "hwcodec")]
+    // scrap::hwcodec::hwcodec_new_check_process();
     #[cfg(feature = "gpucodec")]
     scrap::gpucodec::gpucodec_new_check_process();
     #[cfg(windows)]
