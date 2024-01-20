@@ -224,10 +224,17 @@ pub struct HwDecoders {
 
 impl HwDecoder {
     pub fn best() -> CodecInfos {
+        /*
+        Temporarily disabled as it may cause the CPU to freeze when the remote window is closed.
         get_config(CFG_KEY_DECODER).unwrap_or(CodecInfos {
             h264: None,
             h265: None,
         })
+        */
+        CodecInfos {
+            h264: None,
+            h265: None,
+        }
     }
 
     pub fn new_decoders() -> HwDecoders {
@@ -358,7 +365,11 @@ pub fn check_available_hwcodec() {
         thread_count: 4,
     };
     let encoders = CodecInfo::score(Encoder::available_encoders(ctx));
-    let decoders = CodecInfo::score(Decoder::available_decoders());
+    // let decoders = CodecInfo::score(Decoder::available_decoders());
+    let decoders = CodecInfos {
+        h264: None,
+        h265: None,
+    };
 
     if let Ok(old_encoders) = get_config(CFG_KEY_ENCODER) {
         if let Ok(old_decoders) = get_config(CFG_KEY_DECODER) {
