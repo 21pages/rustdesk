@@ -154,9 +154,9 @@ class _AddressBookState extends State<AddressBook> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (gFFI.abModel.hasEditPermission())
+        if (gFFI.abModel.allowedToEditCurrentAb())
           icon(Icons.edit, "You can edit this address book"),
-        if (gFFI.abModel.isPasswordShared())
+        if (gFFI.abModel.isCurrentAbSharingPassword())
           icon(Icons.key, "This address book shares passwords"),
       ],
     );
@@ -253,7 +253,7 @@ class _AddressBookState extends State<AddressBook> {
       } else {
         tags = gFFI.abModel.currentAbTags;
       }
-      final editPermission = gFFI.abModel.hasEditPermission();
+      final editPermission = gFFI.abModel.allowedToEditCurrentAb();
       tagBuilder(String e) {
         return AddressBookTag(
             name: e,
@@ -346,14 +346,15 @@ class _AddressBookState extends State<AddressBook> {
     final shared = [
       getEntry(translate('Add shared address book'),
           () => addOrUpdateSharedAb(null)),
-      if (gFFI.abModel.hasEditPermission() && currentProfile != null)
+      if (gFFI.abModel.allowedToUpdateCurrentProfile() &&
+          currentProfile != null)
         getEntry(translate('Update shared address book'),
             () => addOrUpdateSharedAb(currentProfile)),
-      if (gFFI.abModel.havePermissionToDelete().isNotEmpty)
+      if (gFFI.abModel.addressBooksAllowedToDelete().isNotEmpty)
         getEntry(translate('Delete shared address book'), deleteSharedAb),
       MenuEntryDivider<String>(),
     ];
-    final editPermission = gFFI.abModel.hasEditPermission();
+    final editPermission = gFFI.abModel.allowedToEditCurrentAb();
     final items = [
       if (gFFI.abModel.supportSharedAb.value) ...shared,
       if (editPermission) getEntry(translate("Add ID"), addIdToCurrentAb),
@@ -392,7 +393,7 @@ class _AddressBookState extends State<AddressBook> {
     var selectedTag = List<dynamic>.empty(growable: true).obs;
     final style = TextStyle(fontSize: 14.0);
     String? errorMsg;
-    final passwordShared = gFFI.abModel.isPasswordShared();
+    final passwordShared = gFFI.abModel.isCurrentAbSharingPassword();
 
     gFFI.dialogManager.show((setState, close, context) {
       submit() async {
@@ -724,7 +725,7 @@ class _AddressBookState extends State<AddressBook> {
 
   void deleteSharedAb() async {
     RxBool isInProgress = false.obs;
-    final names = gFFI.abModel.havePermissionToDelete();
+    final names = gFFI.abModel.addressBooksAllowedToDelete();
     if (names.isEmpty) return;
     RxString currentName = gFFI.abModel.currentName.value.obs;
     if (!names.contains(currentName.value)) {

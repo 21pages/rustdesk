@@ -1012,13 +1012,13 @@ class AddressBookPeerCard extends BasePeerCard {
     if (Platform.isWindows) {
       menuItems.add(_createShortCutAction(peer.id));
     }
-    if (gFFI.abModel.hasEditPermission()) {
+    if (gFFI.abModel.allowedToEditCurrentAb()) {
       menuItems.add(MenuEntryDivider());
       menuItems.add(_renameAction(peer.id));
       if (peer.hash.isNotEmpty) {
         menuItems.add(_unrememberPasswordAction(peer.id));
       }
-      if (gFFI.abModel.isPasswordShared()) {
+      if (gFFI.abModel.isCurrentAbSharingPassword()) {
         menuItems.add(_changeSharedAbPassword());
       }
       if (gFFI.abModel.currentAbTags.isNotEmpty) {

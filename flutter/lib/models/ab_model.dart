@@ -251,7 +251,10 @@ class AbModel {
     return errMsg;
   }
 
-  bool hasEditPermission() {
+// #endregion
+
+// #region permission
+  bool allowedToEditCurrentAb() {
     if (_currentName.value == personalAddressBookName) {
       return true;
     }
@@ -264,7 +267,20 @@ class AbModel {
     return creatorOrAdmin || (profile.edit ?? false);
   }
 
-  bool isPasswordShared() {
+  bool allowedToUpdateCurrentProfile() {
+    if (_currentName.value == personalAddressBookName) {
+      return false;
+    }
+    SharedAbProfile? profile = current.sharedProfile();
+    if (profile == null) {
+      return false;
+    }
+    final creatorOrAdmin = profile.creator == gFFI.userModel.userName.value ||
+        gFFI.userModel.isAdmin.value;
+    return creatorOrAdmin;
+  }
+
+  bool isCurrentAbSharingPassword() {
     if (_currentName.value == personalAddressBookName) {
       return false;
     }
@@ -275,7 +291,7 @@ class AbModel {
     return profile.pwd ?? false;
   }
 
-  List<String> havePermissionToDelete() {
+  List<String> addressBooksAllowedToDelete() {
     List<String> list = [];
     addressbooks.forEach((key, value) async {
       if (key == personalAddressBookName) return;
@@ -288,7 +304,6 @@ class AbModel {
     });
     return list;
   }
-
 // #endregion
 
 // #region Peer
@@ -740,7 +755,7 @@ abstract class BaseAb {
         continue;
       }
       if (peer.tags.contains(tag)) {
-        ((peer.tags)).remove(tag);
+        peer.tags.remove(tag);
       }
     }
   }
