@@ -379,22 +379,7 @@ class _PeerTabPageState extends State<PeerTabPage>
                 await bind.mainLoadLanPeers();
                 break;
               case 3:
-                {
-                  bool hasSynced = false;
-                  if (shouldSyncAb()) {
-                    for (var p in peers) {
-                      if (await bind.mainPeerExists(id: p.id)) {
-                        hasSynced = true;
-                      }
-                    }
-                  }
-                  final future =
-                      gFFI.abModel.deletePeers(peers.map((p) => p.id).toList());
-                  if (hasSynced) {
-                    gFFI.abModel.reSyncToast(future);
-                  }
-                  await future;
-                }
+                await gFFI.abModel.deletePeers(peers.map((p) => p.id).toList());
                 break;
               default:
                 break;
@@ -467,7 +452,7 @@ class _PeerTabPageState extends State<PeerTabPage>
               onTap: () {
                 editAbTagDialog(List.empty(), (selectedTags) async {
                   final peers = model.selectedPeers;
-                  gFFI.abModel.changeTagForPeers(
+                  await gFFI.abModel.changeTagForPeers(
                       peers.map((p) => p.id).toList(), selectedTags);
                   model.setMultiSelectionMode(false);
                   showToast(translate('Successful'));

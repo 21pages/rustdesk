@@ -344,20 +344,21 @@ class AbModel {
     return res;
   }
 
-  void changeTagForPeers(List<String> ids, List<dynamic> tags) {
-    current.changeTagForPeers(ids, tags);
+  Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags) async {
+    bool ret = await current.changeTagForPeers(ids, tags);
     currentAbPeers.refresh();
     _saveCache();
+    return ret;
   }
 
-  void changeAlias({required String id, required String alias}) {
-    final res = current.changeAlias(id: id, alias: alias);
+  Future<bool> changeAlias({required String id, required String alias}) async {
+    bool res = await current.changeAlias(id: id, alias: alias);
     currentAbPeers.refresh();
     _saveCache();
     return res;
   }
 
-  Future<void> changePersonalHashPassword(
+  Future<bool> changePersonalHashPassword(
       String id, String hash, bool toast) async {
     final ret =
         await personalAddressBook.changePersonalHashPassword(id, hash, toast);
@@ -372,8 +373,28 @@ class AbModel {
   }
 
   Future<bool> deletePeers(List<String> ids) async {
-    final ret = current.deletePeers(ids);
+    final ret = await current.deletePeers(ids);
+    currentAbPeers.refresh();
+    platformFFI.tryHandle({'name': LoadEvent.addressBook});
     _saveCache();
+    if (_currentName.value == personalAddressBookName) {
+      Future.delayed(Duration(seconds: 2), () async {
+        if (!shouldSyncAb()) return;
+        var hasSynced = false;
+        for (var id in ids) {
+          if (await bind.mainPeerExists(id: id)) {
+            hasSynced = true;
+            break;
+          }
+        }
+        if (hasSynced) {
+          BotToast.showText(
+              contentColor: Colors.lightBlue,
+              text: translate('synced_peer_readded_tip'));
+          _syncAllFromRecent = true;
+        }
+      });
+    }
     return ret;
   }
 
@@ -545,21 +566,6 @@ class AbModel {
     }
   }
 
-  reSyncToast(Future<bool> future) {
-    if (!shouldSyncAb()) return;
-    if (currentName.value != personalAddressBookName) return;
-    Future.delayed(Duration.zero, () async {
-      final succ = await future;
-      if (succ) {
-        await Future.delayed(Duration(seconds: 2)); // success msg
-        BotToast.showText(
-            contentColor: Colors.lightBlue,
-            text: translate('synced_peer_readded_tip'));
-        _syncAllFromRecent = true;
-      }
-    });
-  }
-
 // #region Tools
   Peer? find(String id) {
     return currentAbPeers.firstWhereOrNull((e) => e.id == id);
@@ -677,7 +683,7 @@ abstract class BaseAb {
     }).toList();
   }
 
-  void changeAlias({required String id, required String alias});
+  Future<bool> changeAlias({required String id, required String alias});
   void changeAliasWithoutPush({required String id, required String alias}) {
     final it = peers.where((element) => element.id == id);
     if (it.isEmpty) {
@@ -910,9 +916,9 @@ class PersonalAb extends BaseAb {
   }
 
   @override
-  void changeAlias({required String id, required String alias}) {
+  Future<bool> changeAlias({required String id, required String alias}) async {
     changeAliasWithoutPush(id: id, alias: alias);
-    pushAb();
+    return await pushAb();
   }
 
   @override
@@ -961,7 +967,7 @@ class PersonalAb extends BaseAb {
     }
   }
 
-  Future<void> changePersonalHashPassword(
+  Future<bool> changePersonalHashPassword(
       String id, String hash, bool toast) async {
     bool changed = false;
     final it = peers.where((element) => element.id == id);
@@ -972,8 +978,9 @@ class PersonalAb extends BaseAb {
       }
     }
     if (changed) {
-      await pushAb(toastIfSucc: toast, toastIfFail: toast);
+      return await pushAb(toastIfSucc: toast, toastIfFail: toast);
     }
+    return true;
   }
 
   @override
