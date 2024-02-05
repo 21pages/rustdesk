@@ -830,7 +830,7 @@ abstract class BasePeerCard extends StatelessWidget {
       ),
       proc: () {
         () async {
-          addPeersToAbDialog([peer]);
+          addPeersToAbDialog([Peer.copy(peer)]);
         }();
       },
       padding: menuPadding,

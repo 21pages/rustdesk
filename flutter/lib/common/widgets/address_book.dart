@@ -148,19 +148,17 @@ class _AddressBookState extends State<AddressBook> {
     }
 
     if (!gFFI.abModel.supportSharedAb.value) return Offstage();
-    final editIcon = icon(Icons.edit, "You can edit this address book");
     if (gFFI.abModel.currentName.value == personalAddressBookName) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           icon(Icons.cloud_off, "Personal"),
-          editIcon,
         ],
       );
     } else {
       final children = [icon(Icons.cloud, "Shared by the team")];
       if (gFFI.abModel.allowedToEditCurrentAb()) {
-        children.add(editIcon);
+        children.add(icon(Icons.edit, "You can edit this address book"));
         if (gFFI.abModel.allowedToUpdateCurrentProfile()) {
           children.add(icon(Icons.admin_panel_settings_sharp,
               "You can update permissions or delete this address book"));

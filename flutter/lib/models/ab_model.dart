@@ -344,7 +344,8 @@ class AbModel {
       debugPrint('addPeersTo, no such addressbook: $name');
       return false;
     }
-    bool res = await ab.addPeers(ps);
+    final ps2 = ps.map((e) => Peer.copy(e)).toList();
+    bool res = await ab.addPeers(ps2);
     if (name == _currentName.value) {
       _refreshTab();
     }
@@ -928,6 +929,7 @@ class PersonalAb extends BaseAb {
     bool res = true;
     for (var p in ps) {
       if (!isFull(true)) {
+        p.password = '';
         addPeerWithoutPush(p);
       } else {
         res = false;
@@ -1220,6 +1222,9 @@ class SharedAb extends BaseAb {
       }
       if (isFull(true)) {
         return false;
+      }
+      if (profile.pwd != true) {
+        p.password = '';
       }
       final body = jsonEncode(p.toSharedAbUploadJson());
       final resp =
