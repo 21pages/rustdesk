@@ -14,8 +14,6 @@ import 'package:http/http.dart' as http;
 
 import '../common.dart';
 
-// TODO: pull after change
-
 final syncAbOption = 'sync-ab-with-recent-sessions';
 bool shouldSyncAb() {
   return bind.mainGetLocalOption(key: syncAbOption).isNotEmpty;
@@ -42,8 +40,8 @@ class AbModel {
   BaseAb get current => addressbooks[_currentName.value] ?? personalAddressBook;
 
   RxList<Peer> get currentAbPeers => current.peers;
-  RxList get currentAbTags => current.tags;
-  RxList get selectedTags => current.selectedTags;
+  RxList<String> get currentAbTags => current.tags;
+  RxList<String> get selectedTags => current.selectedTags;
 
   RxBool get currentAbLoading => current.abLoading;
   RxString get currentAbPullError => current.pullError;
@@ -330,10 +328,6 @@ class AbModel {
     }
     _mergePeerFromGroup(peer);
     final ret = await addPeersTo([peer], _currentName.value);
-    if (_currentName.value != personalAddressBookName) {
-      // get device info
-      await current.pullAb(force: true, quiet: true);
-    }
     _timerCounter = 0;
     return ret;
   }
@@ -346,6 +340,7 @@ class AbModel {
     }
     final ps2 = ps.map((e) => Peer.copy(e)).toList();
     bool res = await ab.addPeers(ps2);
+    await pullSharedAfterChange(name: name);
     if (name == _currentName.value) {
       _refreshTab();
     }
@@ -356,6 +351,7 @@ class AbModel {
 
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags) async {
     bool ret = await current.changeTagForPeers(ids, tags);
+    await pullSharedAfterChange();
     currentAbPeers.refresh();
     _saveCache();
     return ret;
@@ -363,6 +359,7 @@ class AbModel {
 
   Future<bool> changeAlias({required String id, required String alias}) async {
     bool res = await current.changeAlias(id: id, alias: alias);
+    await pullSharedAfterChange();
     currentAbPeers.refresh();
     _saveCache();
     return res;
@@ -378,12 +375,15 @@ class AbModel {
 
   Future<bool> changeSharedPassword(
       String abName, String id, String password) async {
-    return await addressbooks[abName]?.changeSharedPassword(id, password) ??
-        false;
+    final ret =
+        await addressbooks[abName]?.changeSharedPassword(id, password) ?? false;
+    await pullSharedAfterChange();
+    return ret;
   }
 
   Future<bool> deletePeers(List<String> ids) async {
     final ret = await current.deletePeers(ids);
+    await pullSharedAfterChange();
     currentAbPeers.refresh();
     _refreshTab();
     _saveCache();
@@ -413,24 +413,35 @@ class AbModel {
 // #region tags
   Future<bool> addTags(List<String> tagList) async {
     final ret = await current.addTags(tagList);
+    await pullSharedAfterChange();
     _saveCache();
     return ret;
   }
 
   Future<bool> renameTag(String oldTag, String newTag) async {
     final ret = await current.renameTag(oldTag, newTag);
+    await pullSharedAfterChange();
+    selectedTags.value = selectedTags.map((e) {
+      if (e == oldTag) {
+        return newTag;
+      } else {
+        return e;
+      }
+    }).toList();
     _saveCache();
     return ret;
   }
 
   Future<bool> setTagColor(String tag, Color color) async {
     final ret = await current.setTagColor(tag, color);
+    await pullSharedAfterChange();
     _saveCache();
     return ret;
   }
 
   Future<bool> deleteTag(String tag) async {
     final ret = await current.deleteTag(tag);
+    await pullSharedAfterChange();
     _saveCache();
     return ret;
   }
@@ -502,7 +513,6 @@ class AbModel {
 
 // #region cache
   _saveCache() {
-    // TODO: too many _saveCache
     try {
       var ab_entries = _serializeCache();
       Map<String, dynamic> m = <String, dynamic>{
@@ -657,12 +667,25 @@ class AbModel {
   void _refreshTab() {
     platformFFI.tryHandle({'name': LoadEvent.addressBook});
   }
+
+  // should not call this function in a loop call stack
+  Future<void> pullSharedAfterChange({String? name}) async {
+    if (name == null) {
+      return await current.pullAb(force: true, quiet: true);
+    } else if (name != personalAddressBookName) {
+      final ab = addressbooks[name];
+      if (ab != null) {
+        return ab.pullAb(force: true, quiet: true);
+      }
+    }
+  }
+
 // #endregion
 }
 
 abstract class BaseAb {
   final peers = List<Peer>.empty(growable: true).obs;
-  final tags = [].obs;
+  final RxList<String> tags = <String>[].obs;
   final RxMap<String, int> tagColors = Map<String, int>.fromEntries([]).obs;
   final selectedTags = List<String>.empty(growable: true).obs;
 
@@ -745,13 +768,6 @@ abstract class BaseAb {
   Future<bool> renameTag(String oldTag, String newTag);
   void renameTagWithoutPush(String oldTag, String newTag) {
     tags.value = tags.map((e) {
-      if (e == oldTag) {
-        return newTag;
-      } else {
-        return e;
-      }
-    }).toList();
-    selectedTags.value = selectedTags.map((e) {
       if (e == oldTag) {
         return newTag;
       } else {
@@ -851,7 +867,6 @@ class PersonalAb extends BaseAb {
           final data = jsonDecode(json['data']);
           if (data != null) {
             _deserialize(data);
-            // _saveCache(); // save on success
           }
         }
       }
@@ -1062,7 +1077,7 @@ class PersonalAb extends BaseAb {
     tagColors.clear();
     peers.clear();
     if (data['tags'] is List) {
-      tags.value = data['tags'];
+      tags.value = (data['tags'] as List).map((e) => e.toString()).toList();
     }
     if (data['peers'] is List) {
       for (final peer in data['peers']) {
@@ -1234,7 +1249,6 @@ class SharedAb extends BaseAb {
         BotToast.showText(contentColor: Colors.red, text: errMsg);
         return false;
       }
-      addPeerWithoutPush(p);
     }
     return true;
   }
@@ -1255,7 +1269,6 @@ class SharedAb extends BaseAb {
         ret = false;
         break;
       }
-      changeTagForPeersWithoutPush([id], tags);
     }
     return ret;
   }
@@ -1273,7 +1286,6 @@ class SharedAb extends BaseAb {
       BotToast.showText(contentColor: Colors.red, text: errMsg);
       return false;
     }
-    changeAliasWithoutPush(id: id, alias: alias);
     return true;
   }
 
@@ -1290,7 +1302,6 @@ class SharedAb extends BaseAb {
       BotToast.showText(contentColor: Colors.red, text: errMsg);
       return false;
     }
-    pullAb(force: true, quiet: true);
     return true;
   }
 
@@ -1356,7 +1367,6 @@ class SharedAb extends BaseAb {
       BotToast.showText(contentColor: Colors.red, text: errMsg);
       return false;
     }
-    deletePeersWithoutPush(ids);
     return true;
   }
 // #endregion
@@ -1380,7 +1390,6 @@ class SharedAb extends BaseAb {
         BotToast.showText(contentColor: Colors.red, text: errMsg);
         return false;
       }
-      addTagsWithoutPush([t]);
     }
     return true;
   }
@@ -1406,7 +1415,6 @@ class SharedAb extends BaseAb {
       BotToast.showText(contentColor: Colors.red, text: errMsg);
       return false;
     }
-    renameTagWithoutPush(oldTag, newTag);
     return true;
   }
 
@@ -1426,7 +1434,6 @@ class SharedAb extends BaseAb {
       BotToast.showText(contentColor: Colors.red, text: errMsg);
       return false;
     }
-    setTagColorWithoutPush(tag, color);
     return true;
   }
 
@@ -1444,7 +1451,6 @@ class SharedAb extends BaseAb {
       BotToast.showText(contentColor: Colors.red, text: errMsg);
       return false;
     }
-    deleteTagWithoutPush(tag);
     return true;
   }
 
