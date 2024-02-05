@@ -89,6 +89,7 @@ class AbModel {
     personalAddressBook.reset();
     await bind.mainClearAb();
     licensedDevices = 0;
+    _everPulledProfiles = false;
     _resetting = false;
   }
 

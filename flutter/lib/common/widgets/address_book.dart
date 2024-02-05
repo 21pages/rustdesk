@@ -158,14 +158,26 @@ class _AddressBookState extends State<AddressBook> {
         ],
       );
     } else {
+      final children = [icon(Icons.cloud, "Shared by the team")];
+      if (gFFI.abModel.allowedToEditCurrentAb()) {
+        children.add(editIcon);
+        if (gFFI.abModel.allowedToUpdateCurrentProfile()) {
+          children.add(icon(Icons.admin_panel_settings_sharp,
+              "You can update permissions or delete this address book"));
+        }
+      } else {
+        children.add(icon(
+            Icons.remove_red_eye_outlined, "You can't edit this address book"));
+      }
+      if (gFFI.abModel.isCurrentAbSharingPassword()) {
+        children.add(icon(Icons.key, "This address book shares passwords"));
+      } else {
+        children.add(
+            icon(Icons.key_off, "This address book doesn't share passwords"));
+      }
       return Row(
         mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          icon(Icons.cloud, "Shared by the team"),
-          if (gFFI.abModel.allowedToEditCurrentAb()) editIcon,
-          if (gFFI.abModel.isCurrentAbSharingPassword())
-            icon(Icons.key, "This address book shares passwords"),
-        ],
+        children: children,
       );
     }
   }
@@ -690,7 +702,7 @@ class _AddressBookState extends State<AddressBook> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                translate('Allow non-admin users to edit'),
+                translate('Allow others to edit (excluding admin)'),
                 style: style,
               ),
             ).marginOnly(top: 8, bottom: marginBottom),
