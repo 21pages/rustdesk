@@ -140,10 +140,6 @@ class _AddressBookState extends State<AddressBook> {
   }
 
   Widget _buildAbPermission() {
-    if (!gFFI.abModel.supportSharedAb.value) return Offstage();
-    if (gFFI.abModel.currentName.value == personalAddressBookName) {
-      return Offstage();
-    }
     icon(IconData data, String tooltip) {
       return Tooltip(
           message: translate(tooltip),
@@ -151,15 +147,27 @@ class _AddressBookState extends State<AddressBook> {
           child: Icon(data, size: 12.0).marginSymmetric(horizontal: 2.0));
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        if (gFFI.abModel.allowedToEditCurrentAb())
-          icon(Icons.edit, "You can edit this address book"),
-        if (gFFI.abModel.isCurrentAbSharingPassword())
-          icon(Icons.key, "This address book shares passwords"),
-      ],
-    );
+    if (!gFFI.abModel.supportSharedAb.value) return Offstage();
+    final editIcon = icon(Icons.edit, "You can edit this address book");
+    if (gFFI.abModel.currentName.value == personalAddressBookName) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          icon(Icons.cloud_off, "Personal"),
+          editIcon,
+        ],
+      );
+    } else {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          icon(Icons.cloud, "Shared by the team"),
+          if (gFFI.abModel.allowedToEditCurrentAb()) editIcon,
+          if (gFFI.abModel.isCurrentAbSharingPassword())
+            icon(Icons.key, "This address book shares passwords"),
+        ],
+      );
+    }
   }
 
   Widget _buildAbDropdown() {
