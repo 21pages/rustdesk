@@ -74,7 +74,7 @@ class AbModel {
           if (!gFFI.userModel.isLogin) return;
           if (!allInitialized()) return;
           if (_resetting) return;
-          syncFromRecent();
+          _syncFromRecent();
         }
       });
     }
@@ -95,7 +95,7 @@ class AbModel {
 // #region ab
   Future<void> pullAb({force = true, quiet = false}) async {
     await _pullAb(force: force, quiet: quiet);
-    platformFFI.tryHandle({'name': LoadEvent.addressBook});
+    _refreshTab();
   }
 
   Future<void> _pullAb({force = true, quiet = false}) async {
@@ -330,6 +330,7 @@ class AbModel {
     _mergePeerFromGroup(peer);
     final ret = await addPeersTo([peer], _currentName.value);
     if (_currentName.value != personalAddressBookName) {
+      // get device info
       await current.pullAb(force: true, quiet: true);
     }
     _timerCounter = 0;
@@ -344,8 +345,7 @@ class AbModel {
     }
     bool res = await ab.addPeers(ps);
     if (name == _currentName.value) {
-      currentAbPeers.refresh();
-      platformFFI.tryHandle({'name': LoadEvent.addressBook});
+      _refreshTab();
     }
     _syncAllFromRecent = true;
     _saveCache();
@@ -383,7 +383,7 @@ class AbModel {
   Future<bool> deletePeers(List<String> ids) async {
     final ret = await current.deletePeers(ids);
     currentAbPeers.refresh();
-    platformFFI.tryHandle({'name': LoadEvent.addressBook});
+    _refreshTab();
     _saveCache();
     if (_currentName.value == personalAddressBookName) {
       Future.delayed(Duration(seconds: 2), () async {
@@ -436,7 +436,7 @@ class AbModel {
 // #endregion
 
 // #region sync from recent
-  Future<void> syncFromRecent({bool push = true}) async {
+  Future<void> _syncFromRecent({bool push = true}) async {
     if (!_syncFromRecentLock) {
       _syncFromRecentLock = true;
       await _syncFromRecentWithoutLock(push: push);
@@ -483,7 +483,7 @@ class AbModel {
       final recents = await getRecentPeers();
       if (recents.isEmpty) return;
       addressbooks.forEach((key, value) async {
-        await value.syncFromRecent(recents, true);
+        await value.syncFromRecent(recents);
       });
     } catch (e) {
       debugPrint('_syncFromRecentWithoutLock: $e');
@@ -640,7 +640,7 @@ class AbModel {
     } else {
       _currentName.value = personalAddressBookName;
     }
-    platformFFI.tryHandle({'name': LoadEvent.addressBook});
+    _refreshTab();
   }
 
   bool isCurrentAbFull(bool warn) {
@@ -650,6 +650,10 @@ class AbModel {
   bool allInitialized() {
     return _everPulledProfiles &&
         addressbooks.values.every((e) => e.initialized);
+  }
+
+  void _refreshTab() {
+    platformFFI.tryHandle({'name': LoadEvent.addressBook});
   }
 // #endregion
 }
@@ -802,7 +806,7 @@ abstract class BaseAb {
 
   SharedAbProfile? sharedProfile();
 
-  Future<void> syncFromRecent(List<Peer> recents, bool push);
+  Future<void> syncFromRecent(List<Peer> recents);
 }
 
 class PersonalAb extends BaseAb {
@@ -951,7 +955,7 @@ class PersonalAb extends BaseAb {
   }
 
   @override
-  Future<void> syncFromRecent(List<Peer> recents, bool push) async {
+  Future<void> syncFromRecent(List<Peer> recents) async {
     bool peerSyncEqual(Peer a, Peer b) {
       return a.hash == b.hash &&
           a.username == b.username &&
@@ -960,7 +964,6 @@ class PersonalAb extends BaseAb {
           a.alias == b.alias;
     }
 
-    bool uiChanged = false;
     bool needSync = false;
     for (var i = 0; i < recents.length; i++) {
       var r = recents[i];
@@ -968,7 +971,6 @@ class PersonalAb extends BaseAb {
       if (index < 0) {
         if (!isFull(false)) {
           peers.add(r);
-          uiChanged = true;
           needSync = true;
         }
       } else {
@@ -977,17 +979,12 @@ class PersonalAb extends BaseAb {
         if (!peerSyncEqual(peers[index], old)) {
           needSync = true;
         }
-        if (!old.equal(peers[index])) {
-          uiChanged = true;
-        }
       }
     }
-    if (needSync && push) {
-      pushAb(toastIfSucc: false, toastIfFail: false);
-    } else if (uiChanged &&
-        gFFI.abModel.currentName.value == personalAddressBookName) {
-      peers.refresh();
+    if (needSync) {
+      await pushAb(toastIfSucc: false, toastIfFail: false);
     }
+    // Pull cannot be used for sync to avoid cyclic sync.
   }
 
   Future<bool> changePersonalHashPassword(
@@ -1292,7 +1289,7 @@ class SharedAb extends BaseAb {
   }
 
   @override
-  Future<void> syncFromRecent(List<Peer> recents, bool push) async {
+  Future<void> syncFromRecent(List<Peer> recents) async {
     bool uiUpdate = false;
     bool peerSyncEqual(Peer a, Peer b) {
       return a.username == b.username &&
@@ -1317,7 +1314,7 @@ class SharedAb extends BaseAb {
       final resp = await http.put(Uri.parse(api), headers: headers, body: body);
       final errMsg = _jsonDecodeActionResp(resp);
       if (errMsg.isNotEmpty) {
-        debugPrint('errMsg: $errMsg');
+        debugPrint('syncOnePeer errMsg: $errMsg');
         return false;
       }
       uiUpdate = true;
@@ -1333,6 +1330,7 @@ class SharedAb extends BaseAb {
         }
       }
     }
+    // Pull cannot be used for sync to avoid cyclic sync.
     if (uiUpdate && gFFI.abModel.currentName.value == profile.name) {
       peers.refresh();
     }
