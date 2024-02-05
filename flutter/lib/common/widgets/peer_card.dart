@@ -1039,6 +1039,7 @@ class AddressBookPeerCard extends BasePeerCard {
       if (gFFI.abModel.currentAbTags.isNotEmpty) {
         menuItems.add(_editTagAction(peer.id));
       }
+      if (gFFI.abModel.addressbooks.length > 1) menuItems.add(_addToAb(peer));
       menuItems.add(MenuEntryDivider());
       menuItems.add(_removeAction(peer.id));
     }
