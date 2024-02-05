@@ -94,7 +94,13 @@ class AbModel {
 
 // #region ab
   Future<void> pullAb({force = true, quiet = false}) async {
+    await _pullAb(force: force, quiet: quiet);
+    platformFFI.tryHandle({'name': LoadEvent.addressBook});
+  }
+
+  Future<void> _pullAb({force = true, quiet = false}) async {
     debugPrint("pullAb, force:$force, quiet:$quiet");
+    if (!gFFI.userModel.isLogin) return;
     try {
       // get all address book name
       List<SharedAbProfile> tmpSharedAbs = List.empty(growable: true);
@@ -649,7 +655,6 @@ abstract class BaseAb {
   }
 
   Future<void> pullAb({force = true, quiet = false}) async {
-    if (!gFFI.userModel.isLogin) return;
     if (abLoading.value) return;
     if (!force && initialized) return;
     if (!quiet) {
@@ -836,7 +841,6 @@ class PersonalAb extends BaseAb {
           gFFI.userModel.reset(resetOther: true);
         }
       }
-      platformFFI.tryHandle({'name': LoadEvent.addressBook});
     }
   }
 
@@ -1294,14 +1298,15 @@ class SharedAb extends BaseAb {
       final resp = await http.put(Uri.parse(api), headers: headers, body: body);
       final errMsg = _jsonDecodeActionResp(resp);
       if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
+        debugPrint('errMsg: $errMsg');
         return false;
       }
       uiUpdate = true;
       return true;
     }
 
-    for (var p in peers.where((p0) => p0.sameServer != true)) {
+    final syncPeers = peers.where((p0) => p0.sameServer != true);
+    for (var p in syncPeers) {
       Peer? r = recents.firstWhereOrNull((e) => e.id == p.id);
       if (r != null) {
         if (!peerSyncEqual(p, r)) {
