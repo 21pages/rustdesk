@@ -168,7 +168,7 @@ class AbModel {
           return false;
         }
         Map<String, dynamic> json =
-            _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
+            _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
           throw json['error'];
         }
@@ -313,10 +313,10 @@ class AbModel {
 // #endregion
 
 // #region peer
-  Future<bool> addIdToCurrent(
+  Future<String?> addIdToCurrent(
       String id, String alias, String password, List<dynamic> tags) async {
     if (currentAbPeers.where((element) => element.id == id).isNotEmpty) {
-      return false;
+      return "$id already exists in address book $_currentName";
     }
     final peer = Peer.fromJson({
       'id': id,
@@ -332,21 +332,20 @@ class AbModel {
     return ret;
   }
 
-  Future<bool> addPeersTo(List<Peer> ps, String name) async {
+  Future<String?> addPeersTo(List<Peer> ps, String name) async {
     final ab = addressbooks[name];
     if (ab == null) {
-      debugPrint('addPeersTo, no such addressbook: $name');
-      return false;
+      return 'no such addressbook: $name';
     }
     final ps2 = ps.map((e) => Peer.copy(e)).toList();
-    bool res = await ab.addPeers(ps2);
+    String? errMsg = await ab.addPeers(ps2);
     await pullSharedAfterChange(name: name);
     if (name == _currentName.value) {
       _refreshTab();
     }
     _syncAllFromRecent = true;
     _saveCache();
-    return res;
+    return errMsg;
   }
 
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags) async {
@@ -580,7 +579,8 @@ class AbModel {
             addressbooks[name] = ab;
           }
           if (abEntry['tags'] is List) {
-            ab.tags.value = abEntry['tags'];
+            ab.tags.value =
+                (abEntry['tags'] as List).map((e) => e.toString()).toList();
           }
           if (abEntry['peers'] is List) {
             for (var peer in abEntry['peers']) {
@@ -717,7 +717,7 @@ abstract class BaseAb {
 
   Future<void> pullAbImpl({force = true, quiet = false});
 
-  Future<bool> addPeers(List<Peer> ps);
+  Future<String?> addPeers(List<Peer> ps);
   void addPeerWithoutPush(Peer peer) {
     final index = peers.indexWhere((e) => e.id == peer.id);
     if (index >= 0) {
@@ -856,7 +856,7 @@ class PersonalAb extends BaseAb {
         peers.clear();
       } else if (resp.body.isNotEmpty) {
         Map<String, dynamic> json =
-            _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
+            _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
           throw json['error'];
         } else if (json.containsKey('data')) {
@@ -911,15 +911,13 @@ class PersonalAb extends BaseAb {
       if (resp.statusCode == 200 &&
           (resp.body.isEmpty || resp.body.toLowerCase() == 'null')) {
         ret = true;
-        // _saveCache();
       } else {
         Map<String, dynamic> json =
-            _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
+            _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
           throw json['error'];
         } else if (resp.statusCode == 200) {
           ret = true;
-          // _saveCache();
         } else {
           throw 'HTTP ${resp.statusCode}';
         }
@@ -940,18 +938,24 @@ class PersonalAb extends BaseAb {
 
 // #region Peer
   @override
-  Future<bool> addPeers(List<Peer> ps) async {
-    bool res = true;
+  Future<String?> addPeers(List<Peer> ps) async {
+    bool full = false;
     for (var p in ps) {
-      if (!isFull(true)) {
+      if (!isFull(false)) {
         p.password = '';
         addPeerWithoutPush(p);
       } else {
-        res = false;
+        full = true;
         break;
       }
     }
-    return await pushAb() && res;
+    if (!await pushAb()) {
+      return "Failed to push to server";
+    } else if (full) {
+      return translate("exceed_max_devices");
+    } else {
+      return null;
+    }
   }
 
   @override
@@ -1156,7 +1160,7 @@ class SharedAb extends BaseAb {
         headers['Content-Type'] = "application/json";
         final resp = await http.post(uri, headers: headers);
         Map<String, dynamic> json =
-            _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
+            _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
           throw json['error'];
         }
@@ -1226,7 +1230,7 @@ class SharedAb extends BaseAb {
 
 // #region Peers
   @override
-  Future<bool> addPeers(List<Peer> ps) async {
+  Future<String?> addPeers(List<Peer> ps) async {
     final api =
         "${await bind.mainGetApiServer()}/api/ab/shared/peer/add/${profile.guid}";
     var headers = getHttpHeaders();
@@ -1235,8 +1239,8 @@ class SharedAb extends BaseAb {
       if (peers.firstWhereOrNull((e) => e.id == p.id) != null) {
         continue;
       }
-      if (isFull(true)) {
-        return false;
+      if (isFull(false)) {
+        return translate("exceed_max_devices");
       }
       if (profile.pwd != true) {
         p.password = '';
@@ -1246,11 +1250,10 @@ class SharedAb extends BaseAb {
           await http.post(Uri.parse(api), headers: headers, body: body);
       final errMsg = _jsonDecodeActionResp(resp);
       if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
+        return errMsg;
       }
     }
-    return true;
+    return null;
   }
 
   @override
@@ -1468,7 +1471,7 @@ void _merge(Peer r, Peer p) {
   p.rdpUsername = r.rdpUsername;
 }
 
-Map<String, dynamic> _jsonDecodeResp(String body, int statusCode) {
+Map<String, dynamic> _jsonDecodeRespMap(String body, int statusCode) {
   try {
     Map<String, dynamic> json = jsonDecode(body);
     return json;

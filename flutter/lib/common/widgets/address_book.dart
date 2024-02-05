@@ -434,9 +434,15 @@ class _AddressBookState extends State<AddressBook> {
           if (passwordShared) {
             password = passwordController.text;
           }
-          await gFFI.abModel.addIdToCurrent(
+          String? errMsg2 = await gFFI.abModel.addIdToCurrent(
               id, aliasController.text.trim(), password, selectedTag);
-          this.setState(() {});
+          if (errMsg2 != null) {
+            setState(() {
+              isInProgress = false;
+              errorMsg = errMsg2;
+            });
+            return;
+          }
           // final currentPeers
         }
         close();
@@ -468,7 +474,8 @@ class _AddressBookState extends State<AddressBook> {
                 TextField(
                   controller: idController,
                   inputFormatters: [IDTextInputFormatter()],
-                  decoration: InputDecoration(errorText: errorMsg),
+                  decoration:
+                      InputDecoration(errorText: errorMsg, errorMaxLines: 5),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
