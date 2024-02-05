@@ -303,7 +303,7 @@ class _AddressBookState extends State<AddressBook> {
         return shouldSyncAb();
       },
       setter: (bool v) async {
-        bind.mainSetLocalOption(key: syncAbOption, value: v ? 'Y' : '');
+        gFFI.abModel.setShouldAsync(v);
       },
       dismissOnClicked: true,
     );

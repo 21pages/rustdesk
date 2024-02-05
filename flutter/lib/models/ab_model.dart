@@ -62,7 +62,7 @@ class AbModel {
   var _resetting = false;
   var _timerCounter = 0;
   var _cacheLoadOnceFlag = false;
-  var _everPulled = false;
+  var _everPulledProfiles = false;
 
   WeakReference<FFI> parent;
 
@@ -72,7 +72,7 @@ class AbModel {
       Timer.periodic(Duration(milliseconds: 500), (timer) async {
         if (_timerCounter++ % 6 == 0) {
           if (!gFFI.userModel.isLogin) return;
-          if (addressbooks.values.any((e) => !e.initialized)) return;
+          if (!allInitialized()) return;
           if (_resetting) return;
           syncFromRecent();
         }
@@ -101,6 +101,7 @@ class AbModel {
   Future<void> _pullAb({force = true, quiet = false}) async {
     debugPrint("pullAb, force:$force, quiet:$quiet");
     if (!gFFI.userModel.isLogin) return;
+    if (!force && allInitialized()) return;
     try {
       // get all address book name
       List<SharedAbProfile> tmpSharedAbs = List.empty(growable: true);
@@ -112,8 +113,8 @@ class AbModel {
         addressbooks[p.name] = SharedAb(p);
       }
       // set current address book name
-      if (!_everPulled) {
-        _everPulled = true;
+      if (!_everPulledProfiles) {
+        _everPulledProfiles = true;
         final name = bind.getLocalFlutterOption(k: 'current-ab-name');
         if (addressbooks.containsKey(name)) {
           _currentName.value = name;
@@ -312,7 +313,7 @@ class AbModel {
   }
 // #endregion
 
-// #region Peer
+// #region peer
   Future<bool> addIdToCurrent(
       String id, String alias, String password, List<dynamic> tags) async {
     if (currentAbPeers.where((element) => element.id == id).isNotEmpty) {
@@ -331,6 +332,7 @@ class AbModel {
     if (_currentName.value != personalAddressBookName) {
       await current.pullAb(force: true, quiet: true);
     }
+    _timerCounter = 0;
     return ret;
   }
 
@@ -406,7 +408,7 @@ class AbModel {
 
 // #endregion
 
-// #region Tags
+// #region tags
   Future<bool> addTags(List<String> tagList) async {
     final ret = await current.addTags(tagList);
     _saveCache();
@@ -433,6 +435,7 @@ class AbModel {
 
 // #endregion
 
+// #region sync from recent
   Future<void> syncFromRecent({bool push = true}) async {
     if (!_syncFromRecentLock) {
       _syncFromRecentLock = true;
@@ -487,6 +490,15 @@ class AbModel {
     }
   }
 
+  void setShouldAsync(bool v) async {
+    await bind.mainSetLocalOption(key: syncAbOption, value: v ? 'Y' : '');
+    _syncAllFromRecent = true;
+    _timerCounter = 0;
+  }
+
+// #endregion
+
+// #region cache
   _saveCache() {
     // TODO: too many _saveCache
     try {
@@ -572,7 +584,9 @@ class AbModel {
     }
   }
 
-// #region Tools
+// #endregion
+
+// #region tools
   Peer? find(String id) {
     return currentAbPeers.firstWhereOrNull((e) => e.id == id);
   }
@@ -631,6 +645,11 @@ class AbModel {
 
   bool isCurrentAbFull(bool warn) {
     return current.isFull(warn);
+  }
+
+  bool allInitialized() {
+    return _everPulledProfiles &&
+        addressbooks.values.every((e) => e.initialized);
   }
 // #endregion
 }
