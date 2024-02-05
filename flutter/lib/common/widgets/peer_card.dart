@@ -217,6 +217,12 @@ class _PeerCardState extends State<_PeerCard>
                   child: child,
                 ),
               ),
+        if (_shouldBuildPasswordIcon(peer))
+          Positioned(
+            top: 2,
+            left: isMobile ? 65 : 50,
+            child: Icon(Icons.key, size: 12),
+          ),
         if (colors.isNotEmpty)
           Positioned(
             top: 2,
@@ -320,6 +326,12 @@ class _PeerCardState extends State<_PeerCard>
           : '',
       child: Stack(children: [
         child,
+        if (_shouldBuildPasswordIcon(peer))
+          Positioned(
+            top: 4,
+            left: 12,
+            child: Icon(Icons.key, size: 12),
+          ),
         if (colors.isNotEmpty)
           Positioned(
             top: 4,
@@ -402,6 +414,12 @@ class _PeerCardState extends State<_PeerCard>
       },
       onPointerUp: (_) => _showPeerMenu(peer.id),
       child: build_more(context));
+
+  bool _shouldBuildPasswordIcon(Peer peer) {
+    if (gFFI.peerTabModel.currentTab != PeerTabIndex.ab.index) return false;
+    if (!gFFI.abModel.isCurrentAbSharingPassword()) return false;
+    return peer.password.isNotEmpty;
+  }
 
   /// Show the peer menu and handle user's choice.
   /// User might remove the peer or send a file to the peer.
