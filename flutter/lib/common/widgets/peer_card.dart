@@ -220,7 +220,7 @@ class _PeerCardState extends State<_PeerCard>
         if (_shouldBuildPasswordIcon(peer))
           Positioned(
             top: 2,
-            left: isMobile ? 65 : 50,
+            left: isMobile ? 60 : 50,
             child: Icon(Icons.key, size: 12),
           ),
         if (colors.isNotEmpty)
@@ -1319,6 +1319,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     {bool isFileTransfer = false,
     bool isTcpTunneling = false,
     bool isRDP = false}) async {
+  var password = '';
   if (tab == PeerTabIndex.ab) {
     // If recent peer's alias is empty, set it to ab's alias
     // Because the platform is not set, it may not take effect, but it is more important not to display if the connection is not successful
@@ -1329,9 +1330,12 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
         alias: peer.alias,
       );
     }
+    if (gFFI.abModel.isCurrentAbSharingPassword()) {
+      password = peer.password;
+    }
   }
   connect(context, peer.id,
-      password: peer.password,
+      password: password,
       isFileTransfer: isFileTransfer,
       isTcpTunneling: isTcpTunneling,
       isRDP: isRDP);
