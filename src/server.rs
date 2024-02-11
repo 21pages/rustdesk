@@ -443,6 +443,7 @@ pub async fn start_server(is_server: bool) {
         std::thread::spawn(move || {
             if let Err(err) = crate::ipc::start("") {
                 log::error!("Failed to start ipc: {}", err);
+                hbb_common::flog(&format!("Failed to start ipc: {}", err));
                 std::process::exit(-1);
             }
         });

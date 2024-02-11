@@ -9,6 +9,7 @@ use hbb_common::{
     anyhow::anyhow,
     bail,
     config::Config,
+    flog,
     libc::{c_char, c_int, c_long, c_void},
     log,
     message_proto::Resolution,
@@ -204,6 +205,7 @@ fn start_uinput_service() {
 
 #[inline]
 fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<Option<Child>> {
+    flog(&format!("try_start_server_ is_some: {}", desktop.is_some()));
     match desktop {
         Some(desktop) => {
             let mut envs = vec![];
@@ -231,6 +233,7 @@ fn start_server(desktop: Option<&Desktop>, server: &mut Option<Child>) {
     match try_start_server_(desktop) {
         Ok(ps) => *server = ps,
         Err(err) => {
+            flog(&format!("Failed to start server: {}", err));
             log::error!("Failed to start server: {}", err);
         }
     }
@@ -348,10 +351,15 @@ fn force_stop_server() {
 }
 
 pub fn start_os_service() {
+    flog("start_os_service");
     check_if_stop_service();
+    flog("check_if_stop_service");
     stop_rustdesk_servers();
+    flog("stop_rustdesk_servers");
     stop_subprocess();
+    flog("stop_subprocess");
     start_uinput_service();
+    flog("start_uinput_service");
 
     std::thread::spawn(|| {
         allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE));
@@ -375,12 +383,20 @@ pub fn start_os_service() {
     let mut last_restart = Instant::now();
     while running.load(Ordering::SeqCst) {
         desktop.refresh();
+        flog(&format!(
+            "desktop.username: {:?}, desktop.is_wayland(): {:?}, desktop.is_login_wayland(): {:?}",
+            desktop.username,
+            desktop.is_wayland(),
+            desktop.is_login_wayland(),
+        ));
 
         // Duplicate logic here with should_start_server
         // Login wayland will try to start a headless --server.
         if desktop.username == "root" || !desktop.is_wayland() || desktop.is_login_wayland() {
             // try kill subprocess "--server"
+            flog("desktop.username == root || !desktop.is_wayland() || desktop.is_login_wayland()");
             stop_server(&mut user_server);
+            flog("stop_server");
             // try start subprocess "--server"
             // No need to check is_display_changed here.
             if should_start_server(
@@ -392,13 +408,21 @@ pub fn start_os_service() {
                 &mut last_restart,
                 &mut server,
             ) {
+                flog("should start server");
                 stop_subprocess();
+                flog("stop_subprocess");
                 force_stop_server();
+                flog("force_stop_server");
                 start_server(None, &mut server);
+                flog("start_server");
+            } else {
+                flog("not should start server");
             }
         } else if desktop.username != "" {
+            flog("desktop.username != ");
             // try kill subprocess "--server"
             stop_server(&mut server);
+            flog("stop_server");
 
             let is_display_changed = desktop.display != display || desktop.xauth != xauth;
             display = desktop.display.clone();
@@ -414,11 +438,16 @@ pub fn start_os_service() {
                 &mut last_restart,
                 &mut user_server,
             ) {
+                flog("should_start_server 2");
                 stop_subprocess();
+                flog("stop_subprocess 2");
                 force_stop_server();
+                flog("force_stop_server 2");
                 start_server(Some(&desktop), &mut user_server);
+                flog("start_server 2");
             }
         } else {
+            flog("else {");
             force_stop_server();
             stop_server(&mut user_server);
             stop_server(&mut server);
@@ -592,7 +621,7 @@ where
     let mut args = vec![xdg, "-u", &username, cmd.to_str().unwrap_or("")];
     args.append(&mut arg.clone());
     // -E is required to preserve env
-        args.insert(0, "-E");
+    args.insert(0, "-E");
 
     let task = Command::new("sudo").envs(envs).args(args).spawn()?;
     Ok(Some(task))

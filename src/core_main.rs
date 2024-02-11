@@ -269,11 +269,17 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         } else if args[0] == "--server" {
             log::info!("start --server with user {}", crate::username());
+            hbb_common::flog(&format!(
+                "core main start --server with user {}",
+                crate::username()
+            ));
             #[cfg(all(windows, feature = "virtual_display_driver"))]
             crate::privacy_mode::restore_reg_connectivity();
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
+                hbb_common::flog(&format!("core main before start_server",));
                 crate::start_server(true);
+                hbb_common::flog(&format!("core main after start_server",));
                 return None;
             }
             #[cfg(target_os = "macos")]
