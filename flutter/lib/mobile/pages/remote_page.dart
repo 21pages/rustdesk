@@ -237,10 +237,13 @@ class _RemotePageState extends State<RemotePage> {
         keyboardVisibilityController.isVisible && _showEdit;
     final showActionButton = !_showBar || keyboardIsVisible || _showGestureHelp;
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (bool didPop) {
+        if (didPop) {
+          return;
+        }
         clientClose(sessionId, gFFI.dialogManager);
-        return false;
       },
       child: Scaffold(
           // workaround for https://github.com/rustdesk/rustdesk/issues/3131

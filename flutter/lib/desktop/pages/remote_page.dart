@@ -334,10 +334,13 @@ class _RemotePageState extends State<RemotePage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return WillPopScope(
-        onWillPop: () async {
+    return PopScope(
+        canPop: false,
+        onPopInvoked: (bool didPop) {
+          if (didPop) {
+            return;
+          }
           clientClose(sessionId, _ffi.dialogManager);
-          return false;
         },
         child: MultiProvider(providers: [
           ChangeNotifierProvider.value(value: _ffi.ffiModel),

@@ -52,16 +52,17 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-        onWillPop: () async {
+    return PopScope(
+        canPop: _selectedIndex == 0,
+        onPopInvoked: (bool didPop) {
+          if (didPop) {
+            return;
+          }
           if (_selectedIndex != 0) {
             setState(() {
               _selectedIndex = 0;
             });
-          } else {
-            return true;
           }
-          return false;
         },
         child: Scaffold(
           // backgroundColor: MyTheme.grayBg,
