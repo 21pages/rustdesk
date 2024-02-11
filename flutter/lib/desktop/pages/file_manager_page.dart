@@ -313,7 +313,7 @@ class _FileManagerPageState extends State<FileManagerPage>
                           Text(
                             translate("No transfers in progress"),
                             textAlign: TextAlign.center,
-                            textScaleFactor: 1.20,
+                            textScaler: TextScaler.linear(1.20),
                             style: TextStyle(
                                 color:
                                     Theme.of(context).tabBarTheme.labelColor),
@@ -1126,11 +1126,14 @@ class _FileManagerViewState extends State<FileManagerView> {
 
   void _onSelectedChanged(SelectedItems selectedItems, List<Entry> entries,
       Entry entry, bool isLocal) {
-    final isCtrlDown = RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.controlLeft) ||
-        RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.controlRight);
-    final isShiftDown =
-        RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
-        RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.shiftRight);
+    final isCtrlDown = RawKeyboard.instance.keysPressed
+            .contains(LogicalKeyboardKey.controlLeft) ||
+        RawKeyboard.instance.keysPressed
+            .contains(LogicalKeyboardKey.controlRight);
+    final isShiftDown = RawKeyboard.instance.keysPressed
+            .contains(LogicalKeyboardKey.shiftLeft) ||
+        RawKeyboard.instance.keysPressed
+            .contains(LogicalKeyboardKey.shiftRight);
     if (isCtrlDown) {
       if (selectedItems.items.contains(entry)) {
         selectedItems.remove(entry);

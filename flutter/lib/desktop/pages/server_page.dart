@@ -1160,7 +1160,7 @@ class __FileTransferLogPageState extends State<_FileTransferLogPage> {
                             Text(
                               translate("No transfers in progress"),
                               textAlign: TextAlign.center,
-                              textScaleFactor: 1.20,
+                              textScaler: TextScaler.linear(1.20),
                               style: TextStyle(
                                   color:
                                       Theme.of(context).tabBarTheme.labelColor),
