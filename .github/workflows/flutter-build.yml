@@ -165,6 +165,7 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           files: |
             ./SignOutput/rustdesk-*.exe
+            flutter/pubspec.lock
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
@@ -909,7 +910,7 @@ jobs:
                 if ${{ matrix.job.enable-headless }}; then
                   export DEFAULT_FEAT=linux_headless
                 fi
-                cargo build --lib --features hwcodec,flutter,flutter_texture_render,${{ matrix.job.extra-build-features }},$DEFAULT_FEAT --release
+                cargo build --lib --features hwcodec,flutter,flutter_texture_render,${{ matrix.job.extra-build-features }},$DEFAULT_FEAT
                 ;;
             esac
 
@@ -917,7 +918,7 @@ jobs:
         uses: actions/upload-artifact@master
         with:
           name: librustdesk-${{ matrix.job.arch }}-${{ matrix.job.extra-build-features }}.so
-          path: target/release/liblibrustdesk.so
+          path: target/debug/liblibrustdesk.so
 
   build-rustdesk-lib-linux-arm:
     if: ${{ inputs.upload-artifact }}
