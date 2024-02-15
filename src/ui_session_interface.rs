@@ -1003,7 +1003,7 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    pub fn reconnect(&self, force_relay: bool, user_session_id: String) {
+    pub fn reconnect(&self, force_relay: bool) {
         // 1. If current session is connecting, do not reconnect.
         // 2. If the connection is established, send `Data::Close`.
         // 3. If the connection is disconnected, do nothing.
@@ -1022,9 +1022,6 @@ impl<T: InvokeUiSession> Session<T> {
         // override only if true
         if true == force_relay {
             self.lc.write().unwrap().force_relay = true;
-        }
-        if !user_session_id.is_empty() {
-            self.lc.write().unwrap().selected_user_session_id = user_session_id;
         }
         let mut lock = self.thread.lock().unwrap();
         // No need to join the previous thread, because it will exit automatically.
@@ -1254,6 +1251,29 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn close_voice_call(&self) {
         self.send(Data::CloseVoiceCall);
     }
+
+    pub fn send_selected_session_id(&self, sid: String) {
+        if let Ok(sid) = sid.parse::<u32>() {
+            self.lc.write().unwrap().selected_windows_session_id = Some(sid);
+            let mut misc = Misc::new();
+            misc.set_selected_sid(sid);
+            let mut msg = Message::new();
+            msg.set_misc(misc);
+            self.send(Data::Message(msg));
+            if self.is_file_transfer() {
+                let pi = self.lc.read().unwrap().peer_info.clone();
+                if let Some(pi) = pi {
+                    if pi.username.is_empty() && pi.windows_sessions.current_sid == sid {
+                        self.on_error(
+                            "No active console user logged on, please connect and logon first.",
+                        );
+                    }
+                }
+            }
+        } else {
+            log::error!("selected invalid sid: {}", sid);
+        }
+    }
 }
 
 pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
@@ -1313,7 +1333,7 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn next_rgba(&self, display: usize);
     #[cfg(all(feature = "gpucodec", feature = "flutter"))]
     fn on_texture(&self, display: usize, texture: *mut c_void);
-    fn set_multiple_user_session(&self, sessions: Vec<hbb_common::message_proto::RdpUserSession>);
+    fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>);
 }
 
 impl<T: InvokeUiSession> Deref for Session<T> {
@@ -1355,13 +1375,13 @@ impl<T: InvokeUiSession> Interface for Session<T> {
         handle_login_error(self.lc.clone(), err, self)
     }
 
-    fn set_multiple_user_sessions(&self, sessions: Vec<hbb_common::message_proto::RdpUserSession>) {
-        self.ui_handler.set_multiple_user_session(sessions);
+    fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>) {
+        self.ui_handler.set_multiple_windows_session(sessions);
     }
 
     fn handle_peer_info(&self, mut pi: PeerInfo) {
         log::debug!("handle_peer_info :{:?}", pi);
-        pi.username = self.lc.read().unwrap().get_username(&pi);
+        self.lc.write().unwrap().peer_info = Some(pi.clone());
         if pi.current_display as usize >= pi.displays.len() {
             pi.current_display = 0;
         }
@@ -1369,7 +1389,7 @@ impl<T: InvokeUiSession> Interface for Session<T> {
             self.set_permission("restart", false);
         }
         if self.is_file_transfer() {
-            if pi.username.is_empty() {
+            if pi.username.is_empty() && pi.windows_sessions.sessions.is_empty() {
                 self.on_error("No active console user logged on, please connect and logon first.");
                 return;
             }
@@ -1417,6 +1437,19 @@ impl<T: InvokeUiSession> Interface for Session<T> {
             std::fs::File::create(&path).ok();
             if let Some(path) = path.to_str() {
                 crate::platform::windows::add_recent_document(&path);
+            }
+        }
+        if !pi.windows_sessions.sessions.is_empty() {
+            let selected = self
+                .lc
+                .read()
+                .unwrap()
+                .selected_windows_session_id
+                .to_owned();
+            if selected == Some(pi.windows_sessions.current_sid) {
+                self.send_selected_session_id(pi.windows_sessions.current_sid.to_string());
+            } else {
+                self.set_multiple_windows_session(pi.windows_sessions.sessions.clone());
             }
         }
     }
