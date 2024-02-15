@@ -829,7 +829,7 @@ impl InvokeUiSession for FlutterHandler {
     fn set_multiple_user_session(&self, sessions: Vec<hbb_common::message_proto::RdpUserSession>) {
         let formatted_sessions: Vec<String> = sessions
             .iter()
-            .map(|session| format!("{}-{}", session.user_session_id, session.user_name))
+            .map(|session| format!("{}-{}", session.sid, session.name))
             .collect();
         let sessions = formatted_sessions.join(",");
         self.push_event(

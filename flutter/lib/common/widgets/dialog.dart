@@ -1862,6 +1862,7 @@ void enter2FaDialog(
   });
 }
 
+// This dialog should not be dismissed, otherwise it will be black screen
 void showWindowsSessionsDialog(
     String type,
     String title,
@@ -1881,14 +1882,10 @@ void showWindowsSessionsDialog(
   String selectedUserValue = sessionMap.keys.first;
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
-    onConnect() {
-      bind.sessionReconnect(
-          sessionId: sessionId,
-          forceRelay: false,
-          userSessionId: selectedUserValue);
-      dialogManager.dismissAll();
-      dialogManager.showLoading(translate('Connecting...'),
-          onCancel: closeConnection);
+    submit() {
+      bind.sessionSendSelectedSessionId(
+          sessionId: sessionId, sid: selectedUserValue);
+      close();
     }
 
     return CustomAlertDialog(
@@ -1900,7 +1897,7 @@ void showWindowsSessionsDialog(
             selectedUserValue = value;
           });
         }),
-        dialogButton('Connect', onPressed: onConnect, isOutline: false),
+        dialogButton('Connect', onPressed: submit, isOutline: false),
       ],
     );
   });

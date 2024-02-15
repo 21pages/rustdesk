@@ -1518,7 +1518,7 @@ impl LoginConfigHandler {
         }
         let mut n = 0;
         let mut msg = OptionMessage::new();
-        msg.user_session = self.selected_user_session_id.clone();
+        msg.support_windows_specific_session = BoolOption::Yes.into();
         n += 1;
 
         if self.conn_type.eq(&ConnType::FILE_TRANSFER) {
@@ -2595,7 +2595,7 @@ pub async fn handle_hash(
     peer: &mut Stream,
 ) {
     lc.write().unwrap().hash = hash.clone();
-    let uuid = lc.read().unwrap().switch_uuid.clone();
+    let uuid = lc.write().unwrap().switch_uuid.take();
     if let Some(uuid) = uuid {
         if let Ok(uuid) = uuid::Uuid::from_str(&uuid) {
             send_switch_login_request(lc.clone(), peer, uuid).await;

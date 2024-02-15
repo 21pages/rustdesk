@@ -1003,7 +1003,7 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    pub fn reconnect(&self, force_relay: bool, user_session_id: String) {
+    pub fn reconnect(&self, force_relay: bool) {
         // 1. If current session is connecting, do not reconnect.
         // 2. If the connection is established, send `Data::Close`.
         // 3. If the connection is disconnected, do nothing.
@@ -1022,9 +1022,6 @@ impl<T: InvokeUiSession> Session<T> {
         // override only if true
         if true == force_relay {
             self.lc.write().unwrap().force_relay = true;
-        }
-        if !user_session_id.is_empty() {
-            self.lc.write().unwrap().selected_user_session_id = user_session_id;
         }
         let mut lock = self.thread.lock().unwrap();
         // No need to join the previous thread, because it will exit automatically.
@@ -1254,6 +1251,15 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn close_voice_call(&self) {
         self.send(Data::CloseVoiceCall);
     }
+
+    pub fn send_selected_session_id(&self, sid: String) {
+        self.lc.write().unwrap().selected_user_session_id = sid.clone();
+        let mut misc = Misc::new();
+        misc.set_selected_sid(sid);
+        let mut msg = Message::new();
+        msg.set_misc(misc);
+        self.send(Data::Message(msg));
+    }
 }
 
 pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
@@ -1417,6 +1423,14 @@ impl<T: InvokeUiSession> Interface for Session<T> {
             std::fs::File::create(&path).ok();
             if let Some(path) = path.to_str() {
                 crate::platform::windows::add_recent_document(&path);
+            }
+        }
+        if !pi.rdp_user_sessions.rdp_user_sessions.is_empty() {
+            let selected = self.lc.read().unwrap().selected_user_session_id.to_owned();
+            if selected != pi.rdp_user_sessions.current_sid.to_string() {
+                self.set_multiple_user_session(pi.rdp_user_sessions.rdp_user_sessions.clone());
+            } else {
+                self.send_selected_session_id(selected);
             }
         }
     }

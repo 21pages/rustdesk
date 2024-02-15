@@ -260,13 +260,22 @@ impl InvokeUiSession for SciterHandler {
     }
 
     fn set_multiple_user_session(&self, sessions: Vec<hbb_common::message_proto::RdpUserSession>) {
-        let formatted_sessions: Vec<String> = sessions.iter()
-        .map(|session| format!("{}-{}", session.user_session_id, session.user_name))
-        .collect();
-        let u_sids: String = formatted_sessions.iter().map(|s| s.split("-").next().unwrap().to_string()).collect::<Vec<String>>().join(",");
-        let u_names:String = formatted_sessions.iter().map(|s| s.split("-").nth(1).unwrap().to_string()).collect::<Vec<String>>().join(",");
+        let formatted_sessions: Vec<String> = sessions
+            .iter()
+            .map(|session| format!("{}-{}", session.sid, session.name))
+            .collect();
+        let u_sids: String = formatted_sessions
+            .iter()
+            .map(|s| s.split("-").next().unwrap().to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+        let u_names: String = formatted_sessions
+            .iter()
+            .map(|s| s.split("-").nth(1).unwrap().to_string())
+            .collect::<Vec<String>>()
+            .join(",");
         self.call("setMultipleUserSession", &make_args!(u_sids, u_names));
-     }
+    }
 
     fn on_connected(&self, conn_type: ConnType) {
         match conn_type {
@@ -386,7 +395,7 @@ impl sciter::EventHandler for SciterSession {
                     let site = AssetPtr::adopt(ptr as *mut video_destination);
                     log::debug!("[video] start video");
                     *VIDEO.lock().unwrap() = Some(site);
-                    self.reconnect(false, "".to_string());
+                    self.reconnect(false);
                 }
             }
             BEHAVIOR_EVENTS::VIDEO_INITIALIZED => {
@@ -436,7 +445,7 @@ impl sciter::EventHandler for SciterSession {
         fn transfer_file();
         fn tunnel();
         fn lock_screen();
-        fn reconnect(bool, String);
+        fn reconnect(bool);
         fn get_chatbox();
         fn get_icon();
         fn get_home_dir();
@@ -592,7 +601,7 @@ impl SciterSession {
     }
 
     fn set_selected_user_session_id(&mut self, u_sid: String) {
-        self.lc.write().unwrap().selected_user_session_id = u_sid;
+        self.send_selected_session_id(u_sid);
     }
 
     fn get_port_forwards(&mut self) -> Value {
