@@ -189,7 +189,7 @@ class RequestException implements Exception {
   }
 }
 
-class SharedAbProfile {
+class AbProfile {
   String guid;
   String name;
   String creator;
@@ -197,10 +197,9 @@ class SharedAbProfile {
   bool? edit;
   bool? pwd;
 
-  SharedAbProfile(
-      this.guid, this.name, this.creator, this.note, this.edit, this.pwd);
+  AbProfile(this.guid, this.name, this.creator, this.note, this.edit, this.pwd);
 
-  SharedAbProfile.fromJson(Map<String, dynamic> json)
+  AbProfile.fromJson(Map<String, dynamic> json)
       : guid = json['guid'] ?? '',
         name = json['name'] ?? '',
         creator = json['creator'] ?? '',
@@ -209,13 +208,13 @@ class SharedAbProfile {
         pwd = json['pwd'] ?? false;
 }
 
-class SharedAbTag {
+class AbTag {
   String name;
   int color;
 
-  SharedAbTag(this.name, this.color);
+  AbTag(this.name, this.color);
 
-  SharedAbTag.fromJson(Map<String, dynamic> json)
+  AbTag.fromJson(Map<String, dynamic> json)
       : name = json['name'] ?? '',
         color = json['color'] ?? '';
 }

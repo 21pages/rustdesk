@@ -355,8 +355,8 @@ class FfiModel with ChangeNotifier {
           final id = evt['id'];
           final password = evt['password'];
           if (id != null && password != null) {
-            gFFI.abModel.changePersonalHashPassword(
-                id.toString(), password.toString(), false);
+            gFFI.abModel
+                .changePersonalHashPassword(id.toString(), password.toString());
           }
         }
       } else if (name == "cm_file_transfer_log") {

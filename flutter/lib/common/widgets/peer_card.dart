@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bot_toast/bot_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
@@ -743,10 +744,14 @@ abstract class BasePeerCard extends StatelessWidget {
         style: style,
       ),
       proc: () async {
-        await gFFI.abModel
-            .changePersonalHashPassword(id, '', tab == PeerTabIndex.ab);
+        bool succ = await gFFI.abModel.changePersonalHashPassword(id, '');
         await bind.mainForgetPassword(id: id);
-        if (tab != PeerTabIndex.ab) showToast(translate('Successful'));
+        if (succ) {
+          showToast(translate('Successful'));
+        } else {
+          BotToast.showText(
+              contentColor: Colors.red, text: translate("Failed"));
+        }
       },
       padding: menuPadding,
       dismissOnClicked: true,
@@ -1031,7 +1036,7 @@ class AddressBookPeerCard extends BasePeerCard {
     if (gFFI.abModel.allowedToEditCurrentAb()) {
       menuItems.add(MenuEntryDivider());
       menuItems.add(_renameAction(peer.id));
-      if (peer.hash.isNotEmpty) {
+      if (gFFI.abModel.current.isPersonal() && peer.hash.isNotEmpty) {
         menuItems.add(_unrememberPasswordAction(peer.id));
       }
       if (gFFI.abModel.isCurrentAbSharingPassword()) {

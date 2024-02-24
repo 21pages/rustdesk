@@ -29,15 +29,16 @@ bool filterAbTagByIntersection() {
   return bind.mainGetLocalOption(key: filterAbTagOption).isNotEmpty;
 }
 
-const personalAddressBookName = "My address book";
+const _personalAddressBookName = "My address book";
+const _legacyAddressBookName = "Legacy address book";
 
 class AbModel {
   final addressbooks = Map<String, BaseAb>.fromEntries([]).obs;
-  final personalAddressBook = PersonalAb();
-  List<SharedAbProfile> sharedAbProfiles = List.empty(growable: true);
-  final RxString _currentName = personalAddressBookName.obs;
+  List<AbProfile> abProfiles = List.empty(growable: true);
+  final RxString _currentName = ''.obs;
   RxString get currentName => _currentName;
-  BaseAb get current => addressbooks[_currentName.value] ?? personalAddressBook;
+  final _dummyAb = DummyAb();
+  BaseAb get current => addressbooks[_currentName.value] ?? _dummyAb;
 
   RxList<Peer> get currentAbPeers => current.peers;
   RxList<String> get currentAbTags => current.tags;
@@ -47,7 +48,8 @@ class AbModel {
   RxString get currentAbPullError => current.pullError;
   RxString get currentAbPushError => current.pushError;
   bool get currentAbEmtpy => currentAbPeers.isEmpty && currentAbTags.isEmpty;
-  RxBool supportSharedAb = false.obs;
+  String? _personalAbGuid;
+  RxBool legacyMode = true.obs;
 
   final sortTags = shouldSortTags().obs;
   final filterByIntersection = filterAbTagByIntersection().obs;
@@ -62,11 +64,12 @@ class AbModel {
   var _cacheLoadOnceFlag = false;
   var _everPulledProfiles = false;
   var _onlyAdminCanCreateAb = false;
+  RxBool allowSharePassword = false.obs;
 
   WeakReference<FFI> parent;
 
   AbModel(this.parent) {
-    addressbooks[personalAddressBookName] = personalAddressBook;
+    addressbooks.clear();
     if (desktopType == DesktopType.main) {
       Timer.periodic(Duration(milliseconds: 500), (timer) async {
         if (_timerCounter++ % 6 == 0) {
@@ -82,10 +85,9 @@ class AbModel {
   reset() async {
     print("reset ab model");
     _resetting = true;
-    sharedAbProfiles.clear();
-    addressbooks.removeWhere((key, _) => key != personalAddressBookName);
-    setCurrentName(personalAddressBookName);
-    personalAddressBook.reset();
+    abProfiles.clear();
+    addressbooks.clear();
+    setCurrentName('');
     await bind.mainClearAb();
     licensedDevices = 0;
     _everPulledProfiles = false;
@@ -103,14 +105,28 @@ class AbModel {
     if (!gFFI.userModel.isLogin) return;
     if (!force && allInitialized()) return;
     try {
-      // get all address book name
-      List<SharedAbProfile> tmpSharedAbs = List.empty(growable: true);
-      await _getSharedAbProfiles(tmpSharedAbs);
-      sharedAbProfiles = tmpSharedAbs;
-      addressbooks.removeWhere((key, _) => key != personalAddressBookName);
-      for (int i = 0; i < sharedAbProfiles.length; i++) {
-        SharedAbProfile p = sharedAbProfiles[i];
-        addressbooks[p.name] = SharedAb(p);
+      // Get personal address book guid
+      _personalAbGuid = null;
+      await _getPersonalAbGuid();
+      // Determine legacy mode based on whether _personalAbGuid is null
+      legacyMode.value = _personalAbGuid == null;
+      if (_personalAbGuid != null) {
+        await _getAbSettings();
+        List<AbProfile> tmpAbProfiles = List.empty(growable: true);
+        tmpAbProfiles.add(AbProfile(_personalAbGuid!, _personalAddressBookName,
+            gFFI.userModel.userName.value, null, null, null));
+        // get all address book name
+        await _getSharedAbProfiles(tmpAbProfiles);
+        abProfiles = tmpAbProfiles;
+        addressbooks.clear();
+        for (int i = 0; i < abProfiles.length; i++) {
+          AbProfile p = abProfiles[i];
+          addressbooks[p.name] = Ab(p, p.guid == _personalAbGuid);
+        }
+      } else {
+        // only legacy address book
+        addressbooks.clear();
+        addressbooks[_legacyAddressBookName] = LegacyAb();
       }
       // set current address book name
       if (!_everPulledProfiles) {
@@ -121,12 +137,12 @@ class AbModel {
         }
       }
       if (!addressbooks.containsKey(_currentName.value)) {
-        setCurrentName(personalAddressBookName);
+        setCurrentName(_personalAddressBookName);
       }
       // pull shared ab data, current first
       await current.pullAb(force: force, quiet: quiet);
       addressbooks.forEach((key, value) async {
-        if (key != _currentName.value) {
+        if (key != current.name()) {
           return await value.pullAb(force: force, quiet: quiet);
         }
       });
@@ -136,13 +152,66 @@ class AbModel {
     }
     // again in case of error happens
     if (!addressbooks.containsKey(_currentName.value)) {
-      setCurrentName(personalAddressBookName);
+      setCurrentName(_personalAddressBookName);
     }
     _syncAllFromRecent = true;
-    _getOnlyAdminCanCreateAb();
   }
 
-  Future<bool> _getSharedAbProfiles(List<SharedAbProfile> tmpSharedAbs) async {
+  Future<bool> _getAbSettings() async {
+    try {
+      final api = "${await bind.mainGetApiServer()}/api/ab/settings";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final resp = await http.post(Uri.parse(api), headers: headers);
+      // supportSharedAb.value = resp.statusCode != 404;
+      if (resp.statusCode == 404) {
+        debugPrint("HTTP 404, api server doesn't support shared address book");
+        return false;
+      }
+      Map<String, dynamic> json =
+          _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
+      if (json.containsKey('error')) {
+        throw json['error'];
+      }
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      _onlyAdminCanCreateAb = json['only_admin_can_create'];
+      allowSharePassword.value = json['allow_share_password'];
+      return true;
+    } catch (err) {
+      debugPrint('get ab settings err: ${err.toString()}');
+    }
+    return false;
+  }
+
+  Future<bool> _getPersonalAbGuid() async {
+    try {
+      final api = "${await bind.mainGetApiServer()}/api/ab/personal";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final resp = await http.post(Uri.parse(api), headers: headers);
+      if (resp.statusCode == 404) {
+        debugPrint("HTTP 404, api server doesn't support shared address book");
+        return false;
+      }
+      Map<String, dynamic> json =
+          _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
+      if (json.containsKey('error')) {
+        throw json['error'];
+      }
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      _personalAbGuid = json['guid'];
+      return true;
+    } catch (err) {
+      debugPrint('get personal ab err: ${err.toString()}');
+    }
+    return false;
+  }
+
+  Future<bool> _getSharedAbProfiles(List<AbProfile> tmpSharedAbs) async {
     final api = "${await bind.mainGetApiServer()}/api/ab/shared/profiles";
     try {
       var uri0 = Uri.parse(api);
@@ -163,12 +232,6 @@ class AbModel {
         var headers = getHttpHeaders();
         headers['Content-Type'] = "application/json";
         final resp = await http.post(uri, headers: headers);
-        supportSharedAb.value = resp.statusCode != 404;
-        if (resp.statusCode == 404) {
-          debugPrint(
-              "HTTP 404, api server doesn't support shared address book");
-          return false;
-        }
         Map<String, dynamic> json =
             _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
@@ -183,7 +246,7 @@ class AbModel {
             final data = json['data'];
             if (data is List) {
               for (final profile in data) {
-                final u = SharedAbProfile.fromJson(profile);
+                final u = AbProfile.fromJson(profile);
                 int index = tmpSharedAbs.indexWhere((e) => e.name == u.name);
                 if (index < 0) {
                   tmpSharedAbs.add(u);
@@ -203,7 +266,7 @@ class AbModel {
   }
 
   Future<String> addSharedAb(
-      String name, String note, bool edit, bool pwd) async {
+      String name, String note, bool edit, bool? pwd) async {
     try {
       if (addressbooks.containsKey(name)) {
         return '$name already exists';
@@ -214,8 +277,10 @@ class AbModel {
       var v = {
         'name': name,
         'edit': edit,
-        'pwd': pwd,
       };
+      if (pwd != null) {
+        v['pwd'] = pwd;
+      }
       if (note.isNotEmpty) {
         v['note'] = note;
       }
@@ -230,7 +295,7 @@ class AbModel {
   }
 
   Future<String> updateSharedAb(
-      String guid, String name, String note, bool edit, bool pwd) async {
+      String guid, String name, String note, bool edit, bool? pwd) async {
     try {
       final api =
           "${await bind.mainGetApiServer()}/api/ab/shared/update/profile";
@@ -240,8 +305,10 @@ class AbModel {
         'guid': guid,
         'name': name,
         'edit': edit,
-        'pwd': pwd,
       };
+      if (pwd != null) {
+        v['pwd'] = pwd;
+      }
       if (note.isNotEmpty) {
         v['note'] = note;
       }
@@ -256,8 +323,7 @@ class AbModel {
 
   Future<String> deleteSharedAb(String name) async {
     try {
-      final guid =
-          sharedAbProfiles.firstWhereOrNull((e) => e.name == name)?.guid;
+      final guid = abProfiles.firstWhereOrNull((e) => e.name == name)?.guid;
       if (guid == null) {
         return '$name not found';
       }
@@ -286,7 +352,7 @@ class AbModel {
   }
 
   bool isCurrentAbSharingPassword() {
-    return current.sharePassword();
+    return current.sharePassword() && allowSharePassword.value;
   }
 
   List<String> addressBooksAllowedToEdit() {
@@ -299,20 +365,7 @@ class AbModel {
     return list;
   }
 
-  void _getOnlyAdminCanCreateAb() async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/only_admin_can_create";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final resp = await http.post(Uri.parse(api), headers: headers);
-      _onlyAdminCanCreateAb = jsonDecode(resp.body);
-    } catch (err) {
-      debugPrint('deleteTag err: ${err.toString()}');
-    }
-  }
-
-  bool canCreateAb() {
+  bool canCreateSharedAb() {
     return gFFI.userModel.isAdmin.value || !_onlyAdminCanCreateAb;
   }
 
@@ -345,7 +398,7 @@ class AbModel {
     }
     final ps2 = ps.map((e) => Peer.copy(e)).toList();
     String? errMsg = await ab.addPeers(ps2);
-    await pullSharedAfterChange(name: name);
+    await pullNonLegacyAfterChange(name: name);
     if (name == _currentName.value) {
       _refreshTab();
     }
@@ -356,7 +409,7 @@ class AbModel {
 
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags) async {
     bool ret = await current.changeTagForPeers(ids, tags);
-    await pullSharedAfterChange();
+    await pullNonLegacyAfterChange();
     currentAbPeers.refresh();
     _saveCache();
     return ret;
@@ -364,16 +417,23 @@ class AbModel {
 
   Future<bool> changeAlias({required String id, required String alias}) async {
     bool res = await current.changeAlias(id: id, alias: alias);
-    await pullSharedAfterChange();
+    await pullNonLegacyAfterChange();
     currentAbPeers.refresh();
     _saveCache();
     return res;
   }
 
-  Future<bool> changePersonalHashPassword(
-      String id, String hash, bool toast) async {
-    final ret =
-        await personalAddressBook.changePersonalHashPassword(id, hash, toast);
+  Future<bool> changePersonalHashPassword(String id, String hash) async {
+    var ret = false;
+    final personalAb = addressbooks[_personalAddressBookName];
+    if (personalAb != null) {
+      ret = await personalAb.changePersonalHashPassword(id, hash);
+    } else {
+      final legacyAb = addressbooks[_legacyAddressBookName];
+      if (legacyAb != null) {
+        ret = await legacyAb.changePersonalHashPassword(id, hash);
+      }
+    }
     _saveCache();
     return ret;
   }
@@ -382,17 +442,17 @@ class AbModel {
       String abName, String id, String password) async {
     final ret =
         await addressbooks[abName]?.changeSharedPassword(id, password) ?? false;
-    await pullSharedAfterChange();
+    await pullNonLegacyAfterChange();
     return ret;
   }
 
   Future<bool> deletePeers(List<String> ids) async {
     final ret = await current.deletePeers(ids);
-    await pullSharedAfterChange();
+    await pullNonLegacyAfterChange();
     currentAbPeers.refresh();
     _refreshTab();
     _saveCache();
-    if (_currentName.value == personalAddressBookName) {
+    if (_currentName.value == _personalAddressBookName) {
       Future.delayed(Duration(seconds: 2), () async {
         if (!shouldSyncAb()) return;
         var hasSynced = false;
@@ -417,15 +477,15 @@ class AbModel {
 
 // #region tags
   Future<bool> addTags(List<String> tagList) async {
-    final ret = await current.addTags(tagList);
-    await pullSharedAfterChange();
+    final ret = await current.addTags(tagList, {});
+    await pullNonLegacyAfterChange();
     _saveCache();
     return ret;
   }
 
   Future<bool> renameTag(String oldTag, String newTag) async {
     final ret = await current.renameTag(oldTag, newTag);
-    await pullSharedAfterChange();
+    await pullNonLegacyAfterChange();
     selectedTags.value = selectedTags.map((e) {
       if (e == oldTag) {
         return newTag;
@@ -439,14 +499,14 @@ class AbModel {
 
   Future<bool> setTagColor(String tag, Color color) async {
     final ret = await current.setTagColor(tag, color);
-    await pullSharedAfterChange();
+    await pullNonLegacyAfterChange();
     _saveCache();
     return ret;
   }
 
   Future<bool> deleteTag(String tag) async {
     final ret = await current.deleteTag(tag);
-    await pullSharedAfterChange();
+    await pullNonLegacyAfterChange();
     _saveCache();
     return ret;
   }
@@ -540,7 +600,7 @@ class AbModel {
         "name": key,
         "tags": value.tags,
         "peers": value.peers
-            .map((e) => key == personalAddressBookName
+            .map((e) => value.isPersonal()
                 ? e.toPersonalAbUploadJson()
                 : e.toSharedAbCacheJson())
             .toList(),
@@ -577,15 +637,16 @@ class AbModel {
           var guid = abEntry['guid'];
           var name = abEntry['name'];
           final BaseAb ab;
-          if (name == personalAddressBookName) {
-            ab = personalAddressBook;
+          if (name == _legacyAddressBookName) {
+            ab = LegacyAb();
           } else {
             if (name == null || guid == null) {
               continue;
             }
-            ab = SharedAb(SharedAbProfile(guid, name, '', '', false, false));
-            addressbooks[name] = ab;
+            ab = Ab(AbProfile(guid, name, '', '', false, false),
+                name == _personalAddressBookName);
           }
+          addressbooks[name] = ab;
           if (abEntry['tags'] is List) {
             ab.tags.value =
                 (abEntry['tags'] as List).map((e) => e.toString()).toList();
@@ -658,7 +719,13 @@ class AbModel {
     if (addressbooks.containsKey(name)) {
       _currentName.value = name;
     } else {
-      _currentName.value = personalAddressBookName;
+      if (addressbooks.containsKey(_personalAddressBookName)) {
+        _currentName.value = _personalAddressBookName;
+      } else if (addressbooks.containsKey(_legacyAddressBookName)) {
+        _currentName.value = _legacyAddressBookName;
+      } else {
+        _currentName.value = '';
+      }
     }
     _refreshTab();
   }
@@ -677,10 +744,12 @@ class AbModel {
   }
 
   // should not call this function in a loop call stack
-  Future<void> pullSharedAfterChange({String? name}) async {
+  Future<void> pullNonLegacyAfterChange({String? name}) async {
     if (name == null) {
-      return await current.pullAb(force: true, quiet: true);
-    } else if (name != personalAddressBookName) {
+      if (current.name() != _legacyAddressBookName) {
+        return await current.pullAb(force: true, quiet: true);
+      }
+    } else if (name != _legacyAddressBookName) {
       final ab = addressbooks[name];
       if (ab != null) {
         return ab.pullAb(force: true, quiet: true);
@@ -706,6 +775,14 @@ class AbModel {
     return v;
   }
 
+  String translatedName(String name) {
+    if (name == _personalAddressBookName || name == _legacyAddressBookName) {
+      return translate(name);
+    } else {
+      return name;
+    }
+  }
+
 // #endregion
 }
 
@@ -728,6 +805,13 @@ abstract class BaseAb {
     initialized = false;
   }
 
+  String name();
+
+  bool isPersonal() {
+    return name() == _personalAddressBookName ||
+        name() == _legacyAddressBookName;
+  }
+
   Future<void> pullAb({force = true, quiet = false}) async {
     if (abLoading.value) return;
     if (!force && initialized) return;
@@ -744,99 +828,28 @@ abstract class BaseAb {
   Future<void> pullAbImpl({force = true, quiet = false});
 
   Future<String?> addPeers(List<Peer> ps);
-  void addPeerWithoutPush(Peer peer) {
-    final index = peers.indexWhere((e) => e.id == peer.id);
-    if (index >= 0) {
-      _merge(peer, peers[index]);
-    } else {
-      peers.add(peer);
-    }
-  }
 
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags);
-  void changeTagForPeersWithoutPush(List<String> ids, List<dynamic> tags) {
-    peers.map((e) {
-      if (ids.contains(e.id)) {
-        e.tags = tags;
-      }
-    }).toList();
-  }
 
   Future<bool> changeAlias({required String id, required String alias});
-  void changeAliasWithoutPush({required String id, required String alias}) {
-    final it = peers.where((element) => element.id == id);
-    if (it.isEmpty) {
-      return;
-    }
-    it.first.alias = alias;
-  }
+
+  Future<bool> changePersonalHashPassword(String id, String hash);
 
   Future<bool> changeSharedPassword(String id, String password);
 
   Future<bool> deletePeers(List<String> ids);
-  void deletePeersWithoutPush(List<String> ids) {
-    peers.removeWhere((e) => ids.contains(e.id));
-  }
 
-  Future<bool> addTags(List<String> tagList);
-  void addTagsWithoutPush(List<String> tagList) {
-    for (var e in tagList) {
-      if (!tagContainBy(e)) {
-        tags.add(e);
-      }
-    }
-  }
+  Future<bool> addTags(List<String> tagList, Map<String, int> tagColorMap);
 
   bool tagContainBy(String tag) {
     return tags.where((element) => element == tag).isNotEmpty;
   }
 
   Future<bool> renameTag(String oldTag, String newTag);
-  void renameTagWithoutPush(String oldTag, String newTag) {
-    tags.value = tags.map((e) {
-      if (e == oldTag) {
-        return newTag;
-      } else {
-        return e;
-      }
-    }).toList();
-    for (var peer in peers) {
-      peer.tags = peer.tags.map((e) {
-        if (e == oldTag) {
-          return newTag;
-        } else {
-          return e;
-        }
-      }).toList();
-    }
-    int? oldColor = tagColors[oldTag];
-    if (oldColor != null) {
-      tagColors.remove(oldTag);
-      tagColors.addAll({newTag: oldColor});
-    }
-  }
 
   Future<bool> setTagColor(String tag, Color color);
-  void setTagColorWithoutPush(String tag, Color color) {
-    if (tags.contains(tag)) {
-      tagColors[tag] = color.value;
-    }
-  }
 
   Future<bool> deleteTag(String tag);
-  void deleteTagWithoutPush(String tag) {
-    gFFI.abModel.selectedTags.remove(tag);
-    tags.removeWhere((element) => element == tag);
-    tagColors.remove(tag);
-    for (var peer in peers) {
-      if (peer.tags.isEmpty) {
-        continue;
-      }
-      if (peer.tags.contains(tag)) {
-        peer.tags.remove(tag);
-      }
-    }
-  }
 
   bool isFull(bool warn) {
     final res = gFFI.abModel.licensedDevices > 0 &&
@@ -848,7 +861,7 @@ abstract class BaseAb {
     return res;
   }
 
-  SharedAbProfile? sharedProfile();
+  AbProfile? sharedProfile();
 
   bool allowEdit();
 
@@ -859,15 +872,15 @@ abstract class BaseAb {
   Future<void> syncFromRecent(List<Peer> recents);
 }
 
-class PersonalAb extends BaseAb {
+class LegacyAb extends BaseAb {
   final sortTags = shouldSortTags().obs;
   final filterByIntersection = filterAbTagByIntersection().obs;
   bool get emtpy => peers.isEmpty && tags.isEmpty;
 
-  PersonalAb();
+  LegacyAb();
 
   @override
-  SharedAbProfile? sharedProfile() {
+  AbProfile? sharedProfile() {
     return null;
   }
 
@@ -884,6 +897,11 @@ class PersonalAb extends BaseAb {
   @override
   bool sharePassword() {
     return false;
+  }
+
+  @override
+  String name() {
+    return _legacyAddressBookName;
   }
 
   @override
@@ -989,8 +1007,13 @@ class PersonalAb extends BaseAb {
     bool full = false;
     for (var p in ps) {
       if (!isFull(false)) {
-        p.password = '';
-        addPeerWithoutPush(p);
+        p.password = ''; // legacy ab ignore password
+        final index = peers.indexWhere((e) => e.id == p.id);
+        if (index >= 0) {
+          _merge(p, peers[index]);
+        } else {
+          peers.add(p);
+        }
       } else {
         full = true;
         break;
@@ -1007,13 +1030,21 @@ class PersonalAb extends BaseAb {
 
   @override
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags) async {
-    changeTagForPeersWithoutPush(ids, tags);
+    peers.map((e) {
+      if (ids.contains(e.id)) {
+        e.tags = tags;
+      }
+    }).toList();
     return await pushAb();
   }
 
   @override
   Future<bool> changeAlias({required String id, required String alias}) async {
-    changeAliasWithoutPush(id: id, alias: alias);
+    final it = peers.where((element) => element.id == id);
+    if (it.isEmpty) {
+      return false;
+    }
+    it.first.alias = alias;
     return await pushAb();
   }
 
@@ -1056,8 +1087,19 @@ class PersonalAb extends BaseAb {
     // Pull cannot be used for sync to avoid cyclic sync.
   }
 
-  Future<bool> changePersonalHashPassword(
-      String id, String hash, bool toast) async {
+  void _merge(Peer r, Peer p) {
+    p.hash = r.hash.isEmpty ? p.hash : r.hash;
+    p.username = r.username.isEmpty ? p.username : r.username;
+    p.hostname = r.hostname.isEmpty ? p.hostname : r.hostname;
+    p.platform = r.platform.isEmpty ? p.platform : r.platform;
+    p.alias = p.alias.isEmpty ? r.alias : p.alias;
+    p.forceAlwaysRelay = r.forceAlwaysRelay;
+    p.rdpPort = r.rdpPort;
+    p.rdpUsername = r.rdpUsername;
+  }
+
+  @override
+  Future<bool> changePersonalHashPassword(String id, String hash) async {
     bool changed = false;
     final it = peers.where((element) => element.id == id);
     if (it.isNotEmpty) {
@@ -1067,22 +1109,27 @@ class PersonalAb extends BaseAb {
       }
     }
     if (changed) {
-      return await pushAb(toastIfSucc: toast, toastIfFail: toast);
+      return await pushAb(toastIfSucc: false, toastIfFail: false);
     }
     return true;
   }
 
   @override
   Future<bool> deletePeers(List<String> ids) async {
-    deletePeersWithoutPush(ids);
+    peers.removeWhere((e) => ids.contains(e.id));
     return await pushAb();
   }
 // #endregion
 
 // #region Tag
   @override
-  Future<bool> addTags(List<String> tagList) async {
-    addTagsWithoutPush(tagList);
+  Future<bool> addTags(
+      List<String> tagList, Map<String, int> tagColorMap) async {
+    for (var e in tagList) {
+      if (!tagContainBy(e)) {
+        tags.add(e);
+      }
+    }
     return await pushAb();
   }
 
@@ -1093,19 +1140,51 @@ class PersonalAb extends BaseAb {
           contentColor: Colors.red, text: 'Tag $newTag already exists');
       return false;
     }
-    renameTagWithoutPush(oldTag, newTag);
+    tags.value = tags.map((e) {
+      if (e == oldTag) {
+        return newTag;
+      } else {
+        return e;
+      }
+    }).toList();
+    for (var peer in peers) {
+      peer.tags = peer.tags.map((e) {
+        if (e == oldTag) {
+          return newTag;
+        } else {
+          return e;
+        }
+      }).toList();
+    }
+    int? oldColor = tagColors[oldTag];
+    if (oldColor != null) {
+      tagColors.remove(oldTag);
+      tagColors.addAll({newTag: oldColor});
+    }
     return await pushAb();
   }
 
   @override
   Future<bool> setTagColor(String tag, Color color) async {
-    setTagColorWithoutPush(tag, color);
+    if (tags.contains(tag)) {
+      tagColors[tag] = color.value;
+    }
     return await pushAb();
   }
 
   @override
   Future<bool> deleteTag(String tag) async {
-    deleteTagWithoutPush(tag);
+    gFFI.abModel.selectedTags.remove(tag);
+    tags.removeWhere((element) => element == tag);
+    tagColors.remove(tag);
+    for (var peer in peers) {
+      if (peer.tags.isEmpty) {
+        continue;
+      }
+      if (peer.tags.contains(tag)) {
+        peer.tags.remove(tag);
+      }
+    }
     return await pushAb();
   }
 
@@ -1156,16 +1235,26 @@ class PersonalAb extends BaseAb {
   }
 }
 
-class SharedAb extends BaseAb {
-  late final SharedAbProfile profile;
+class Ab extends BaseAb {
+  late final AbProfile profile;
+  late final bool personal;
   final sortTags = shouldSortTags().obs;
   final filterByIntersection = filterAbTagByIntersection().obs;
   bool get emtpy => peers.isEmpty && tags.isEmpty;
 
-  SharedAb(this.profile);
+  Ab(this.profile, this.personal);
 
   @override
-  SharedAbProfile? sharedProfile() {
+  String name() {
+    if (personal) {
+      return _personalAddressBookName;
+    } else {
+      return profile.name;
+    }
+  }
+
+  @override
+  AbProfile? sharedProfile() {
     return profile;
   }
 
@@ -1176,17 +1265,29 @@ class SharedAb extends BaseAb {
 
   @override
   bool allowEdit() {
-    return creatorOrAdmin() || (profile.edit ?? false);
+    if (personal) {
+      return true;
+    } else {
+      return creatorOrAdmin() || (profile.edit ?? false);
+    }
   }
 
   @override
   bool allowUpdateSettingsOrDelete() {
-    return creatorOrAdmin();
+    if (personal) {
+      return false;
+    } else {
+      return creatorOrAdmin();
+    }
   }
 
   @override
   bool sharePassword() {
-    return profile.pwd ?? false;
+    if (personal) {
+      return false;
+    } else {
+      return profile.pwd ?? false;
+    }
   }
 
   @override
@@ -1194,7 +1295,7 @@ class SharedAb extends BaseAb {
     List<Peer> tmpPeers = [];
     await _fetchPeers(tmpPeers);
     peers.value = tmpPeers;
-    List<SharedAbTag> tmpTags = [];
+    List<AbTag> tmpTags = [];
     await _fetchTags(tmpTags);
     tags.value = tmpTags.map((e) => e.name).toList();
     Map<String, int> tmpTagColors = {};
@@ -1205,7 +1306,7 @@ class SharedAb extends BaseAb {
   }
 
   Future<bool> _fetchPeers(List<Peer> tmpPeers) async {
-    final api = "${await bind.mainGetApiServer()}/api/ab/shared/peers";
+    final api = "${await bind.mainGetApiServer()}/api/ab/peers";
     try {
       var uri0 = Uri.parse(api);
       final pageSize = 100;
@@ -1259,9 +1360,8 @@ class SharedAb extends BaseAb {
     return false;
   }
 
-  Future<bool> _fetchTags(List<SharedAbTag> tmpTags) async {
-    final api =
-        "${await bind.mainGetApiServer()}/api/ab/shared/tags/${profile.guid}";
+  Future<bool> _fetchTags(List<AbTag> tmpTags) async {
+    final api = "${await bind.mainGetApiServer()}/api/ab/tags/${profile.guid}";
     try {
       var uri0 = Uri.parse(api);
       var uri = Uri(
@@ -1280,7 +1380,7 @@ class SharedAb extends BaseAb {
       }
 
       for (final d in json) {
-        final t = SharedAbTag.fromJson(d);
+        final t = AbTag.fromJson(d);
         int index = tmpTags.indexWhere((e) => e.name == t.name);
         if (index < 0) {
           tmpTags.add(t);
@@ -1300,7 +1400,7 @@ class SharedAb extends BaseAb {
   Future<String?> addPeers(List<Peer> ps) async {
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/peer/add/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/peer/add/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       for (var p in ps) {
@@ -1310,8 +1410,14 @@ class SharedAb extends BaseAb {
         if (isFull(false)) {
           return translate("exceed_max_devices");
         }
-        if (profile.pwd != true) {
+        // deal with password/hash
+        if (personal) {
           p.password = '';
+        } else {
+          p.hash = '';
+          if (profile.pwd != true) {
+            p.password = '';
+          }
         }
         final body = jsonEncode(p.toSharedAbUploadJson());
         final resp =
@@ -1331,7 +1437,7 @@ class SharedAb extends BaseAb {
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags) async {
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/peer/update/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       var ret = true;
@@ -1357,7 +1463,7 @@ class SharedAb extends BaseAb {
   Future<bool> changeAlias({required String id, required String alias}) async {
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/peer/update/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       final body = jsonEncode({"id": id, "alias": alias});
@@ -1374,14 +1480,13 @@ class SharedAb extends BaseAb {
     }
   }
 
-  @override
-  Future<bool> changeSharedPassword(String id, String password) async {
+  Future<bool> _setPassword(Object bodyContent) async {
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/peer/update/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
-      final body = jsonEncode({"id": id, "password": password});
+      final body = jsonEncode(bodyContent);
       final resp = await http.put(Uri.parse(api), headers: headers, body: body);
       final errMsg = _jsonDecodeActionResp(resp);
       if (errMsg.isNotEmpty) {
@@ -1393,6 +1498,18 @@ class SharedAb extends BaseAb {
       debugPrint('changeSharedPassword err: ${err.toString()}');
       return false;
     }
+  }
+
+  @override
+  Future<bool> changePersonalHashPassword(String id, String hash) async {
+    if (!personal) return false;
+    return _setPassword({"id": id, "hash": hash});
+  }
+
+  @override
+  Future<bool> changeSharedPassword(String id, String password) async {
+    if (personal) return false;
+    return _setPassword({"id": id, "password": password});
   }
 
   @override
@@ -1409,7 +1526,7 @@ class SharedAb extends BaseAb {
       p.hostname = r.hostname;
       p.platform = r.platform;
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/peer/update/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       final body = jsonEncode({
@@ -1451,7 +1568,7 @@ class SharedAb extends BaseAb {
   Future<bool> deletePeers(List<String> ids) async {
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/peer/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/peer/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       final body = jsonEncode(ids);
@@ -1472,16 +1589,18 @@ class SharedAb extends BaseAb {
 
 // #region Tags
   @override
-  Future<bool> addTags(List<String> tagList) async {
+  Future<bool> addTags(
+      List<String> tagList, Map<String, int> tagColorMap) async {
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/tag/add/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/tag/add/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       for (var t in tagList) {
         final body = jsonEncode({
           "name": t,
-          "color": str2color2(t, existing: tagColors.values.toList()).value,
+          "color": tagColorMap[t] ??
+              str2color2(t, existing: tagColors.values.toList()).value,
         });
         final resp =
             await http.post(Uri.parse(api), headers: headers, body: body);
@@ -1507,7 +1626,7 @@ class SharedAb extends BaseAb {
     }
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/tag/rename/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/tag/rename/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       final body = jsonEncode({
@@ -1531,7 +1650,7 @@ class SharedAb extends BaseAb {
   Future<bool> setTagColor(String tag, Color color) async {
     try {
       final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/tag/update/${profile.guid}";
+          "${await bind.mainGetApiServer()}/api/ab/tag/update/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       final body = jsonEncode({
@@ -1554,8 +1673,7 @@ class SharedAb extends BaseAb {
   @override
   Future<bool> deleteTag(String tag) async {
     try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/shared/tag/${profile.guid}";
+      final api = "${await bind.mainGetApiServer()}/api/ab/tag/${profile.guid}";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       final body = jsonEncode([tag]);
@@ -1576,15 +1694,89 @@ class SharedAb extends BaseAb {
 // #endregion
 }
 
-void _merge(Peer r, Peer p) {
-  p.hash = r.hash.isEmpty ? p.hash : r.hash;
-  p.username = r.username.isEmpty ? p.username : r.username;
-  p.hostname = r.hostname.isEmpty ? p.hostname : r.hostname;
-  p.platform = r.platform.isEmpty ? p.platform : r.platform;
-  p.alias = p.alias.isEmpty ? r.alias : p.alias;
-  p.forceAlwaysRelay = r.forceAlwaysRelay;
-  p.rdpPort = r.rdpPort;
-  p.rdpUsername = r.rdpUsername;
+// DummyAb is for current ab is null
+class DummyAb extends BaseAb {
+  @override
+  Future<String?> addPeers(List<Peer> ps) async {
+    return "Unreachable";
+  }
+
+  @override
+  Future<bool> addTags(
+      List<String> tagList, Map<String, int> tagColorMap) async {
+    return false;
+  }
+
+  @override
+  bool allowEdit() {
+    return false;
+  }
+
+  @override
+  bool allowUpdateSettingsOrDelete() {
+    return false;
+  }
+
+  @override
+  Future<bool> changeAlias({required String id, required String alias}) async {
+    return false;
+  }
+
+  @override
+  Future<bool> changePersonalHashPassword(String id, String hash) async {
+    return false;
+  }
+
+  @override
+  Future<bool> changeSharedPassword(String id, String password) async {
+    return false;
+  }
+
+  @override
+  Future<bool> changeTagForPeers(List<String> ids, List tags) async {
+    return false;
+  }
+
+  @override
+  Future<bool> deletePeers(List<String> ids) async {
+    return false;
+  }
+
+  @override
+  Future<bool> deleteTag(String tag) async {
+    return false;
+  }
+
+  @override
+  String name() {
+    return "Unreachable";
+  }
+
+  @override
+  Future<void> pullAbImpl({force = true, quiet = false}) async {}
+
+  @override
+  Future<bool> renameTag(String oldTag, String newTag) async {
+    return false;
+  }
+
+  @override
+  Future<bool> setTagColor(String tag, Color color) async {
+    return false;
+  }
+
+  @override
+  bool sharePassword() {
+    return false;
+  }
+
+  @override
+  AbProfile? sharedProfile() {
+    return null;
+  }
+
+  @override
+  Future<void> syncFromRecent(List<Peer> recents) async {}
 }
 
 Map<String, dynamic> _jsonDecodeRespMap(String body, int statusCode) {

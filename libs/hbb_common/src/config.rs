@@ -1679,6 +1679,12 @@ pub struct AbEntry {
     pub tag_colors: String,
 }
 
+impl AbEntry {
+    pub fn personal(&self) -> bool {
+        self.name == "My address book" || self.name == "Legacy address book"
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Ab {
     #[serde(

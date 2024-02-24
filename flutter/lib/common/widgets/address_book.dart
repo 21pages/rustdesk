@@ -147,55 +147,55 @@ class _AddressBookState extends State<AddressBook> {
           child: Icon(data, size: 12.0).marginSymmetric(horizontal: 2.0));
     }
 
-    if (!gFFI.abModel.supportSharedAb.value) return Offstage();
-    if (gFFI.abModel.currentName.value == personalAddressBookName) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          icon(Icons.cloud_off, "Not shared"),
-        ],
-      );
-    } else {
-      final children = [icon(Icons.cloud, "Shared by the entire team")];
-      if (gFFI.abModel.allowedToEditCurrentAb()) {
-        children.add(icon(Icons.edit, "You can edit devices and tags"));
-        if (gFFI.abModel.allowedToUpdateSettingsOrDelete()) {
-          children.add(icon(Icons.admin_panel_settings_sharp,
-              "You can update settings or delete this address book"));
+    return Obx(() {
+      if (gFFI.abModel.legacyMode.value) return Offstage();
+      if (gFFI.abModel.current.isPersonal()) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            icon(Icons.cloud_off, "Not shared"),
+          ],
+        );
+      } else {
+        final children = [icon(Icons.cloud, "Shared")];
+        if (gFFI.abModel.allowedToEditCurrentAb()) {
+          children.add(icon(Icons.edit, "You can edit devices and tags"));
+          if (gFFI.abModel.allowedToUpdateSettingsOrDelete()) {
+            children.add(icon(Icons.admin_panel_settings_sharp,
+                "You can update settings or delete this address book"));
+          }
+        } else {
+          children.add(icon(Icons.remove_red_eye_outlined,
+              "You can't edit this address book"));
         }
-      } else {
-        children.add(icon(
-            Icons.remove_red_eye_outlined, "You can't edit this address book"));
+        if (gFFI.abModel.allowSharePassword.value) {
+          if (gFFI.abModel.isCurrentAbSharingPassword()) {
+            children.add(icon(Icons.key, "Password is shared"));
+          } else {
+            children.add(icon(Icons.key_off, "Password is not shared"));
+          }
+        }
+        final creator = gFFI.abModel.current.sharedProfile()?.creator;
+        if (creator != null) {
+          children.add(icon(Icons.person, translate("Created by {$creator}")));
+        }
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: children,
+        );
       }
-      if (gFFI.abModel.isCurrentAbSharingPassword()) {
-        children.add(icon(Icons.key, "Password is shared"));
-      } else {
-        children.add(icon(Icons.key_off, "Password is not shared"));
-      }
-      final creator = gFFI.abModel.current.sharedProfile()?.creator;
-      if (creator != null) {
-        children.add(icon(Icons.person, translate("Created by {$creator}")));
-      }
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: children,
-      );
-    }
+    });
   }
 
   Widget _buildAbDropdown() {
-    if (!gFFI.abModel.supportSharedAb.value) {
+    if (gFFI.abModel.legacyMode.value) {
       return Offstage();
     }
     final names = gFFI.abModel.addressBookNames();
-    final TextEditingController textEditingController = TextEditingController();
-    String translatedName(String name) {
-      if (name == personalAddressBookName) {
-        return translate(name);
-      } else {
-        return name;
-      }
+    if (!names.contains(gFFI.abModel.currentName.value)) {
+      return Offstage();
     }
+    final TextEditingController textEditingController = TextEditingController();
 
     return DropdownButton2<String>(
       value: gFFI.abModel.currentName.value,
@@ -213,7 +213,7 @@ class _AddressBookState extends State<AddressBook> {
                   Expanded(
                     child: Tooltip(
                         message: e,
-                        child: Text(translatedName(e),
+                        child: Text(gFFI.abModel.translatedName(e),
                             style: TextStyle(fontSize: 14))),
                   ),
                 ],
@@ -376,7 +376,7 @@ class _AddressBookState extends State<AddressBook> {
   void _showMenu(RelativeRect pos) {
     final currentProfile = gFFI.abModel.current.sharedProfile();
     final shared = [
-      if (gFFI.abModel.canCreateAb())
+      if (gFFI.abModel.canCreateSharedAb())
         getEntry(translate('Create shared address book'),
             () => createOrUpdateSharedAb(null)),
       if (gFFI.abModel.allowedToUpdateSettingsOrDelete() &&
@@ -389,7 +389,7 @@ class _AddressBookState extends State<AddressBook> {
     ];
     final editPermission = gFFI.abModel.allowedToEditCurrentAb();
     final items = [
-      if (gFFI.abModel.supportSharedAb.value) ...shared,
+      if (!gFFI.abModel.legacyMode.value) ...shared,
       if (editPermission) getEntry(translate("Add ID"), addIdToCurrentAb),
       if (editPermission) getEntry(translate("Add Tag"), abAddTag),
       getEntry(translate("Unselect all tags"), gFFI.abModel.unsetSelectedTags),
@@ -622,7 +622,7 @@ class _AddressBookState extends State<AddressBook> {
     });
   }
 
-  void createOrUpdateSharedAb(SharedAbProfile? profile) async {
+  void createOrUpdateSharedAb(AbProfile? profile) async {
     final isAdd = profile == null;
     var msg = "";
     var isInProgress = false;
@@ -649,9 +649,20 @@ class _AddressBookState extends State<AddressBook> {
           final oldName = profile?.name;
           final errMsg = (profile == null
               ? await gFFI.abModel.addSharedAb(
-                  name, note, editPermission.value, pwdPermission.value)
-              : await gFFI.abModel.updateSharedAb(profile.guid, name, note,
-                  editPermission.value, pwdPermission.value));
+                  name,
+                  note,
+                  editPermission.value,
+                  gFFI.abModel.allowSharePassword.value
+                      ? pwdPermission.value
+                      : null)
+              : await gFFI.abModel.updateSharedAb(
+                  profile.guid,
+                  name,
+                  note,
+                  editPermission.value,
+                  gFFI.abModel.allowSharePassword.value
+                      ? pwdPermission.value
+                      : null));
           if (errMsg.isNotEmpty) {
             setState(() {
               msg = errMsg;
@@ -741,18 +752,20 @@ class _AddressBookState extends State<AddressBook> {
             const SizedBox(
               height: 4.0,
             ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                translate('Sharing passwords within the team'),
-                style: style,
-              ),
-            ).marginOnly(top: 8, bottom: marginBottom),
-            Obx(() => Switch(
-                value: pwdPermission.value,
-                onChanged: (v) {
-                  pwdPermission.value = v;
-                })),
+            if (gFFI.abModel.allowSharePassword.value)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  translate('Share password'),
+                  style: style,
+                ),
+              ).marginOnly(top: 8, bottom: marginBottom),
+            if (gFFI.abModel.allowSharePassword.value)
+              Obx(() => Switch(
+                  value: pwdPermission.value,
+                  onChanged: (v) {
+                    pwdPermission.value = v;
+                  })),
             const SizedBox(
               height: 4.0,
             ),

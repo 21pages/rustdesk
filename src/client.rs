@@ -2621,7 +2621,7 @@ pub async fn handle_hash(
         let ab = hbb_common::config::Ab::load();
         if !access_token.is_empty() && access_token == ab.access_token {
             let id = lc.read().unwrap().id.clone();
-            if let Some(ab) = ab.ab_entries.iter().find(|a| a.name == "Personal") {
+            if let Some(ab) = ab.ab_entries.iter().find(|a| a.personal()) {
                 if let Some(p) = ab
                     .peers
                     .iter()

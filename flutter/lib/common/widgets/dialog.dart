@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
-import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:get/get.dart';
@@ -1932,16 +1931,8 @@ void addPeersToAbDialog(
     currentName.value = names[0];
   }
   gFFI.dialogManager.show((setState, close, context) {
-    String translatedName(String name) {
-      if (name == personalAddressBookName) {
-        return translate(name);
-      } else {
-        return name;
-      }
-    }
-
     submit() async {
-      if (controller.text != translatedName(currentName.value)) {
+      if (controller.text != gFFI.abModel.translatedName(currentName.value)) {
         BotToast.showText(
             text: 'illegal address book name: ${controller.text}',
             contentColor: Colors.red);
@@ -1981,8 +1972,8 @@ void addPeersToAbDialog(
                   }
                 },
                 dropdownMenuEntries: names
-                    .map((e) =>
-                        DropdownMenuEntry(value: e, label: translatedName(e)))
+                    .map((e) => DropdownMenuEntry(
+                        value: e, label: gFFI.abModel.translatedName(e)))
                     .toList(),
                 inputDecorationTheme: InputDecorationTheme(
                     isDense: true, border: UnderlineInputBorder()),
