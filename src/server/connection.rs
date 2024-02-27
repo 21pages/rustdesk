@@ -408,7 +408,9 @@ impl Connection {
         if !conn.block_input {
             conn.send_permission(Permission::BlockInput, false).await;
         }
-        let mut test_delay_timer = time::interval(TEST_DELAY_TIMEOUT);
+        // let mut test_delay_timer =
+        //     time::interval_at(Instant::now() + TEST_DELAY_TIMEOUT, TEST_DELAY_TIMEOUT);
+        let mut test_delay_timer = time::interval_at(Instant::now(), TEST_DELAY_TIMEOUT);
         let mut last_recv_time = Instant::now();
 
         conn.stream.set_send_timeout(
@@ -659,12 +661,15 @@ impl Connection {
                     conn.file_remove_log_control.on_timer().drain(..).map(|x| conn.send_to_cm(x)).count();
                 }
                 _ = test_delay_timer.tick() => {
+                    log::info!("==================== test delay");
                     if last_recv_time.elapsed() >= SEC30 {
+                        log::info!("==================== Timeout");
                         conn.on_close("Timeout", true).await;
                         break;
                     }
                     let mut qos = video_service::VIDEO_QOS.lock().unwrap();
                     if conn.last_test_delay.is_none() {
+                        log::info!("==================== send TestDelay");
                         conn.last_test_delay = Some(Instant::now());
                         let mut msg_out = Message::new();
                         msg_out.set_test_delay(TestDelay{
