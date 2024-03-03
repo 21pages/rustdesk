@@ -1279,7 +1279,7 @@ packages:
     description:
       path: "."
       ref: HEAD
-      resolved-ref: e1d25263ae7c214ff52a66a9cf28aea8f408742e
+      resolved-ref: 1b72b0226cec9943ca8a84e244c149773f384e46
       url: "https://github.com/rustdesk-org/uni_links_desktop"
     source: git
     version: "0.1.6"

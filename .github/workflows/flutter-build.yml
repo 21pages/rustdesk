@@ -403,6 +403,7 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           files: |
             rustdesk*-${{ matrix.job.arch }}.dmg
+            ./flutter/pubspec.lock
 
   build-vcpkg-deps-linux:
     uses: ./.github/workflows/vcpkg-deps-linux.yml
