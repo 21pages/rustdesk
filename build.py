@@ -154,14 +154,14 @@ def make_parser():
             action='store_true',
             help='Skip packing, only flutter version + Windows supported'
         )
+        parser.add_argument(
+            "--appname",
+            type=str,
+            help='Custom app name, only flutter version + Windows supported currently'
+        )
     parser.add_argument(
         "--package",
         type=str
-    )
-    parser.add_argument(
-        "--appname",
-        type=str,
-        help='Custom app name, only flutter version + Windows supported currently'
     )
     return parser
 
@@ -493,10 +493,6 @@ def main():
     global skip_cargo
     parser = make_parser()
     args = parser.parse_args()
-    appname = args.appname
-    if appname:
-        print(f'appname: {appname}')
-        replace_in_file('libs/hbb_common/src/config.rs', '.*pub static ref APP_NAME: Arc<RwLock<String>>.*', f'pub static ref APP_NAME: Arc<RwLock<String>> = Arc::new(RwLock::new("{appname}".to_owned()));')
     if os.path.exists(exe_path):
         os.unlink(exe_path)
     if os.path.isfile('/usr/bin/pacman'):
@@ -520,6 +516,10 @@ def main():
     res_dir = 'resources'
     external_resources(flutter, args, res_dir)
     if windows:
+        appname = args.appname
+        if appname:
+            print(f'appname: {appname}')
+            replace_in_file('libs/hbb_common/src/config.rs', '.*pub static ref APP_NAME: Arc<RwLock<String>>.*', f'pub static ref APP_NAME: Arc<RwLock<String>> = Arc::new(RwLock::new("{appname}".to_owned()));')
         # build virtual display dynamic library
         os.chdir('libs/virtual_display/dylib')
         system2('cargo build --release')
