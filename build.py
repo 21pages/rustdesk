@@ -9,6 +9,7 @@ import shutil
 import hashlib
 import argparse
 import sys
+import re
 
 windows = platform.platform().startswith('Windows')
 osx = platform.platform().startswith(
@@ -156,6 +157,11 @@ def make_parser():
     parser.add_argument(
         "--package",
         type=str
+    )
+    parser.add_argument(
+        "--appname",
+        type=str,
+        help='Custom app name, only flutter version + Windows supported currently'
     )
     return parser
 
@@ -320,6 +326,18 @@ def ffi_bindgen_function_refactor():
     system2(
         'sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" flutter/lib/generated_bridge.dart')
 
+def replace_or_rename_file(src_file, dst_file):
+    if os.path.exists(dst_file):
+        os.replace(src_file, dst_file)
+    else:
+        os.rename(src_file, dst_file)
+
+def replace_in_file(file_path, regex_pattern, new_text):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    updated_content = re.sub(regex_pattern, new_text, content)
+    with open(file_path, 'w', encoding='utf-8') as file:
+        file.write(updated_content)
 
 def build_flutter_deb(version, features):
     if not skip_cargo:
@@ -438,14 +456,21 @@ def build_flutter_arch_manjaro(version, features):
     system2('HBB=`pwd`/.. FLUTTER=1 makepkg -f')
 
 
-def build_flutter_windows(version, features, skip_portable_pack):
+def build_flutter_windows(version, features, skip_portable_pack, appname):
     if not skip_cargo:
         system2(f'cargo build --features {features} --lib --release')
         if not os.path.exists("target/release/librustdesk.dll"):
             print("cargo build failed, please check rust source code.")
             exit(-1)
+    if appname:
+        replace_in_file('libs/portable/src/main.rs', '.*const APP_PREFIX: &str = .*', f'const APP_PREFIX: &str = "{appname.lower()}";')
+        replace_in_file('flutter/windows/runner/Runner.rc', 'rustdesk', appname)
     os.chdir('flutter')
     system2('flutter build windows --release')
+    binname = 'rustdesk.exe'
+    if appname:
+        binname = appname.lower() + '.exe'
+        replace_or_rename_file(f'../{flutter_build_dir_2}rustdesk.exe', f'../{flutter_build_dir_2}{binname}')
     os.chdir('..')
     shutil.copy2('target/release/deps/dylib_virtual_display.dll',
                  flutter_build_dir_2)
@@ -454,14 +479,9 @@ def build_flutter_windows(version, features, skip_portable_pack):
     os.chdir('libs/portable')
     system2('pip3 install -r requirements.txt')
     system2(
-        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/rustdesk.exe')
+        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}{binname}')
     os.chdir('../..')
-    if os.path.exists('./rustdesk_portable.exe'):
-        os.replace('./target/release/rustdesk-portable-packer.exe',
-                   './rustdesk_portable.exe')
-    else:
-        os.rename('./target/release/rustdesk-portable-packer.exe',
-                  './rustdesk_portable.exe')
+    replace_or_rename_file('./target/release/rustdesk-portable-packer.exe', './rustdesk_portable.exe')
     print(
         f'output location: {os.path.abspath(os.curdir)}/rustdesk_portable.exe')
     os.rename('./rustdesk_portable.exe', f'./rustdesk-{version}-install.exe')
@@ -473,7 +493,10 @@ def main():
     global skip_cargo
     parser = make_parser()
     args = parser.parse_args()
-
+    appname = args.appname
+    if appname:
+        print(f'appname: {appname}')
+        replace_in_file('libs/hbb_common/src/config.rs', '.*pub static ref APP_NAME: Arc<RwLock<String>>.*', f'pub static ref APP_NAME: Arc<RwLock<String>> = Arc::new(RwLock::new("{appname}".to_owned()));')
     if os.path.exists(exe_path):
         os.unlink(exe_path)
     if os.path.isfile('/usr/bin/pacman'):
@@ -486,6 +509,9 @@ def main():
     print(args.skip_cargo)
     if args.skip_cargo:
         skip_cargo = True
+    else:
+        if os.path.exists(flutter_build_dir_2):
+            shutil.rmtree(flutter_build_dir_2)
     portable = args.portable
     package = args.package
     if package:
@@ -500,7 +526,7 @@ def main():
         os.chdir('../../..')
 
         if flutter:
-            build_flutter_windows(version, features, args.skip_portable_pack)
+            build_flutter_windows(version, features, args.skip_portable_pack, appname)
             return
         system2('cargo build --release --features ' + features)
         # system2('upx.exe target/release/rustdesk.exe')
