@@ -587,8 +587,15 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
     }
     #[cfg(target_os = "macos")]
     {
-        return if let Err(_) = crate::ipc::send_url_scheme(uni_links) {
-            Some(Vec::new())
+        log::info!("============================");
+        return if let Err(_) = crate::ipc::send_url_scheme(uni_links.clone()) {
+            let status = std::process::Command::new("open").arg(&uni_links).status();
+            log::info!("open {uni_links} status: {status:?}");
+            if status.map(|e| e.success()).unwrap_or(false) {
+                None
+            } else {
+                Some(Vec::new())
+            }
         } else {
             None
         };
