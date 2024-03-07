@@ -401,6 +401,8 @@ impl VideoRenderer {
         }
 
         // It is also Ok to skip this check.
+        // Peer info's handling is async and may be late than video frame's handling
+        /*
         if info.size.0 != rgba.w || info.size.1 != rgba.h {
             log::error!(
                 "width/height mismatch: ({},{}) != ({},{})",
@@ -411,6 +413,7 @@ impl VideoRenderer {
             );
             return false;
         }
+        */
         if let Some(func) = &self.on_rgba_func {
             unsafe {
                 func(
