@@ -147,20 +147,11 @@ fn heartbeat_url() -> String {
 
 fn handle_config_options(config_options: HashMap<String, String>) {
     let mut options = Config::get_options();
+    let outdated_options = vec!["allow-share-rdp"];
     config_options
         .iter()
         .map(|(k, v)| {
-            if k == "allow-share-rdp" {
-                // only changes made after installation take effect.
-                #[cfg(windows)]
-                if crate::platform::is_installed() {
-                    let current = crate::ui_interface::is_share_rdp();
-                    let set = v == "Y";
-                    if current != set {
-                        crate::platform::windows::set_share_rdp(set);
-                    }
-                }
-            } else {
+            if !outdated_options.contains(&k.as_str()) {
                 if v.is_empty() {
                     options.remove(k);
                 } else {
