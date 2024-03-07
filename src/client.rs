@@ -2093,6 +2093,7 @@ where
                                 &mut tmp_chroma,
                             ) {
                                 Ok(true) => {
+                                    log::info!("============================= callback");
                                     video_callback(
                                         display,
                                         &mut handler_controller.handler.rgb,

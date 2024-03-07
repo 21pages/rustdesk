@@ -2800,6 +2800,7 @@ openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
 // screenRect is used to move the new window to the specified screen and set fullscreen.
 openMonitorInNewTabOrWindow(int i, String peerId, PeerInfo pi,
     {Rect? screenRect}) {
+  print("======================= openMonitorInNewTabOrWindow: i:$i");
   final args = {
     'window_id': stateGlobal.windowId,
     'peer_id': peerId,

@@ -308,6 +308,9 @@ impl VideoRenderer {
     #[inline]
     #[cfg(feature = "flutter_texture_render")]
     fn set_size(&mut self, display: usize, width: usize, height: usize) {
+        log::info!(
+            "=========================== set_size: display:{display} width:{width} height:{height}"
+        );
         let mut sessions_lock = self.map_display_sessions.write().unwrap();
         if let Some(info) = sessions_lock.get_mut(&display) {
             info.size = (width, height);
@@ -328,6 +331,11 @@ impl VideoRenderer {
 
     #[cfg(feature = "flutter_texture_render")]
     fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
+        log::info!(
+            "======================= register_pixelbuffer_texture display: {}, ptr: {}",
+            display,
+            ptr
+        );
         let mut sessions_lock = self.map_display_sessions.write().unwrap();
         if ptr == 0 {
             sessions_lock.remove(&display);
@@ -393,10 +401,17 @@ impl VideoRenderer {
         } else {
             write_lock.get_mut(&display)
         };
+        log::info!(
+            "==================== on_rgba, display:{display} is_support_multi_ui_session: {}, opt_info: {}",
+            self.is_support_multi_ui_session,
+            opt_info.is_some()
+        );
         let Some(info) = opt_info else {
+            log::info!("============= opt_info is none");
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
+            log::info!("============ info.texture_rgba_ptr is default");
             return false;
         }
 
@@ -409,9 +424,10 @@ impl VideoRenderer {
                 rgba.w,
                 rgba.h
             );
-            return false;
+            // return false;
         }
         if let Some(func) = &self.on_rgba_func {
+            log::info!("============ find func");
             unsafe {
                 func(
                     info.texture_rgba_ptr as _,
@@ -423,6 +439,10 @@ impl VideoRenderer {
                 )
             };
         }
+        log::info!(
+            "============ info.notify_render_type:{:?}",
+            info.notify_render_type
+        );
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
             info.notify_render_type = Some(RenderType::PixelBuffer);
             true
@@ -779,9 +799,13 @@ impl InvokeUiSession for FlutterHandler {
     #[inline]
     #[cfg(feature = "flutter_texture_render")]
     fn on_rgba(&self, display: usize, rgba: &mut scrap::ImageRgb) {
+        log::info!("==================== on_rgba, display: {}", display);
         for (_, session) in self.session_handlers.read().unwrap().iter() {
+            log::info!("==================== on_rgba, session_handlers");
             if session.renderer.on_rgba(display, rgba) {
+                log::info!("==================== on_rgba should notify");
                 if let Some(stream) = &session.event_stream {
+                    log::info!("==================== on_rgba have stream");
                     stream.add(EventToUI::Rgba(display));
                 }
             }

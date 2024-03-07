@@ -209,8 +209,8 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
         })?;
 
         if let Some(msg_out) = check_get_displays_changed_msg() {
+            log::info!("============================================ Displays changed");
             sp.send(msg_out);
-            log::info!("Displays changed");
         }
         std::thread::sleep(Duration::from_millis(300));
     }

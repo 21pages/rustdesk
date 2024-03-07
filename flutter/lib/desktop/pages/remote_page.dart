@@ -117,6 +117,7 @@ class _RemotePageState extends State<RemotePage>
       display: widget.display,
       displays: widget.displays,
     );
+    print("==============after ffi.start");
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       _ffi.dialogManager
@@ -441,7 +442,8 @@ class _RemotePageState extends State<RemotePage>
           () => _ffi.ffiModel.pi.isSet.isFalse
               ? Container(color: Colors.transparent)
               : Obx(() {
-                  _ffi.textureModel.updateCurrentDisplay(peerDisplay.value);
+                  _ffi.textureModel
+                      .updateCurrentDisplay(peerDisplay.value, null);
                   return ImagePaint(
                     id: widget.id,
                     zoomCursor: _zoomCursor,

@@ -74,6 +74,7 @@ class RustDeskMultiWindowManager {
       Rect? screenRect) async {
     if (_remoteDesktopWindows.length > 1) {
       for (final windowId in _remoteDesktopWindows) {
+        print("==================== _remoteDesktopWindows.length > 1");
         if (await DesktopMultiWindow.invokeMethod(
             windowId,
             kWindowEventActiveDisplaySession,
@@ -104,6 +105,7 @@ class RustDeskMultiWindowManager {
         'b': screenRect.bottom,
       };
     }
+    print("==================== _newSession");
     await _newSession(
       false,
       WindowType.RemoteDesktop,

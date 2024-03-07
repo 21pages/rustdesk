@@ -172,6 +172,8 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         final id = args['id'];
         final display = args['display'];
         final jumpOk = tabController.jumpToByKeyAndDisplay(id, display);
+        print(
+            "===================== kWindowEventActiveDisplaySession, display:$display");
         if (jumpOk) {
           windowOnTop(windowId());
         }

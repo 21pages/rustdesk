@@ -23,22 +23,24 @@ class _PixelbufferTexture {
 
   int get display => _display;
 
-  create(int d, SessionID sessionId, FFI ffi) {
+  create(int d, SessionID sessionId, FFI ffi) async {
     if (support) {
       _display = d;
       _textureKey = bind.getNextTextureKey();
       _sessionId = sessionId;
-
-      textureRenderer.createTexture(_textureKey).then((id) async {
-        _id = id;
+      try {
+        int id = await textureRenderer.createTexture(_textureKey);
         if (id != -1) {
+          _id = id;
           ffi.textureModel.setRgbaTextureId(display: d, id: id);
           final ptr = await textureRenderer.getTexturePtr(_textureKey);
           platformFFI.registerPixelbufferTexture(sessionId, display, ptr);
           debugPrint(
               "create pixelbuffer texture: peerId: ${ffi.id} display:$_display, textureId:$id");
         }
-      });
+      } catch (e) {
+        debugPrint('create pixelbuffer texture failed: $e');
+      }
     }
   }
 
@@ -74,14 +76,15 @@ class _GpuTexture {
 
   _GpuTexture();
 
-  create(int d, SessionID sessionId, FFI ffi) {
+  create(int d, SessionID sessionId, FFI ffi) async {
     if (support) {
       _sessionId = sessionId;
       _display = d;
 
-      gpuTextureRenderer.registerTexture().then((id) async {
-        _id = id;
-        if (id != null) {
+      try {
+        _id = await gpuTextureRenderer.registerTexture();
+        if (_id != null) {
+          int id = _id!;
           _textureId = id;
           ffi.textureModel.setGpuTextureId(display: d, id: id);
           final output = await gpuTextureRenderer.output(id);
@@ -92,9 +95,9 @@ class _GpuTexture {
           debugPrint(
               "create gpu texture: peerId: ${ffi.id} display:$_display, textureId:$id, output:$output");
         }
-      }, onError: (err) {
-        debugPrint("Failed to register gpu texture:$err");
-      });
+      } catch (e) {
+        debugPrint("Failed to create gpu texture:$e");
+      }
     }
   }
 
@@ -185,30 +188,32 @@ class TextureModel {
     return ctl.textureID;
   }
 
-  updateCurrentDisplay(int curDisplay) {
+  updateCurrentDisplay(int curDisplay, VoidCallback? callback) async {
+    debugPrint(
+        "=================================== updateCurrentDisplay: curDisplay:$curDisplay");
     final ffi = parent.target;
     if (ffi == null) return;
-    tryCreateTexture(int idx) {
+    tryCreateTexture(int idx) async {
       if (!_pixelbufferRenderTextures.containsKey(idx)) {
         final renderTexture = _PixelbufferTexture();
         _pixelbufferRenderTextures[idx] = renderTexture;
-        renderTexture.create(idx, ffi.sessionId, ffi);
+        await renderTexture.create(idx, ffi.sessionId, ffi);
       }
       if (!_gpuRenderTextures.containsKey(idx)) {
         final renderTexture = _GpuTexture();
         _gpuRenderTextures[idx] = renderTexture;
-        renderTexture.create(idx, ffi.sessionId, ffi);
+        await renderTexture.create(idx, ffi.sessionId, ffi);
       }
     }
 
-    tryRemoveTexture(int idx) {
+    tryRemoveTexture(int idx) async {
       _control.remove(idx);
       if (_pixelbufferRenderTextures.containsKey(idx)) {
-        _pixelbufferRenderTextures[idx]!.destroy(true, ffi);
+        await _pixelbufferRenderTextures[idx]!.destroy(true, ffi);
         _pixelbufferRenderTextures.remove(idx);
       }
       if (_gpuRenderTextures.containsKey(idx)) {
-        _gpuRenderTextures[idx]!.destroy(ffi);
+        await _gpuRenderTextures[idx]!.destroy(ffi);
         _gpuRenderTextures.remove(idx);
       }
     }
@@ -216,16 +221,17 @@ class TextureModel {
     if (curDisplay == kAllDisplayValue) {
       final displays = ffi.ffiModel.pi.getCurDisplays();
       for (var i = 0; i < displays.length; i++) {
-        tryCreateTexture(i);
+        await tryCreateTexture(i);
       }
     } else {
-      tryCreateTexture(curDisplay);
+      await tryCreateTexture(curDisplay);
       for (var i = 0; i < ffi.ffiModel.pi.displays.length; i++) {
         if (i != curDisplay) {
-          tryRemoveTexture(i);
+          await tryRemoveTexture(i);
         }
       }
     }
+    callback?.call();
   }
 
   onRemotePageDispose(bool closeSession) async {

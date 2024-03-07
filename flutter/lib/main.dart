@@ -61,6 +61,7 @@ Future<void> main(List<String> args) async {
     switch (kWindowType) {
       case WindowType.RemoteDesktop:
         desktopType = DesktopType.remote;
+        print("==================== runMultiWindow");
         runMultiWindow(
           argument,
           kAppTypeDesktopRemote,

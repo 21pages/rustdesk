@@ -256,6 +256,7 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'set_multiple_windows_session') {
         handleMultipleWindowsSession(evt, sessionId, peerId);
       } else if (name == 'peer_info') {
+        print("===================== receive peer_info msg");
         handlePeerInfo(evt, peerId, false);
       } else if (name == 'sync_peer_info') {
         handleSyncPeerInfo(evt, sessionId, peerId);
@@ -387,7 +388,8 @@ class FfiModel with ChangeNotifier {
 
   onUrlSchemeReceived(Map<String, dynamic> evt) {
     final url = evt['url'].toString().trim();
-    if (url.startsWith(bind.mainUriPrefixSync()) && handleUriLink(uriString: url)) {
+    if (url.startsWith(bind.mainUriPrefixSync()) &&
+        handleUriLink(uriString: url)) {
       return;
     }
     switch (url) {
@@ -440,6 +442,7 @@ class FfiModel with ChangeNotifier {
   }
 
   updateCurDisplay(SessionID sessionId, {updateCursorPos = true}) {
+    print("=========================== updateCurDisplay");
     final newRect = displaysRect();
     if (newRect == null) {
       return;
@@ -453,6 +456,7 @@ class FfiModel with ChangeNotifier {
       _rect = newRect;
       parent.target?.canvasModel
           .updateViewStyle(refreshMousePos: updateCursorPos);
+
       _updateSessionWidthHeight(sessionId);
     }
   }
@@ -460,6 +464,9 @@ class FfiModel with ChangeNotifier {
   handleSwitchDisplay(
       Map<String, dynamic> evt, SessionID sessionId, String peerId) {
     final display = int.parse(evt['display']);
+
+    print(
+        "=========================== handleSwitchDisplay, _pi.currentDisplay: ${_pi.currentDisplay}, display: $display");
 
     if (_pi.currentDisplay != kAllDisplayValue) {
       if (bind.peerGetDefaultSessionsCount(id: peerId) > 1) {
@@ -664,6 +671,8 @@ class FfiModel with ChangeNotifier {
     } else {
       final displays = _pi.getCurDisplays();
       if (displays.length == 1) {
+        print(
+            "========================== _updateSessionWidthHeight displays.length == 1");
         bind.sessionSetSize(
           sessionId: sessionId,
           display:
@@ -672,6 +681,8 @@ class FfiModel with ChangeNotifier {
           height: _rect!.height.toInt(),
         );
       } else {
+        print(
+            "========================== _updateSessionWidthHeight displays.length == 2");
         for (int i = 0; i < displays.length; ++i) {
           bind.sessionSetSize(
             sessionId: sessionId,
@@ -709,6 +720,9 @@ class FfiModel with ChangeNotifier {
     if (bind.peerGetDefaultSessionsCount(id: peerId) <= 1) {
       _pi.currentDisplay = currentDisplay;
     }
+
+    print(
+        "=========================== handlePeerInfo, _pi.currentDisplay: ${_pi.currentDisplay}");
 
     try {
       CurrentDisplayState.find(peerId).value = _pi.currentDisplay;
@@ -765,6 +779,14 @@ class FfiModel with ChangeNotifier {
     }
 
     _pi.isSet.value = true;
+    // final ffi = parent.target;
+    // if (ffi != null) {
+    //   final peerDisplay = CurrentDisplayState.find(ffi.id);
+    //   parent.target?.textureModel.updateCurrentDisplay(peerDisplay.value);
+    //   print(
+    //       "================================ updateCurrentDisplay after isSet");
+    // }
+
     stateGlobal.resetLastResolutionGroupValues(peerId);
 
     if (isDesktop) {
@@ -931,6 +953,8 @@ class FfiModel with ChangeNotifier {
       _pi.displays.value = newDisplays;
       _pi.displaysCount.value = _pi.displays.length;
 
+      print(
+          "=========================== handleSyncPeerInfo, _pi.currentDisplay: ${_pi.currentDisplay}");
       if (_pi.currentDisplay == kAllDisplayValue) {
         updateCurDisplay(sessionId);
         // to-do: What if the displays are changed?
@@ -1002,6 +1026,8 @@ class FfiModel with ChangeNotifier {
     parent.target?.recordingModel.onClose();
     // no need to wait for the response
     pi.currentDisplay = display;
+    print(
+        "=========================== switchToNewDisplay, _pi.currentDisplay: ${pi.currentDisplay}");
     updateCurDisplay(sessionId, updateCursorPos: updateCursorPos);
     try {
       CurrentDisplayState.find(peerId).value = display;
@@ -2228,6 +2254,12 @@ class FFI {
           sessionId: sessionId, displays: Int32List.fromList(displays));
       ffiModel.pi.currentDisplay = display;
     }
+    if (connType == ConnType.defaultConn) {
+      print("======================  updateCurrentDisplay in ffi start");
+      CurrentDisplayState.find(id).value = display ?? 0;
+      textureModel.updateCurrentDisplay(display ?? 0, null);
+    }
+
     final stream = bind.sessionStart(sessionId: sessionId, id: id);
     final cb = ffiModel.startEventListener(sessionId, id);
 
@@ -2263,6 +2295,7 @@ class FFI {
             debugPrint('Unreachable, the cached data cannot be decoded.');
             return;
           }
+          print("===================== handleCachedPeerData");
           await ffiModel.handleCachedPeerData(data, id);
           await sessionRefreshVideo(sessionId, ffiModel.pi);
         });

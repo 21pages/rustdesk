@@ -459,6 +459,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut yuv = Vec::new();
     let mut mid_data = Vec::new();
 
+    let mut sent = false;
     while sp.ok() {
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
@@ -514,6 +515,11 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         frame_controller.reset();
 
+        if sent {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            continue;
+        }
+
         let res = match c.frame(spf) {
             Ok(frame) => {
                 let time = now - start;
@@ -530,6 +536,8 @@ fn run(vs: VideoService) -> ResultType<()> {
                         recorder.clone(),
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
+                    sent = true;
+                    println!("===================== sent");
                 }
                 #[cfg(windows)]
                 {
