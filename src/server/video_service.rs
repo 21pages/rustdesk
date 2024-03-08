@@ -458,6 +458,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut would_block_count = 0u32;
     let mut yuv = Vec::new();
     let mut mid_data = Vec::new();
+    let mut sent = false;
 
     while sp.ok() {
         #[cfg(windows)]
@@ -514,6 +515,11 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         frame_controller.reset();
 
+        if sent {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            continue;
+        }
+
         let res = match c.frame(spf) {
             Ok(frame) => {
                 let time = now - start;
@@ -530,6 +536,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         recorder.clone(),
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
+                    sent = true;
                 }
                 #[cfg(windows)]
                 {
