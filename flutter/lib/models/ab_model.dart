@@ -64,6 +64,7 @@ class AbModel {
   var _cacheLoadOnceFlag = false;
   var _everPulledProfiles = false;
   var _onlyAdminCanCreateAb = false;
+  var _maxPeerOneAb = 0;
   RxBool allowSharePassword = false.obs;
 
   WeakReference<FFI> parent;
@@ -163,7 +164,6 @@ class AbModel {
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       final resp = await http.post(Uri.parse(api), headers: headers);
-      // supportSharedAb.value = resp.statusCode != 404;
       if (resp.statusCode == 404) {
         debugPrint("HTTP 404, api server doesn't support shared address book");
         return false;
@@ -176,8 +176,9 @@ class AbModel {
       if (resp.statusCode != 200) {
         throw 'HTTP ${resp.statusCode}';
       }
-      _onlyAdminCanCreateAb = json['only_admin_can_create'];
-      allowSharePassword.value = json['allow_share_password'];
+      _onlyAdminCanCreateAb = json['only_admin_can_create'] ?? false;
+      allowSharePassword.value = json['allow_share_password'] ?? false;
+      _maxPeerOneAb = json['max_peer_one_ab'] ?? 0;
       return true;
     } catch (err) {
       debugPrint('get ab settings err: ${err.toString()}');
@@ -428,6 +429,7 @@ class AbModel {
     final personalAb = addressbooks[_personalAddressBookName];
     if (personalAb != null) {
       ret = await personalAb.changePersonalHashPassword(id, hash);
+      await pullNonLegacyAfterChange();
     } else {
       final legacyAb = addressbooks[_legacyAddressBookName];
       if (legacyAb != null) {
@@ -452,7 +454,7 @@ class AbModel {
     currentAbPeers.refresh();
     _refreshTab();
     _saveCache();
-    if (_currentName.value == _personalAddressBookName) {
+    if (current.isPersonal()) {
       Future.delayed(Duration(seconds: 2), () async {
         if (!shouldSyncAb()) return;
         var hasSynced = false;
@@ -560,6 +562,7 @@ class AbModel {
       if (!shouldSyncAb()) return;
       final recents = await getRecentPeers();
       if (recents.isEmpty) return;
+      debugPrint("sync from recent, len: ${recents.length}");
       addressbooks.forEach((key, value) async {
         if (value.allowEdit()) {
           await value.syncFromRecent(recents);
@@ -1546,6 +1549,20 @@ class Ab extends BaseAb {
     }
 
     try {
+      // Try add new peers to personal ab
+      if (personal) {
+        for (var r in recents) {
+          if (peers.length < gFFI.abModel._maxPeerOneAb) {
+            if (peers.every((e) => e.id != r.id)) {
+              var err = await addPeers([r]);
+              if (err == null) {
+                peers.add(r);
+                uiUpdate = true;
+              }
+            }
+          }
+        }
+      }
       final syncPeers = peers.where((p0) => p0.sameServer != true);
       for (var p in syncPeers) {
         Peer? r = recents.firstWhereOrNull((e) => e.id == p.id);
