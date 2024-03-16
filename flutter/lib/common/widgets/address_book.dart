@@ -973,10 +973,13 @@ class __RuleTreeState extends State<_RuleTree> {
   double totalWidth = 400;
   double indent = 40;
   double iconSize = 24;
+  bool onlyShowExisting = false;
 
   @override
   void initState() {
     super.initState();
+    onlyShowExisting =
+        bind.getLocalFlutterOption(k: 'only-show-existing-rules') == 'Y';
     refresh();
   }
 
@@ -995,24 +998,26 @@ class __RuleTreeState extends State<_RuleTree> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
+  List<TreeNode> getNodes() {
+    int keyIndex = 0;
     List<TreeNode> buildUserNodes(List<String> users) {
       List<TreeNode> userNodes = [];
       for (var user in users) {
         final userRuleIndex = rules.indexWhere(
             (e) => e.level == ShareLevel.user.value && e.name == user);
         if (userRuleIndex < 0) {
-          userNodes.add(TreeNode(
-              content: _buildEmptyNodeContent(
-                  ShareLevel.user, user, totalWidth, indent * 2),
-              key: ValueKey(user),
-              children: []));
+          if (!onlyShowExisting) {
+            userNodes.add(TreeNode(
+                content: _buildEmptyNodeContent(
+                    ShareLevel.user, user, totalWidth, indent * 2),
+                key: ValueKey(keyIndex++),
+                children: []));
+          }
         } else {
           final userRule = rules[userRuleIndex];
           userNodes.add(TreeNode(
               content: _buildRuleNodeContent(userRule, totalWidth, indent * 2),
-              key: ValueKey(user),
+              key: ValueKey(keyIndex++),
               children: []));
         }
       }
@@ -1023,17 +1028,20 @@ class __RuleTreeState extends State<_RuleTree> {
     map.forEach((group, users) {
       final groupRuleIndex = rules.indexWhere(
           (e) => e.level == ShareLevel.group.value && e.name == group);
+      final children = buildUserNodes(users);
       if (groupRuleIndex < 0) {
-        groupNodes.add(TreeNode(
-            content: _buildEmptyNodeContent(
-                ShareLevel.group, group, totalWidth, indent),
-            key: ValueKey(group),
-            children: buildUserNodes(users)));
+        if (!onlyShowExisting || children.isNotEmpty) {
+          groupNodes.add(TreeNode(
+              content: _buildEmptyNodeContent(
+                  ShareLevel.group, group, totalWidth, indent),
+              key: ValueKey(keyIndex++),
+              children: children));
+        }
       } else {
         final groupRule = rules[groupRuleIndex];
         groupNodes.add(TreeNode(
             content: _buildRuleNodeContent(groupRule, totalWidth, indent),
-            key: ValueKey(group),
+            key: ValueKey(keyIndex++),
             children: buildUserNodes(users)));
       }
     });
@@ -1042,30 +1050,53 @@ class __RuleTreeState extends State<_RuleTree> {
     final teamRuleIndex =
         rules.indexWhere((e) => e.level == ShareLevel.team.value);
     if (teamRuleIndex < 0) {
-      totalNodes.add(TreeNode(
-          content: _buildEmptyNodeContent(
-              ShareLevel.team, 'Everyone', totalWidth, 0),
-          key: ValueKey('Everyone'),
-          children: groupNodes));
+      if (!onlyShowExisting || groupNodes.isNotEmpty) {
+        totalNodes.add(TreeNode(
+            content: _buildEmptyNodeContent(
+                ShareLevel.team, translate('Everyone'), totalWidth, 0),
+            key: ValueKey(keyIndex++),
+            children: groupNodes));
+      }
     } else {
       final rule = rules[teamRuleIndex];
       totalNodes.add(TreeNode(
           content: _buildRuleNodeContent(
-              AbRulePayload(rule.guid, rule.level, 'Everyone', rule.rule),
+              AbRulePayload(
+                  rule.guid, rule.level, translate('Everyone'), rule.rule),
               totalWidth,
               0),
-          key: ValueKey('Everyone'),
+          key: ValueKey(keyIndex++),
           children: groupNodes));
     }
+    return totalNodes;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        Row(
+          children: [
+            const Spacer(),
+            Text(translate('Only show existing')),
+            Switch(
+                value: onlyShowExisting,
+                onChanged: (v) {
+                  setState(() {
+                    onlyShowExisting = v;
+                    bind.setLocalFlutterOption(
+                        k: 'only-show-existing-rules', v: v ? 'Y' : '');
+                  });
+                })
+          ],
+        ),
         SingleChildScrollView(
           child: TreeView(
             treeController: _controller,
             indent: indent,
             iconSize: iconSize,
-            nodes: totalNodes,
+            nodes: getNodes(),
           ),
         ),
         // NOT use Offstage to wrap LinearProgressIndicator
@@ -1083,33 +1114,34 @@ class __RuleTreeState extends State<_RuleTree> {
           SizedBox(width: 200 - indent, child: Text(name)),
           const SizedBox(width: 100),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.add, color: MyTheme.accent),
-            onPressed: () {
-              onSubmit(int rule) async {
-                if (ShareRule.fromValue(rule) == null) {
-                  BotToast.showText(
-                      contentColor: Colors.red, text: "Invalid rule: $rule");
-                  return;
+          if (!onlyShowExisting)
+            IconButton(
+              icon: const Icon(Icons.add, color: MyTheme.accent),
+              onPressed: () {
+                onSubmit(int rule) async {
+                  if (ShareRule.fromValue(rule) == null) {
+                    BotToast.showText(
+                        contentColor: Colors.red, text: "Invalid rule: $rule");
+                    return;
+                  }
+                  setState(() {
+                    isInProgress = true;
+                  });
+                  final errMsg =
+                      await gFFI.abModel.addRule(name, level.value, rule);
+                  setState(() {
+                    isInProgress = false;
+                  });
+                  if (errMsg != null) {
+                    BotToast.showText(contentColor: Colors.red, text: errMsg);
+                  } else {
+                    refresh();
+                  }
                 }
-                setState(() {
-                  isInProgress = true;
-                });
-                final errMsg =
-                    await gFFI.abModel.addRule(name, level.value, rule);
-                setState(() {
-                  isInProgress = false;
-                });
-                if (errMsg != null) {
-                  BotToast.showText(contentColor: Colors.red, text: errMsg);
-                } else {
-                  refresh();
-                }
-              }
 
-              _addOrUpdateRuleDialog(onSubmit, ShareRule.read.value, null);
-            },
-          )
+                _addOrUpdateRuleDialog(onSubmit, ShareRule.read.value, null);
+              },
+            )
         ],
       ),
     );

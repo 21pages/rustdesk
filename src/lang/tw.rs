@@ -601,5 +601,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Full Control", ""),
         ("full-control-tip", ""),
         ("share-warning-tip", ""),
+        ("Only show existing", ""),
     ].iter().cloned().collect();
 }
