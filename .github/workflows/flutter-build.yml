@@ -184,6 +184,7 @@ jobs:
           files: |
             ./SignOutput/rustdesk-*.exe
             ./rustdesk-*.tar.gz
+            ./flutter/pubspec.lock
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
