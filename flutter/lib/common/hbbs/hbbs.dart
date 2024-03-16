@@ -200,13 +200,13 @@ enum ShareRule {
 
   static String desc(int v) {
     if (v == ShareRule.read.value) {
-      return translate('Read only');
+      return translate('Read-only');
     }
     if (v == ShareRule.readWrite.value) {
-      return translate('Read write');
+      return translate('Read/Write');
     }
     if (v == ShareRule.fullControl.value) {
-      return translate('Full control');
+      return translate('Full Control');
     }
     return v.toString();
   }

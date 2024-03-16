@@ -589,11 +589,17 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Create shared address book", ""),
         ("Update this address book", ""),
         ("Delete this address book", ""),
+        ("Share this address book", ""),
         ("Are you sure you want to delete address book {}?", ""),
         ("My address book", ""),
         ("Personal", ""),
         ("Owner", ""),
         ("Set shared password", ""),
         ("Exist in", ""),
+        ("Read-only", ""),
+        ("Read/Write", ""),
+        ("Full Control", ""),
+        ("full-control-tip", ""),
+        ("share-warning-tip", ""),
     ].iter().cloned().collect();
 }

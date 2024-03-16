@@ -158,14 +158,17 @@ class _AddressBookState extends State<AddressBook> {
           ],
         );
       } else {
-        final children = [];
+        List<Widget> children = [];
         final rule = gFFI.abModel.current.sharedProfile()?.rule;
         if (rule == ShareRule.read.value) {
-          children.add(icon(Icons.visibility, translate("Read only")));
+          children.add(
+              icon(Icons.visibility, ShareRule.desc(ShareRule.read.value)));
         } else if (rule == ShareRule.readWrite.value) {
-          children.add(icon(Icons.edit, translate("Read write")));
+          children
+              .add(icon(Icons.edit, ShareRule.desc(ShareRule.readWrite.value)));
         } else if (rule == ShareRule.fullControl.value) {
-          children.add(icon(Icons.security, translate("Full control")));
+          children.add(icon(
+              Icons.security, ShareRule.desc(ShareRule.fullControl.value)));
         }
         final owner = gFFI.abModel.current.sharedProfile()?.owner;
         if (owner != null) {
@@ -539,6 +542,12 @@ class _AddressBookState extends State<AddressBook> {
             const SizedBox(
               height: 4.0,
             ),
+            if (!gFFI.abModel.current.isPersonal())
+              Container(
+                  child: Text(
+                translate('share-warning-tip'),
+                style: TextStyle(fontSize: 12),
+              )).marginSymmetric(vertical: 10),
             // NOT use Offstage to wrap LinearProgressIndicator
             if (isInProgress) const LinearProgressIndicator(),
           ],
@@ -1098,7 +1107,7 @@ class __RuleTreeState extends State<_RuleTree> {
                 }
               }
 
-              _addOrUpdateRuleDialog(onSubmit, null);
+              _addOrUpdateRuleDialog(onSubmit, ShareRule.read.value, null);
             },
           )
         ],
@@ -1145,7 +1154,7 @@ class __RuleTreeState extends State<_RuleTree> {
                         text: "Invalid rule: ${rule.rule}");
                     return;
                   }
-                  _addOrUpdateRuleDialog(onSubmit, rule.rule);
+                  _addOrUpdateRuleDialog(onSubmit, rule.rule, rule.name);
                 },
               ),
               IconButton(
@@ -1178,9 +1187,8 @@ class __RuleTreeState extends State<_RuleTree> {
 }
 
 void _addOrUpdateRuleDialog(
-    Future Function(int) onSubmit, int? initialRule) async {
-  bool isAdd = initialRule == null;
-  initialRule ??= ShareRule.read.value;
+    Future Function(int) onSubmit, int initialRule, String? name) async {
+  bool isAdd = name == null;
   var currentRule = initialRule;
   gFFI.dialogManager.show(
     (setState, close, context) {
@@ -1198,12 +1206,13 @@ void _addOrUpdateRuleDialog(
       ];
       TextEditingController controller = TextEditingController();
       return CustomAlertDialog(
+        contentBoxConstraints: BoxConstraints(maxWidth: 300),
         title: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Expanded(
               child: Text(
-                      translate(isAdd ? "Add permission" : "Update permission"),
+                      '${translate(isAdd ? "Add" : "Update")}${name != null ? " $name" : ""}',
                       overflow: TextOverflow.ellipsis)
                   .paddingOnly(
                 left: 10,
@@ -1211,20 +1220,35 @@ void _addOrUpdateRuleDialog(
             ),
           ],
         ),
-        content: DropdownMenu<int>(
-          initialSelection: initialRule,
-          onSelected: (value) {
-            if (value != null) {
-              currentRule = value;
-            }
-          },
-          dropdownMenuEntries: keys
-              .map((e) => DropdownMenuEntry(value: e, label: ShareRule.desc(e)))
-              .toList(),
-          inputDecorationTheme: InputDecorationTheme(
-              isDense: true, border: UnderlineInputBorder()),
-          enableFilter: false,
-          controller: controller,
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            DropdownMenu<int>(
+              initialSelection: initialRule,
+              onSelected: (value) {
+                if (value != null) {
+                  currentRule = value;
+                }
+              },
+              dropdownMenuEntries: keys
+                  .map((e) =>
+                      DropdownMenuEntry(value: e, label: ShareRule.desc(e)))
+                  .toList(),
+              inputDecorationTheme: InputDecorationTheme(
+                  isDense: true, border: UnderlineInputBorder()),
+              enableFilter: false,
+              controller: controller,
+            ),
+            Row(
+              children: [
+                Icon(Icons.warning_amber, color: Colors.amber)
+                    .marginOnly(right: 10),
+                Flexible(
+                    child: Text(translate('full-control-tip'),
+                        style: TextStyle(fontSize: 12))),
+              ],
+            ).marginSymmetric(vertical: 10),
+          ],
         ),
         actions: [
           dialogButton(
