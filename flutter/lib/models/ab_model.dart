@@ -63,9 +63,7 @@ class AbModel {
   var _timerCounter = 0;
   var _cacheLoadOnceFlag = false;
   var _everPulledProfiles = false;
-  var _onlyAdminCanCreateAb = false;
   var _maxPeerOneAb = 0;
-  RxBool allowSharePassword = false.obs;
 
   WeakReference<FFI> parent;
 
@@ -115,7 +113,7 @@ class AbModel {
         await _getAbSettings();
         List<AbProfile> tmpAbProfiles = List.empty(growable: true);
         tmpAbProfiles.add(AbProfile(_personalAbGuid!, _personalAddressBookName,
-            gFFI.userModel.userName.value, null, null, null));
+            gFFI.userModel.userName.value, null, ShareRule.read.value));
         // get all address book name
         await _getSharedAbProfiles(tmpAbProfiles);
         abProfiles = tmpAbProfiles;
@@ -176,8 +174,6 @@ class AbModel {
       if (resp.statusCode != 200) {
         throw 'HTTP ${resp.statusCode}';
       }
-      _onlyAdminCanCreateAb = json['only_admin_can_create'] ?? false;
-      allowSharePassword.value = json['allow_share_password'] ?? false;
       _maxPeerOneAb = json['max_peer_one_ab'] ?? 0;
       return true;
     } catch (err) {
@@ -266,8 +262,7 @@ class AbModel {
     return false;
   }
 
-  Future<String> addSharedAb(
-      String name, String note, bool edit, bool? pwd) async {
+  Future<String> addSharedAb(String name, String note) async {
     try {
       if (addressbooks.containsKey(name)) {
         return '$name already exists';
@@ -277,11 +272,7 @@ class AbModel {
       headers['Content-Type'] = "application/json";
       var v = {
         'name': name,
-        'edit': edit,
       };
-      if (pwd != null) {
-        v['pwd'] = pwd;
-      }
       if (note.isNotEmpty) {
         v['note'] = note;
       }
@@ -295,8 +286,7 @@ class AbModel {
     }
   }
 
-  Future<String> updateSharedAb(
-      String guid, String name, String note, bool edit, bool? pwd) async {
+  Future<String> updateSharedAb(String guid, String name, String note) async {
     try {
       final api =
           "${await bind.mainGetApiServer()}/api/ab/shared/update/profile";
@@ -305,11 +295,7 @@ class AbModel {
       var v = {
         'guid': guid,
         'name': name,
-        'edit': edit,
       };
-      if (pwd != null) {
-        v['pwd'] = pwd;
-      }
       if (note.isNotEmpty) {
         v['note'] = note;
       }
@@ -343,31 +329,152 @@ class AbModel {
 
 // #endregion
 
-// #region permission
-  bool allowedToEditCurrentAb() {
-    return current.allowEdit();
-  }
-
-  bool allowedToUpdateSettingsOrDelete() {
-    return current.allowUpdateSettingsOrDelete();
-  }
-
-  bool isCurrentAbSharingPassword() {
-    return current.sharePassword() && allowSharePassword.value;
-  }
-
-  List<String> addressBooksAllowedToEdit() {
+// #region rule
+  List<String> addressBooksCanWrite() {
     List<String> list = [];
     addressbooks.forEach((key, value) async {
-      if (value.allowEdit()) {
+      if (value.canWrite()) {
         list.add(key);
       }
     });
     return list;
   }
 
-  bool canCreateSharedAb() {
-    return gFFI.userModel.isAdmin.value || !_onlyAdminCanCreateAb;
+  Future<List<AbRulePayload>> getAllRules() async {
+    try {
+      List<AbRulePayload> res = [];
+      final abGuid = current.sharedProfile()?.guid;
+      if (abGuid == null) {
+        return res;
+      }
+      final api = "${await bind.mainGetApiServer()}/api/ab/rules/$abGuid";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final resp = await http.post(Uri.parse(api), headers: headers);
+      if (resp.statusCode == 404) {
+        debugPrint("HTTP 404, api server doesn't support shared address book");
+        return res;
+      }
+      List<dynamic> json =
+          _jsonDecodeRespList(utf8.decode(resp.bodyBytes), resp.statusCode);
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      for (final d in json) {
+        final t = AbRulePayload.fromJson(d);
+        res.add(t);
+      }
+      return res;
+    } catch (err) {
+      debugPrint('get all rules err: ${err.toString()}');
+    }
+    return [];
+  }
+
+  Future<String?> addRule(String name, int level, int rule) async {
+    try {
+      final abGuid = current.sharedProfile()?.guid;
+      if (abGuid == null) {
+        return "shared profile not found";
+      }
+      final api = "${await bind.mainGetApiServer()}/api/ab/rule";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode({
+        'ab': abGuid,
+        'name': name,
+        'level': level,
+        'rule': rule,
+      });
+      final resp =
+          await http.post(Uri.parse(api), headers: headers, body: body);
+      final errMsg = _jsonDecodeActionResp(resp);
+      if (errMsg.isNotEmpty) {
+        return errMsg;
+      }
+      return null;
+    } catch (err) {
+      return err.toString();
+    }
+  }
+
+  Future<String?> updateRule(String ruleGuid, int rule) async {
+    try {
+      final abGuid = current.sharedProfile()?.guid;
+      if (abGuid == null) {
+        return "shared profile not found";
+      }
+      final api = "${await bind.mainGetApiServer()}/api/ab/rule";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode({
+        'guid': ruleGuid,
+        'rule': rule,
+      });
+      final resp =
+          await http.patch(Uri.parse(api), headers: headers, body: body);
+      final errMsg = _jsonDecodeActionResp(resp);
+      if (errMsg.isNotEmpty) {
+        return errMsg;
+      }
+      return null;
+    } catch (err) {
+      return err.toString();
+    }
+  }
+
+  Future<String?> deleteRules(List<String> ruleGuids) async {
+    try {
+      final abGuid = current.sharedProfile()?.guid;
+      if (abGuid == null) {
+        return "shared profile not found";
+      }
+      final api = "${await bind.mainGetApiServer()}/api/ab/rules";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode(ruleGuids);
+      final resp =
+          await http.delete(Uri.parse(api), headers: headers, body: body);
+      final errMsg = _jsonDecodeActionResp(resp);
+      if (errMsg.isNotEmpty) {
+        return errMsg;
+      }
+      return null;
+    } catch (err) {
+      return err.toString();
+    }
+  }
+
+  Future<Map<String, List<String>>> getNamesTree() async {
+    Map<String, List<String>> res = Map.fromEntries([]);
+    try {
+      final abGuid = current.sharedProfile()?.guid;
+      if (abGuid == null) {
+        return res;
+      }
+      final api = "${await bind.mainGetApiServer()}/api/ab/rule/tree/$abGuid";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final resp = await http.post(Uri.parse(api), headers: headers);
+      if (resp.statusCode == 404) {
+        debugPrint("HTTP 404, api server doesn't support shared address book");
+        return res;
+      }
+      Map<String, dynamic> json =
+          _jsonDecodeRespMap(utf8.decode(resp.bodyBytes), resp.statusCode);
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      json.forEach((key, value) {
+        if (value is List) {
+          res[key] = value.map((e) => e.toString()).toList();
+        }
+      });
+      return res;
+    } catch (err) {
+      debugPrint('get name tree err: ${err.toString()}');
+    }
+    return res;
   }
 
 // #endregion
@@ -564,7 +671,7 @@ class AbModel {
       if (recents.isEmpty) return;
       debugPrint("sync from recent, len: ${recents.length}");
       addressbooks.forEach((key, value) async {
-        if (value.allowEdit()) {
+        if (value.canWrite()) {
           await value.syncFromRecent(recents);
         }
       });
@@ -646,7 +753,7 @@ class AbModel {
             if (name == null || guid == null) {
               continue;
             }
-            ab = Ab(AbProfile(guid, name, '', '', false, false),
+            ab = Ab(AbProfile(guid, name, '', '', ShareRule.read.value),
                 name == _personalAddressBookName);
           }
           addressbooks[name] = ab;
@@ -866,11 +973,11 @@ abstract class BaseAb {
 
   AbProfile? sharedProfile();
 
-  bool allowEdit();
+  bool canWrite();
+
+  bool fullControl();
 
   bool allowUpdateSettingsOrDelete();
-
-  bool sharePassword();
 
   Future<void> syncFromRecent(List<Peer> recents);
 }
@@ -888,17 +995,17 @@ class LegacyAb extends BaseAb {
   }
 
   @override
-  bool allowEdit() {
+  bool canWrite() {
+    return true;
+  }
+
+  @override
+  bool fullControl() {
     return true;
   }
 
   @override
   bool allowUpdateSettingsOrDelete() {
-    return false;
-  }
-
-  @override
-  bool sharePassword() {
     return false;
   }
 
@@ -1262,16 +1369,26 @@ class Ab extends BaseAb {
   }
 
   bool creatorOrAdmin() {
-    return profile.creator == gFFI.userModel.userName.value ||
+    return profile.owner == gFFI.userModel.userName.value ||
         gFFI.userModel.isAdmin.value;
   }
 
   @override
-  bool allowEdit() {
+  bool canWrite() {
     if (personal) {
       return true;
     } else {
-      return creatorOrAdmin() || (profile.edit ?? false);
+      return profile.rule == ShareRule.readWrite.value ||
+          profile.rule == ShareRule.fullControl.value;
+    }
+  }
+
+  @override
+  bool fullControl() {
+    if (personal) {
+      return true;
+    } else {
+      return profile.rule == ShareRule.fullControl.value;
     }
   }
 
@@ -1281,15 +1398,6 @@ class Ab extends BaseAb {
       return false;
     } else {
       return creatorOrAdmin();
-    }
-  }
-
-  @override
-  bool sharePassword() {
-    if (personal) {
-      return false;
-    } else {
-      return profile.pwd ?? false;
     }
   }
 
@@ -1418,9 +1526,6 @@ class Ab extends BaseAb {
           p.password = '';
         } else {
           p.hash = '';
-          if (profile.pwd != true) {
-            p.password = '';
-          }
         }
         final body = jsonEncode(p.toSharedAbUploadJson());
         final resp =
@@ -1725,7 +1830,12 @@ class DummyAb extends BaseAb {
   }
 
   @override
-  bool allowEdit() {
+  bool canWrite() {
+    return false;
+  }
+
+  @override
+  bool fullControl() {
     return false;
   }
 
@@ -1779,11 +1889,6 @@ class DummyAb extends BaseAb {
 
   @override
   Future<bool> setTagColor(String tag, Color color) async {
-    return false;
-  }
-
-  @override
-  bool sharePassword() {
     return false;
   }
 

@@ -11,6 +11,7 @@ import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
+import 'package:flutter_simple_treeview/flutter_simple_treeview.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
 import 'package:get/get.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
@@ -153,31 +154,22 @@ class _AddressBookState extends State<AddressBook> {
         return Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            icon(Icons.cloud_off, "Not shared"),
+            icon(Icons.cloud_off, "Personal"),
           ],
         );
       } else {
-        final children = [icon(Icons.cloud, "Shared")];
-        if (gFFI.abModel.allowedToEditCurrentAb()) {
-          children.add(icon(Icons.edit, "You can edit devices and tags"));
-          if (gFFI.abModel.allowedToUpdateSettingsOrDelete()) {
-            children.add(icon(Icons.admin_panel_settings_sharp,
-                "You can update settings or delete this address book"));
-          }
-        } else {
-          children.add(icon(Icons.remove_red_eye_outlined,
-              "You can't edit this address book"));
+        final children = [];
+        final rule = gFFI.abModel.current.sharedProfile()?.rule;
+        if (rule == ShareRule.read.value) {
+          children.add(icon(Icons.visibility, translate("Read only")));
+        } else if (rule == ShareRule.readWrite.value) {
+          children.add(icon(Icons.edit, translate("Read write")));
+        } else if (rule == ShareRule.fullControl.value) {
+          children.add(icon(Icons.security, translate("Full control")));
         }
-        if (gFFI.abModel.allowSharePassword.value) {
-          if (gFFI.abModel.isCurrentAbSharingPassword()) {
-            children.add(icon(Icons.key, "Password is shared"));
-          } else {
-            children.add(icon(Icons.key_off, "Password is not shared"));
-          }
-        }
-        final creator = gFFI.abModel.current.sharedProfile()?.creator;
-        if (creator != null) {
-          children.add(icon(Icons.person, translate("Created by {$creator}")));
+        final owner = gFFI.abModel.current.sharedProfile()?.owner;
+        if (owner != null) {
+          children.add(icon(Icons.person, "${translate("Owner")}: $owner"));
         }
         return Row(
           mainAxisAlignment: MainAxisAlignment.end,
@@ -285,7 +277,7 @@ class _AddressBookState extends State<AddressBook> {
       } else {
         tags = gFFI.abModel.currentAbTags;
       }
-      final editPermission = gFFI.abModel.allowedToEditCurrentAb();
+      final editPermission = gFFI.abModel.current.canWrite();
       tagBuilder(String e) {
         return AddressBookTag(
             name: e,
@@ -375,23 +367,25 @@ class _AddressBookState extends State<AddressBook> {
 
   void _showMenu(RelativeRect pos) {
     final currentProfile = gFFI.abModel.current.sharedProfile();
+    final shardFullControl = !gFFI.abModel.current.isPersonal() &&
+        gFFI.abModel.current.fullControl();
     final shared = [
-      if (gFFI.abModel.canCreateSharedAb())
-        getEntry(translate('Create shared address book'),
-            () => createOrUpdateSharedAb(null)),
-      if (gFFI.abModel.allowedToUpdateSettingsOrDelete() &&
-          currentProfile != null)
+      getEntry(translate('Create shared address book'),
+          () => createOrUpdateSharedAb(null)),
+      if (gFFI.abModel.current.fullControl() && currentProfile != null)
         getEntry(translate('Update this address book'),
             () => createOrUpdateSharedAb(currentProfile)),
-      if (gFFI.abModel.allowedToUpdateSettingsOrDelete())
+      if (shardFullControl)
         getEntry(translate('Delete this address book'), deleteSharedAb),
+      if (shardFullControl)
+        getEntry(translate('Share this address book'), shareAb),
       MenuEntryDivider<String>(),
     ];
-    final editPermission = gFFI.abModel.allowedToEditCurrentAb();
+    final canWrite = gFFI.abModel.current.canWrite();
     final items = [
       if (!gFFI.abModel.legacyMode.value) ...shared,
-      if (editPermission) getEntry(translate("Add ID"), addIdToCurrentAb),
-      if (editPermission) getEntry(translate("Add Tag"), abAddTag),
+      if (canWrite) getEntry(translate("Add ID"), addIdToCurrentAb),
+      if (canWrite) getEntry(translate("Add Tag"), abAddTag),
       getEntry(translate("Unselect all tags"), gFFI.abModel.unsetSelectedTags),
       sortMenuItem(),
       syncMenuItem(),
@@ -426,7 +420,7 @@ class _AddressBookState extends State<AddressBook> {
     var selectedTag = List<dynamic>.empty(growable: true).obs;
     final style = TextStyle(fontSize: 14.0);
     String? errorMsg;
-    final passwordShared = gFFI.abModel.isCurrentAbSharingPassword();
+    final isCurrentAbShared = !gFFI.abModel.current.isPersonal();
 
     gFFI.dialogManager.show((setState, close, context) {
       submit() async {
@@ -446,7 +440,7 @@ class _AddressBookState extends State<AddressBook> {
             return;
           }
           var password = '';
-          if (passwordShared) {
+          if (isCurrentAbShared) {
             password = passwordController.text;
           }
           String? errMsg2 = await gFFI.abModel.addIdToCurrent(
@@ -502,7 +496,7 @@ class _AddressBookState extends State<AddressBook> {
                 TextField(
                   controller: aliasController,
                 ),
-                if (passwordShared)
+                if (isCurrentAbShared)
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -510,7 +504,7 @@ class _AddressBookState extends State<AddressBook> {
                       style: style,
                     ),
                   ).marginOnly(top: 8, bottom: marginBottom),
-                if (passwordShared)
+                if (isCurrentAbShared)
                   TextField(
                     controller: passwordController,
                     obscureText: true,
@@ -632,8 +626,6 @@ class _AddressBookState extends State<AddressBook> {
         TextEditingController(text: profile?.name ?? '');
     TextEditingController noteController =
         TextEditingController(text: profile?.note ?? '');
-    RxBool editPermission = (profile?.edit ?? false).obs;
-    RxBool pwdPermission = (profile?.pwd ?? false).obs;
 
     gFFI.dialogManager.show((setState, close, context) {
       submit() async {
@@ -648,21 +640,8 @@ class _AddressBookState extends State<AddressBook> {
           });
           final oldName = profile?.name;
           final errMsg = (profile == null
-              ? await gFFI.abModel.addSharedAb(
-                  name,
-                  note,
-                  editPermission.value,
-                  gFFI.abModel.allowSharePassword.value
-                      ? pwdPermission.value
-                      : null)
-              : await gFFI.abModel.updateSharedAb(
-                  profile.guid,
-                  name,
-                  note,
-                  editPermission.value,
-                  gFFI.abModel.allowSharePassword.value
-                      ? pwdPermission.value
-                      : null));
+              ? await gFFI.abModel.addSharedAb(name, note)
+              : await gFFI.abModel.updateSharedAb(profile.guid, name, note));
           if (errMsg.isNotEmpty) {
             setState(() {
               msg = errMsg;
@@ -737,40 +716,6 @@ class _AddressBookState extends State<AddressBook> {
             const SizedBox(
               height: 4.0,
             ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                translate('option_ab_allow_edit_tip'),
-                style: style,
-              ),
-            ).marginOnly(top: 8, bottom: marginBottom),
-            Obx(() => Switch(
-                value: editPermission.value,
-                onChanged: (v) {
-                  editPermission.value = v;
-                })),
-            const SizedBox(
-              height: 4.0,
-            ),
-            if (gFFI.abModel.allowSharePassword.value)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  translate('Share password'),
-                  style: style,
-                ),
-              ).marginOnly(top: 8, bottom: marginBottom),
-            if (gFFI.abModel.allowSharePassword.value)
-              Obx(() => Switch(
-                  value: pwdPermission.value,
-                  onChanged: (v) {
-                    pwdPermission.value = v;
-                  })),
-            const SizedBox(
-              height: 4.0,
-            ),
-            Text(translate('ab_admin_and_creator_permission_tip'),
-                style: TextStyle(fontSize: 12)),
             // NOT use Offstage to wrap LinearProgressIndicator
             if (isInProgress) const LinearProgressIndicator(),
           ],
@@ -834,6 +779,24 @@ class _AddressBookState extends State<AddressBook> {
         ],
         onSubmit: submit,
         onCancel: cancel,
+      );
+    });
+  }
+
+  void shareAb() async {
+    gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+        content: _RuleTree(),
+        actions: [
+          dialogButton(
+            "Close",
+            icon: Icon(Icons.close_rounded),
+            onPressed: close,
+            isOutline: true,
+          ),
+        ],
+        onCancel: close,
+        onSubmit: close,
       );
     });
   }
@@ -982,5 +945,303 @@ MenuEntryButton<String> getEntry(String title, VoidCallback proc) {
     ),
     proc: proc,
     dismissOnClicked: true,
+  );
+}
+
+class _RuleTree extends StatefulWidget {
+  const _RuleTree();
+
+  @override
+  State<_RuleTree> createState() => __RuleTreeState();
+}
+
+class __RuleTreeState extends State<_RuleTree> {
+  final TreeController _controller = TreeController(allNodesExpanded: true);
+  bool mapFetched = false;
+  Map<String, List<String>> map = Map.fromEntries([]);
+  List<AbRulePayload> rules = [];
+  bool isInProgress = false;
+  double totalWidth = 400;
+  double indent = 40;
+  double iconSize = 24;
+
+  @override
+  void initState() {
+    super.initState();
+    refresh();
+  }
+
+  void refresh() async {
+    setState(() {
+      isInProgress = true;
+    });
+    if (!mapFetched) {
+      map = await gFFI.abModel.getNamesTree();
+      mapFetched = true;
+    }
+    final allRules = await gFFI.abModel.getAllRules();
+    setState(() {
+      isInProgress = false;
+      rules = allRules;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    List<TreeNode> buildUserNodes(List<String> users) {
+      List<TreeNode> userNodes = [];
+      for (var user in users) {
+        final userRuleIndex = rules.indexWhere(
+            (e) => e.level == ShareLevel.user.value && e.name == user);
+        if (userRuleIndex < 0) {
+          userNodes.add(TreeNode(
+              content: _buildEmptyNodeContent(
+                  ShareLevel.user, user, totalWidth, indent * 2),
+              key: ValueKey(user),
+              children: []));
+        } else {
+          final userRule = rules[userRuleIndex];
+          userNodes.add(TreeNode(
+              content: _buildRuleNodeContent(userRule, totalWidth, indent * 2),
+              key: ValueKey(user),
+              children: []));
+        }
+      }
+      return userNodes;
+    }
+
+    List<TreeNode> groupNodes = [];
+    map.forEach((group, users) {
+      final groupRuleIndex = rules.indexWhere(
+          (e) => e.level == ShareLevel.group.value && e.name == group);
+      if (groupRuleIndex < 0) {
+        groupNodes.add(TreeNode(
+            content: _buildEmptyNodeContent(
+                ShareLevel.group, group, totalWidth, indent),
+            key: ValueKey(group),
+            children: buildUserNodes(users)));
+      } else {
+        final groupRule = rules[groupRuleIndex];
+        groupNodes.add(TreeNode(
+            content: _buildRuleNodeContent(groupRule, totalWidth, indent),
+            key: ValueKey(group),
+            children: buildUserNodes(users)));
+      }
+    });
+
+    List<TreeNode> totalNodes = [];
+    final teamRuleIndex =
+        rules.indexWhere((e) => e.level == ShareLevel.team.value);
+    if (teamRuleIndex < 0) {
+      totalNodes.add(TreeNode(
+          content: _buildEmptyNodeContent(
+              ShareLevel.team, 'Everyone', totalWidth, 0),
+          key: ValueKey('Everyone'),
+          children: groupNodes));
+    } else {
+      final rule = rules[teamRuleIndex];
+      totalNodes.add(TreeNode(
+          content: _buildRuleNodeContent(
+              AbRulePayload(rule.guid, rule.level, 'Everyone', rule.rule),
+              totalWidth,
+              0),
+          key: ValueKey('Everyone'),
+          children: groupNodes));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SingleChildScrollView(
+          child: TreeView(
+            treeController: _controller,
+            indent: indent,
+            iconSize: iconSize,
+            nodes: totalNodes,
+          ),
+        ),
+        // NOT use Offstage to wrap LinearProgressIndicator
+        isInProgress ? const LinearProgressIndicator() : Offstage()
+      ],
+    );
+  }
+
+  Widget _buildEmptyNodeContent(
+      ShareLevel level, String name, double totalWidth, double indent) {
+    return SizedBox(
+      width: totalWidth - indent,
+      child: Row(
+        children: [
+          SizedBox(width: 200 - indent, child: Text(name)),
+          const SizedBox(width: 100),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.add, color: MyTheme.accent),
+            onPressed: () {
+              onSubmit(int rule) async {
+                if (ShareRule.fromValue(rule) == null) {
+                  BotToast.showText(
+                      contentColor: Colors.red, text: "Invalid rule: $rule");
+                  return;
+                }
+                setState(() {
+                  isInProgress = true;
+                });
+                final errMsg =
+                    await gFFI.abModel.addRule(name, level.value, rule);
+                setState(() {
+                  isInProgress = false;
+                });
+                if (errMsg != null) {
+                  BotToast.showText(contentColor: Colors.red, text: errMsg);
+                } else {
+                  refresh();
+                }
+              }
+
+              _addOrUpdateRuleDialog(onSubmit, null);
+            },
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRuleNodeContent(
+      AbRulePayload rule, double totalWidth, double indent) {
+    return SizedBox(
+      width: totalWidth - indent,
+      child: Row(
+        children: [
+          SizedBox(width: 200 - indent, child: Text(rule.name)),
+          SizedBox(
+              width: 100,
+              child:
+                  Text(textAlign: TextAlign.right, ShareRule.desc(rule.rule))),
+          const Spacer(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit, color: MyTheme.accent),
+                onPressed: () {
+                  onSubmit(int v) async {
+                    setState(() {
+                      isInProgress = true;
+                    });
+                    final errMsg = await gFFI.abModel.updateRule(rule.guid, v);
+                    setState(() {
+                      isInProgress = false;
+                    });
+                    if (errMsg != null) {
+                      BotToast.showText(contentColor: Colors.red, text: errMsg);
+                    } else {
+                      refresh();
+                    }
+                  }
+
+                  if (ShareRule.fromValue(rule.rule) == null) {
+                    BotToast.showText(
+                        contentColor: Colors.red,
+                        text: "Invalid rule: ${rule.rule}");
+                    return;
+                  }
+                  _addOrUpdateRuleDialog(onSubmit, rule.rule);
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red),
+                onPressed: () async {
+                  onSubmit() async {
+                    setState(() {
+                      isInProgress = true;
+                    });
+                    final errMsg = await gFFI.abModel.deleteRules([rule.guid]);
+                    setState(() {
+                      isInProgress = false;
+                    });
+                    if (errMsg != null) {
+                      BotToast.showText(contentColor: Colors.red, text: errMsg);
+                    } else {
+                      refresh();
+                    }
+                  }
+
+                  deleteConfirmDialog(onSubmit, translate('Confirm Delete'));
+                },
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+}
+
+void _addOrUpdateRuleDialog(
+    Future Function(int) onSubmit, int? initialRule) async {
+  bool isAdd = initialRule == null;
+  initialRule ??= ShareRule.read.value;
+  var currentRule = initialRule;
+  gFFI.dialogManager.show(
+    (setState, close, context) {
+      submit() async {
+        if (ShareRule.fromValue(currentRule) != null) {
+          onSubmit(currentRule);
+        }
+        close();
+      }
+
+      final keys = [
+        ShareRule.read.value,
+        ShareRule.readWrite.value,
+        ShareRule.fullControl.value,
+      ];
+      TextEditingController controller = TextEditingController();
+      return CustomAlertDialog(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                      translate(isAdd ? "Add permission" : "Update permission"),
+                      overflow: TextOverflow.ellipsis)
+                  .paddingOnly(
+                left: 10,
+              ),
+            ),
+          ],
+        ),
+        content: DropdownMenu<int>(
+          initialSelection: initialRule,
+          onSelected: (value) {
+            if (value != null) {
+              currentRule = value;
+            }
+          },
+          dropdownMenuEntries: keys
+              .map((e) => DropdownMenuEntry(value: e, label: ShareRule.desc(e)))
+              .toList(),
+          inputDecorationTheme: InputDecorationTheme(
+              isDense: true, border: UnderlineInputBorder()),
+          enableFilter: false,
+          controller: controller,
+        ),
+        actions: [
+          dialogButton(
+            "Cancel",
+            icon: Icon(Icons.close_rounded),
+            onPressed: close,
+            isOutline: true,
+          ),
+          dialogButton(
+            "OK",
+            icon: Icon(Icons.done_rounded),
+            onPressed: submit,
+          ),
+        ],
+        onSubmit: submit,
+        onCancel: close,
+      );
+    },
   );
 }

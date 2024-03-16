@@ -1586,7 +1586,7 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
   msgBoxCommon(ffi.dialogManager, 'Custom Image Quality', content, [btnClose]);
 }
 
-void deletePeerConfirmDialog(Function onSubmit, String title) async {
+void deleteConfirmDialog(Function onSubmit, String title) async {
   gFFI.dialogManager.show(
     (setState, close, context) {
       submit() async {
@@ -1917,7 +1917,7 @@ void addPeersToAbDialog(
   List<Peer> peers,
 ) async {
   RxBool isInProgress = false.obs;
-  final names = gFFI.abModel.addressBooksAllowedToEdit();
+  final names = gFFI.abModel.addressBooksCanWrite();
   RxString currentName = gFFI.abModel.currentName.value.obs;
   TextEditingController controller = TextEditingController();
   if (gFFI.peerTabModel.currentTab == PeerTabIndex.ab.index) {

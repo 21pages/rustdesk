@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/consts.dart';
 
 import 'package:flutter_hbb/models/peer_model.dart';
@@ -189,23 +190,65 @@ class RequestException implements Exception {
   }
 }
 
+enum ShareRule {
+  read(1),
+  readWrite(2),
+  fullControl(3);
+
+  const ShareRule(this.value);
+  final int value;
+
+  static String desc(int v) {
+    if (v == ShareRule.read.value) {
+      return translate('Read only');
+    }
+    if (v == ShareRule.readWrite.value) {
+      return translate('Read write');
+    }
+    if (v == ShareRule.fullControl.value) {
+      return translate('Full control');
+    }
+    return v.toString();
+  }
+
+  static ShareRule? fromValue(int v) {
+    if (v == ShareRule.read.value) {
+      return ShareRule.read;
+    }
+    if (v == ShareRule.readWrite.value) {
+      return ShareRule.readWrite;
+    }
+    if (v == ShareRule.fullControl.value) {
+      return ShareRule.fullControl;
+    }
+    return null;
+  }
+}
+
+enum ShareLevel {
+  user(1),
+  group(2),
+  team(3);
+
+  const ShareLevel(this.value);
+  final int value;
+}
+
 class AbProfile {
   String guid;
   String name;
-  String creator;
+  String owner;
   String? note;
-  bool? edit;
-  bool? pwd;
+  int rule;
 
-  AbProfile(this.guid, this.name, this.creator, this.note, this.edit, this.pwd);
+  AbProfile(this.guid, this.name, this.owner, this.note, this.rule);
 
   AbProfile.fromJson(Map<String, dynamic> json)
       : guid = json['guid'] ?? '',
         name = json['name'] ?? '',
-        creator = json['creator'] ?? '',
+        owner = json['owner'] ?? '',
         note = json['note'] ?? '',
-        edit = json['edit'] ?? false,
-        pwd = json['pwd'] ?? false;
+        rule = json['rule'] ?? 0;
 }
 
 class AbTag {
@@ -217,4 +260,19 @@ class AbTag {
   AbTag.fromJson(Map<String, dynamic> json)
       : name = json['name'] ?? '',
         color = json['color'] ?? '';
+}
+
+class AbRulePayload {
+  String guid;
+  int level;
+  String name;
+  int rule;
+
+  AbRulePayload(this.guid, this.level, this.name, this.rule);
+
+  AbRulePayload.fromJson(Map<String, dynamic> json)
+      : guid = json['guid'] ?? '',
+        level = json['level'] ?? 0,
+        name = json['name'] ?? '',
+        rule = json['rule'] ?? 0;
 }

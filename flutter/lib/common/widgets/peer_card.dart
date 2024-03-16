@@ -418,7 +418,7 @@ class _PeerCardState extends State<_PeerCard>
 
   bool _shouldBuildPasswordIcon(Peer peer) {
     if (gFFI.peerTabModel.currentTab != PeerTabIndex.ab.index) return false;
-    if (!gFFI.abModel.isCurrentAbSharingPassword()) return false;
+    if (gFFI.abModel.current.isPersonal()) return false;
     return peer.password.isNotEmpty;
   }
 
@@ -728,7 +728,7 @@ abstract class BasePeerCard extends StatelessWidget {
           }
         }
 
-        deletePeerConfirmDialog(onSubmit,
+        deleteConfirmDialog(onSubmit,
             '${translate('Delete')} "${peer.alias.isEmpty ? formatID(peer.id) : peer.alias}"?');
       },
       padding: menuPadding,
@@ -1033,20 +1033,20 @@ class AddressBookPeerCard extends BasePeerCard {
     if (Platform.isWindows) {
       menuItems.add(_createShortCutAction(peer.id));
     }
-    if (gFFI.abModel.allowedToEditCurrentAb()) {
+    if (gFFI.abModel.current.canWrite()) {
       menuItems.add(MenuEntryDivider());
       menuItems.add(_renameAction(peer.id));
       if (gFFI.abModel.current.isPersonal() && peer.hash.isNotEmpty) {
         menuItems.add(_unrememberPasswordAction(peer.id));
       }
-      if (gFFI.abModel.isCurrentAbSharingPassword()) {
+      if (!gFFI.abModel.current.isPersonal()) {
         menuItems.add(_changeSharedAbPassword());
       }
       if (gFFI.abModel.currentAbTags.isNotEmpty) {
         menuItems.add(_editTagAction(peer.id));
       }
     }
-    final addressbooks = gFFI.abModel.addressBooksAllowedToEdit();
+    final addressbooks = gFFI.abModel.addressBooksCanWrite();
     if (gFFI.peerTabModel.currentTab == PeerTabIndex.ab.index) {
       addressbooks.remove(gFFI.abModel.currentName.value);
     }
@@ -1054,7 +1054,7 @@ class AddressBookPeerCard extends BasePeerCard {
       menuItems.add(_addToAb(peer));
     }
     menuItems.add(_existIn());
-    if (gFFI.abModel.allowedToEditCurrentAb()) {
+    if (gFFI.abModel.current.canWrite()) {
       menuItems.add(MenuEntryDivider());
       menuItems.add(_removeAction(peer.id));
     }
@@ -1377,7 +1377,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
         alias: peer.alias,
       );
     }
-    if (gFFI.abModel.isCurrentAbSharingPassword()) {
+    if (!gFFI.abModel.current.isPersonal()) {
       password = peer.password;
     }
   }

@@ -402,7 +402,7 @@ class _PeerTabPageState extends State<PeerTabPage>
             if (model.currentTab != 3) showToast(translate('Successful'));
           }
 
-          deletePeerConfirmDialog(onSubmit, translate('Delete'));
+          deleteConfirmDialog(onSubmit, translate('Delete'));
         },
         child: Tooltip(
             message: translate('Delete'),
@@ -437,7 +437,7 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   Widget addSelectionToAb() {
     final model = Provider.of<PeerTabModel>(context);
-    final addressbooks = gFFI.abModel.addressBooksAllowedToEdit();
+    final addressbooks = gFFI.abModel.addressBooksCanWrite();
     if (model.currentTab == PeerTabIndex.ab.index) {
       addressbooks.remove(gFFI.abModel.currentName.value);
     }
