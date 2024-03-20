@@ -1367,6 +1367,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     bool isTcpTunneling = false,
     bool isRDP = false}) async {
   var password = '';
+  bool isSharedPassword = false;
   if (tab == PeerTabIndex.ab) {
     // If recent peer's alias is empty, set it to ab's alias
     // Because the platform is not set, it may not take effect, but it is more important not to display if the connection is not successful
@@ -1378,11 +1379,15 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
       );
     }
     if (!gFFI.abModel.current.isPersonal()) {
-      password = peer.password;
+      if (peer.password.isNotEmpty) {
+        password = peer.password;
+        isSharedPassword = true;
+      }
     }
   }
   connect(context, peer.id,
       password: password,
+      isSharedPassword: isSharedPassword,
       isFileTransfer: isFileTransfer,
       isTcpTunneling: isTcpTunneling,
       isRDP: isRDP);

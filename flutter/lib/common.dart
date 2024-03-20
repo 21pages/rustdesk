@@ -2095,23 +2095,28 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
   return null;
 }
 
-connectMainDesktop(
-  String id, {
-  required bool isFileTransfer,
-  required bool isTcpTunneling,
-  required bool isRDP,
-  bool? forceRelay,
-  String? password,
-}) async {
+connectMainDesktop(String id,
+    {required bool isFileTransfer,
+    required bool isTcpTunneling,
+    required bool isRDP,
+    bool? forceRelay,
+    String? password,
+    bool? isSharedPassword}) async {
   if (isFileTransfer) {
     await rustDeskWinManager.newFileTransfer(id,
-        password: password, forceRelay: forceRelay);
+        password: password,
+        isSharedPassword: isSharedPassword,
+        forceRelay: forceRelay);
   } else if (isTcpTunneling || isRDP) {
     await rustDeskWinManager.newPortForward(id, isRDP,
-        password: password, forceRelay: forceRelay);
+        password: password,
+        isSharedPassword: isSharedPassword,
+        forceRelay: forceRelay);
   } else {
     await rustDeskWinManager.newRemoteDesktop(id,
-        password: password, forceRelay: forceRelay);
+        password: password,
+        isSharedPassword: isSharedPassword,
+        forceRelay: forceRelay);
   }
 }
 
@@ -2124,7 +2129,8 @@ connect(BuildContext context, String id,
     bool isTcpTunneling = false,
     bool isRDP = false,
     bool forceRelay = false,
-    String? password}) async {
+    String? password,
+    bool? isSharedPassword}) async {
   if (id == '') return;
   if (!isDesktop || desktopType == DesktopType.main) {
     try {
@@ -2153,6 +2159,7 @@ connect(BuildContext context, String id,
         isTcpTunneling: isTcpTunneling,
         isRDP: isRDP,
         password: password,
+        isSharedPassword: isSharedPassword,
         forceRelay: forceRelay2,
       );
     } else {
@@ -2162,6 +2169,7 @@ connect(BuildContext context, String id,
         'isTcpTunneling': isTcpTunneling,
         'isRDP': isRDP,
         'password': password,
+        'isSharedPassword': isSharedPassword,
         'forceRelay': forceRelay,
       });
     }
@@ -2175,16 +2183,16 @@ connect(BuildContext context, String id,
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (BuildContext context) =>
-              FileManagerPage(id: id, password: password),
+          builder: (BuildContext context) => FileManagerPage(
+              id: id, password: password, isSharedPassword: isSharedPassword),
         ),
       );
     } else {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (BuildContext context) =>
-              RemotePage(id: id, password: password),
+          builder: (BuildContext context) => RemotePage(
+              id: id, password: password, isSharedPassword: isSharedPassword),
         ),
       );
     }
