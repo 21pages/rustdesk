@@ -1,33 +1,27 @@
 use std::{
-    sync::Arc,
-    ops::Deref,
-    time::Duration,
     collections::VecDeque,
-    thread::{JoinHandle, self},
-    ffi::c_void, io::Write
+    ffi::c_void,
+    io::Write,
+    ops::Deref,
+    sync::Arc,
+    thread::{self, JoinHandle},
+    time::Duration,
 };
 
 use hbb_common::{bail, ResultType};
 use ndk::{
+    hardware_buffer::HardwareBufferUsage,
     media::{
-        media_codec::{
-            MediaCodec, MediaCodecDirection, MediaFormat,
-        },
-        image_reader::{
-            ImageReader, ImageFormat, Image
-        }
+        image_reader::{Image, ImageFormat, ImageReader},
+        media_codec::{MediaCodec, MediaCodecDirection, MediaFormat},
     },
-    hardware_buffer::HardwareBufferUsage
 };
 
-use crate::{
-    fmt_e, fmt_err, CodecFormat, NV12ToARGB, I420ToARGB,
-};
+use crate::{fmt_e, fmt_err, CodecFormat, I420ToARGB, NV12ToARGB};
 
-use super::{StrResult, RelaxedAtomic};
+use super::{RelaxedAtomic, StrResult};
 
 use parking_lot::{Condvar, Mutex};
-
 
 struct FakeThreadSafe<T>(T);
 unsafe impl<T> Send for FakeThreadSafe<T> {}
@@ -49,8 +43,7 @@ pub fn configure_media_format(name: &str) -> MediaFormat {
     media_format.set_i32("width", 1);
     media_format.set_i32("height", 1);
     media_format.set_i32("color-format", 2135033992);
-    // 部分机型支持
-    // media_format.set_i32("low-latency", 1);
+    // media_format.set_i32("low-latency", 1); // supported by some phones
 
     media_format
 }
@@ -72,8 +65,16 @@ impl VideoDecoderEnqueuer {
         match decoder.dequeue_input_buffer(Duration::from_millis(10)) {
             Ok(Some(mut input_buffer)) => {
                 input_buffer.buffer_mut()[..data.len()].copy_from_slice(data);
-                decoder.queue_input_buffer(input_buffer, 0, data.len(), timestamp.as_nanos() as _, flag)
-                .map_err(|e|log::debug!("At {}:{}: {e}", file!(), line!())).ok();
+                decoder
+                    .queue_input_buffer(
+                        input_buffer,
+                        0,
+                        data.len(),
+                        timestamp.as_nanos() as _,
+                        flag,
+                    )
+                    .map_err(|e| log::debug!("At {}:{}: {e}", file!(), line!()))
+                    .ok();
                 Ok(true)
             }
             Ok(None) => {
@@ -96,7 +97,7 @@ unsafe impl Send for QueuedImage {}
 
 // Access the image queue synchronously.
 pub struct VideoDecoderDequeuer {
-    running: Arc<RelaxedAtomic>,
+    pub running: Arc<RelaxedAtomic>,
     dequeue_thread: Option<JoinHandle<()>>,
     image_queue: Arc<Mutex<VecDeque<QueuedImage>>>,
     buffering_running_average: f32,
@@ -129,9 +130,7 @@ impl VideoDecoderDequeuer {
         if let Some(queued_image) = image_queue_lock.front_mut() {
             queued_image.in_use = true;
 
-            Some(
-                queued_image.frame_image.clone()
-            )
+            Some(queued_image.frame_image.clone())
         } else {
             // TODO: add back when implementing proper phase sync
             //warn!("Video frame queue underflow!");
@@ -150,7 +149,7 @@ impl Drop for VideoDecoderDequeuer {
 }
 
 pub fn video_decoder_split(
-    name: &CodecFormat,
+    name: CodecFormat,
     direction: MediaCodecDirection,
 ) -> StrResult<(VideoDecoderEnqueuer, VideoDecoderDequeuer)> {
     let running = Arc::new(RelaxedAtomic::new(true));
@@ -159,11 +158,10 @@ pub fn video_decoder_split(
     let image_queue = Arc::new(Mutex::new(VecDeque::<QueuedImage>::new()));
 
     let max_buffering_frames = 1.5;
-    let buffering_history_weight=0.90;
+    let buffering_history_weight = 0.90;
     let _name = Arc::new(name.to_mime_type());
 
     let dequeue_thread = thread::spawn({
-
         let running = Arc::clone(&running);
         let decoder_enqueuer = Arc::clone(&decoder_enqueuer);
         let decoder_ready_notifier = Arc::clone(&decoder_ready_notifier);
@@ -262,16 +260,16 @@ pub fn video_decoder_split(
                 match decoder.dequeue_output_buffer(Duration::from_millis(100)) {
                     Ok(Some(output_buffer)) => {
                         let presentation_time_ns = output_buffer.presentation_time_us();
-                        if let Err(e) =
-                        decoder.release_output_buffer_at_time(output_buffer, presentation_time_ns)
+                        if let Err(e) = decoder
+                            .release_output_buffer_at_time(output_buffer, presentation_time_ns)
                         {
                             log::error!("Decoder dequeue error: {e}");
                         }
-                    },
+                    }
                     Ok(None) => thread::yield_now(),
                     Err(err) => {
                         log::debug!("{err}");
-                    },
+                    }
                 }
             }
 
@@ -312,14 +310,13 @@ pub fn video_decoder_split(
     Ok((enqueuer, dequeuer))
 }
 
-
 #[derive(Debug, Clone)]
 pub struct FrameImage {
     inner: Vec<u8>,
     w: usize,
     h: usize,
     pixel_stride_uv: usize,
-    timestamp : i64,
+    timestamp: i64,
 }
 
 impl FrameImage {
@@ -373,33 +370,31 @@ impl FrameImage {
     pub fn i420_to_abgr<'a>(&'a mut self, i420: &'a mut Vec<u8>) {
         todo!();
     }
-
 }
 
 fn conv_i420_to_argb(src: &mut Vec<u8>, dst: &mut Vec<u8>, pixel_uv: usize, w: usize, h: usize) {
+    let bps = 4;
+    let stride = w as i32;
+    let y_ptr = src.as_ptr();
+    let u = src.len() * 4 / 6;
+    let v = src.len() * 5 / 6;
+    let u_ptr = src[u..].as_ptr();
+    let v_ptr = src[v..].as_ptr();
+    let uv = src.len() / 2;
+    let uv_ptr = src[uv..].as_ptr();
 
-        let bps = 4;
-        let stride = w as i32;
-        let y_ptr = src.as_ptr();
-        let u = src.len() * 4 / 6;
-        let v = src.len() * 5 / 6;
-        let u_ptr = src[u..].as_ptr();
-        let v_ptr = src[v..].as_ptr();
-        let uv= src.len() /2 ;
-        let uv_ptr = src[uv..].as_ptr();
+    dst.resize((h * w * bps) as usize, 0);
 
-        dst.resize((h * w * bps) as usize, 0);
-
-        unsafe {
+    unsafe {
         match pixel_uv {
             1 => {
                 I420ToARGB(
                     y_ptr,
                     stride,
                     u_ptr,
-                    stride / 2 ,
+                    stride / 2,
                     v_ptr,
-                    stride / 2 ,
+                    stride / 2,
                     dst.as_mut_ptr(),
                     (w * bps) as _,
                     w as _,

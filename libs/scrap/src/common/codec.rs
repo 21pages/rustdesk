@@ -16,9 +16,6 @@ use crate::mediacodec::{
     H264_DECODER_SUPPORT, H265_DECODER_SUPPORT, VP8_DECODER_SUPPORT, VP9_DECODER_SUPPORT,
 };
 
-#[cfg(feature = "mediacodec")]
-use crate::CodecFormat;
-
 use crate::{
     aom::{self, AomDecoder, AomEncoder, AomEncoderConfig},
     common::GoogleImage,
@@ -110,9 +107,13 @@ pub struct Decoder {
     #[cfg(feature = "gpucodec")]
     h265_vram: Option<GpuDecoder>,
     #[cfg(feature = "mediacodec")]
-    h264_media_codec: MediaCodecDecoder,
+    vp8_media_codec: Option<MediaCodecDecoder>,
     #[cfg(feature = "mediacodec")]
-    h265_media_codec: MediaCodecDecoder,
+    vp9_media_codec: Option<MediaCodecDecoder>,
+    #[cfg(feature = "mediacodec")]
+    h264_media_codec: Option<MediaCodecDecoder>,
+    #[cfg(feature = "mediacodec")]
+    h265_media_codec: Option<MediaCodecDecoder>,
     format: CodecFormat,
     valid: bool,
     #[cfg(feature = "hwcodec")]
@@ -460,27 +461,57 @@ impl Decoder {
         #[cfg(feature = "gpucodec")]
         let (mut h264_vram, mut h265_vram) = (None, None);
         #[cfg(feature = "mediacodec")]
-        let (mut h264_media_codec, mut h265_media_codec) = (None, None);
+        let (mut vp8_media_codec, mut vp9_media_codec, mut h264_media_codec, mut h265_media_codec) =
+            (None, None, None, None);
         let mut valid = false;
 
         match format {
             CodecFormat::VP8 => {
-                match VpxDecoder::new(VpxDecoderConfig {
-                    codec: VpxVideoCodecId::VP8,
-                }) {
-                    Ok(v) => vp8 = Some(v),
-                    Err(e) => log::error!("create VP8 decoder failed: {}", e),
+                #[cfg(feature = "mediacodec")]
+                if !valid && enable_hwcodec_option() {
+                    match MediaCodecDecoder::new(format) {
+                        Ok(v) => {
+                            vp8_media_codec = Some(v);
+                            valid = true;
+                        }
+                        Err(e) => log::error!("create VP8 mediacodec decoder failed: {e:?}"),
+                    }
                 }
-                valid = vp8.is_some();
+                if !valid {
+                    match VpxDecoder::new(VpxDecoderConfig {
+                        codec: VpxVideoCodecId::VP8,
+                    }) {
+                        Ok(v) => {
+                            vp8 = Some(v);
+                            valid = true;
+                        }
+                        Err(e) => log::error!("create VP8 decoder failed: {}", e),
+                    }
+                }
             }
             CodecFormat::VP9 => {
-                match VpxDecoder::new(VpxDecoderConfig {
-                    codec: VpxVideoCodecId::VP9,
-                }) {
-                    Ok(v) => vp9 = Some(v),
-                    Err(e) => log::error!("create VP9 decoder failed: {}", e),
+                #[cfg(feature = "mediacodec")]
+                if !valid && enable_hwcodec_option() {
+                    match MediaCodecDecoder::new(format) {
+                        Ok(v) => {
+                            vp9_media_codec = Some(v);
+                            valid = true;
+                        }
+                        Err(e) => log::error!("create VP9 mediacodec decoder failed: {e:?}"),
+                    }
                 }
-                valid = vp9.is_some();
+
+                if !valid {
+                    match VpxDecoder::new(VpxDecoderConfig {
+                        codec: VpxVideoCodecId::VP9,
+                    }) {
+                        Ok(v) => {
+                            vp9 = Some(v);
+                            valid = true;
+                        }
+                        Err(e) => log::error!("create VP9 decoder failed: {}", e),
+                    }
+                }
             }
             CodecFormat::AV1 => {
                 match AomDecoder::new() {
@@ -508,11 +539,13 @@ impl Decoder {
                 }
                 #[cfg(feature = "mediacodec")]
                 if !valid && enable_hwcodec_option() {
-                    h264_media_codec = MediaCodecDecoder::new(format);
-                    if h264_media_codec.is_none() {
-                        log::error!("create H264 media codec decoder failed");
+                    match MediaCodecDecoder::new(format) {
+                        Ok(v) => {
+                            h264_media_codec = Some(v);
+                            valid = true;
+                        }
+                        Err(e) => log::error!("create H264 mediacodec decoder failed: {e:?}"),
                     }
-                    valid = h264_media_codec.is_some();
                 }
             }
             CodecFormat::H265 => {
@@ -534,11 +567,13 @@ impl Decoder {
                 }
                 #[cfg(feature = "mediacodec")]
                 if !valid && enable_hwcodec_option() {
-                    h265_media_codec = MediaCodecDecoder::new(format);
-                    if h265_media_codec.is_none() {
-                        log::error!("create H265 media codec decoder failed");
+                    match MediaCodecDecoder::new(format) {
+                        Ok(v) => {
+                            h265_media_codec = Some(v);
+                            valid = true;
+                        }
+                        Err(e) => log::error!("create H265 mediacodec decoder failed: {e:?}"),
                     }
-                    valid = h265_media_codec.is_some();
                 }
             }
             CodecFormat::Unknown => {
@@ -562,6 +597,10 @@ impl Decoder {
             h264_vram,
             #[cfg(feature = "gpucodec")]
             h265_vram,
+            #[cfg(feature = "mediacodec")]
+            vp8_media_codec,
+            #[cfg(feature = "mediacodec")]
+            vp9_media_codec,
             #[cfg(feature = "mediacodec")]
             h264_media_codec,
             #[cfg(feature = "mediacodec")]
@@ -592,18 +631,24 @@ impl Decoder {
     ) -> ResultType<bool> {
         match frame {
             video_frame::Union::Vp8s(vp8s) => {
-                if let Some(vp8) = &mut self.vp8 {
-                    Decoder::handle_vpxs_video_frame(vp8, vp8s, rgb, chroma)
-                } else {
-                    bail!("vp8 decoder not available");
+                #[cfg(feature = "mediacodec")]
+                if let Some(decoder) = &mut self.vp8_media_codec {
+                    return Decoder::handle_mediacodec_video_frame(decoder, vp8s, rgb);
                 }
+                if let Some(vp8) = &mut self.vp8 {
+                    return Decoder::handle_vpxs_video_frame(vp8, vp8s, rgb, chroma);
+                }
+                bail!("vp8 decoder not available");
             }
             video_frame::Union::Vp9s(vp9s) => {
-                if let Some(vp9) = &mut self.vp9 {
-                    Decoder::handle_vpxs_video_frame(vp9, vp9s, rgb, chroma)
-                } else {
-                    bail!("vp9 decoder not available");
+                #[cfg(feature = "mediacodec")]
+                if let Some(decoder) = &mut self.vp9_media_codec {
+                    return Decoder::handle_mediacodec_video_frame(decoder, vp9s, rgb);
                 }
+                if let Some(vp9) = &mut self.vp9 {
+                    return Decoder::handle_vpxs_video_frame(vp9, vp9s, rgb, chroma);
+                }
+                bail!("vp9 decoder not available");
             }
             video_frame::Union::Av1s(av1s) => {
                 if let Some(av1) = &mut self.av1 {
@@ -612,9 +657,13 @@ impl Decoder {
                     bail!("av1 decoder not available");
                 }
             }
-            #[cfg(any(feature = "hwcodec", feature = "gpucodec"))]
+            #[cfg(any(feature = "hwcodec", feature = "gpucodec", feature = "mediacodec"))]
             video_frame::Union::H264s(h264s) => {
                 *chroma = Some(Chroma::I420);
+                #[cfg(feature = "mediacodec")]
+                if let Some(decoder) = &mut self.h264_media_codec {
+                    return Decoder::handle_mediacodec_video_frame(decoder, h264s, rgb);
+                }
                 #[cfg(feature = "gpucodec")]
                 if let Some(decoder) = &mut self.h264_vram {
                     *_pixelbuffer = false;
@@ -626,9 +675,13 @@ impl Decoder {
                 }
                 Err(anyhow!("don't support h264!"))
             }
-            #[cfg(any(feature = "hwcodec", feature = "gpucodec"))]
+            #[cfg(any(feature = "hwcodec", feature = "gpucodec", feature = "mediacodec"))]
             video_frame::Union::H265s(h265s) => {
                 *chroma = Some(Chroma::I420);
+                #[cfg(feature = "mediacodec")]
+                if let Some(decoder) = &mut self.h265_media_codec {
+                    return Decoder::handle_mediacodec_video_frame(decoder, h265s, rgb);
+                }
                 #[cfg(feature = "gpucodec")]
                 if let Some(decoder) = &mut self.h265_vram {
                     *_pixelbuffer = false;
@@ -639,24 +692,6 @@ impl Decoder {
                     return Decoder::handle_hw_video_frame(decoder, h265s, rgb, &mut self.i420);
                 }
                 Err(anyhow!("don't support h265!"))
-            }
-            #[cfg(feature = "mediacodec")]
-            video_frame::Union::H264s(h264s) => {
-                *chroma = Some(Chroma::I420);
-                if let Some(decoder) = &mut self.h264_media_codec {
-                    Decoder::handle_mediacodec_video_frame(decoder, h264s, rgb)
-                } else {
-                    Err(anyhow!("don't support h264!"))
-                }
-            }
-            #[cfg(feature = "mediacodec")]
-            video_frame::Union::H265s(h265s) => {
-                *chroma = Some(Chroma::I420);
-                if let Some(decoder) = &mut self.h265_media_codec {
-                    Decoder::handle_mediacodec_video_frame(decoder, h265s, rgb)
-                } else {
-                    Err(anyhow!("don't support h265!"))
-                }
             }
             _ => Err(anyhow!("unsupported video frame type!")),
         }
@@ -755,14 +790,13 @@ impl Decoder {
     // rgb [in/out] fmt and stride must be set in ImageRgb
     #[cfg(feature = "mediacodec")]
     fn handle_mediacodec_video_frame(
-        codec_format: &CodecFormat,
         decoder: &mut MediaCodecDecoder,
         frames: &EncodedVideoFrames,
         rgb: &mut ImageRgb,
     ) -> ResultType<bool> {
         let mut ret = false;
         for frame in frames.frames.iter() {
-            return decoder.decode(codec_format, &frame.data, rgb, &frame.key, &frame.pts);
+            return decoder.decode(&frame.data, rgb, &frame.key, &frame.pts);
         }
         return Ok(false);
     }

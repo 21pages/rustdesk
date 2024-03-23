@@ -1,34 +1,24 @@
+use crate::{
+    android::{
+        mediacodec::{FrameImage, VideoDecoderDequeuer, VideoDecoderEnqueuer},
+        RelaxedAtomic,
+    },
+    codec::{EncoderApi, EncoderCfg},
+    CodecFormat, I420ToABGR, I420ToARGB, ImageFormat, ImageRgb,
+};
 use hbb_common::{anyhow::Error, bail, log, ResultType};
 use ndk::media::media_codec::{MediaCodec, MediaCodecDirection, MediaFormat};
-use std::ops::Deref;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use std::{
     io::Write,
+    ops::Deref,
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
-use crate::ImageFormat;
-use crate::{
-    codec::{EncoderApi, EncoderCfg},
-    CodecFormat, I420ToABGR, I420ToARGB, ImageRgb,
-};
-
-#[cfg(target_os = "android")]
-use crate::android::RelaxedAtomic;
-#[cfg(target_os = "android")]
-use crate::android::mediacodec::{
-    VideoDecoderEnqueuer, VideoDecoderDequeuer, FrameImage,
-};
-
-#[cfg(target_os = "android")]
-use once_cell::sync::Lazy;
-#[cfg(target_os = "android")]
-use parking_lot::Mutex;
-#[cfg(target_os = "android")]
-use crate::CodecFormat;
-
 /// MediaCodec mime type name
-/// 在部分机型的下 vp9 硬解效果更好， 硬件解码受制于设计模式，即 GPU->CPU-GPU 的渲染方式
+/// On some models, the vp9 hard decoding effect is better. The hardware decoding is subject to the design mode, that is, the GPU->CPU-GPU rendering method.
 pub const H264_MIME_TYPE: &str = "video/avc";
 pub const H265_MIME_TYPE: &str = "video/hevc";
 pub const VP8_MIME_TYPE: &str = "video/x-vnd.on2.vp8";
@@ -39,16 +29,6 @@ pub static H264_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 pub static H265_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 pub static VP8_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 pub static VP9_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
-
-#[cfg(target_os = "android")]
-pub static DECODER_ENQUEUER: Lazy<Mutex<Option<crate::android::mediacodec::VideoDecoderEnqueuer>>> =
-    Lazy::new(|| Mutex::new(None));
-#[cfg(target_os = "android")]
-pub static DECODER_DEQUEUER: Lazy<Mutex<Option<crate::android::mediacodec::VideoDecoderDequeuer>>> =
-    Lazy::new(|| Mutex::new(None));
-#[cfg(target_os = "android")]
-pub static DECODER: Lazy<Mutex<Option<crate::CodecFormat>>> = Lazy::new(|| Mutex::new(None));
-
 
 pub struct MediaCodecDecoder {
     decoder: MediaCodec,
@@ -69,7 +49,7 @@ impl MediaCodecDecoder {
             CodecFormat::H264 => create_media_codec(H264_MIME_TYPE, MediaCodecDirection::Decoder),
             CodecFormat::H265 => create_media_codec(H265_MIME_TYPE, MediaCodecDirection::Decoder),
             _ => {
-                log::error!("Unsupported codec format: {}", format);
+                log::error!("Unsupported codec format: {:?}", format);
                 None
             }
         }
@@ -204,74 +184,55 @@ pub fn check_mediacodec() {
     });
 }
 
-
 pub struct XMediaCodecDecoder {
+    codec_format: CodecFormat,
+    dequeuer: VideoDecoderDequeuer,
+    enqueuer: VideoDecoderEnqueuer,
 }
 
-impl Default for XMediaCodecDecoder {
-    fn default() -> Self {
-        XMediaCodecDecoder::decode_init(&CodecFormat::H265).unwrap();
-        Self {  }
+impl Drop for XMediaCodecDecoder {
+    fn drop(&mut self) {
+        self.dequeuer.running.set(false);
     }
 }
 
 impl XMediaCodecDecoder {
-    fn set_use(codec_format: &CodecFormat) {
-        *DECODER.lock() = Some(codec_format.clone());
-    }
-
-    fn is_use(&self, codec_format: &CodecFormat) -> bool {
-        match &*DECODER.lock() {
-            Some(current) => current == codec_format,
-            None => false,
-        }
-    }
-
-    fn decode_init(codec_format: &CodecFormat) -> ResultType<bool> {
-        let (enqueuer, dequeuer) = crate::android::mediacodec::video_decoder_split(
+    pub fn new(codec_format: CodecFormat) -> ResultType<XMediaCodecDecoder> {
+        let Ok((enqueuer, dequeuer)) = crate::android::mediacodec::video_decoder_split(
             codec_format,
             MediaCodecDirection::Decoder,
-        )
-        .unwrap();
-        *DECODER_ENQUEUER.lock() = Some(enqueuer);
-        *DECODER_DEQUEUER.lock() = Some(dequeuer);
-        XMediaCodecDecoder::set_use(codec_format);
-        Ok(true)
+        ) else {
+            bail!("video_decoder_split failed");
+        };
+        Ok(Self {
+            codec_format,
+            dequeuer,
+            enqueuer,
+        })
     }
 
-    pub fn decode(&mut self, codec_format: &CodecFormat, data: &[u8], rgb: &mut ImageRgb, key: &bool , pts: &i64) -> ResultType<bool> {
+    pub fn decode(
+        &mut self,
+        data: &[u8],
+        rgb: &mut ImageRgb,
+        key: &bool,
+        pts: &i64,
+    ) -> ResultType<bool> {
         let dst_stride = rgb.stride();
         let pts_u64 = if *pts >= 0 { *pts as u64 } else { 0 };
         let flag = if *key { 1 } else { 0 };
-
-        if !self.is_use(codec_format) {
-            XMediaCodecDecoder::decode_init(codec_format).unwrap();
+        if self
+            .enqueuer
+            .push_frame_nal(Duration::from_millis(pts_u64), flag, data)
+            .ok()
+            != Some(true)
+        {
+            log::debug!("push_frame_nal fail");
         }
-
-        push_nal(Duration::from_millis(pts_u64), flag, data);
-
-        if let Some(mut frame_image) = get_frame() {
+        if let Some(mut frame_image) = self.dequeuer.dequeue_frame() {
             frame_image.i420_to_argb(&mut rgb.raw);
             return Ok(true);
         }
         Ok(false)
-    }
-
-}
-
-
-fn push_nal(timestamp: Duration, flag: u32, nal: &[u8]) {
-    if let Some(decoder) = &*DECODER_ENQUEUER.lock() {
-        if !matches!(decoder.push_frame_nal(timestamp, flag, nal).map_err(|e| log::error!("{e}")).ok(), Some(true)) {
-            log::debug!("push_frame_nal fail");
-        }
-    }
-}
-
-fn get_frame() -> Option<FrameImage> {
-    if let Some(decoder) = &mut *DECODER_DEQUEUER.lock() {
-        decoder.dequeue_frame()
-    } else {
-        None
     }
 }
