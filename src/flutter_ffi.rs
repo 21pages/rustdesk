@@ -47,14 +47,14 @@ fn initialize(app_dir: &str) {
     #[cfg(target_os = "android")]
     {
         // flexi_logger can't work when android_logger initialized.
-        #[cfg(debug_assertions)]
+        // #[cfg(debug_assertions)]
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug) // limit log level
-                .with_tag("ffi"), // logs will show under mytag tag
+                .with_tag("rustdesk"), // logs will show under mytag tag
         );
-        #[cfg(not(debug_assertions))]
-        hbb_common::init_log(false, "");
+        // #[cfg(not(debug_assertions))]
+        // hbb_common::init_log(false, "");
         #[cfg(feature = "mediacodec")]
         scrap::mediacodec::check_mediacodec();
         crate::common::test_rendezvous_server();

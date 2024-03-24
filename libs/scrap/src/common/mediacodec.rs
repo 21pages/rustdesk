@@ -229,7 +229,9 @@ impl XMediaCodecDecoder {
         {
             log::debug!("push_frame_nal fail");
         }
+        log::info!("push_frame_nal ok");
         if let Some(mut frame_image) = self.dequeuer.dequeue_frame() {
+            log::info!("dequeue_frame ok");
             frame_image.i420_to_argb(&mut rgb.raw);
             return Ok(true);
         }

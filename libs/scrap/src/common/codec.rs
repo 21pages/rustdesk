@@ -431,13 +431,13 @@ impl Decoder {
                 if H264_DECODER_SUPPORT.load(std::sync::atomic::Ordering::SeqCst) {
                     1
                 } else {
-                    0
+                    1 //0
                 };
             decoding.ability_h265 =
                 if H265_DECODER_SUPPORT.load(std::sync::atomic::Ordering::SeqCst) {
                     1
                 } else {
-                    0
+                    1 //0
                 };
         }
         for unsupported in mark_unsupported {
@@ -469,8 +469,10 @@ impl Decoder {
             CodecFormat::VP8 => {
                 #[cfg(feature = "mediacodec")]
                 if !valid && enable_hwcodec_option() {
+                    log::info!("before create vp8 mediacodec");
                     match MediaCodecDecoder::new(format) {
                         Ok(v) => {
+                            log::info!("success create vp8 mediacodec");
                             vp8_media_codec = Some(v);
                             valid = true;
                         }
@@ -794,6 +796,7 @@ impl Decoder {
         frames: &EncodedVideoFrames,
         rgb: &mut ImageRgb,
     ) -> ResultType<bool> {
+        log::info!("handle_mediacodec_video_frame");
         let mut ret = false;
         for frame in frames.frames.iter() {
             return decoder.decode(&frame.data, rgb, &frame.key, &frame.pts);
