@@ -9,6 +9,9 @@ env:
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   VERSION: "1.2.4"
+  # https://github.com/rustdesk/rustdesk/discussions/7503
+  RUST_TOOLCHAIN_VERSION: "1.75.0" 
+  RUST_TOOLCHAIN_COMPONENTS: "rustfmt"
 
 jobs:
   build-for-history-windows:
@@ -40,10 +43,10 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           target: ${{ matrix.job.target }}
           override: true
-          components: rustfmt
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
           profile: minimal # minimal component installation (ie, no documentation)
 
       - name: Install flutter rust bridge deps

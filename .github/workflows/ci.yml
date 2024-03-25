@@ -7,6 +7,9 @@ env:
   # vcpkg version: 2023.10.19
   # for multiarch gcc compatibility
   VCPKG_COMMIT_ID: "8eb57355a4ffb410a2e94c07b4dca2dffbee8e50"
+  # https://github.com/rustdesk/rustdesk/discussions/7503
+  RUST_TOOLCHAIN_VERSION: "1.75.0" 
+  RUST_TOOLCHAIN_COMPONENTS: "rustfmt"
 
 on:
   workflow_dispatch:
@@ -134,9 +137,9 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@v1
       with:
-        toolchain: stable
+        toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
         targets: ${{ matrix.job.target }}
-        components: ''
+        components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
     - name: Show version information (Rust, cargo, GCC)
       shell: bash

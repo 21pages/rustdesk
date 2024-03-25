@@ -34,6 +34,9 @@ env:
   API_SERVER: "${{ secrets.API_SERVER }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  # https://github.com/rustdesk/rustdesk/discussions/7503
+  RUST_TOOLCHAIN_VERSION: "1.75.0" 
+  RUST_TOOLCHAIN_COMPONENTS: "rustfmt"
 
 jobs:
   build-RustDeskTempTopMostWindow:
@@ -93,9 +96,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: ""
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -218,9 +221,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: nightly-${{ matrix.job.target }}
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: ""
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -435,9 +438,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: ""
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -594,9 +597,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: ""
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -746,8 +749,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
-          components: ""
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -910,14 +913,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: ""
-
-      - name: Save Rust toolchain version
-        run: |
-          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
-          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - name: Disable rust bridge build
         run: |
@@ -1119,14 +1117,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: ""
-
-      - name: Save Rust toolchain version
-        run: |
-          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
-          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - name: Disable rust bridge build
         run: |
@@ -1311,14 +1304,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: ""
-
-      - name: Save Rust toolchain version
-        run: |
-          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
-          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
+          components: ${{ env.RUST_TOOLCHAIN_COMPONENTS }}
 
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
