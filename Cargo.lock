@@ -118,9 +118,9 @@ dependencies = [
 [[package]]
 name = "amf"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#546f7f644ce15a35b833c1531a4fead4b34a1b3b"
+source = "git+https://github.com/21pages/gpucodec#6321fdeb6246ceee07b2b63060f8fe48a540f353"
 dependencies = [
- "bindgen 0.59.2",
+ "bindgen 0.65.1",
  "cc",
  "gpu_common",
  "log",
@@ -2652,9 +2652,9 @@ dependencies = [
 [[package]]
 name = "gpu_common"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#546f7f644ce15a35b833c1531a4fead4b34a1b3b"
+source = "git+https://github.com/21pages/gpucodec#6321fdeb6246ceee07b2b63060f8fe48a540f353"
 dependencies = [
- "bindgen 0.59.2",
+ "bindgen 0.65.1",
  "cc",
  "log",
  "serde 1.0.190",
@@ -2665,10 +2665,10 @@ dependencies = [
 [[package]]
 name = "gpucodec"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#546f7f644ce15a35b833c1531a4fead4b34a1b3b"
+source = "git+https://github.com/21pages/gpucodec#6321fdeb6246ceee07b2b63060f8fe48a540f353"
 dependencies = [
  "amf",
- "bindgen 0.59.2",
+ "bindgen 0.65.1",
  "cc",
  "gpu_common",
  "log",
@@ -4137,9 +4137,9 @@ dependencies = [
 [[package]]
 name = "nv"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#546f7f644ce15a35b833c1531a4fead4b34a1b3b"
+source = "git+https://github.com/21pages/gpucodec#6321fdeb6246ceee07b2b63060f8fe48a540f353"
 dependencies = [
- "bindgen 0.59.2",
+ "bindgen 0.65.1",
  "cc",
  "gpu_common",
  "log",
@@ -6902,9 +6902,9 @@ dependencies = [
 [[package]]
 name = "vpl"
 version = "0.1.0"
-source = "git+https://github.com/21pages/gpucodec#546f7f644ce15a35b833c1531a4fead4b34a1b3b"
+source = "git+https://github.com/21pages/gpucodec#6321fdeb6246ceee07b2b63060f8fe48a540f353"
 dependencies = [
- "bindgen 0.59.2",
+ "bindgen 0.65.1",
  "cc",
  "gpu_common",
  "log",
