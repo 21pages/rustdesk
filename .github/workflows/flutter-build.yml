@@ -217,6 +217,13 @@ jobs:
         uses: rustdesk-org/install-llvm-action-32bit@master
         with:
           version: ${{ env.LLVM_VERSION }}
+          directory: "C:/Program Files/LLVM"
+
+      - name: Save LLVM env
+        run: |
+          Get-ChildItem -Path "C:\Program Files\LLVM" -Force
+          Get-ChildItem -Path "C:\Program Files (x86)\LLVM" -Force
+          echo "LIBCLANG_PATH=C:/Program Files/LLVM" >> $GITHUB_ENV
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
