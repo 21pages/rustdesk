@@ -268,7 +268,7 @@ class MyTheme {
   //tooltip
   static TooltipThemeData tooltipTheme() {
     return TooltipThemeData(
-      waitDuration: Duration(seconds: 1, milliseconds: 500),
+      waitDuration: Duration(milliseconds: 500),
     );
   }
 
