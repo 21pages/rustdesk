@@ -1040,7 +1040,7 @@ jobs:
                 if ${{ matrix.job.enable-headless }}; then
                   export DEFAULT_FEAT=linux_headless
                 fi
-                cargo build --lib --features hwcodec,flutter,flutter_texture_render,${{ matrix.job.extra-build-features }},$DEFAULT_FEAT --release
+                cargo build --lib --features flutter,flutter_texture_render,${{ matrix.job.extra-build-features }},$DEFAULT_FEAT --release
                 ;;
             esac
 
@@ -1594,7 +1594,7 @@ jobs:
               ;;
             esac
             export CARGO_INCREMENTAL=0
-            python3 ./build.py --flutter --hwcodec --skip-cargo
+            python3 ./build.py --flutter --skip-cargo
             # rpm package
             echo -e "start packaging fedora package"
             pushd /workspace
@@ -1846,7 +1846,7 @@ jobs:
             export PATH=/opt/flutter/bin:$PATH
             flutter doctor -v
             pushd /workspace
-            python3 ./build.py --flutter --hwcodec --skip-cargo
+            python3 ./build.py --flutter --skip-cargo
             # rpm package
             pushd /workspace
             case ${{ matrix.job.arch }} in
