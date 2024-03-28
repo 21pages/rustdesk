@@ -382,9 +382,9 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
                         onPressed: () {
                           Navigator.of(context).pop();
                         },
-                        style: ElevatedButton.styleFrom(
-                          primary: Colors.blueAccent,
-                        ),
+                        // style: ElevatedButton.styleFrom(
+                        //   primary: Colors.blueAccent,
+                        // ),
                         child: Text(
                           translate("Decline"),
                           style: TextStyle(
