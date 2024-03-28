@@ -429,7 +429,7 @@ class _AppState extends State<App> {
               ? (context, child) => AccessibilityListener(
                     child: MediaQuery(
                       data: MediaQuery.of(context).copyWith(
-                        textScaler: TextScaler.linear(1.0),
+                        textScaleFactor: 1.0,
                       ),
                       child: child ?? Container(),
                     ),
@@ -451,7 +451,7 @@ class _AppState extends State<App> {
 Widget _keepScaleBuilder(BuildContext context, Widget? child) {
   return MediaQuery(
     data: MediaQuery.of(context).copyWith(
-      textScaler: TextScaler.linear(1.0),
+      textScaleFactor: 1.0,
     ),
     child: child ?? Container(),
   );
