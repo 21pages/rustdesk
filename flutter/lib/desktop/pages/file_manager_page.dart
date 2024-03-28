@@ -316,7 +316,7 @@ class _FileManagerPageState extends State<FileManagerPage>
                           Text(
                             translate("No transfers in progress"),
                             textAlign: TextAlign.center,
-                            textScaler: TextScaler.linear(1.20),
+                            textScaleFactor: 1.20,
                             style: TextStyle(
                                 color:
                                     Theme.of(context).tabBarTheme.labelColor),
