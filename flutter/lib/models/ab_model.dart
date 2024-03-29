@@ -375,11 +375,15 @@ class AbModel {
     return ret;
   }
 
-  Future<bool> changeSharedPassword(
-      String abName, String id, String password) async {
+  Future<bool> changePersonalPassword(String id, String password) async {
+    return changePassword(_personalAddressBookName, id, password);
+  }
+
+  Future<bool> changePassword(String abName, String id, String password) async {
     final ret =
-        await addressbooks[abName]?.changeSharedPassword(id, password) ?? false;
+        await addressbooks[abName]?.changePassword(id, password) ?? false;
     await pullNonLegacyAfterChange();
+    _saveCache();
     return ret;
   }
 
@@ -538,9 +542,9 @@ class AbModel {
         "name": key,
         "tags": value.tags,
         "peers": value.peers
-            .map((e) => value.isPersonal()
-                ? e.toPersonalAbUploadJson(true)
-                : e.toSharedAbCacheJson())
+            .map((e) => e.toCustomJson(
+                includingHash: value.isPersonal(),
+                includingPassword: value.isPersonal() && !value.isLegacy()))
             .toList(),
         "tag_colors": jsonEncode(value.tagColors)
       });
@@ -745,6 +749,10 @@ abstract class BaseAb {
         name() == _legacyAddressBookName;
   }
 
+  bool isLegacy() {
+    return name() == _legacyAddressBookName;
+  }
+
   Future<void> pullAb({quiet = false}) async {
     debugPrint("pull ab \"${name()}\"");
     if (abLoading.value) return;
@@ -766,17 +774,13 @@ abstract class BaseAb {
     p.remove('hash');
   }
 
-  removePassword(Map<String, dynamic> p) {
-    p.remove('password');
-  }
-
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags);
 
   Future<bool> changeAlias({required String id, required String alias});
 
   Future<bool> changePersonalHashPassword(String id, String hash);
 
-  Future<bool> changeSharedPassword(String id, String password);
+  Future<bool> changePassword(String id, String password);
 
   Future<bool> deletePeers(List<String> ids);
 
@@ -1004,7 +1008,7 @@ class LegacyAb extends BaseAb {
   }
 
   @override
-  Future<bool> changeSharedPassword(String id, String password) async {
+  Future<bool> changePassword(String id, String password) async {
     // no need to implement
     return false;
   }
@@ -1150,8 +1154,10 @@ class LegacyAb extends BaseAb {
 // #endregion
 
   Map<String, dynamic> _serialize() {
-    final peersJsonData =
-        peers.map((e) => e.toPersonalAbUploadJson(true)).toList();
+    final peersJsonData = peers
+        .map((e) =>
+            e.toCustomJson(includingHash: true, includingPassword: false))
+        .toList();
     for (var e in tags) {
       if (tagColors[e] == null) {
         tagColors[e] = str2color2(e, existing: tagColors.values.toList()).value;
@@ -1401,9 +1407,7 @@ class Ab extends BaseAb {
         if (isFull()) {
           return translate("exceed_max_devices");
         }
-        if (personal) {
-          removePassword(p);
-        } else {
+        if (!personal) {
           removeHash(p);
         }
         String body = jsonEncode(p);
@@ -1495,8 +1499,7 @@ class Ab extends BaseAb {
   }
 
   @override
-  Future<bool> changeSharedPassword(String id, String password) async {
-    if (personal) return false;
+  Future<bool> changePassword(String id, String password) async {
     return _setPassword({"id": id, "password": password});
   }
 
@@ -1737,7 +1740,7 @@ class DummyAb extends BaseAb {
   }
 
   @override
-  Future<bool> changeSharedPassword(String id, String password) async {
+  Future<bool> changePassword(String id, String password) async {
     return false;
   }
 
