@@ -1176,6 +1176,7 @@ impl PasswordSource {
         }
     }
 
+    #[allow(unused)]
     pub fn is_ui_login(&self, password: &[u8], hash: &Hash) -> Option<String> {
         if password.is_empty() {
             return None;
@@ -2693,6 +2694,9 @@ pub async fn handle_hash(
     peer: &mut Stream,
 ) {
     lc.write().unwrap().hash = hash.clone();
+    // Take care of password application order
+
+    // switch_uuid
     let uuid = lc.write().unwrap().switch_uuid.take();
     if let Some(uuid) = uuid {
         if let Ok(uuid) = uuid::Uuid::from_str(&uuid) {
@@ -2701,7 +2705,9 @@ pub async fn handle_hash(
             return;
         }
     }
+    // last password
     let mut password = lc.read().unwrap().password.clone();
+    // preset password
     if password.is_empty() {
         if !password_preset.is_empty() {
             let mut hasher = Sha256::new();
@@ -2709,21 +2715,29 @@ pub async fn handle_hash(
             hasher.update(&hash.salt);
             let res = hasher.finalize();
             password = res[..].into();
-            // shared_password is not empty only when connect with shared ab peer card, and it's set to preset password
-            let shared_password = lc.write().unwrap().shared_password.take();
-            if let Some(shared_password) = shared_password {
-                if !shared_password.is_empty() {
-                    lc.write().unwrap().password_source = PasswordSource::SharedAb(shared_password);
-                }
-            }
         }
     }
+    // shared password
+    // Currently it's used only when click shared ab peer card
+    let shared_password = lc.write().unwrap().shared_password.take();
+    if let Some(shared_password) = shared_password {
+        if !shared_password.is_empty() {
+            let mut hasher = Sha256::new();
+            hasher.update(shared_password.clone());
+            hasher.update(&hash.salt);
+            let res = hasher.finalize();
+            password = res[..].into();
+            lc.write().unwrap().password_source = PasswordSource::SharedAb(shared_password);
+        }
+    }
+    // peer config password
     if password.is_empty() {
         password = lc.read().unwrap().config.password.clone();
         if !password.is_empty() {
             lc.write().unwrap().password_source = PasswordSource::PeerConfig(password.clone());
         }
     }
+    // personal ab password
     if password.is_empty() {
         try_get_password_from_personal_ab(lc.clone(), &mut password, &hash);
     }
