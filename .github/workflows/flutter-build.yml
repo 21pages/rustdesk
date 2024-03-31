@@ -1885,7 +1885,7 @@ jobs:
         run: |
           for name in rustdesk*??.deb; do
               # use cp to duplicate deb files to fit other packages.
-              cp "$name" "${name%%.deb}-${{ matrix.job.arch }}.deb"
+              cp "$name" "${name%%.deb}-${{ matrix.job.arch }}-${{ env.BUILD_DATE }}.deb"
           done
 
       - name: Publish debian package
@@ -1895,22 +1895,22 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
+            rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-${{ env.BUILD_DATE }}.deb
 
       - name: Upload Artifact
         uses: actions/upload-artifact@master
         if: ${{ contains(matrix.job.extra-build-features, 'flatpak') }}
         with:
-          name: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
-          path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
+          name: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-${{ env.BUILD_DATE }}.deb
+          path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-${{ env.BUILD_DATE }}.deb
 
       - name: Patch archlinux PKGBUILD
-        if: ${{ matrix.job.extra-build-features == '' }}
+        if: false
         run: |
           sed -i "s/arch=('x86_64')/arch=('${{ matrix.job.arch }}')/g" res/PKGBUILD
 
       - name: Build archlinux package
-        if: ${{ matrix.job.extra-build-features == '' }}
+        if: false
         uses: rustdesk-org/arch-makepkg-action@master
         with:
           packages: >
@@ -1947,7 +1947,7 @@ jobs:
             cd res && HBB=`pwd`/.. FLUTTER=1 makepkg -f
 
       - name: Publish archlinux package
-        if: matrix.job.extra-build-features == '' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
@@ -1956,7 +1956,7 @@ jobs:
             res/rustdesk-${{ env.VERSION }}*.zst
 
       - name: Build appimage package
-        if: matrix.job.extra-build-features == 'appimage' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         shell: bash
         run: |
           # set-up appimage-builder
@@ -1970,7 +1970,7 @@ jobs:
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-x86_64.yml
 
       - name: Publish appimage package
-        if: matrix.job.extra-build-features == 'appimage' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
@@ -1979,7 +1979,7 @@ jobs:
             ./appimage/rustdesk-${{ env.VERSION }}-*.AppImage
 
       - name: Publish fedora package
-        if: matrix.job.extra-build-features == '' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
