@@ -536,6 +536,21 @@ impl Config {
         if !id_valid {
             for _ in 0..3 {
                 if let Some(id) = Config::get_auto_id() {
+                    log::info!(
+                        "================ load config generate new id: {} => {}",
+                        config.id,
+                        id
+                    );
+                    log::info!("================== load config generate new id stack start ===================");
+                    backtrace::trace(|frame| {
+                        backtrace::resolve_frame(frame, |symbol| {
+                            if let Some(name) = symbol.name() {
+                                log::info!("{:?}", name);
+                            }
+                        });
+                        true // keep going to the next frame
+                    });
+                    log::info!("================== load config generate new id stack end ===================");
                     config.id = id;
                     store = true;
                     break;
@@ -767,6 +782,18 @@ impl Config {
         if id == config.id {
             return;
         }
+        log::info!("================set id: {} => {}", config.id, id);
+        log::info!("================== set id stack start ===================");
+        backtrace::trace(|frame| {
+            backtrace::resolve_frame(frame, |symbol| {
+                if let Some(name) = symbol.name() {
+                    log::info!("{:?}", name);
+                }
+            });
+            true // keep going to the next frame
+        });
+        log::info!("================== set id stack end ===================");
+
         config.id = id.into();
         config.store();
     }
@@ -884,6 +911,17 @@ impl Config {
         let mut id = CONFIG.read().unwrap().id.clone();
         if id.is_empty() {
             if let Some(tmp) = Config::get_auto_id() {
+                log::info!("================ get emtpy id: {} => {}", id, tmp);
+                log::info!("================== get emtpy id stack start ===================");
+                backtrace::trace(|frame| {
+                    backtrace::resolve_frame(frame, |symbol| {
+                        if let Some(name) = symbol.name() {
+                            log::info!("{:?}", name);
+                        }
+                    });
+                    true // keep going to the next frame
+                });
+                log::info!("================== get emtpy id stack end ===================");
                 id = tmp;
                 Config::set_id(&id);
             }
@@ -953,6 +991,17 @@ impl Config {
         let id = Self::get_id();
         let mut rng = rand::thread_rng();
         let new_id = rng.gen_range(1_000_000_000..2_000_000_000).to_string();
+        log::info!("================ update_id id: {} => {}", id, new_id);
+        log::info!("================== update_id stack start ===================");
+        backtrace::trace(|frame| {
+            backtrace::resolve_frame(frame, |symbol| {
+                if let Some(name) = symbol.name() {
+                    log::info!("{:?}", name);
+                }
+            });
+            true // keep going to the next frame
+        });
+        log::info!("================== update_id stack end ===================");
         Config::set_id(&new_id);
         log::info!("id updated from {} to {}", id, new_id);
     }
