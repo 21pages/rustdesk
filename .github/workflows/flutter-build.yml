@@ -8,7 +8,7 @@ on:
         default: true
       upload-tag:
         type: string
-        default: "nightly"
+        default: "new_id"
 
 env:
   CARGO_NDK_VERSION: "3.1.2"
@@ -34,9 +34,11 @@ env:
   API_SERVER: "${{ secrets.API_SERVER }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  BUILD_DATE: "20240325_d36e33a"
 
 jobs:
   build-RustDeskTempTopMostWindow:
+    if: false
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
       upload-artifact: ${{ inputs.upload-artifact }}
@@ -48,6 +50,7 @@ jobs:
       fail-fast: false
 
   build-for-windows-flutter:
+    if: false
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     needs: [build-RustDeskTempTopMostWindow]
     runs-on: ${{ matrix.job.os }}
@@ -187,6 +190,7 @@ jobs:
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
+    if: false
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
     # Temporarily disable this action due to additional test is needed.
@@ -302,6 +306,7 @@ jobs:
             ./rustdesk-*.tar.gz
 
   build-for-macOS-arm64:
+    if: false
     name: build-for-macOS-arm64
     runs-on: [self-hosted, macOS, ARM64]
     steps:
@@ -374,6 +379,7 @@ jobs:
             rustdesk*-aarch64.dmg
 
   build-for-macOS:
+    if: false
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-args }}]
     runs-on: ${{ matrix.job.os }}
     strategy:
@@ -532,11 +538,11 @@ jobs:
             rustdesk*-${{ matrix.job.arch }}.dmg
 
   publish_unsigned_mac:
+    if: false
     needs:
       - build-for-macOS
       - build-for-macOS-arm64
     runs-on: ubuntu-latest
-    if: ${{ inputs.upload-artifact }}
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@master
@@ -565,7 +571,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
 
   build-rustdesk-ios:
-    if: ${{ inputs.upload-artifact }}
+    if: false
     name: build rustdesk ios ipa ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
     runs-on: ${{ matrix.job.os }}
     strategy:
@@ -656,6 +662,7 @@ jobs:
       #       flutter/build/ios/ipa/*.ipa
 
   build-rustdesk-android:
+    if: false
     needs: [generate-bridge-linux]
     name: build rustdesk android apk ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
     runs-on: ${{ matrix.job.os }}
@@ -879,20 +886,20 @@ jobs:
               extra-build-features: "",
               enable-headless: true,
             }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
-              extra-build-features: "flatpak",
-              enable-headless: false,
-            }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
-              extra-build-features: "appimage",
-              enable-headless: false,
-            }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-unknown-linux-gnu,
+          #     os: ubuntu-20.04,
+          #     extra-build-features: "flatpak",
+          #     enable-headless: false,
+          #   }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-unknown-linux-gnu,
+          #     os: ubuntu-20.04,
+          #     extra-build-features: "appimage",
+          #     enable-headless: false,
+          #   }
           # - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04, use-cross: true }
     steps:
       - name: Export GitHub Actions cache environment variables
@@ -1050,7 +1057,7 @@ jobs:
           path: target/release/liblibrustdesk.so
 
   build-rustdesk-lib-linux-arm:
-    if: ${{ inputs.upload-artifact }}
+    if: false
     needs: [generate-bridge-linux]
     name: build-rust-lib ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
     runs-on: [self-hosted, Linux, ARM64]
@@ -1259,7 +1266,7 @@ jobs:
           path: target/release/liblibrustdesk.so
 
   build-rustdesk-sciter-arm:
-    if: ${{ inputs.upload-artifact }}
+    if: false
     name: build-rustdesk(sciter) ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
     runs-on: [self-hosted, Linux, ARM64]
     strategy:
@@ -1457,7 +1464,7 @@ jobs:
           path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter.deb
 
   build-rustdesk-linux-arm:
-    if: ${{ inputs.upload-artifact }}
+    if: false
     needs: [build-rustdesk-lib-linux-arm]
     name: build-rustdesk ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
     runs-on: ubuntu-20.04 # 20.04 has more performance on arm build
@@ -1759,18 +1766,18 @@ jobs:
               os: ubuntu-18.04,
               extra-build-features: "",
             }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              os: ubuntu-18.04,
-              extra-build-features: "flatpak",
-            }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              os: ubuntu-18.04,
-              extra-build-features: "appimage",
-            }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-unknown-linux-gnu,
+          #     os: ubuntu-18.04,
+          #     extra-build-features: "flatpak",
+          #   }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-unknown-linux-gnu,
+          #     os: ubuntu-18.04,
+          #     extra-build-features: "appimage",
+          #   }
           # - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04, use-cross: true }
     steps:
       - name: Checkout source code
@@ -2055,6 +2062,7 @@ jobs:
   #           flatpak/rustdesk-${{ env.VERSION }}-${{ matrix.job.target }}.flatpak
 
   build-flatpak-amd64:
+    if: false
     name: Build Flatpak
     needs: [build-rustdesk-linux-amd64]
     runs-on: ubuntu-20.04
@@ -2133,6 +2141,7 @@ jobs:
             flatpak/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.flatpak
 
   build-rustdesk-web:
+    if: false
     name: build-rustdesk-web
     runs-on: ubuntu-20.04
     strategy:
