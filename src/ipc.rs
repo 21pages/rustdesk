@@ -18,7 +18,7 @@ use crate::plugin::ipc::Plugin;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use clipboard::ClipboardFile;
 use hbb_common::{
-    allow_err, bail, bytes,
+    allow_err, backtrace, bail, bytes,
     bytes_codec::BytesCodec,
     config::{self, Config, Config2},
     futures::StreamExt as _,
@@ -419,6 +419,17 @@ async fn handle(data: Data, stream: &mut Connection) {
             }
             Some(value) => {
                 if name == "id" {
+                    log::info!("================ ipc server set id");
+                    log::info!("================== update_id stack start ===================");
+                    backtrace::trace(|frame| {
+                        backtrace::resolve_frame(frame, |symbol| {
+                            if let Some(name) = symbol.name() {
+                                log::info!("{:?}", name);
+                            }
+                        });
+                        true // keep going to the next frame
+                    });
+                    log::info!("================== update_id stack end ===================");
                     Config::set_key_confirmed(false);
                     Config::set_id(&value);
                 } else if name == "temporary-password" {
@@ -763,6 +774,17 @@ pub fn get_id() -> String {
             Config::set_salt(&v2);
         }
         if v != Config::get_id() {
+            log::info!("================ ipc server get id mismatch =================");
+            log::info!("================== update_id stack start ===================");
+            backtrace::trace(|frame| {
+                backtrace::resolve_frame(frame, |symbol| {
+                    if let Some(name) = symbol.name() {
+                        log::info!("{:?}", name);
+                    }
+                });
+                true // keep going to the next frame
+            });
+            log::info!("================== update_id stack end ===================");
             Config::set_key_confirmed(false);
             Config::set_id(&v);
         }
