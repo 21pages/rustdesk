@@ -42,6 +42,7 @@ pub use chrono;
 pub use directories_next;
 pub use libc;
 pub mod keyboard;
+pub use backtrace;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use dlopen;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
