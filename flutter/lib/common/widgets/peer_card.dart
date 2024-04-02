@@ -1102,7 +1102,8 @@ class AddressBookPeerCard extends BasePeerCard {
   MenuEntryBase<String> _changeSharedAbPassword() {
     return MenuEntryButton<String>(
       childBuilder: (TextStyle? style) => Text(
-        translate('Set shared password'),
+        translate(
+            peer.password.isEmpty ? 'Set shared password' : 'Change Password'),
         style: style,
       ),
       proc: () {
