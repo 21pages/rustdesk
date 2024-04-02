@@ -139,21 +139,30 @@ class _PeerCardState extends State<_PeerCard>
       mainAxisSize: MainAxisSize.max,
       children: [
         Container(
-          decoration: BoxDecoration(
-            color: str2color('${peer.id}${peer.platform}', 0x7f),
-            borderRadius: isMobile
-                ? BorderRadius.circular(_tileRadius)
-                : BorderRadius.only(
-                    topLeft: Radius.circular(_tileRadius),
-                    bottomLeft: Radius.circular(_tileRadius),
+            decoration: BoxDecoration(
+              color: str2color('${peer.id}${peer.platform}', 0x7f),
+              borderRadius: isMobile
+                  ? BorderRadius.circular(_tileRadius)
+                  : BorderRadius.only(
+                      topLeft: Radius.circular(_tileRadius),
+                      bottomLeft: Radius.circular(_tileRadius),
+                    ),
+            ),
+            alignment: Alignment.center,
+            width: isMobile ? 50 : 42,
+            height: isMobile ? 50 : null,
+            child: Stack(
+              children: [
+                getPlatformImage(peer.platform, size: isMobile ? 38 : 30)
+                    .paddingAll(6),
+                if (_shouldBuildPasswordIcon(peer))
+                  Positioned(
+                    top: 2,
+                    left: 2,
+                    child: Icon(Icons.key, size: 10, color: Colors.white),
                   ),
-          ),
-          alignment: Alignment.center,
-          width: isMobile ? 50 : 42,
-          height: isMobile ? 50 : null,
-          child: getPlatformImage(peer.platform, size: isMobile ? 38 : 30)
-              .paddingAll(6),
-        ),
+              ],
+            )),
         Expanded(
           child: Container(
             decoration: BoxDecoration(
@@ -216,12 +225,6 @@ class _PeerCardState extends State<_PeerCard>
                   child: child,
                 ),
               ),
-        if (_shouldBuildPasswordIcon(peer))
-          Positioned(
-            top: 2,
-            left: isMobile ? 60 : 50,
-            child: Icon(Icons.key, size: 12),
-          ),
         if (colors.isNotEmpty)
           Positioned(
             top: 2,
@@ -329,7 +332,7 @@ class _PeerCardState extends State<_PeerCard>
           Positioned(
             top: 4,
             left: 12,
-            child: Icon(Icons.key, size: 12),
+            child: Icon(Icons.key, size: 12, color: Colors.white),
           ),
         if (colors.isNotEmpty)
           Positioned(
