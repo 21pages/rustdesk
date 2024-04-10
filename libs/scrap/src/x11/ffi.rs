@@ -42,6 +42,8 @@ extern "C" {
         offset: u32,
     ) -> xcb_shm_get_image_cookie_t;
 
+    pub fn xcb_flush(c: *mut xcb_connection_t);
+
     pub fn xcb_shm_get_image_reply(
         c: *mut xcb_connection_t,
         cookie: xcb_shm_get_image_cookie_t,
@@ -82,12 +84,37 @@ extern "C" {
     pub fn xcb_get_atom_name_name_length(reply: *const xcb_get_atom_name_reply_t) -> i32;
 
     pub fn xcb_shm_query_version(c: *mut xcb_connection_t) -> xcb_shm_query_version_cookie_t;
-    
+
     pub fn xcb_shm_query_version_reply(
         c: *mut xcb_connection_t,
         cookie: xcb_shm_query_version_cookie_t,
         e: *mut *mut xcb_generic_error_t,
     ) -> *const xcb_shm_query_version_reply_t;
+
+    pub fn xcb_get_geometry_unchecked(
+        c: *mut xcb_connection_t,
+        drawable: xcb_drawable_t,
+    ) -> xcb_get_geometry_cookie_t;
+
+    pub fn xcb_get_geometry_reply(
+        c: *mut xcb_connection_t,
+        cookie: xcb_get_geometry_cookie_t,
+        e: *mut *mut xcb_generic_error_t,
+    ) -> *mut xcb_get_geometry_reply_t;
+
+    pub fn xcb_translate_coordinates_unchecked(
+        c: *mut xcb_connection_t,
+        src_window: xcb_window_t,
+        dst_window: xcb_window_t,
+        src_x: i16,
+        src_y: i16,
+    ) -> xcb_translate_coordinates_cookie_t;
+
+    pub fn xcb_translate_coordinates_reply(
+        c: *mut xcb_connection_t,
+        cookie: xcb_translate_coordinates_cookie_t,
+        e: *mut *mut xcb_generic_error_t,
+    ) -> *mut xcb_translate_coordinates_reply_t;
 }
 
 pub const XCB_IMAGE_FORMAT_Z_PIXMAP: u8 = 2;
@@ -136,6 +163,7 @@ pub struct xcb_screen_iterator_t {
     pub index: i32,
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct xcb_screen_t {
     pub root: xcb_window_t,
@@ -196,6 +224,18 @@ pub struct xcb_void_cookie_t {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+pub struct xcb_get_geometry_cookie_t {
+    pub sequence: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct xcb_translate_coordinates_cookie_t {
+    pub sequence: u32,
+}
+
+#[repr(C)]
 pub struct xcb_generic_error_t {
     pub response_type: u8,
     pub error_code: u8,
@@ -247,4 +287,30 @@ pub struct xcb_shm_query_version_reply_t {
     pub gid: u16,
     pub pixmap_format: u8,
     pub pad0: [u8; 15],
+}
+
+#[repr(C)]
+pub struct xcb_get_geometry_reply_t {
+    pub response_type: u8,
+    pub depth: u8,
+    pub sequence: u16,
+    pub length: u32,
+    pub root: xcb_window_t,
+    pub x: i16,
+    pub y: i16,
+    pub width: u16,
+    pub height: u16,
+    pub border_width: u16,
+    pub pad0: [u8; 2],
+}
+
+#[repr(C)]
+pub struct xcb_translate_coordinates_reply_t {
+    pub response_type: u8,
+    pub same_screen: u8,
+    pub sequence: u16,
+    pub length: u16,
+    pub child: xcb_window_t,
+    pub dst_x: i16,
+    pub dst_y: i16,
 }

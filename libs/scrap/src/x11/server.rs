@@ -62,8 +62,8 @@ impl Server {
         unsafe {
             let mut screenp = 0;
             let raw = xcb_connect(addr, &mut screenp);
-
             let error = xcb_connection_has_error(raw);
+            println!("error: {error:?}");
             if error != 0 {
                 xcb_disconnect(raw);
                 Err(Error::from(error))

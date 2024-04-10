@@ -82,7 +82,7 @@ impl Capturer {
                 rect.y,
                 rect.w,
                 rect.h,
-                !0,
+                u32::MAX,
                 XCB_IMAGE_FORMAT_Z_PIXMAP,
                 self.xcbid,
                 0,
@@ -90,6 +90,7 @@ impl Capturer {
             let response =
                 xcb_shm_get_image_reply(self.display.server().raw(), request, ptr::null_mut());
             libc::free(response as *mut _);
+            xcb_flush(self.display.server().raw());
         }
     }
 
