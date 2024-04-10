@@ -11,7 +11,11 @@ use super::{Display, Rect, Server};
 
 pub struct DisplayIter {
     outer: xcb_screen_iterator_t,
-    inner: Option<(xcb_randr_monitor_info_iterator_t, xcb_window_t)>,
+    inner: Option<(
+        xcb_screen_t,
+        xcb_randr_monitor_info_iterator_t,
+        xcb_window_t,
+    )>,
     server: Rc<Server>,
 }
 
@@ -29,7 +33,11 @@ impl DisplayIter {
     fn next_screen(
         outer: &mut xcb_screen_iterator_t,
         server: &Server,
-    ) -> Option<(xcb_randr_monitor_info_iterator_t, xcb_window_t)> {
+    ) -> Option<(
+        xcb_screen_t,
+        xcb_randr_monitor_info_iterator_t,
+        xcb_window_t,
+    )> {
         if outer.rem == 0 {
             return None;
         }
@@ -50,7 +58,7 @@ impl DisplayIter {
             libc::free(response as *mut _);
             xcb_screen_next(outer);
 
-            Some((inner, root))
+            Some((*(outer.data).clone(), inner, root))
         }
     }
 }
@@ -60,25 +68,54 @@ impl Iterator for DisplayIter {
 
     fn next(&mut self) -> Option<Display> {
         loop {
-            if let Some((ref mut inner, root)) = self.inner {
+            if let Some((ref screen, ref mut inner, root)) = self.inner {
                 // If there is something in the current screen, return that.
                 if inner.rem != 0 {
                     unsafe {
                         let data = &*inner.data;
                         let name = get_atom_name(self.server.raw(), data.name);
 
+                        let geo_cookie = xcb_get_geometry_unchecked(self.server.raw(), root);
+                        let geo =
+                            xcb_get_geometry_reply(self.server.raw(), geo_cookie, ptr::null_mut());
+                        println!(
+                            "x: {}, y: {}, width: {}, height: {}",
+                            (*geo).x,
+                            (*geo).y,
+                            (*geo).width,
+                            (*geo).height,
+                        );
+                        let translate_cookie = xcb_translate_coordinates_unchecked(
+                            self.server.raw(),
+                            root,
+                            root,
+                            0,
+                            0,
+                        );
+                        let translate = xcb_translate_coordinates_reply(
+                            self.server.raw(),
+                            translate_cookie,
+                            ptr::null_mut(),
+                        );
+                        println!(
+                            "translate x: {}, y: {}",
+                            (*translate).dst_x,
+                            (*translate).dst_y,
+                        );
                         let display = Display::new(
                             self.server.clone(),
                             data.primary != 0,
                             Rect {
-                                x: data.x,
-                                y: data.y,
-                                w: data.width,
-                                h: data.height,
+                                x: (*geo).x,
+                                y: (*geo).y,
+                                w: (*geo).width,
+                                h: (*geo).height,
                             },
                             root,
                             name,
                         );
+                        libc::free(geo as _);
+                        libc::free(translate as _);
 
                         xcb_randr_monitor_info_next(inner);
                         return Some(display);
@@ -102,11 +139,7 @@ fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> String {
     }
     unsafe {
         let mut e: *mut xcb_generic_error_t = std::ptr::null_mut();
-        let reply = xcb_get_atom_name_reply(
-            conn,
-            xcb_get_atom_name(conn, atom),
-            &mut e as _,
-        );
+        let reply = xcb_get_atom_name_reply(conn, xcb_get_atom_name(conn, atom), &mut e as _);
         if reply == std::ptr::null() {
             return empty;
         }
