@@ -62,5 +62,6 @@ gstreamer-video = { version = "0.16", optional = true }
 git = "https://github.com/21pages/hwcodec"
 optional = true
 features = ["ffmpeg"]
+branch = "soft"
 
 
