@@ -471,6 +471,7 @@ pub async fn start_server(is_server: bool) {
         tokio::spawn(async { sync_and_watch_config_dir().await });
         #[cfg(target_os = "windows")]
         crate::platform::try_kill_broker();
+        crate::video_service::start_video_service();
         crate::RendezvousMediator::start_all().await;
     } else {
         match crate::ipc::connect(1000, "").await {

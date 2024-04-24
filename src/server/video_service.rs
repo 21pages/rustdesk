@@ -75,6 +75,7 @@ lazy_static::lazy_static! {
     pub static ref VIDEO_QOS: Arc<Mutex<VideoQoS>> = Default::default();
     pub static ref IS_UAC_RUNNING: Arc<Mutex<bool>> = Default::default();
     pub static ref IS_FOREGROUND_WINDOW_ELEVATED: Arc<Mutex<bool>> = Default::default();
+    pub static ref SWITCH_TEST: Arc<Mutex<bool>> = Default::default();
 }
 
 #[inline]
@@ -382,6 +383,7 @@ fn get_capturer(current: usize, portable_service_running: bool) -> ResultType<Ca
 }
 
 fn run(vs: VideoService) -> ResultType<()> {
+    log::info!("======================= run");
     let _raii = Raii::new(vs.idx);
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
@@ -421,7 +423,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         client_record || record_incoming,
         last_portable_service_running,
     );
-    Encoder::set_fallback(&encoder_cfg);
+    // Encoder::set_fallback(&encoder_cfg);
     let codec_name = Encoder::negotiated_codec();
     let recorder = get_recorder(c.width, c.height, &codec_name, record_incoming);
     let mut encoder;
@@ -470,6 +472,10 @@ fn run(vs: VideoService) -> ResultType<()> {
             quality = video_qos.quality();
             allow_err!(encoder.set_quality(quality));
             video_qos.store_bitrate(encoder.bitrate());
+        }
+        if SWITCH_TEST.lock().unwrap().clone() {
+            *SWITCH_TEST.lock().unwrap() = false;
+            bail!("SWITCH");
         }
         if client_record != video_qos.record() {
             bail!("SWITCH");
@@ -529,7 +535,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         &mut encoder,
                         recorder.clone(),
                     )?;
-                    frame_controller.set_send(now, send_conn_ids);
+                    // frame_controller.set_send(now, send_conn_ids);
                 }
                 #[cfg(windows)]
                 {
@@ -591,17 +597,17 @@ fn run(vs: VideoService) -> ResultType<()> {
             }
         }
 
-        let mut fetched_conn_ids = HashSet::new();
-        let timeout_millis = 3_000u64;
-        let wait_begin = Instant::now();
-        while wait_begin.elapsed().as_millis() < timeout_millis as _ {
-            check_privacy_mode_changed(&sp, c.privacy_mode_id)?;
-            frame_controller.try_wait_next(&mut fetched_conn_ids, 300);
-            // break if all connections have received current frame
-            if fetched_conn_ids.len() >= frame_controller.send_conn_ids.len() {
-                break;
-            }
-        }
+        // let mut fetched_conn_ids = HashSet::new();
+        // let timeout_millis = 3_000u64;
+        // let wait_begin = Instant::now();
+        // while wait_begin.elapsed().as_millis() < timeout_millis as _ {
+        //     check_privacy_mode_changed(&sp, c.privacy_mode_id)?;
+        //     frame_controller.try_wait_next(&mut fetched_conn_ids, 300);
+        //     // break if all connections have received current frame
+        //     if fetched_conn_ids.len() >= frame_controller.send_conn_ids.len() {
+        //         break;
+        //     }
+        // }
 
         let elapsed = now.elapsed();
         // may need to enable frame(timeout)
@@ -642,8 +648,8 @@ fn get_encoder_config(
         log::info!("gdi:{}, portable:{}", c.is_gdi(), _portable_service);
         VRamEncoder::set_not_use(_display_idx, true);
     }
-    #[cfg(feature = "vram")]
-    Encoder::update(scrap::codec::EncodingUpdate::Check);
+    // #[cfg(feature = "vram")]
+    // Encoder::update(scrap::codec::EncodingUpdate::Check);
     // https://www.wowza.com/community/t/the-correct-keyframe-interval-in-obs-studio/95162
     let keyframe_interval = if record { Some(240) } else { None };
     let negotiated_codec = Encoder::negotiated_codec();
@@ -953,4 +959,40 @@ pub fn make_display_changed_msg(
     let mut msg_out = Message::new();
     msg_out.set_misc(misc);
     Some(msg_out)
+}
+
+pub fn start_video_service() {
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        video_service_main();
+    });
+}
+
+#[tokio::main]
+async fn video_service_main() {
+    let (tx, _rx) =
+        tokio::sync::mpsc::unbounded_channel::<(hbb_common::tokio::time::Instant, Arc<Message>)>();
+    let (tx_video, mut rx_video) =
+        tokio::sync::mpsc::unbounded_channel::<(hbb_common::tokio::time::Instant, Arc<Message>)>();
+    let server = crate::server::new();
+    server.write().unwrap().try_add_primay_video_service();
+    let conn_id = 1;
+    let primary_video_service_name =
+        video_service::get_service_name(*display_service::PRIMARY_DISPLAY_IDX);
+    let conn = ConnInner::new(conn_id, Some(tx), Some(tx_video));
+    server
+        .write()
+        .unwrap()
+        .subscribe(&primary_video_service_name, conn.clone(), true);
+    let mut counter = 0;
+    loop {
+        tokio::select! {
+            Some((_instant, _value)) = rx_video.recv() => {
+                counter += 1;
+                if counter % 30 == 0 {
+                    *SWITCH_TEST.lock().unwrap() = true;
+                }
+            },
+        }
+    }
 }
