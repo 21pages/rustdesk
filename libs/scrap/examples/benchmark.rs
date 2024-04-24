@@ -53,43 +53,33 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
     let quality = args.flag_quality;
     let yuv_count = args.flag_count;
-    let mut index = 0;
-    let mut displays = Display::all().unwrap();
-    for i in 0..displays.len() {
-        if displays[i].is_primary() {
-            index = i;
-            break;
-        }
-    }
-    let d = displays.remove(index);
-    let mut c = Capturer::new(d).unwrap();
-    let width = c.width();
-    let height = c.height();
 
-    println!(
-        "benchmark {}x{} quality:{:?}, i444:{:?}",
-        width, height, quality, args.flag_i444
-    );
+    // println!(
+    //     "benchmark {}x{} quality:{:?}, i444:{:?}",
+    //     width, height, quality, args.flag_i444
+    // );
     let quality = match quality {
         Quality::Best => Q::Best,
         Quality::Balanced => Q::Balanced,
         Quality::Low => Q::Low,
     };
-    [VP8, VP9].map(|codec| {
-        test_vpx(
-            &mut c,
-            codec,
-            width,
-            height,
-            quality,
-            yuv_count,
-            if codec == VP8 { false } else { args.flag_i444 },
-        )
-    });
-    test_av1(&mut c, width, height, quality, yuv_count, args.flag_i444);
+    // [VP8, VP9].map(|codec| {
+    //     test_vpx(
+    //         &mut c,
+    //         codec,
+    //         width,
+    //         height,
+    //         quality,
+    //         yuv_count,
+    //         if codec == VP8 { false } else { args.flag_i444 },
+    //     )
+    // });
+    // test_av1(&mut c, width, height, quality, yuv_count, args.flag_i444);
     #[cfg(feature = "hwcodec")]
     {
-        hw::test(&mut c, width, height, quality, yuv_count);
+        loop {
+            hw::test(quality, yuv_count);
+        }
     }
 }
 
@@ -239,6 +229,8 @@ fn test_av1(
 
 #[cfg(feature = "hwcodec")]
 mod hw {
+    use std::sync::{Arc, Mutex};
+
     use hwcodec::ffmpeg_ram::CodecInfo;
     use scrap::{
         hwcodec::{HwRamDecoder, HwRamEncoder, HwRamEncoderConfig},
@@ -247,29 +239,43 @@ mod hw {
 
     use super::*;
 
-    pub fn test(c: &mut Capturer, width: usize, height: usize, quality: Q, yuv_count: usize) {
-        let best = HwRamEncoder::best();
-        let mut h264s = Vec::new();
-        let mut h265s = Vec::new();
-        if let Some(info) = best.h264 {
-            test_encoder(width, height, quality, info, c, yuv_count, &mut h264s);
+    pub fn test(quality: Q, yuv_count: usize) {
+        println!("benchmark quality:{:?}, yuv_count:{}", quality, yuv_count);
+        let mut handles = Vec::new();
+        for i in 0..4 {
+            let handle = std::thread::spawn(move || {
+                let best = HwRamEncoder::best();
+                let mut h264s = Vec::new();
+                let mut h265s = Vec::new();
+                if let Some(info) = best.h264 {
+                    test_encoder(quality, info, yuv_count, &mut h264s);
+                }
+                if let Some(info) = best.h265 {
+                    test_encoder(quality, info, yuv_count, &mut h265s);
+                }
+                test_decoder(CodecFormat::H264, &h264s);
+                test_decoder(CodecFormat::H265, &h265s);
+            });
+            handles.push(handle);
         }
-        if let Some(info) = best.h265 {
-            test_encoder(width, height, quality, info, c, yuv_count, &mut h265s);
+        for handle in handles {
+            handle.join().unwrap();
         }
-        test_decoder(CodecFormat::H264, &h264s);
-        test_decoder(CodecFormat::H265, &h265s);
     }
 
-    fn test_encoder(
-        width: usize,
-        height: usize,
-        quality: Q,
-        info: CodecInfo,
-        c: &mut Capturer,
-        yuv_count: usize,
-        h26xs: &mut Vec<Vec<u8>>,
-    ) {
+    fn test_encoder(quality: Q, info: CodecInfo, yuv_count: usize, h26xs: &mut Vec<Vec<u8>>) {
+        let mut index = 0;
+        let mut displays = Display::all().unwrap();
+        for i in 0..displays.len() {
+            if displays[i].is_primary() {
+                index = i;
+                break;
+            }
+        }
+        let d = displays.remove(index);
+        let mut c = Capturer::new(d).unwrap();
+        let width = c.width();
+        let height = c.height();
         let mut encoder = HwRamEncoder::new(
             EncoderCfg::HWRAM(HwRamEncoderConfig {
                 name: info.name.clone(),
