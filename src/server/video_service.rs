@@ -985,12 +985,41 @@ async fn video_service_main() {
         .unwrap()
         .subscribe(&primary_video_service_name, conn.clone(), true);
     let mut counter = 0;
+    let session: crate::ui_session_interface::Session<crate::flutter::FlutterHandler> =
+        crate::ui_session_interface::Session {
+            password: String::default(),
+            server_keyboard_enabled: Arc::new(RwLock::new(true)),
+            server_file_transfer_enabled: Arc::new(RwLock::new(true)),
+            server_clipboard_enabled: Arc::new(RwLock::new(true)),
+            ..Default::default()
+        };
+    let decode_display = *display_service::PRIMARY_DISPLAY_IDX;
+    let (video_sender, _audio_sender, _video_queue_map, _decode_fps_map, _chroma) =
+        crate::client::start_video_audio_threads(
+            session,
+            move |display: usize,
+                  data: &mut scrap::ImageRgb,
+                  _texture: *mut std::ffi::c_void,
+                  pixelbuffer: bool| {
+                println!(
+                    "decoded display: {}, pixelbuffer: {}, width: {}, height: {}",
+                    display, pixelbuffer, data.w, data.h
+                );
+            },
+        );
     loop {
         tokio::select! {
-            Some((_instant, _value)) = rx_video.recv() => {
+            Some((_instant,  value)) = rx_video.recv() => {
                 counter += 1;
-                if counter % 30 == 0 {
+                if counter % 20 == 0 {
                     *SWITCH_TEST.lock().unwrap() = true;
+                    video_sender.send(crate::client::MediaData::Reset(decode_display)).ok();
+                }
+                match &value.union {
+                    Some(message::Union::VideoFrame(vf)) => {
+                        video_sender.send(crate::client::MediaData::VideoFrame(Box::new(vf.clone()))).ok();
+                    }
+                    _ => {}
                 }
             },
         }
