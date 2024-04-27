@@ -3615,7 +3615,13 @@ impl Retina {
 
     #[inline]
     fn on_mouse_event(&mut self, e: &mut MouseEvent, current: usize) {
+        let buttons = e.mask >> 3;
         let evt_type = e.mask & 0x7;
+        if buttons == crate::input::MOUSE_BUTTON_FORWARD
+            || buttons == crate::input::MOUSE_BUTTON_BACK
+        {
+            return;
+        }
         if evt_type == crate::input::MOUSE_TYPE_WHEEL {
             // x and y are always 0, +1 or -1
             return;
