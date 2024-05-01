@@ -33,7 +33,7 @@ env:
   API_SERVER: "${{ secrets.API_SERVER }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
-  BUILD_DATE: "20240426_796b66b"
+  BUILD_DATE: "20240427_45137d5"
 
 jobs:
   build-RustDeskTempTopMostWindow:
