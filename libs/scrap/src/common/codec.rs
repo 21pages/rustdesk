@@ -809,7 +809,11 @@ impl Decoder {
 
 #[cfg(any(feature = "hwcodec", feature = "mediacodec"))]
 pub fn enable_hwcodec_option() -> bool {
-    if cfg!(windows) || cfg!(target_os = "linux") || cfg!(feature = "mediacodec") {
+    if cfg!(windows)
+        || cfg!(target_os = "linux")
+        || cfg!(target_os = "android")
+        || cfg!(feature = "mediacodec")
+    {
         if let Some(v) = Config2::get().options.get("enable-hwcodec") {
             return v != "N";
         }

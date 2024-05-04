@@ -366,10 +366,27 @@ struct Available {
 }
 
 fn get_config() -> ResultType<Available> {
-    match serde_json::from_str(&HwCodecConfig::load().ram) {
-        Ok(v) => Ok(v),
-        Err(e) => Err(anyhow!("Failed to get config:{e:?}")),
-    }
+    Ok(Available {
+        e: vec![
+            CodecInfo {
+                name: "h264_mediacodec".to_owned(),
+                format: DataFormat::H264,
+                hwdevice: hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_NONE,
+                priority: 1,
+            },
+            CodecInfo {
+                name: "hevc_mediacodec".to_owned(),
+                format: DataFormat::H265,
+                hwdevice: hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_NONE,
+                priority: 1,
+            },
+        ],
+        d: vec![],
+    })
+    // match serde_json::from_str(&HwCodecConfig::load().ram) {
+    //     Ok(v) => Ok(v),
+    //     Err(e) => Err(anyhow!("Failed to get config:{e:?}")),
+    // }
 }
 
 pub fn check_available_hwcodec() {
