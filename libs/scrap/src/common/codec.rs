@@ -51,6 +51,7 @@ pub enum EncoderCfg {
     HWRAM(HwRamEncoderConfig),
     #[cfg(feature = "vram")]
     VRAM(VRamEncoderConfig),
+    MC(MediaCodecEncoderConfig),
 }
 
 pub trait EncoderApi {

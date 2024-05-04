@@ -16,13 +16,45 @@ use crate::{
 /// MediaCodec mime type name
 const H264_MIME_TYPE: &str = "video/avc";
 const H265_MIME_TYPE: &str = "video/hevc";
-// const VP8_MIME_TYPE: &str = "video/x-vnd.on2.vp8";
-// const VP9_MIME_TYPE: &str = "video/x-vnd.on2.vp9";
-
-// TODO MediaCodecEncoder
 
 pub static H264_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 pub static H265_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
+
+pub struct MediaCodecEncoderConfig {
+    pub format: CodecFormat,
+    pub width: usize,
+    pub height: usize,
+}
+
+pub struct MediaCodecEncoder {
+    codec: MediaCodec,
+}
+
+impl MediaCodecEncoder {
+    pub fn new(cfg: EncoderCfg) -> Option<MediaCodecEncoder> {
+        let EncoderCfg::MC(cfg) = cfg else {
+            return None;
+        };
+        let mime_type = get_mime_type(cfg.format).ok()?;
+        let codec = MediaCodec::from_encoder_type(mime_type)?;
+        let media_format = MediaFormat::new();
+        media_format.set_str("mime", mime_type);
+        media_format.set_i32("width", cfg.width as i32);
+        media_format.set_i32("height", cfg.height as i32);
+        media_format.set_i32("color-format", 19); // COLOR_FormatYUV420Planar
+        if let Err(e) = codec.configure(&media_format, None, MediaCodecDirection::Encoder) {
+            log::error!("Failed to init encoder: {:?}", e);
+            return None;
+        };
+        log::error!("encoder init success");
+        if let Err(e) = codec.start() {
+            log::error!("Failed to start encoder: {:?}", e);
+            return None;
+        };
+        log::debug!("Init encoder successed!: {:?}", mime_type);
+        return Some(MediaCodecEncoder { codec });
+    }
+}
 
 pub struct MediaCodecDecoder {
     decoder: MediaCodec,
@@ -133,6 +165,18 @@ impl MediaCodecDecoder {
             }
         };
     }
+}
+
+fn get_mime_type(codec: CodecFormat) -> ResultType<&'static str> {
+    let mime_type = match codec {
+        CodecFormat::VP8 => "video/x-vnd.on2.vp8",
+        CodecFormat::VP9 => "video/x-vnd.on2.vp9",
+        CodecFormat::AV1 => "video/av01",
+        CodecFormat::H264 => "video/avc",
+        CodecFormat::H265 => "video/hevc",
+        _ => bail("Unsupported codec format: {}", codec),
+    };
+    Ok(mime_type)
 }
 
 fn create_media_codec(name: &str, direction: MediaCodecDirection) -> Option<MediaCodecDecoder> {
