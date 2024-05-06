@@ -13,6 +13,12 @@ use crate::{
     CodecFormat, I420ToABGR, I420ToARGB, ImageRgb,
 };
 
+enum MCColorFormat {
+    YUV420P = 0x13,
+    NV12 = 0x15,
+    Surface = 0x7F000789,
+}
+
 /// MediaCodec mime type name
 const H264_MIME_TYPE: &str = "video/avc";
 const H265_MIME_TYPE: &str = "video/hevc";
@@ -20,18 +26,19 @@ const H265_MIME_TYPE: &str = "video/hevc";
 pub static H264_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 pub static H265_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 
-pub struct MediaCodecEncoderConfig {
+pub struct MCEncoderConfig {
     pub format: CodecFormat,
     pub width: usize,
     pub height: usize,
+    pub color_format: MCColorFormat,
 }
 
-pub struct MediaCodecEncoder {
+pub struct MCEncoder {
     codec: MediaCodec,
 }
 
-impl MediaCodecEncoder {
-    pub fn new(cfg: EncoderCfg) -> Option<MediaCodecEncoder> {
+impl MCEncoder {
+    pub fn new(cfg: EncoderCfg) -> Option<MCEncoder> {
         let EncoderCfg::MC(cfg) = cfg else {
             return None;
         };
@@ -41,7 +48,7 @@ impl MediaCodecEncoder {
         media_format.set_str("mime", mime_type);
         media_format.set_i32("width", cfg.width as i32);
         media_format.set_i32("height", cfg.height as i32);
-        media_format.set_i32("color-format", 19); // COLOR_FormatYUV420Planar
+        media_format.set_i32("color-format", cfg.color_format as i32);
         if let Err(e) = codec.configure(&media_format, None, MediaCodecDirection::Encoder) {
             log::error!("Failed to init encoder: {:?}", e);
             return None;
@@ -52,7 +59,7 @@ impl MediaCodecEncoder {
             return None;
         };
         log::debug!("Init encoder successed!: {:?}", mime_type);
-        return Some(MediaCodecEncoder { codec });
+        return Some(MCEncoder { codec });
     }
 }
 

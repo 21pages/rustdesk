@@ -10,6 +10,7 @@ use jni::{
 
 use jni::errors::{Error as JniError, Result as JniResult};
 use lazy_static::lazy_static;
+use serde::Deserialize;
 use std::ops::Not;
 use std::sync::atomic::{AtomicPtr, Ordering::SeqCst};
 use std::sync::{Mutex, RwLock};
@@ -20,6 +21,7 @@ lazy_static! {
     static ref VIDEO_RAW: Mutex<FrameRaw> = Mutex::new(FrameRaw::new("video", MAX_VIDEO_FRAME_TIMEOUT));
     static ref AUDIO_RAW: Mutex<FrameRaw> = Mutex::new(FrameRaw::new("audio", MAX_AUDIO_FRAME_TIMEOUT));
     static ref NDK_CONTEXT_INITED: Mutex<bool> = Default::default();
+    static ref MEDIA_CODEC_INFOS: RwLock<Option<MediaCodecInfos>> = RwLock::new(None);
 }
 
 const MAX_VIDEO_FRAME_TIMEOUT: Duration = Duration::from_millis(100);
@@ -141,17 +143,42 @@ pub extern "system" fn Java_ffi_FFI_setFrameRawEnable(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_ffi_FFI_init(
-    env: JNIEnv,
-    _class: JClass,
-    ctx: JObject,
-) {
+pub extern "system" fn Java_ffi_FFI_init(env: JNIEnv, _class: JClass, ctx: JObject) {
     log::debug!("MainService init from java");
     if let Ok(jvm) = env.get_java_vm() {
         *JVM.write().unwrap() = Some(jvm);
         if let Ok(context) = env.new_global_ref(ctx) {
             *MAIN_SERVICE_CTX.write().unwrap() = Some(context);
             init_ndk_context().ok();
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MediaCodecInfo {
+    pub name: String,
+    pub encoder: bool,
+    pub hw: Option<bool>, // api 29+
+    pub mime_type: String,
+    pub nv12: bool,
+    pub surface: bool,
+    pub low_latency: Option<bool>, // api 30+
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MediaCodecInfos {
+    pub version: usize,
+    pub codecs: Vec<MediaCodecInfo>,
+}
+
+#[no_mangle]
+pub extern "system" fn Java_ffi_FFI_setCodecInfo(env: JNIEnv, _class: JClass, info: JString) {
+    log::debug!("MainActivity set codec info");
+    let mut env = env;
+    if let Ok(info) = env.get_string(&info) {
+        let info: String = info.into();
+        if let Ok(infos) = serde_json::from_str::<MediaCodecInfos>(&info) {
+            *MEDIA_CODEC_INFOS.write().unwrap() = Some(infos);
         }
     }
 }

@@ -8,7 +8,9 @@ use std::{
 #[cfg(feature = "hwcodec")]
 use crate::hwcodec::*;
 #[cfg(feature = "mediacodec")]
-use crate::mediacodec::{MediaCodecDecoder, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT};
+use crate::mediacodec::{
+    MCEncoderConfig, MediaCodecDecoder, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT,
+};
 #[cfg(feature = "vram")]
 use crate::vram::*;
 use crate::{
@@ -51,7 +53,8 @@ pub enum EncoderCfg {
     HWRAM(HwRamEncoderConfig),
     #[cfg(feature = "vram")]
     VRAM(VRamEncoderConfig),
-    MC(MediaCodecEncoderConfig),
+    #[cfg(feature = "mediacodec")]
+    MC(MCEncoderConfig),
 }
 
 pub trait EncoderApi {
@@ -158,6 +161,8 @@ impl Encoder {
                     Err(e)
                 }
             },
+            #[cfg(feature = "mediacodec")]
+            EncoderCfg::MC(_) => bail!("unsupported"),
         }
     }
 
@@ -365,6 +370,8 @@ impl Encoder {
                     return;
                 }
             },
+            #[cfg(feature = "mediacodec")]
+            EncoderCfg::MC(_) => return,
         };
         let current = ENCODE_CODEC_FORMAT.lock().unwrap().clone();
         if current != format {
@@ -388,6 +395,8 @@ impl Encoder {
             EncoderCfg::HWRAM(_) => false,
             #[cfg(feature = "vram")]
             EncoderCfg::VRAM(_) => false,
+            #[cfg(feature = "mediacodec")]
+            EncoderCfg::MC(_) => false,
         };
         prefer_i444 && i444_useable && !decodings.is_empty()
     }

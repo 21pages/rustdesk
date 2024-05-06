@@ -1,5 +1,7 @@
 package com.carriez.flutter_hbb
 
+import ffi.FFI
+
 /**
  * Handle events from flutter
  * Request MediaProjection permission
@@ -15,6 +17,14 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import android.view.WindowManager
+import android.media.MediaCodecInfo
+import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
+import android.media.MediaCodecList
+import android.media.MediaFormat
+import androidx.annotation.RequiresApi
+import org.json.JSONArray
+import org.json.JSONObject
 import com.hjq.permissions.XXPermissions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -42,6 +52,7 @@ class MainActivity : FlutterActivity() {
             channelTag
         )
         initFlutterChannel(flutterMethodChannel!!)
+        setCodecInfo()
     }
 
     override fun onResume() {
@@ -222,5 +233,44 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    private fun setCodecInfo() {
+        val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+        val codecs = codecList.codecInfos
+        val codecArray = JSONArray()
+
+        codecs.forEach { codec ->
+            val codecObject = JSONObject()
+            codecObject.put("name", codec.name)
+            codecObject.put("encoder", codec.isEncoder)
+            codecObject.put("hw", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) codec.isHardwareAccelerated else null)
+            var mime_type = ""
+            codec.supportedTypes.forEach { type ->
+                if (listOf("video/avc", "video/hevc", "video/x-vnd.on2.vp8", "video/x-vnd.on2.vp9", "video/av01").contains(type)) {
+                    mime_type = type;
+                }
+            }
+            if (mime_type.isNotEmpty()) {
+                codecObject.put("mime_type", mime_type)
+                val caps = codec.getCapabilitiesForType(mime_type)
+                var format = MediaFormat.createVideoFormat(mime_type, 1920, 1080);
+                format.setInteger(MediaFormat.KEY_COLOR_FORMAT, COLOR_FormatSurface)
+                codecObject.put("surface", caps.isFormatSupported(format))
+                format.setInteger(MediaFormat.KEY_COLOR_FORMAT, COLOR_FormatYUV420SemiPlanar)
+                codecObject.put("nv12", caps.isFormatSupported(format))
+                if (!codec.isEncoder) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        codecObject.put("low_latency", caps.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency))
+                    }
+                }
+                codecArray.put(codecObject)
+            }
+        }
+        val result = JSONObject()
+        result.put("version", Build.VERSION.SDK_INT)
+        result.put("codecs", codecArray)
+        Log.d(logTag, "setCodecInfo: $result")
+        FFI.setCodecInfo(result.toString())
     }
 }
