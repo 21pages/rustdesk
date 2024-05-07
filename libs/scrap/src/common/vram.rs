@@ -213,33 +213,12 @@ impl VRamEncoder {
             CodecFormat::H265 => DataFormat::H265,
             _ => return vec![],
         };
-        let Ok(displays) = crate::Display::all() else {
-            log::error!("failed to get displays");
-            return vec![];
-        };
-        if displays.is_empty() {
-            log::error!("no display found");
-            return vec![];
-        }
-        let luids = displays
-            .iter()
-            .map(|d| d.adapter_luid())
-            .collect::<Vec<_>>();
-        let v: Vec<_> = get_available_config()
+        get_available_config()
             .map(|c| c.e)
             .unwrap_or_default()
             .drain(..)
             .filter(|c| c.data_format == data_format)
-            .collect();
-        if luids
-            .iter()
-            .all(|luid| v.iter().any(|f| Some(f.luid) == *luid))
-        {
-            v
-        } else {
-            log::info!("not all adapters support {data_format:?}, luids = {luids:?}");
-            vec![]
-        }
+            .collect()
     }
 
     pub fn encode(&mut self, texture: *mut c_void) -> ResultType<Vec<EncodeFrame>> {
