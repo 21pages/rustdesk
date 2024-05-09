@@ -37,6 +37,58 @@ pub struct MCEncoder {
     codec: MediaCodec,
 }
 
+impl EncoderApi for MCEncoder {
+    fn new(cfg: EncoderCfg, i444: bool) -> ResultType<Self>
+    where
+        Self: Sized,
+    {
+        let EncoderCfg::MC(cfg) = cfg else {
+            bail!("invalid encoder config")
+        };
+        let mime_type = get_mime_type(cfg.format).ok()?;
+        let codec = MediaCodec::from_encoder_type(mime_type)?;
+        let media_format = MediaFormat::new();
+        media_format.set_str("mime", mime_type);
+        media_format.set_i32("width", cfg.width as i32);
+        media_format.set_i32("height", cfg.height as i32);
+        media_format.set_i32("color-format", cfg.color_format as i32);
+        codec.configure(&media_format, None, MediaCodecDirection::Encoder)?;
+        codec.start()?;
+        return Ok(MCEncoder { codec });
+    }
+
+    fn encode_to_message(
+        &mut self,
+        frame: crate::EncodeInput,
+        ms: i64,
+    ) -> ResultType<hbb_common::message_proto::VideoFrame> {
+        bail!("")
+    }
+
+    fn yuvfmt(&self) -> crate::EncodeYuvFormat {
+        crate::EncodeYuvFormat {
+            pixfmt: crate::Pixfmt::NV12,
+            w: 0,
+            h: 0,
+            stride: vec![],
+            u: 0,
+            v: 0,
+        }
+    }
+
+    fn set_quality(&mut self, quality: crate::codec::Quality) -> ResultType<()> {
+        Ok(())
+    }
+
+    fn bitrate(&self) -> u32 {
+        0
+    }
+
+    fn support_abr(&self) -> bool {
+        false
+    }
+}
+
 impl MCEncoder {
     pub fn new(cfg: EncoderCfg) -> Option<MCEncoder> {
         let EncoderCfg::MC(cfg) = cfg else {
