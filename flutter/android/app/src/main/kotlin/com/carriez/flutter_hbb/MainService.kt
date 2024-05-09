@@ -32,6 +32,7 @@ import android.util.Log
 import android.view.Surface
 import android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
@@ -237,6 +238,10 @@ class MainService : Service() {
             dpi = dm.densityDpi
         }
 
+        Toast.makeText(this, "w:$w,h:$h,sdk:${Build.VERSION.SDK_INT}, orientation:$orientation", Toast.LENGTH_LONG).show()
+
+        Log.d(logTag,"updateScreenInfo:orientation:$orientation,w:$w,h:$h");
+
         val max = max(w,h)
         val min = min(w,h)
         if (orientation == ORIENTATION_LANDSCAPE) {
@@ -249,12 +254,12 @@ class MainService : Service() {
         Log.d(logTag,"updateScreenInfo:w:$w,h:$h")
         var scale = 1
         if (w != 0 && h != 0) {
-            if (w > MAX_SCREEN_SIZE || h > MAX_SCREEN_SIZE) {
-                scale = 2
-                w /= scale
-                h /= scale
-                dpi /= scale
-            }
+//            if (w > MAX_SCREEN_SIZE || h > MAX_SCREEN_SIZE) {
+//                scale = 2
+//                w /= scale
+//                h /= scale
+//                dpi /= scale
+//            }
             if (SCREEN_INFO.width != w) {
                 SCREEN_INFO.width = w
                 SCREEN_INFO.height = h
@@ -444,6 +449,7 @@ class MainService : Service() {
             Log.d(logTag, "startRawVideoRecorder failed,surface is null")
             return
         }
+        Log.d(logTag, "createVirtualDisplay, SCREEN_INFO.width:${SCREEN_INFO.width},SCREEN_INFO.height:${SCREEN_INFO.height}, SCREEN_INFO.dpi:${SCREEN_INFO.dpi}")
         virtualDisplay = mp.createVirtualDisplay(
             "RustDeskVD",
             SCREEN_INFO.width, SCREEN_INFO.height, SCREEN_INFO.dpi, VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
