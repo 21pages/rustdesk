@@ -448,7 +448,7 @@ impl<T: InvokeUiSession> Session<T> {
         let mark_unsupported = self.lc.read().unwrap().mark_unsupported.clone();
         let decoder = scrap::codec::Decoder::supported_decodings(
             None,
-            cfg!(feature = "flutter"),
+            cfg!(feature = "flutter_texture_render"),
             luid,
             &mark_unsupported,
         );

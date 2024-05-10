@@ -1640,7 +1640,7 @@ impl LoginConfigHandler {
         msg.supported_decoding =
             hbb_common::protobuf::MessageField::some(Decoder::supported_decodings(
                 Some(&self.id),
-                cfg!(feature = "flutter"),
+                cfg!(feature = "flutter_texture_render"),
                 self.adapter_luid,
                 &self.mark_unsupported,
             ));
@@ -2036,7 +2036,7 @@ impl LoginConfigHandler {
     pub fn update_supported_decodings(&self) -> Message {
         let decoding = scrap::codec::Decoder::supported_decodings(
             Some(&self.id),
-            cfg!(feature = "flutter"),
+            cfg!(feature = "flutter_texture_render"),
             self.adapter_luid,
             &self.mark_unsupported,
         );

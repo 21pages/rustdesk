@@ -939,7 +939,6 @@ pub fn main_handle_wayland_screencast_restore_token(_key: String, _value: String
     } else {
         "".to_owned()
     }
-    
 }
 
 pub fn main_get_input_source() -> SyncReturn<String> {
@@ -1833,7 +1832,7 @@ pub fn main_has_file_clipboard() -> SyncReturn<bool> {
 }
 
 pub fn main_has_gpu_texture_render() -> SyncReturn<bool> {
-    SyncReturn(cfg!(feature = "vram"))
+    SyncReturn(cfg!(feature = "vram") && cfg!(feature = "flutter_texture_render"))
 }
 
 pub fn cm_init() {
