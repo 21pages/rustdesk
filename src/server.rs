@@ -454,6 +454,7 @@ pub async fn start_server(_is_server: bool) {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main]
 pub async fn start_server(is_server: bool) {
+    log::info!("start_server: is_server={}", is_server);
     #[cfg(target_os = "linux")]
     {
         log::info!("DISPLAY={:?}", std::env::var("DISPLAY"));
@@ -468,10 +469,12 @@ pub async fn start_server(is_server: bool) {
     if is_server {
         crate::common::set_server_running(true);
         std::thread::spawn(move || {
+            log::info!("start_server: before ipc::start");
             if let Err(err) = crate::ipc::start("") {
                 log::error!("Failed to start ipc: {}", err);
                 std::process::exit(-1);
             }
+            log::info!("start_server: after ipc::start");
         });
         input_service::fix_key_down_timeout_loop();
         #[cfg(target_os = "linux")]
@@ -484,8 +487,10 @@ pub async fn start_server(is_server: bool) {
         crate::platform::try_kill_broker();
         crate::RendezvousMediator::start_all().await;
     } else {
+        log::info!("start_server: before ipc::connect");
         match crate::ipc::connect(1000, "").await {
             Ok(mut conn) => {
+                log::info!("start_server: after ipc::connect");
                 if conn.send(&Data::SyncConfig(None)).await.is_ok() {
                     if let Ok(Some(data)) = conn.next_timeout(1000).await {
                         match data {
