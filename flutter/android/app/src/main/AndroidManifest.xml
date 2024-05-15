@@ -88,8 +88,7 @@
 
         <service
             android:name=".MainService"
-            android:enabled="true"
-            android:foregroundServiceType="mediaProjection" />
+            android:enabled="true" />
         <activity android:name=".MediaProjectionRequestActivity"
             android:theme="@style/Transparent"
             android:excludeFromRecents="true"/>

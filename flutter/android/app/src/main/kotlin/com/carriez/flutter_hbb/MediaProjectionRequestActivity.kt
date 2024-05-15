@@ -3,6 +3,7 @@ package com.carriez.flutter_hbb
 
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
@@ -10,6 +11,7 @@ import com.carriez.flutter_hbb.MainService
 
 
 class MediaProjectionRequestActivity : AppCompatActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val mMediaProjectionManager =

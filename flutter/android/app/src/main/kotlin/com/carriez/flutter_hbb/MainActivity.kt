@@ -105,7 +105,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "start_capture" -> {
                     MainService.instance?.let {
-                        result.success(it.startCapture())
+                        result.success(it.startMediaProject())
                     } ?: let {
                         result.success(false)
                     }
@@ -312,42 +312,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun onVoiceCallStarted() {
-        var ok = false
-        MainService.instance?.let {
-            ok = it.onVoiceCallStarted()
-        } ?: let {
-            isAudioStart = true
-            ok = audioRecordHandle.onVoiceCallStarted(null)
-        }
-        if (!ok) {
-            // Rarely happens, So we just add log and msgbox here.
-            Log.e(logTag, "onVoiceCallStarted fail")
-            flutterMethodChannel?.invokeMethod("msgbox", mapOf(
-                "type" to "custom-nook-nocancel-hasclose-error",
-                "title" to "Voice call",
-                "text" to "Failed to start voice call."))
-        } else {
-            Log.d(logTag, "onVoiceCallStarted success")
-        }
+
     }
 
     private fun onVoiceCallClosed() {
-        var ok = false
-        MainService.instance?.let {
-            ok = it.onVoiceCallClosed()
-        } ?: let {
-            isAudioStart = false
-            ok = audioRecordHandle.onVoiceCallClosed(null)
-        }
-        if (!ok) {
-            // Rarely happens, So we just add log and msgbox here.
-            Log.e(logTag, "onVoiceCallClosed fail")
-            flutterMethodChannel?.invokeMethod("msgbox", mapOf(
-                "type" to "custom-nook-nocancel-hasclose-error",
-                "title" to "Voice call",
-                "text" to "Failed to stop voice call."))
-        } else {
-            Log.d(logTag, "onVoiceCallClosed success")
-        }
+
     }
 }
