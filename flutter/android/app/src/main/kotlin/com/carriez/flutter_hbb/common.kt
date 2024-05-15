@@ -1,26 +1,19 @@
 package com.carriez.flutter_hbb
 
-import android.Manifest.permission.*
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.media.AudioRecord
 import android.media.AudioRecord.READ_BLOCKING
-import android.media.MediaCodecList
-import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
-import android.provider.Settings
-import android.provider.Settings.*
+import android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
 import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat.getSystemService
-import com.hjq.permissions.Permission
 import com.hjq.permissions.XXPermissions
 import java.nio.ByteBuffer
-import java.util.*
+import java.util.Locale
 
 
 // intent action, extra
@@ -30,6 +23,10 @@ const val ACT_LOGIN_REQ_NOTIFY = "LOGIN_REQ_NOTIFY"
 const val EXT_INIT_FROM_BOOT = "EXT_INIT_FROM_BOOT"
 const val EXT_MEDIA_PROJECTION_RES_INTENT = "MEDIA_PROJECTION_RES_INTENT"
 const val EXT_LOGIN_REQ_NOTIFY = "LOGIN_REQ_NOTIFY"
+
+const val ACTION_HANDLE_MEDIA_PROJECTION_RESULT = "action_handle_media_projection_result"
+const val EXTRA_MEDIA_PROJECTION_RESULT_DATA = "result_data_media_projection"
+const val EXTRA_MEDIA_PROJECTION_RESULT_CODE = "result_code_media_projection"
 
 // Activity requestCode
 const val REQ_INVOKE_PERMISSION_ACTIVITY_MEDIA_PROJECTION = 101

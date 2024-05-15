@@ -1,7 +1,5 @@
 package com.carriez.flutter_hbb
 
-import ffi.FFI
-
 /**
  * Capture screen,get video and audio,send to rust.
  * Dispatch notifications
@@ -9,46 +7,49 @@ import ffi.FFI
  * Inspired by [droidVNC-NG] https://github.com/bk138/droidVNC-NG
  */
 
-import android.Manifest
 import android.annotation.SuppressLint
-import android.app.*
+import android.app.Notification
+import android.app.Notification.FOREGROUND_SERVICE_IMMEDIATE
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.PendingIntent.FLAG_IMMUTABLE
 import android.app.PendingIntent.FLAG_UPDATE_CURRENT
+import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.content.res.Configuration
-import android.content.res.Configuration.ORIENTATION_LANDSCAPE
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR
 import android.hardware.display.VirtualDisplay
-import android.media.*
+import android.media.ImageReader
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.*
-import android.util.DisplayMetrics
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import android.view.Surface
 import android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
-import android.view.WindowManager
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import ffi.FFI
 import io.flutter.embedding.android.FlutterActivity
-import java.util.concurrent.Executors
-import kotlin.concurrent.thread
 import org.json.JSONException
 import org.json.JSONObject
-import java.nio.ByteBuffer
-import kotlin.math.max
-import kotlin.math.min
+import java.util.concurrent.Executors
+
 
 const val DEFAULT_NOTIFY_TITLE = "RustDesk"
 const val DEFAULT_NOTIFY_TEXT = "Service is running"
-const val DEFAULT_NOTIFY_ID = 1
+const val DEFAULT_NOTIFY_ID = 11
 const val NOTIFY_ID_OFFSET = 100
 
 const val MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_VP9
@@ -65,12 +66,6 @@ class MainService : Service() {
     fun rustPointerInput(kind: String, mask: Int, x: Int, y: Int) {
         // turn on screen with LIFT_DOWN when screen off
         if (!powerManager.isInteractive && (kind == "touch" || mask == LIFT_DOWN)) {
-            if (wakeLock.isHeld) {
-                Log.d(logTag, "Turn on Screen, WakeLock release")
-                wakeLock.release()
-            }
-            Log.d(logTag,"Turn on Screen")
-            wakeLock.acquire(5000)
         } else {
             when (kind) {
                 "touch" -> {
@@ -175,11 +170,9 @@ class MainService : Service() {
         }
     }
 
-    private var serviceLooper: Looper? = null
-    private var serviceHandler: Handler? = null
 
     private val powerManager: PowerManager by lazy { applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager }
-    private val wakeLock: PowerManager.WakeLock by lazy { powerManager.newWakeLock(PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "rustdesk:wakelock")}
+    private val wakeLock: PowerManager.WakeLock by lazy { powerManager.newWakeLock(PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.SCREEN_DIM_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE or PowerManager.PARTIAL_WAKE_LOCK, "rustdesk:wakelock")}
 
     private fun translate(input: String): String {
         Log.d(logTag, "translate:$LOCAL_NAME")
@@ -187,6 +180,7 @@ class MainService : Service() {
     }
 
     companion object {
+        public var instance: MainService? = null
         private var _isReady = false // media permission ready status
         private var _isStart = false // screen capture start status
         private var _isAudioStart = false // audio capture start status
@@ -200,7 +194,6 @@ class MainService : Service() {
 
     private val logTag = "LOG_SERVICE"
     private val useVP9 = false
-    private val binder = LocalBinder()
 
     private var reuseVirtualDisplay = Build.VERSION.SDK_INT > 33
 
@@ -222,121 +215,112 @@ class MainService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         Log.d(logTag,"MainService onCreate, sdk int:${Build.VERSION.SDK_INT} reuseVirtualDisplay:$reuseVirtualDisplay")
         FFI.init(this)
-        HandlerThread("Service", Process.THREAD_PRIORITY_BACKGROUND).apply {
-            start()
-            serviceLooper = looper
-            serviceHandler = Handler(looper)
-        }
-        updateScreenInfo(resources.configuration.orientation)
-        initNotification()
 
         // keep the config dir same with flutter
         val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
         val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
         FFI.startServer(configPath, "")
 
-        createForegroundNotification()
+        Log.d(logTag, "call createForegroundNotification in onCreate")
+//        initNotification()
+//        createForegroundNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            /*
+                Create notification channel
+             */
+            val serviceChannel = NotificationChannel(
+                packageName,
+                "Foreground Service Channel",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            val manager = getSystemService(
+                NotificationManager::class.java
+            )
+            manager.createNotificationChannel(serviceChannel)
+
+            /*
+                startForeground() w/ notification
+             */
+//            if (Build.VERSION.SDK_INT >= 29) {
+//                startForeground(
+//                    DEFAULT_NOTIFY_ID,
+//                    getNotification(null, true),
+//                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+//                )
+//            } else {
+                startForeground(DEFAULT_NOTIFY_ID, getNotification(null, true))
+//            }
+        }
     }
 
     override fun onDestroy() {
         checkMediaPermission()
         super.onDestroy()
+        instance = null
     }
 
-    private fun updateScreenInfo(orientation: Int) {
-        var w: Int
-        var h: Int
-        var dpi: Int
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+     override fun onBind(intent: Intent?): IBinder? {
+         return null
+     }
 
-        @Suppress("DEPRECATION")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val m = windowManager.maximumWindowMetrics
-            w = m.bounds.width()
-            h = m.bounds.height()
-            dpi = resources.configuration.densityDpi
-        } else {
-            val dm = DisplayMetrics()
-            windowManager.defaultDisplay.getRealMetrics(dm)
-            w = dm.widthPixels
-            h = dm.heightPixels
-            dpi = dm.densityDpi
-        }
-
-        val max = max(w,h)
-        val min = min(w,h)
-        if (orientation == ORIENTATION_LANDSCAPE) {
-            w = max
-            h = min
-        } else {
-            w = min
-            h = max
-        }
-        Log.d(logTag,"updateScreenInfo:w:$w,h:$h")
-        var scale = 1
-        if (w != 0 && h != 0) {
-            if (SCREEN_INFO.width != w) {
-                SCREEN_INFO.width = w
-                SCREEN_INFO.height = h
-                SCREEN_INFO.scale = scale
-                SCREEN_INFO.dpi = dpi
-                if (isStart) {
-                    stopCapture()
-                    FFI.refreshScreen()
-                    startCapture()
-                }
-            }
-
-        }
-    }
-
-    override fun onBind(intent: Intent): IBinder {
-        Log.d(logTag, "service onBind")
-        return binder
-    }
-
-    inner class LocalBinder : Binder() {
-        init {
-            Log.d(logTag, "LocalBinder init")
-        }
-
-        fun getService(): MainService = this@MainService
-    }
+    private var mResultCode = 0
+    private var mResultData: Intent? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(logTag, "onStartCommand" + intent?.action)
         Log.d("whichService", "this service: ${Thread.currentThread()}")
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
-            createForegroundNotification()
+            Log.d(logTag, "call createForegroundNotification in onStartCommand")
+//            createForegroundNotification()
 
             if (intent.getBooleanExtra(EXT_INIT_FROM_BOOT, false)) {
                 FFI.startService()
             }
+
+            // This initiates a prompt dialog for the user to confirm screen projection.
+            val mediaProjectionRequestIntent = Intent(
+                this,
+                MediaProjectionRequestActivity::class.java
+            )
+            mediaProjectionRequestIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(mediaProjectionRequestIntent)
+
+        } else if (intent?.action == ACTION_HANDLE_MEDIA_PROJECTION_RESULT) {
             Log.d(logTag, "service starting: ${startId}:${Thread.currentThread()}")
             val mediaProjectionManager =
                 getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
-            intent.getParcelableExtra<Intent>(EXT_MEDIA_PROJECTION_RES_INTENT)?.let {
+            // Step 4 (optional): coming back from capturing permission check, now starting capturing machinery
+            mResultCode = intent.getIntExtra(EXTRA_MEDIA_PROJECTION_RESULT_CODE, 0)
+            mResultData =
+                intent.getParcelableExtra<Intent>(EXTRA_MEDIA_PROJECTION_RESULT_DATA)
+
+            if (mResultData != null) {
                 mediaProjection =
-                    mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, it)
-                checkMediaPermission()
+                    mediaProjectionManager.getMediaProjection(mResultCode, mResultData!!)
                 _isReady = true
-            } ?: let {
-                Log.d(logTag, "getParcelableExtra intent null, invoke requestMediaProjection")
-                requestMediaProjection()
             }
+
+
+//            intent.getParcelableExtra<Intent>(EXT_MEDIA_PROJECTION_RES_INTENT)?.let {
+//                mediaProjection =
+//                    mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, it)
+//                checkMediaPermission()
+//                _isReady = true
+//            } ?: let {
+//                Log.d(logTag, "getParcelableExtra intent null, invoke requestMediaProjection")
+//                requestMediaProjection()
+//            }
         }
         return START_NOT_STICKY // don't use sticky (auto restart), the new service (from auto restart) will lose control
     }
 
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        updateScreenInfo(newConfig.orientation)
-    }
-
     private fun requestMediaProjection() {
+        Log.d(logTag, "requestMediaProjection");
         val intent = Intent(this, PermissionRequestTransparentActivity::class.java).apply {
             action = ACT_REQUEST_MEDIA_PROJECTION
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -370,7 +354,7 @@ class MainService : Service() {
                             }
                         } catch (ignored: java.lang.Exception) {
                         }
-                    }, serviceHandler)
+                    }, null)
                 }
             Log.d(logTag, "ImageReader.setOnImageAvailableListener done")
             imageReader?.surface
@@ -389,32 +373,44 @@ class MainService : Service() {
         if (isStart) {
             return true
         }
-        if (mediaProjection == null) {
-            Log.w(logTag, "startCapture fail,mediaProjection is null")
-            return false
-        }
-        
-        updateScreenInfo(resources.configuration.orientation)
-        Log.d(logTag, "Start Capture")
-        surface = createSurface()
+        val intent = Intent(this, MediaProjectionService::class.java)
+        intent.putExtra(EXTRA_MEDIA_PROJECTION_RESULT_CODE, mResultCode)
+        intent.putExtra(EXTRA_MEDIA_PROJECTION_RESULT_DATA, mResultData)
 
-        if (useVP9) {
-            startVP9VideoRecorder(mediaProjection!!)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
         } else {
-            startRawVideoRecorder(mediaProjection!!)
+            startService(intent)
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!audioRecordHandle.createAudioRecorder(false, mediaProjection)) {
-                Log.d(logTag, "createAudioRecorder fail")
-            } else {
-                Log.d(logTag, "audio recorder start")
-                audioRecordHandle.startAudioRecorder()
-            }
-        }
-        checkMediaPermission()
+//        if (mediaProjection == null) {
+//            Log.w(logTag, "startCapture fail,mediaProjection is null")
+//            return false
+//        }
+//
+//        Log.d(logTag, "Start Capture")
+//        surface = createSurface()
+//
+//        if (useVP9) {
+//            startVP9VideoRecorder(mediaProjection!!)
+//        } else {
+//            startRawVideoRecorder(mediaProjection!!)
+//        }
+//
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+//            if (!audioRecordHandle.createAudioRecorder(false, mediaProjection)) {
+//                Log.d(logTag, "createAudioRecorder fail")
+//            } else {
+//                Log.d(logTag, "audio recorder start")
+//                audioRecordHandle.startAudioRecorder()
+//            }
+//        }
+//        checkMediaPermission()
         _isStart = true
         FFI.setFrameRawEnable("video",true)
+        // if (wakeLock.isHeld) {
+        //     wakeLock.release()
+        // }
+        // wakeLock.acquire()
         return true
     }
 
@@ -452,6 +448,9 @@ class MainService : Service() {
         // release audio
         _isAudioStart = false
         audioRecordHandle.tryReleaseAudio()
+        // if (wakeLock.isHeld) {
+        //     wakeLock.release()
+        // }
     }
 
     fun destroy() {
@@ -574,6 +573,51 @@ class MainService : Service() {
         }
     }
 
+    private var mNotification: Notification? = null
+    @SuppressLint("WrongConstant")
+    private fun getNotification(text: String?, isSilent: Boolean): Notification {
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0,
+            notificationIntent, FLAG_IMMUTABLE
+        )
+        val builder = NotificationCompat.Builder(
+            this,
+            packageName
+        )
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(text?: "null text")
+            .setSilent(isSilent)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+        if (Build.VERSION.SDK_INT >= 31) {
+            builder.setForegroundServiceBehavior(FOREGROUND_SERVICE_IMMEDIATE)
+        }
+        mNotification = builder.build()
+        return mNotification!!
+    }
+
+    private fun updateNotification() {
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+            .notify(
+                DEFAULT_NOTIFY_ID,
+                getNotification(
+                    DEFAULT_NOTIFY_TEXT,
+                    false
+                )
+            )
+
+    }
+
+    fun getCurrentNotification(): Notification? {
+        return try {
+            instance!!.mNotification
+        } catch (ignored: java.lang.Exception) {
+            null
+        }
+    }
+
     private fun initNotification() {
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationChannel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -593,6 +637,9 @@ class MainService : Service() {
             ""
         }
         notificationBuilder = NotificationCompat.Builder(this, notificationChannel)
+//        if (Build.VERSION.SDK_INT >= 31) {
+//            notificationBuilder.setForegroundServiceBehavior(FOREGROUND_SERVICE_IMMEDIATE)
+//        }
     }
 
     @SuppressLint("UnspecifiedImmutableFlag")
@@ -621,7 +668,12 @@ class MainService : Service() {
             .setColor(ContextCompat.getColor(this, R.color.primary))
             .setWhen(System.currentTimeMillis())
             .build()
-        startForeground(DEFAULT_NOTIFY_ID, notification)
+//        if (Build.VERSION.SDK_INT >= 29) {
+//            startForeground(DEFAULT_NOTIFY_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+//        } else {
+            startForeground(DEFAULT_NOTIFY_ID, notification)
+//        }
+
     }
 
     private fun loginRequestNotification(
@@ -630,16 +682,16 @@ class MainService : Service() {
         username: String,
         peerId: String
     ) {
-        val notification = notificationBuilder
-            .setOngoing(false)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setContentTitle(translate("Do you accept?"))
-            .setContentText("$type:$username-$peerId")
-            // .setStyle(MediaStyle().setShowActionsInCompactView(0, 1))
-            // .addAction(R.drawable.check_blue, "check", genLoginRequestPendingIntent(true))
-            // .addAction(R.drawable.close_red, "close", genLoginRequestPendingIntent(false))
-            .build()
-        notificationManager.notify(getClientNotifyID(clientID), notification)
+//        val notification = notificationBuilder
+//            .setOngoing(false)
+//            .setPriority(NotificationCompat.PRIORITY_MAX)
+//            .setContentTitle(translate("Do you accept?"))
+//            .setContentText("$type:$username-$peerId")
+//            // .setStyle(MediaStyle().setShowActionsInCompactView(0, 1))
+//            // .addAction(R.drawable.check_blue, "check", genLoginRequestPendingIntent(true))
+//            // .addAction(R.drawable.close_red, "close", genLoginRequestPendingIntent(false))
+//            .build()
+//        notificationManager.notify(getClientNotifyID(clientID), notification)
     }
 
     private fun onClientAuthorizedNotification(
@@ -648,14 +700,14 @@ class MainService : Service() {
         username: String,
         peerId: String
     ) {
-        cancelNotification(clientID)
-        val notification = notificationBuilder
-            .setOngoing(false)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setContentTitle("$type ${translate("Established")}")
-            .setContentText("$username - $peerId")
-            .build()
-        notificationManager.notify(getClientNotifyID(clientID), notification)
+//        cancelNotification(clientID)
+//        val notification = notificationBuilder
+//            .setOngoing(false)
+//            .setPriority(NotificationCompat.PRIORITY_MAX)
+//            .setContentTitle("$type ${translate("Established")}")
+//            .setContentText("$username - $peerId")
+//            .build()
+//        notificationManager.notify(getClientNotifyID(clientID), notification)
     }
 
     private fun voiceCallRequestNotification(
@@ -664,13 +716,13 @@ class MainService : Service() {
         username: String,
         peerId: String
     ) {
-        val notification = notificationBuilder
-            .setOngoing(false)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setContentTitle(translate("Do you accept?"))
-            .setContentText("$type:$username-$peerId")
-            .build()
-        notificationManager.notify(getClientNotifyID(clientID), notification)
+//        val notification = notificationBuilder
+//            .setOngoing(false)
+//            .setPriority(NotificationCompat.PRIORITY_MAX)
+//            .setContentTitle(translate("Do you accept?"))
+//            .setContentText("$type:$username-$peerId")
+//            .build()
+//        notificationManager.notify(getClientNotifyID(clientID), notification)
     }
 
     private fun getClientNotifyID(clientID: Int): Int {
@@ -678,7 +730,7 @@ class MainService : Service() {
     }
 
     fun cancelNotification(clientID: Int) {
-        notificationManager.cancel(getClientNotifyID(clientID))
+//        notificationManager.cancel(getClientNotifyID(clientID))
     }
 
     @SuppressLint("UnspecifiedImmutableFlag")
@@ -694,15 +746,4 @@ class MainService : Service() {
         }
     }
 
-    private fun setTextNotification(_title: String?, _text: String?) {
-        val title = _title ?: DEFAULT_NOTIFY_TITLE
-        val text = _text ?: translate(DEFAULT_NOTIFY_TEXT)
-        val notification = notificationBuilder
-            .clearActions()
-            .setStyle(null)
-            .setContentTitle(title)
-            .setContentText(text)
-            .build()
-        notificationManager.notify(DEFAULT_NOTIFY_ID, notification)
-    }
 }

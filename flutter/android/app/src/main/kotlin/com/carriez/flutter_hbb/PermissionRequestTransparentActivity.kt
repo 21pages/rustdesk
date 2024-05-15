@@ -45,8 +45,10 @@ class PermissionRequestTransparentActivity: Activity() {
         serviceIntent.putExtra(EXT_MEDIA_PROJECTION_RES_INTENT, mediaProjectionResultIntent)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Log.d(logTag, "startForegroundService")
             startForegroundService(serviceIntent)
         } else {
+            Log.d(logTag, "startService")
             startService(serviceIntent)
         }
     }

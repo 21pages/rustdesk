@@ -7,29 +7,23 @@ package com.carriez.flutter_hbb
  * Inspired by [droidVNC-NG] https://github.com/bk138/droidVNC-NG
  */
 
-import ffi.FFI
-
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
-import android.os.Build
-import android.os.IBinder
-import android.util.Log
-import android.view.WindowManager
 import android.media.MediaCodecInfo
 import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
 import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
 import android.media.MediaCodecList
-import android.media.MediaFormat
+import android.os.Build
 import android.util.DisplayMetrics
-import androidx.annotation.RequiresApi
-import org.json.JSONArray
-import org.json.JSONObject
+import android.util.Log
+import android.view.WindowManager
 import com.hjq.permissions.XXPermissions
+import ffi.FFI
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.concurrent.thread
 
 
@@ -40,18 +34,12 @@ class MainActivity : FlutterActivity() {
 
     private val channelTag = "mChannel"
     private val logTag = "mMainActivity"
-    private var mainService: MainService? = null
 
     private var isAudioStart = false
     private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        if (MainService.isReady) {
-            Intent(activity, MainService::class.java).also {
-                bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
-            }
-        }
         flutterMethodChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             channelTag
@@ -72,6 +60,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun requestMediaProjection() {
+        Log.d(logTag, "requestMediaProjection");
         val intent = Intent(this, PermissionRequestTransparentActivity::class.java).apply {
             action = ACT_REQUEST_MEDIA_PROJECTION
         }
@@ -87,42 +76,35 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
-        mainService?.let {
-            unbindService(serviceConnection)
-        }
         super.onDestroy()
     }
 
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            Log.d(logTag, "onServiceConnected")
-            val binder = service as MainService.LocalBinder
-            mainService = binder.getService()
-        }
 
-        override fun onServiceDisconnected(name: ComponentName?) {
-            Log.d(logTag, "onServiceDisconnected")
-            mainService = null
-        }
-    }
 
     private fun initFlutterChannel(flutterMethodChannel: MethodChannel) {
         flutterMethodChannel.setMethodCallHandler { call, result ->
             // make sure result will be invoked, otherwise flutter will await forever
             when (call.method) {
                 "init_service" -> {
-                    Intent(activity, MainService::class.java).also {
-                        bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
-                    }
                     if (MainService.isReady) {
                         result.success(false)
                         return@setMethodCallHandler
                     }
-                    requestMediaProjection()
+//                    requestMediaProjection()
+                    val request = Intent(
+                        this@MainActivity,
+                        MainService::class.java
+                    )
+                    request.action = ACT_INIT_MEDIA_PROJECTION_AND_SERVICE
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(request)
+                    } else {
+                        startService(request)
+                    }
                     result.success(true)
                 }
                 "start_capture" -> {
-                    mainService?.let {
+                    MainService.instance?.let {
                         result.success(it.startCapture())
                     } ?: let {
                         result.success(false)
@@ -130,7 +112,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "stop_service" -> {
                     Log.d(logTag, "Stop service")
-                    mainService?.let {
+                    MainService.instance?.let {
                         it.destroy()
                         result.success(true)
                     } ?: let {
@@ -161,7 +143,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "check_video_permission" -> {
-                    mainService?.let {
+                    MainService.instance?.let {
                         result.success(it.checkMediaPermission())
                     } ?: let {
                         result.success(false)
@@ -192,7 +174,7 @@ class MainActivity : FlutterActivity() {
                 "cancel_notification" -> {
                     if (call.arguments is Int) {
                         val id = call.arguments as Int
-                        mainService?.cancelNotification(id)
+                        MainService.instance?.cancelNotification(id)
                     } else {
                         result.success(true)
                     }
@@ -331,7 +313,7 @@ class MainActivity : FlutterActivity() {
 
     private fun onVoiceCallStarted() {
         var ok = false
-        mainService?.let {
+        MainService.instance?.let {
             ok = it.onVoiceCallStarted()
         } ?: let {
             isAudioStart = true
@@ -351,7 +333,7 @@ class MainActivity : FlutterActivity() {
 
     private fun onVoiceCallClosed() {
         var ok = false
-        mainService?.let {
+        MainService.instance?.let {
             ok = it.onVoiceCallClosed()
         } ?: let {
             isAudioStart = false
