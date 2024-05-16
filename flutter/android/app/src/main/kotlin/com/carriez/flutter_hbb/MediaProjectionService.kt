@@ -126,7 +126,7 @@ class MediaProjectionService : Service() {
                             val planes = image.planes
                             val buffer = planes[0].buffer
                             buffer.rewind()
-                            FFI.onVideoFrameUpdate(buffer)
+                           FFI.onVideoFrameUpdate(buffer)
                         }
                     } catch (ignored: java.lang.Exception) {
                     }
@@ -167,12 +167,12 @@ class MediaProjectionService : Service() {
         }
         var scale = 1
         if (w != 0 && h != 0) {
-            if (w > 1200 || h > 1200) {
-                scale = 2
-                w /= scale
-                h /= scale
-                dpi /= scale
-            }
+//            if (w > 1200 || h > 1200) {
+//                scale = 2
+//                w /= scale
+//                h /= scale
+//                dpi /= scale
+//            }
             if (SCREEN_INFO.width != w) {
                 SCREEN_INFO.width = w
                 SCREEN_INFO.height = h

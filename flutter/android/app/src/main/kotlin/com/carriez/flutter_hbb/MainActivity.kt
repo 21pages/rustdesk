@@ -318,4 +318,14 @@ class MainActivity : FlutterActivity() {
     private fun onVoiceCallClosed() {
 
     }
+
+    override fun onStop() {
+        super.onStop()
+        startService(Intent(this, FloatingWindowService::class.java))
+    }
+
+    override fun onStart() {
+        super.onStart()
+        stopService(Intent(this, FloatingWindowService::class.java))
+    }
 }

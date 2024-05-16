@@ -54,7 +54,6 @@
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode|navigation"
-            android:excludeFromRecents="true"
             android:exported="true"
             android:hardwareAccelerated="true"
             android:launchMode="singleTop"
@@ -88,10 +87,14 @@
 
         <service
             android:name=".MainService"
+            android:foregroundServiceType="connectedDevice"
             android:enabled="true" />
         <activity android:name=".MediaProjectionRequestActivity"
             android:theme="@style/Transparent"
             android:excludeFromRecents="true"/>
+        <service
+            android:name=".FloatingWindowService"
+            android:enabled="true" />
         <!--
  Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java

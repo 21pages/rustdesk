@@ -18,24 +18,15 @@ import android.app.PendingIntent.FLAG_UPDATE_CURRENT
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Color
-import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR
-import android.hardware.display.VirtualDisplay
-import android.media.ImageReader
-import android.media.MediaCodec
-import android.media.MediaCodecInfo
 import android.media.MediaFormat
-import android.media.projection.MediaProjection
-import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
-import android.view.Surface
-import android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
@@ -44,7 +35,6 @@ import ffi.FFI
 import io.flutter.embedding.android.FlutterActivity
 import org.json.JSONException
 import org.json.JSONObject
-import java.util.concurrent.Executors
 
 
 const val DEFAULT_NOTIFY_TITLE = "RustDesk"
@@ -207,15 +197,15 @@ class MainService : Service() {
             /*
                 startForeground() w/ notification
              */
-//            if (Build.VERSION.SDK_INT >= 29) {
-//                startForeground(
-//                    DEFAULT_NOTIFY_ID,
-//                    getNotification(null, true),
-//                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-//                )
-//            } else {
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(
+                    DEFAULT_NOTIFY_ID,
+                    getNotification(null, true),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
                 startForeground(DEFAULT_NOTIFY_ID, getNotification(null, true))
-//            }
+            }
         }
     }
 
@@ -254,9 +244,6 @@ class MainService : Service() {
 
         } else if (intent?.action == ACTION_HANDLE_MEDIA_PROJECTION_RESULT) {
             Log.d(logTag, "service starting: ${startId}:${Thread.currentThread()}")
-            val mediaProjectionManager =
-                getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-
             // Step 4 (optional): coming back from capturing permission check, now starting capturing machinery
             mResultCode = intent.getIntExtra(EXTRA_MEDIA_PROJECTION_RESULT_CODE, 0)
             mResultData =
@@ -264,6 +251,7 @@ class MainService : Service() {
 
             if (mResultData != null) {
                 _isReady = true
+                return START_REDELIVER_INTENT
             }
         }
         return START_NOT_STICKY // don't use sticky (auto restart), the new service (from auto restart) will lose control
@@ -289,6 +277,7 @@ class MainService : Service() {
         } else {
             startService(intent)
         }
+        updateNotification()
     }
 
     fun checkMediaPermission(): Boolean {
