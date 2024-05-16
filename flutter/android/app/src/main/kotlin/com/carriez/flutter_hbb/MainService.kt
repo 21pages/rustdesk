@@ -18,6 +18,7 @@ import android.app.PendingIntent.FLAG_UPDATE_CURRENT
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR
@@ -64,27 +65,14 @@ class MainService : Service() {
     @Keep
     @RequiresApi(Build.VERSION_CODES.N)
     fun rustPointerInput(kind: String, mask: Int, x: Int, y: Int) {
-        // turn on screen with LIFT_DOWN when screen off
-        if (!powerManager.isInteractive && (kind == "touch" || mask == LIFT_DOWN)) {
-        } else {
-            when (kind) {
-                "touch" -> {
-                    InputService.ctx?.onTouchInput(mask, x, y)
-                }
-                "mouse" -> {
-                    InputService.ctx?.onMouseInput(mask, x, y)
-                }
-                else -> {
-                }
-            }
-        }
+
     }
 
     @Keep
     @RequiresApi(Build.VERSION_CODES.N)
     fun rustKeyEventInput(input: ByteArray) {
-        InputService.ctx?.onKeyEvent(input)
     }
+
 
     @Keep
     fun rustGetByName(name: String): String {
@@ -104,45 +92,16 @@ class MainService : Service() {
     fun rustSetByName(name: String, arg1: String, arg2: String) {
         when (name) {
             "add_connection" -> {
-                try {
-                    val jsonObject = JSONObject(arg1)
-                    val id = jsonObject["id"] as Int
-                    val username = jsonObject["name"] as String
-                    val peerId = jsonObject["peer_id"] as String
-                    val authorized = jsonObject["authorized"] as Boolean
-                    val isFileTransfer = jsonObject["is_file_transfer"] as Boolean
-                    val type = if (isFileTransfer) {
-                        translate("File Connection")
-                    } else {
-                        translate("Screen Connection")
-                    }
-                    if (authorized) {
-                        if (!isFileTransfer && !isStart) {
-                            startMediaProject()
-                        }
-                        onClientAuthorizedNotification(id, type, username, peerId)
-                    } else {
-                        loginRequestNotification(id, type, username, peerId)
-                    }
-                } catch (e: JSONException) {
-                    e.printStackTrace()
-                }
             }
             "update_voice_call_state" -> {
 
             }
             "stop_capture" -> {
-                Log.d(logTag, "from rust:stop_capture")
-                MediaProjectionService.instance?.stopCapture()
             }
             else -> {
             }
         }
     }
-
-
-    private val powerManager: PowerManager by lazy { applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager }
-    private val wakeLock: PowerManager.WakeLock by lazy { powerManager.newWakeLock(PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.SCREEN_DIM_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE or PowerManager.PARTIAL_WAKE_LOCK, "rustdesk:wakelock")}
 
     private fun translate(input: String): String {
         Log.d(logTag, "translate:$LOCAL_NAME")
@@ -169,13 +128,6 @@ class MainService : Service() {
 
     private val logTag = "LOG_SERVICE"
 
-    // audio
-    private val audioRecordHandle = AudioRecordHandle(this, { isStart }, { isAudioStart })
-
-    // notification
-    private lateinit var notificationManager: NotificationManager
-    private lateinit var notificationChannel: String
-    private lateinit var notificationBuilder: NotificationCompat.Builder
 
     override fun onCreate() {
         super.onCreate()
@@ -203,24 +155,12 @@ class MainService : Service() {
                 NotificationManager::class.java
             )
             manager.createNotificationChannel(serviceChannel)
+            startForeground(DEFAULT_NOTIFY_ID, getNotification(null, true))
 
-            /*
-                startForeground() w/ notification
-             */
-//            if (Build.VERSION.SDK_INT >= 29) {
-//                startForeground(
-//                    DEFAULT_NOTIFY_ID,
-//                    getNotification(null, true),
-//                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-//                )
-//            } else {
-                startForeground(DEFAULT_NOTIFY_ID, getNotification(null, true))
-//            }
         }
     }
 
     override fun onDestroy() {
-        checkMediaPermission()
         super.onDestroy()
         instance = null
     }
@@ -237,13 +177,6 @@ class MainService : Service() {
         Log.d("whichService", "this service: ${Thread.currentThread()}")
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
-            Log.d(logTag, "call createForegroundNotification in onStartCommand")
-//            createForegroundNotification()
-
-            if (intent.getBooleanExtra(EXT_INIT_FROM_BOOT, false)) {
-                FFI.startService()
-            }
-
             // This initiates a prompt dialog for the user to confirm screen projection.
             val mediaProjectionRequestIntent = Intent(
                 this,
@@ -354,133 +287,4 @@ class MainService : Service() {
             null
         }
     }
-
-    private fun initNotification() {
-        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationChannel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channelId = "RustDesk"
-            val channelName = "RustDesk Service"
-            val channel = NotificationChannel(
-                channelId,
-                channelName, NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "RustDesk Service Channel"
-            }
-            channel.lightColor = Color.BLUE
-            channel.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
-            notificationManager.createNotificationChannel(channel)
-            channelId
-        } else {
-            ""
-        }
-        notificationBuilder = NotificationCompat.Builder(this, notificationChannel)
-//        if (Build.VERSION.SDK_INT >= 31) {
-//            notificationBuilder.setForegroundServiceBehavior(FOREGROUND_SERVICE_IMMEDIATE)
-//        }
-    }
-
-    @SuppressLint("UnspecifiedImmutableFlag")
-    private fun createForegroundNotification() {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            putExtra("type", type)
-        }
-        val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.getActivity(this, 0, intent, FLAG_UPDATE_CURRENT or FLAG_IMMUTABLE)
-        } else {
-            PendingIntent.getActivity(this, 0, intent, FLAG_UPDATE_CURRENT)
-        }
-        val notification = notificationBuilder
-            .setOngoing(true)
-            .setSmallIcon(R.mipmap.ic_stat_logo)
-            .setDefaults(Notification.DEFAULT_ALL)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentTitle(DEFAULT_NOTIFY_TITLE)
-            .setContentText(translate(DEFAULT_NOTIFY_TEXT))
-            .setOnlyAlertOnce(true)
-            .setContentIntent(pendingIntent)
-            .setColor(ContextCompat.getColor(this, R.color.primary))
-            .setWhen(System.currentTimeMillis())
-            .build()
-//        if (Build.VERSION.SDK_INT >= 29) {
-//            startForeground(DEFAULT_NOTIFY_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-//        } else {
-            startForeground(DEFAULT_NOTIFY_ID, notification)
-//        }
-
-    }
-
-    private fun loginRequestNotification(
-        clientID: Int,
-        type: String,
-        username: String,
-        peerId: String
-    ) {
-//        val notification = notificationBuilder
-//            .setOngoing(false)
-//            .setPriority(NotificationCompat.PRIORITY_MAX)
-//            .setContentTitle(translate("Do you accept?"))
-//            .setContentText("$type:$username-$peerId")
-//            // .setStyle(MediaStyle().setShowActionsInCompactView(0, 1))
-//            // .addAction(R.drawable.check_blue, "check", genLoginRequestPendingIntent(true))
-//            // .addAction(R.drawable.close_red, "close", genLoginRequestPendingIntent(false))
-//            .build()
-//        notificationManager.notify(getClientNotifyID(clientID), notification)
-    }
-
-    private fun onClientAuthorizedNotification(
-        clientID: Int,
-        type: String,
-        username: String,
-        peerId: String
-    ) {
-//        cancelNotification(clientID)
-//        val notification = notificationBuilder
-//            .setOngoing(false)
-//            .setPriority(NotificationCompat.PRIORITY_MAX)
-//            .setContentTitle("$type ${translate("Established")}")
-//            .setContentText("$username - $peerId")
-//            .build()
-//        notificationManager.notify(getClientNotifyID(clientID), notification)
-    }
-
-    private fun voiceCallRequestNotification(
-        clientID: Int,
-        type: String,
-        username: String,
-        peerId: String
-    ) {
-//        val notification = notificationBuilder
-//            .setOngoing(false)
-//            .setPriority(NotificationCompat.PRIORITY_MAX)
-//            .setContentTitle(translate("Do you accept?"))
-//            .setContentText("$type:$username-$peerId")
-//            .build()
-//        notificationManager.notify(getClientNotifyID(clientID), notification)
-    }
-
-    private fun getClientNotifyID(clientID: Int): Int {
-        return clientID + NOTIFY_ID_OFFSET
-    }
-
-    fun cancelNotification(clientID: Int) {
-//        notificationManager.cancel(getClientNotifyID(clientID))
-    }
-
-    @SuppressLint("UnspecifiedImmutableFlag")
-    private fun genLoginRequestPendingIntent(res: Boolean): PendingIntent {
-        val intent = Intent(this, MainService::class.java).apply {
-            action = ACT_LOGIN_REQ_NOTIFY
-            putExtra(EXT_LOGIN_REQ_NOTIFY, res)
-        }
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.getService(this, 111, intent, FLAG_IMMUTABLE)
-        } else {
-            PendingIntent.getService(this, 111, intent, FLAG_UPDATE_CURRENT)
-        }
-    }
-
 }
