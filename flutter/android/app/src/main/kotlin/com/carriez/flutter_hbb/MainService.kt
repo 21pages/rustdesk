@@ -92,11 +92,13 @@ class MainService : Service() {
     fun rustSetByName(name: String, arg1: String, arg2: String) {
         when (name) {
             "add_connection" -> {
+                startMediaProject();
             }
             "update_voice_call_state" -> {
 
             }
             "stop_capture" -> {
+                MediaProjectionService.instance?.stopCapture()
             }
             else -> {
             }
@@ -177,6 +179,9 @@ class MainService : Service() {
         Log.d("whichService", "this service: ${Thread.currentThread()}")
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
+            if (intent.getBooleanExtra(EXT_INIT_FROM_BOOT, false)) {
+                FFI.startService()
+            }
             // This initiates a prompt dialog for the user to confirm screen projection.
             val mediaProjectionRequestIntent = Intent(
                 this,

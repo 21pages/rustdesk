@@ -23,6 +23,7 @@
         android:label="RustDesk"
         android:requestLegacyExternalStorage="true"
         android:roundIcon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true">
         <receiver
             android:name=".BootReceiver"

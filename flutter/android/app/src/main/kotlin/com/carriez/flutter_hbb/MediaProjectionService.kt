@@ -83,6 +83,8 @@ class MediaProjectionService : Service() {
     }
 
     override fun onDestroy() {
+        stopCapture()
+        instance = null
     }
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
@@ -127,12 +129,6 @@ class MediaProjectionService : Service() {
         }
         var scale = 1
         if (w != 0 && h != 0) {
-            if (w > 1200 || h > 1200) {
-                scale = 2
-                w /= scale
-                h /= scale
-                dpi /= scale
-            }
             if (SCREEN_INFO.width != w) {
                 SCREEN_INFO.width = w
                 SCREEN_INFO.height = h
@@ -149,11 +145,13 @@ class MediaProjectionService : Service() {
     }
 
     fun startCapture(): Boolean {
+        MainService._isStart = true
         return true
     }
 
     @Synchronized
     fun stopCapture() {
+        MainService.setIsStart(false)
     }
 
     private fun startRawVideoRecorder(mp: MediaProjection) {
