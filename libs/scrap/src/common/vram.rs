@@ -188,6 +188,8 @@ impl EncoderApi for VRamEncoder {
     fn latency_free(&self) -> bool {
         true
     }
+
+    fn disable(&self) {}
 }
 
 impl VRamEncoder {
@@ -376,7 +378,7 @@ fn get_available_config() -> ResultType<Available> {
     }
 }
 
-pub(crate) fn check_available_vram() -> String {
+pub(crate) fn check_available_vram() -> (Vec<FeatureContext>, Vec<DecodeContext>) {
     let d = DynamicContext {
         device: None,
         width: 1280,
@@ -387,9 +389,5 @@ pub(crate) fn check_available_vram() -> String {
     };
     let encoders = encode::available(d);
     let decoders = decode::available();
-    let available = Available {
-        e: encoders,
-        d: decoders,
-    };
-    available.serialize().unwrap_or_default()
+    (encoders, decoders)
 }

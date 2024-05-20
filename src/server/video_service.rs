@@ -472,6 +472,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut mid_data = Vec::new();
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
+    let mut encode_failure_counter = 0;
 
     while sp.ok() {
         #[cfg(windows)]
@@ -549,6 +550,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         ms,
                         &mut encoder,
                         recorder.clone(),
+                        &mut encode_failure_counter,
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
                 }
@@ -599,6 +601,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                             ms,
                             &mut encoder,
                             recorder.clone(),
+                            &mut encode_failure_counter,
                         )?;
                         frame_controller.set_send(now, send_conn_ids);
                     }
@@ -834,6 +837,7 @@ fn handle_one_frame(
     ms: i64,
     encoder: &mut Encoder,
     recorder: Arc<Mutex<Option<Recorder>>>,
+    encode_failure_counter: &mut usize,
 ) -> ResultType<HashSet<i32>> {
     sp.snapshot(|sps| {
         // so that new sub and old sub share the same encoder after switch
@@ -855,13 +859,18 @@ fn handle_one_frame(
                 .as_mut()
                 .map(|r| r.write_message(&msg));
             send_conn_ids = sp.send_video_frame(msg);
+            *encode_failure_counter = 0;
         }
-        Err(e) => match e.to_string().as_str() {
-            scrap::codec::ENCODE_NEED_SWITCH => {
+        Err(e) => {
+            *encode_failure_counter += 1;
+            if e.to_string().as_str() == scrap::codec::ENCODE_NEED_SWITCH {
                 bail!("SWITCH");
             }
-            _ => {}
-        },
+            if *encode_failure_counter > 10 {
+                log::error!("Encode failure counter > 10, reset encoder");
+                bail!("SWITCH");
+            }
+        }
     }
     Ok(send_conn_ids)
 }

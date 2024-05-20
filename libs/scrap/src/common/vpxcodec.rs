@@ -242,6 +242,8 @@ impl EncoderApi for VpxEncoder {
     fn latency_free(&self) -> bool {
         true
     }
+
+    fn disable(&self) {}
 }
 
 impl VpxEncoder {

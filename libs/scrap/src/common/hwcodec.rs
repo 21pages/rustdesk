@@ -24,6 +24,7 @@ use hwcodec::{
         RateControl::{self, *},
     },
 };
+use winapi::shared::cfg;
 
 const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_NV12;
 pub const DEFAULT_TIME_BASE: [i32; 2] = [1, 30];
@@ -201,6 +202,8 @@ impl EncoderApi for HwRamEncoder {
     fn latency_free(&self) -> bool {
         !self.name.contains("mediacodec")
     }
+
+    fn disable(&self) {}
 }
 
 impl HwRamEncoder {
@@ -512,9 +515,9 @@ pub fn check_available_hwcodec() {
         thread_count: 4,
     };
     #[cfg(feature = "vram")]
-    let vram = crate::vram::check_available_vram();
+    let (vram_encoders, vram_decoders) = crate::vram::check_available_vram();
     #[cfg(not(feature = "vram"))]
-    let vram = "".to_owned();
+    let (vram_encoders, vram_decoders) = (vec![], vec![]);
     let ram = Available {
         e: Encoder::available_encoders(ctx, Some(vram.clone())),
         d: Decoder::available_decoders(Some(vram.clone())),
@@ -532,10 +535,6 @@ pub fn start_check_process(force: bool) {
     use hbb_common::allow_err;
     use std::sync::Once;
     let f = || {
-        // Clear to avoid checking process errors
-        // But when the program is just started, the configuration file has not been updated, and the new connection will read an empty configuration
-        // TODO: --server start multi times on windows startup, which will clear the last config and cause concurrent file writing
-        HwCodecConfig::clear();
         if let Ok(exe) = std::env::current_exe() {
             if let Some(_) = exe.file_name().to_owned() {
                 let arg = "--check-hwcodec-config";
@@ -576,4 +575,14 @@ pub fn start_check_process(force: bool) {
             std::thread::spawn(f);
         });
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableHwCodec {
+    pub ram_encoders: Vec<CodecInfo>,
+    pub ram_decoders: Vec<CodecInfo>,
+    #[cfg(feature = "vram")]
+    pub vram_encoders: Vec<hwcodec::vram::FeatureContext>,
+    #[cfg(feature = "vram")]
+    pub vram_decoders: Vec<hwcodec::vram::DecodeContext>,
 }

@@ -304,6 +304,8 @@ impl EncoderApi for AomEncoder {
     fn latency_free(&self) -> bool {
         true
     }
+
+    fn disable(&self) {}
 }
 
 impl AomEncoder {

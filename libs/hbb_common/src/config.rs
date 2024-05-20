@@ -1585,6 +1585,12 @@ impl HwCodecConfig {
         c.vram = Default::default();
         c.store();
     }
+
+    pub fn remove_ram(name: &str) {
+        let mut c = Self::load();
+        c.ram = c.ram.replace(name, "");
+        c.store();
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
