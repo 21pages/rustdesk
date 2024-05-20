@@ -235,7 +235,10 @@ pub enum Data {
     #[cfg(windows)]
     ControlledSessionCount(usize),
     CmErr(String),
+    #[cfg(feature = "hwcodec")]
     CheckHwcodec,
+    #[cfg(feature = "hwcodec")]
+    HwCodecConfig(String),
     VideoConnCount(Option<usize>),
     // Although the key is not neccessary, it is used to avoid hardcoding the key.
     WaylandScreencastRestoreToken((String, String)),
@@ -523,6 +526,7 @@ async fn handle(data: Data, stream: &mut Connection) {
                     .await
             );
         }
+        #[cfg(feature = "hwcodec")]
         Data::CheckHwcodec =>
         {
             #[cfg(feature = "hwcodec")]
@@ -531,6 +535,8 @@ async fn handle(data: Data, stream: &mut Connection) {
                 scrap::hwcodec::start_check_process(true);
             }
         }
+        #[cfg(feature = "hwcodec")]
+        Data::HwCodecConfig(s) => {}
         Data::WaylandScreencastRestoreToken((key, value)) => {
             let v = if value == "get" {
                 let opt = get_local_option(key.clone());
@@ -1000,6 +1006,7 @@ pub async fn connect_to_user_session(usid: Option<u32>) -> ResultType<()> {
     Ok(())
 }
 
+#[cfg(feature = "hwcodec")]
 #[tokio::main(flavor = "current_thread")]
 pub async fn notify_server_to_check_hwcodec() -> ResultType<()> {
     connect(1_000, "").await?.send(&&Data::CheckHwcodec).await?;
