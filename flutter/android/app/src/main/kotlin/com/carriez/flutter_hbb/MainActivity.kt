@@ -281,10 +281,13 @@ class MainActivity : FlutterActivity() {
                     hw = true
                 }
             }
+            if (hw != true) {
+                usable = false
+            }
             codecObject.put("hw", hw)
             var mime_type = ""
             codec.supportedTypes.forEach { type ->
-                if (listOf("video/avc", "video/hevc", "video/x-vnd.on2.vp8", "video/x-vnd.on2.vp9", "video/av01").contains(type)) {
+                if (listOf("video/avc", "video/hevc").contains(type)) { // "video/x-vnd.on2.vp8", "video/x-vnd.on2.vp9", "video/av01"
                     mime_type = type;
                 }
             }
