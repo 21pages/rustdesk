@@ -1,3 +1,5 @@
+use std::sync::atomic::AtomicU64;
+
 use crate::{
     codec::{
         base_bitrate, codec_thread_num, enable_hwcodec_option, EncoderApi, EncoderCfg, Quality as Q,
@@ -31,6 +33,11 @@ const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_NV12;
 pub const DEFAULT_TIME_BASE: [i32; 2] = [1, 30];
 const DEFAULT_GOP: i32 = i32::MAX;
 const DEFAULT_HW_QUALITY: Quality = Quality_Default;
+
+lazy_static::lazy_static! {
+    static ref COUNTER: AtomicU64 = AtomicU64::new(0);
+
+}
 
 #[derive(Debug, Clone)]
 pub struct HwRamEncoderConfig {
@@ -372,8 +379,14 @@ impl HwRamDecoderImage<'_> {
         rgb.h = frame.height as _;
         // take dst_stride into account when you convert
         let dst_stride = rgb.stride();
+        let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let f = if counter % 2 == 0 {
+            hw::hw_nv12_to_1
+        } else {
+            hw::hw_nv12_to_2
+        };
         match frame.pixfmt {
-            AVPixelFormat::AV_PIX_FMT_NV12 => hw::hw_nv12_to(
+            AVPixelFormat::AV_PIX_FMT_NV12 => f(
                 rgb.fmt(),
                 frame.width as _,
                 frame.height as _,
