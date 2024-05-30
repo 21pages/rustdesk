@@ -33,6 +33,7 @@ pub mod hw {
         i420: &mut Vec<u8>,
         align: usize,
     ) -> ResultType<()> {
+        let start = std::time::Instant::now();
         let nv12_stride_y = src_stride_y;
         let nv12_stride_uv = src_stride_uv;
         if let Ok((linesize_i420, offset_i420, i420_len)) =
@@ -94,6 +95,7 @@ pub mod hw {
                     bail!("unsupported image format");
                 }
             }
+            log::info!("nv12->i420->bgra cost: {:?}", start.elapsed());
             return Ok(());
         }
         bail!("get linesize offset failed");
@@ -112,6 +114,7 @@ pub mod hw {
         _i420: &mut Vec<u8>,
         _align: usize,
     ) -> ResultType<()> {
+        let start = std::time::Instant::now();
         dst.resize(width * height * 4, 0);
         match fmt {
             ImageFormat::ARGB => {
@@ -140,6 +143,7 @@ pub mod hw {
             }
             _ => bail!("unsupported image format"),
         }
+        log::info!("nv12->bgra cost: {:?}", start.elapsed());
         Ok(())
     }
 
