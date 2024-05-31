@@ -239,6 +239,7 @@ pub struct Connection {
     follow_remote_cursor: bool,
     follow_remote_window: bool,
     multi_ui_session: bool,
+    login_response: Option<Message>,
 }
 
 impl ConnInner {
@@ -390,6 +391,7 @@ impl Connection {
             delayed_read_dir: None,
             #[cfg(target_os = "macos")]
             retina: Retina::default(),
+            login_response: None,
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -629,10 +631,15 @@ impl Connection {
                     if !conn.video_ack_required {
                         video_service::notify_video_frame_fetched(id, Some(instant.into()));
                     }
+                    if let Some(lr) = conn.login_response.take() {
+                        conn.stream.send(&lr).await.unwrap();
+                        log::info!("=============== Send login response");
+                    }
                     if let Err(err) = conn.stream.send(&value as &Message).await {
                         conn.on_close(&err.to_string(), false).await;
                         break;
                     }
+                    log::info!("Send video frame");
                 },
                 Some((instant, value)) = rx.recv() => {
                     let latency = instant.elapsed().as_millis() as i64;
@@ -1284,7 +1291,7 @@ impl Connection {
         }
         let mut msg_out = Message::new();
         msg_out.set_login_response(res);
-        self.send(msg_out).await;
+        self.login_response = Some(msg_out);
         if let Some(o) = self.options_in_login.take() {
             self.update_options(&o).await;
         }

@@ -475,7 +475,12 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
 
+    let mut first = true;
     while sp.ok() {
+        if !first {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            continue;
+        }
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
 
@@ -561,6 +566,9 @@ fn run(vs: VideoService) -> ResultType<()> {
                         &mut encoder,
                         recorder.clone(),
                     )?;
+                    if !send_conn_ids.is_empty() {
+                        first = false;
+                    }
                     frame_controller.set_send(now, send_conn_ids);
                 }
                 #[cfg(windows)]
@@ -611,6 +619,9 @@ fn run(vs: VideoService) -> ResultType<()> {
                             &mut encoder,
                             recorder.clone(),
                         )?;
+                        if !send_conn_ids.is_empty() {
+                            first = false;
+                        }
                         frame_controller.set_send(now, send_conn_ids);
                     }
                 }
