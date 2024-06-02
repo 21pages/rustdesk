@@ -35,8 +35,11 @@ impl Capturer {
 }
 
 impl crate::TraitCapturer for Capturer {
-    fn frame<'a>(&'a mut self, _timeout: Duration) -> io::Result<Frame<'a>> {
-        if get_video_raw(&mut self.rgba, &mut self.saved_raw_data).is_some() {
+    fn frame<'a>(&'a mut self, _timeout: Duration, captured: bool) -> io::Result<Frame<'a>> {
+        if !captured && get_video_raw(&mut self.rgba, &mut self.saved_raw_data).is_some() {
+            if self.rgba.is_empty() {
+                return Err(io::ErrorKind::WouldBlock.into());
+            }
             Ok(Frame::PixelBuffer(PixelBuffer::new(
                 &self.rgba,
                 self.width(),
@@ -49,7 +52,7 @@ impl crate::TraitCapturer for Capturer {
 }
 
 pub struct PixelBuffer<'a> {
-    data: &'a [u8],
+    pub data: &'a [u8],
     width: usize,
     height: usize,
     stride: Vec<usize>,

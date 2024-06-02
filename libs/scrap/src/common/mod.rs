@@ -109,7 +109,11 @@ pub fn would_block_if_equal(old: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> 
 pub trait TraitCapturer {
     // We doesn't support
     #[cfg(not(any(target_os = "ios")))]
-    fn frame<'a>(&'a mut self, timeout: std::time::Duration) -> std::io::Result<Frame<'a>>;
+    fn frame<'a>(
+        &'a mut self,
+        timeout: std::time::Duration,
+        captured: bool,
+    ) -> std::io::Result<Frame<'a>>;
 
     #[cfg(windows)]
     fn is_gdi(&self) -> bool;

@@ -37,11 +37,13 @@ use crate::{
 };
 use hbb_common::{
     anyhow::anyhow,
+    sodiumoxide::base64,
     tokio::sync::{
         mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
         Mutex as TokioMutex,
     },
 };
+// use scrap::common::TraitPixelBuffer;
 #[cfg(feature = "hwcodec")]
 use scrap::hwcodec::{HwRamEncoder, HwRamEncoderConfig};
 #[cfg(feature = "vram")]
@@ -53,13 +55,14 @@ use scrap::{
     codec::{Encoder, EncoderCfg, Quality},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
-    CodecFormat, Display, EncodeInput, TraitCapturer,
+    CodecFormat, Display, EncodeInput, PixelBuffer, TraitCapturer,
 };
 #[cfg(windows)]
 use std::sync::Once;
 use std::{
     collections::HashSet,
     io::ErrorKind::WouldBlock,
+    io::Write,
     ops::{Deref, DerefMut},
     time::{self, Duration, Instant},
 };
@@ -477,8 +480,15 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut mid_data = Vec::new();
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
+    let mut first = true;
+    let mut captured = false;
 
     while sp.ok() {
+        // if !first {
+        //     std::thread::sleep(Duration::from_millis(10));
+        //     continue;
+        // }
+
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
 
@@ -551,11 +561,19 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
-        let res = match c.frame(spf) {
+        let res = match c.frame(spf, captured) {
             Ok(frame) => {
+                captured = true;
                 repeat_encode_counter = 0;
                 if frame.valid() {
+                    match &frame {
+                        scrap::Frame::PixelBuffer(pixelbuffer) => {
+                            write_test_file(pixelbuffer.data, "frame.rgba");
+                        }
+                        _ => {}
+                    }
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    write_test_file(&frame.yuv().unwrap(), "frame1.yuv");
                     let send_conn_ids = handle_one_frame(
                         display_idx,
                         &sp,
@@ -564,6 +582,9 @@ fn run(vs: VideoService) -> ResultType<()> {
                         &mut encoder,
                         recorder.clone(),
                     )?;
+                    if !send_conn_ids.is_empty() {
+                        first = false;
+                    }
                     frame_controller.set_send(now, send_conn_ids);
                 }
                 #[cfg(windows)]
@@ -606,6 +627,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                     // yun.len() > 0 means the frame is not texture.
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
+                        write_test_file(&yuv, "frame2.yuv");
                         let send_conn_ids = handle_one_frame(
                             display_idx,
                             &sp,
@@ -614,6 +636,9 @@ fn run(vs: VideoService) -> ResultType<()> {
                             &mut encoder,
                             recorder.clone(),
                         )?;
+                        if !send_conn_ids.is_empty() {
+                            first = false;
+                        }
                         frame_controller.set_send(now, send_conn_ids);
                     }
                 }
@@ -880,6 +905,15 @@ fn handle_one_frame(
     let mut send_conn_ids: HashSet<i32> = Default::default();
     match encoder.encode_to_message(frame, ms) {
         Ok(mut vf) => {
+            match &vf.union {
+                Some(hbb_common::protos::message::video_frame::Union::H265s(frames)) => {
+                    if frames.frames.len() == 1 {
+                        let f = &frames.frames[0];
+                        write_test_file(&f.data, "frame.h265");
+                    }
+                }
+                _ => {}
+            }
             vf.display = display as _;
             let mut msg = Message::new();
             msg.set_video_frame(vf);
@@ -990,4 +1024,16 @@ pub fn make_display_changed_msg(
     let mut msg_out = Message::new();
     msg_out.set_misc(misc);
     Some(msg_out)
+}
+
+fn write_test_file(data: &[u8], name: &str) {
+    let dir = crate::ui_interface::video_save_directory(false);
+    let dir = std::path::Path::new(&dir);
+    let mut sum = data.len();
+    for i in 0..data.len() {
+        sum += data[i] as usize;
+    }
+    log::info!(" savedir: {:?}, name:{name:?}, sum:{:?}", dir, sum);
+    let mut file = std::fs::File::create(dir.join(name)).unwrap();
+    file.write_all(data).unwrap();
 }
