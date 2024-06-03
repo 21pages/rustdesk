@@ -34,7 +34,7 @@ class FloatingWindowService : Service() {
 
         floatingView = ImageView(this)
 
-        val drawable: Drawable = resources.getDrawable(R.mipmap.ic_launcher_foreground, null)
+        val drawable: Drawable = resources.getDrawable(R.mipmap.ic_launcher_floating, null)
         // drawable.alpha = 255
         floatingView.setImageDrawable(drawable)
 
@@ -54,8 +54,8 @@ class FloatingWindowService : Service() {
         params = WindowManager.LayoutParams(
 //            WindowManager.LayoutParams.WRAP_CONTENT,
 //            WindowManager.LayoutParams.WRAP_CONTENT,
-            200,
-            200,
+            100,
+            100,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
