@@ -1,9 +1,10 @@
 package com.carriez.flutter_hbb
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.PixelFormat
@@ -11,7 +12,6 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -32,17 +32,22 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     private lateinit var leftHalfDrawable: Drawable
     private lateinit var rightHalfDrawable: Drawable
 
-    private val WIDTH = 200
-    private val HEIGHT = 200
+    private val viewWidth = 200
+    private val viewHeight = 200
     private var dragging = false
     private var lastDownX = 0f
     private var lastDownY = 0f
-    private val CLICK_DRAG_TOLERANCE = 10f 
+
+    companion object {
+        var lastLayoutX = 0
+        var lastLayoutY = 0
+    }
 
     override fun onBind(intent: Intent): IBinder? {
         return null
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate() {
         super.onCreate()
 
@@ -57,28 +62,25 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         leftHalfDrawable = BitmapDrawable(resources, leftHalfBitmap)
         rightHalfDrawable = BitmapDrawable(resources, rightHalfBitmap)
 
-        // drawable.alpha = 255
         floatingView.setImageDrawable(rightHalfDrawable)
-
-
         floatingView.setOnTouchListener(this)
 
-        val flags =  FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
+        val flags =  FLAG_LAYOUT_IN_SCREEN or FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
         layoutParams = WindowManager.LayoutParams(
-            WIDTH / 2,
-            HEIGHT,
+            viewWidth / 2,
+            viewHeight,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             flags,
             PixelFormat.TRANSLUCENT
         )
 
         layoutParams.gravity = Gravity.TOP or Gravity.START
-        layoutParams.x = 0
-        layoutParams.y = 0
+        layoutParams.x = lastLayoutX
+        layoutParams.y = lastLayoutY
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
         windowManager.addView(floatingView, layoutParams)
+        moveToScreenSide(floatingView)
     }
 
     override fun onDestroy() {
@@ -100,8 +102,6 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         }
     }
 
-
-
     override fun onTouch(view: View?, event: MotionEvent?): Boolean {
         when (event?.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -110,22 +110,11 @@ class FloatingWindowService : Service(), View.OnTouchListener {
                 lastDownY = event.rawY
             }
             MotionEvent.ACTION_UP -> {
-                if (abs(event.rawX - lastDownX) < CLICK_DRAG_TOLERANCE && abs(event.rawY - lastDownY) < CLICK_DRAG_TOLERANCE) {
+                val clickDragTolerance = 10f
+                if (abs(event.rawX - lastDownX) < clickDragTolerance && abs(event.rawY - lastDownY) < clickDragTolerance) {
                     performClick()
                 } else {
-                    val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                    val wh = getScreenSize(windowManager)
-                    var w = wh.first
-                    var h = wh.second
-                    if (layoutParams.x < w / 2) {
-                        layoutParams.x = 0
-                        floatingView.setImageDrawable(rightHalfDrawable)
-                    } else {
-                        layoutParams.x = w
-                        floatingView.setImageDrawable(leftHalfDrawable)
-                    }
-                    layoutParams.width = WIDTH / 2
-                    windowManager.updateViewLayout(view, layoutParams)
+                    moveToScreenSide(view)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -138,12 +127,36 @@ class FloatingWindowService : Service(), View.OnTouchListener {
                 dragging = true
                 layoutParams.x = event.rawX.toInt()
                 layoutParams.y = event.rawY.toInt()
-                layoutParams.width = WIDTH
+                layoutParams.width = viewWidth
                 floatingView.setImageDrawable(originalDrawable)
                 windowManager.updateViewLayout(view, layoutParams)
+                lastLayoutX = layoutParams.x
+                lastLayoutY = layoutParams.y
             }
         }
         return false
+    }
+
+    private fun moveToScreenSide(view: View?) {
+        val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val wh = getScreenSize(windowManager)
+        val w = wh.first
+        if (layoutParams.x < w / 2) {
+            layoutParams.x = 0
+            floatingView.setImageDrawable(rightHalfDrawable)
+        } else {
+            layoutParams.x = w - viewWidth / 2
+            floatingView.setImageDrawable(leftHalfDrawable)
+        }
+        layoutParams.width = viewWidth / 2
+        windowManager.updateViewLayout(view, layoutParams)
+        lastLayoutX = layoutParams.x
+        lastLayoutY = layoutParams.y
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        moveToScreenSide(floatingView)
     }
 
     // private fun showPopupMenu(view: View) {
