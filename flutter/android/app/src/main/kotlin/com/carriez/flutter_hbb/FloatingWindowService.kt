@@ -4,7 +4,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.PixelFormat
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.IBinder
@@ -25,7 +28,12 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     private lateinit var windowManager: WindowManager
     private lateinit var layoutParams: WindowManager.LayoutParams
     private lateinit var floatingView: ImageView
+    private lateinit var originalDrawable: Drawable
+    private lateinit var leftHalfDrawable: Drawable
+    private lateinit var rightHalfDrawable: Drawable
 
+    private val WIDTH = 200
+    private val HEIGHT = 200
     private var dragging = false
     private var lastDownX = 0f
     private var lastDownY = 0f
@@ -39,30 +47,43 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         super.onCreate()
 
         floatingView = ImageView(this)
+        originalDrawable = resources.getDrawable(R.mipmap.ic_launcher_floating, null)
+        val originalBitmap = Bitmap.createBitmap(originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(originalBitmap)
+        originalDrawable.setBounds(0, 0, originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight)
+        originalDrawable.draw(canvas)
+        val leftHalfBitmap = Bitmap.createBitmap(originalBitmap, 0, 0, originalDrawable.intrinsicWidth / 2, originalDrawable.intrinsicHeight)
+        val rightHalfBitmap = Bitmap.createBitmap(originalBitmap, originalDrawable.intrinsicWidth / 2, 0, originalDrawable.intrinsicWidth / 2, originalDrawable.intrinsicHeight)
+        leftHalfDrawable = BitmapDrawable(resources, leftHalfBitmap)
+        rightHalfDrawable = BitmapDrawable(resources, rightHalfBitmap)
 
-        val drawable: Drawable = resources.getDrawable(R.mipmap.ic_launcher_floating, null)
         // drawable.alpha = 255
-        floatingView.setImageDrawable(drawable)
+        floatingView.setImageDrawable(rightHalfDrawable)
 
 
         floatingView.setOnTouchListener(this)
 
-        val flags = FLAG_LAYOUT_IN_SCREEN or FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
+        val flags =  FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
         layoutParams = WindowManager.LayoutParams(
-            100,
-            100,
+            WIDTH / 2,
+            HEIGHT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             flags,
             PixelFormat.TRANSLUCENT
         )
 
         layoutParams.gravity = Gravity.TOP or Gravity.START
-        layoutParams.x = lastDownX.toInt()
-        layoutParams.y = lastDownY.toInt()
+        layoutParams.x = 0
+        layoutParams.y = 0
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         windowManager.addView(floatingView, layoutParams)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        windowManager.removeView(floatingView)
     }
 
     private fun performClick() {
@@ -79,10 +100,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        windowManager.removeView(floatingView)
-    }
+
 
     override fun onTouch(view: View?, event: MotionEvent?): Boolean {
         when (event?.action) {
@@ -101,9 +119,12 @@ class FloatingWindowService : Service(), View.OnTouchListener {
                     var h = wh.second
                     if (layoutParams.x < w / 2) {
                         layoutParams.x = 0
+                        floatingView.setImageDrawable(rightHalfDrawable)
                     } else {
                         layoutParams.x = w
+                        floatingView.setImageDrawable(leftHalfDrawable)
                     }
+                    layoutParams.width = WIDTH / 2
                     windowManager.updateViewLayout(view, layoutParams)
                 }
             }
@@ -117,6 +138,8 @@ class FloatingWindowService : Service(), View.OnTouchListener {
                 dragging = true
                 layoutParams.x = event.rawX.toInt()
                 layoutParams.y = event.rawY.toInt()
+                layoutParams.width = WIDTH
+                floatingView.setImageDrawable(originalDrawable)
                 windowManager.updateViewLayout(view, layoutParams)
             }
         }
