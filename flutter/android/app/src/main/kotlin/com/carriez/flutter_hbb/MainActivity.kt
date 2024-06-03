@@ -374,6 +374,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onStart() {
         super.onStart()
-       stopService(Intent(this, FloatingWindowService::class.java))
+        stopService(Intent(this, FloatingWindowService::class.java))
     }
 }

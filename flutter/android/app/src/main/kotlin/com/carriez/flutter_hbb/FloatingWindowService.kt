@@ -20,6 +20,7 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.widget.ImageView
+import android.widget.PopupMenu
 import kotlin.math.abs
 
 
@@ -89,17 +90,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     }
 
     private fun performClick() {
-        val intent = Intent(this, MainActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
-        )
-        try {
-            pendingIntent.send()
-        } catch (e: PendingIntent.CanceledException) {
-            e.printStackTrace()
-        }
+        showPopupMenu()
     }
 
     override fun onTouch(view: View?, event: MotionEvent?): Boolean {
@@ -159,21 +150,44 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         moveToScreenSide(floatingView)
     }
 
-    // private fun showPopupMenu(view: View) {
-    //     // Create a PopupMenu, assign it a Menu XML file, and show it
-    //     val popupMenu = PopupMenu(this, view)
-    //     popupMenu.menu.add(0, 0, 0, "close connection")
+     private fun showPopupMenu() {
+         val popupMenu = PopupMenu(this, floatingView)
+         val idOpen = 0
+         popupMenu.menu.add(0, idOpen, 0, translate("Show RustDesk"))
+         val idCloseService = 1
+         popupMenu.menu.add(0, idCloseService, 0, translate("Stop service"))
+         popupMenu.setOnMenuItemClickListener { menuItem ->
+             when (menuItem.itemId) {
+                 idOpen -> {
+                     openMainActivity()
+                     true
+                 }
+                 idCloseService -> {
+                     stopMainService()
+                     true
+                 }
+                 else -> false
+             }
+         }
+         popupMenu.show()
+     }
 
-    //     popupMenu.setOnMenuItemClickListener { menuItem ->
-    //         when (menuItem.itemId) {
-    //             0 -> {
-    //                 // Handle the "Close Connection" menu item click here
-    //                 true
-    //             }
-    //             else -> false
-    //         }
-    //     }
-    //     popupMenu.show()
-    // }
+    private fun openMainActivity() {
+        val intent = Intent(this, MainActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
+        )
+        try {
+            pendingIntent.send()
+        } catch (e: PendingIntent.CanceledException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun stopMainService() {
+        MainActivity.flutterMethodChannel?.invokeMethod("stop_service", null)
+    }
 }
 

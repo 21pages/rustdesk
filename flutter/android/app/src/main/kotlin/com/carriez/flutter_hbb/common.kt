@@ -16,11 +16,13 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.provider.Settings.*
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat.getSystemService
 import com.hjq.permissions.Permission
 import com.hjq.permissions.XXPermissions
+import ffi.FFI
 import java.nio.ByteBuffer
 import java.util.*
 
@@ -29,6 +31,7 @@ import java.util.*
 const val ACT_REQUEST_MEDIA_PROJECTION = "REQUEST_MEDIA_PROJECTION"
 const val ACT_INIT_MEDIA_PROJECTION_AND_SERVICE = "INIT_MEDIA_PROJECTION_AND_SERVICE"
 const val ACT_LOGIN_REQ_NOTIFY = "LOGIN_REQ_NOTIFY"
+const val ACT_STOP_MAIN_SERVICE = "STOP_MAIN_SERVICE"
 const val EXT_INIT_FROM_BOOT = "EXT_INIT_FROM_BOOT"
 const val EXT_MEDIA_PROJECTION_RES_INTENT = "MEDIA_PROJECTION_RES_INTENT"
 const val EXT_LOGIN_REQ_NOTIFY = "LOGIN_REQ_NOTIFY"
@@ -139,4 +142,9 @@ fun getScreenSize(windowManager: WindowManager) : Pair<Int, Int>{
         h = dm.heightPixels
     }
     return Pair(w, h)
+}
+
+ fun translate(input: String): String {
+    Log.d("common", "translate:$LOCAL_NAME")
+    return FFI.translateLocale(LOCAL_NAME, input)
 }
