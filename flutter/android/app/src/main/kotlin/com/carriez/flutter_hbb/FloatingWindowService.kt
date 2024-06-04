@@ -12,6 +12,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -21,8 +22,9 @@ import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.widget.ImageView
 import android.widget.PopupMenu
+import com.caverock.androidsvg.SVG
+import ffi.FFI
 import kotlin.math.abs
-
 
 class FloatingWindowService : Service(), View.OnTouchListener {
 
@@ -33,16 +35,19 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     private lateinit var leftHalfDrawable: Drawable
     private lateinit var rightHalfDrawable: Drawable
 
-    private val viewWidth = 120
-    private val viewHeight = 120
     private var dragging = false
     private var lastDownX = 0f
     private var lastDownY = 0f
 
     companion object {
-        var firstLayout = true
-        var lastLayoutX = 0
-        var lastLayoutY = 0
+        private val logTag = "floatingService"
+        private var firsCreate = true
+        private var viewWidth = 120
+        private var viewHeight = 120
+        private var viewTransparency = 1
+        private var customSvg = ""
+        private var lastLayoutX = 0
+        private var lastLayoutY = 0
     }
 
     override fun onBind(intent: Intent): IBinder? {
@@ -53,8 +58,68 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     override fun onCreate() {
         super.onCreate()
 
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        if (firsCreate) {
+            firsCreate = false
+            val wh = getScreenSize(windowManager)
+            val w = wh.first
+            val h = wh.second
+            // size
+            FFI.getLocalOption("floating-window-size").let {
+                if (it.isNotEmpty()) {
+                    try {
+                        val size = it.toInt()
+                        if (size < w / 2 && size < h / 2) {
+                            viewWidth = size
+                            viewHeight = size
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            // transparency
+            FFI.getLocalOption("floating-window-transparency").let {
+                if (it.isNotEmpty()) {
+                    try {
+                        val transparency = it.toInt()
+                        if (transparency in 0..100) {
+                            viewTransparency = transparency / 100
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            // custom svg
+            FFI.getLocalOption("floating-window-svg").let {
+                if (it.isNotEmpty()) {
+                    customSvg = it
+                }
+            }
+            // position
+            lastLayoutX = 0
+            lastLayoutY = (wh.second - viewHeight) / 2
+        }
+        Log.d(logTag, "floating window size: $viewWidth x $viewHeight, transparency: $viewTransparency, lastLayoutX: $lastLayoutX, lastLayoutY: $lastLayoutY, customSvg: $customSvg")
+
         floatingView = ImageView(this)
         originalDrawable = resources.getDrawable(R.drawable.floating_window, null)
+        if (customSvg.isNotEmpty()) {
+            try {
+                val svg = SVG.getFromString(customSvg)
+                originalDrawable = svg.renderToPicture().let {
+                    BitmapDrawable(resources, Bitmap.createBitmap(it.width, it.height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                        it.draw(Canvas(bitmap))
+                    })
+                }
+                floatingView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                Log.d(logTag, "custom svg loaded")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         val originalBitmap = Bitmap.createBitmap(originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(originalBitmap)
         originalDrawable.setBounds(0, 0, originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight)
@@ -66,6 +131,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
 
         floatingView.setImageDrawable(rightHalfDrawable)
         floatingView.setOnTouchListener(this)
+        floatingView.alpha = viewTransparency * 1f
 
         val flags =  FLAG_LAYOUT_IN_SCREEN or FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
         layoutParams = WindowManager.LayoutParams(
@@ -77,19 +143,11 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         )
 
         layoutParams.gravity = Gravity.TOP or Gravity.START
-        if (firstLayout) {
-            firstLayout = false
-            val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-            val wh = getScreenSize(windowManager)
-            lastLayoutX = 0 //wh.first - viewWidth / 2
-            lastLayoutY = (wh.second - viewHeight) / 2
-        }
         layoutParams.x = lastLayoutX
         layoutParams.y = lastLayoutY
 
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         windowManager.addView(floatingView, layoutParams)
-        moveToScreenSide(true)
+        moveToScreenSide()
     }
 
     override fun onDestroy() {
@@ -99,8 +157,6 @@ class FloatingWindowService : Service(), View.OnTouchListener {
 
     private fun performClick() {
         showPopupMenu()
-//        showMenu2()
-//        showMenu3()
     }
 
     override fun onTouch(view: View?, event: MotionEvent?): Boolean {
