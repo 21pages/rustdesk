@@ -659,6 +659,11 @@ pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
     let Some(session_id) = get_current_process_session_id() else {
         bail!("Failed to get current process session id");
     };
+    let physical_console_session_id = unsafe { get_current_session(FALSE) };
+    log::info!(
+        "run_as_user: cmd: {}, sesssion_id:{session_id}, physical session id:{physical_console_session_id} ",
+        cmd,
+    );
     use std::os::windows::ffi::OsStrExt;
     let wstr: Vec<u16> = std::ffi::OsStr::new(&cmd)
         .encode_wide()
