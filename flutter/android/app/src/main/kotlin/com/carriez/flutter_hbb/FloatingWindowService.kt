@@ -3,7 +3,6 @@ package com.carriez.flutter_hbb
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
@@ -21,10 +20,7 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.PopupMenu
-import android.widget.PopupWindow
-import android.widget.TextView
 import kotlin.math.abs
 
 
@@ -37,8 +33,8 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     private lateinit var leftHalfDrawable: Drawable
     private lateinit var rightHalfDrawable: Drawable
 
-    private val viewWidth = 200
-    private val viewHeight = 200
+    private val viewWidth = 120
+    private val viewHeight = 120
     private var dragging = false
     private var lastDownX = 0f
     private var lastDownY = 0f
@@ -58,7 +54,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         super.onCreate()
 
         floatingView = ImageView(this)
-        originalDrawable = resources.getDrawable(R.mipmap.ic_launcher_floating, null)
+        originalDrawable = resources.getDrawable(R.drawable.floating_window, null)
         val originalBitmap = Bitmap.createBitmap(originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(originalBitmap)
         originalDrawable.setBounds(0, 0, originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight)
@@ -192,104 +188,6 @@ class FloatingWindowService : Service(), View.OnTouchListener {
          popupMenu.show()
      }
 
-//    private fun createView(context: Context): View {
-//            // Create a LinearLayout
-//            val layout = LinearLayout(context)
-//            layout.orientation = LinearLayout.HORIZONTAL
-//
-//            // Create "Show RustDesk" action
-//            val showRustDeskLayout = LinearLayout(context)
-//            showRustDeskLayout.orientation = LinearLayout.VERTICAL
-//            val showRustDeskIcon = ImageView(context)
-//            // Set your icon here
-//            showRustDeskIcon.setImageResource(R.mipmap.ic_launcher)
-//            val showRustDeskText = TextView(context)
-//            showRustDeskText.text = "Show RustDesk"
-//            showRustDeskText.textSize = 12f
-//            showRustDeskLayout.addView(showRustDeskIcon)
-//            showRustDeskLayout.addView(showRustDeskText)
-//            showRustDeskLayout.setOnClickListener {
-//                openMainActivity()
-//            }
-//
-//            // Create "Stop Service" action
-//            val stopServiceLayout = LinearLayout(context)
-//            stopServiceLayout.orientation = LinearLayout.VERTICAL
-//            val stopServiceIcon = ImageView(context)
-//            // Set your icon here
-//            stopServiceIcon.setImageResource(R.drawable.close_red)
-//            val stopServiceText = TextView(context)
-//            stopServiceText.text = "Stop Service"
-//            stopServiceText.textSize = 12f
-//            stopServiceLayout.addView(stopServiceIcon)
-//            stopServiceLayout.addView(stopServiceText)
-//            stopServiceLayout.setOnClickListener {
-//                stopMainService()
-//            }
-//
-//            // Add actions to LinearLayout
-//            layout.addView(showRustDeskLayout)
-//            layout.addView(stopServiceLayout)
-//
-//        return layout
-//    }
-//
-//    private fun showMenu2() {
-//        val popupWindow = PopupWindow(this)
-//
-//        popupWindow.contentView = createView(this)
-//        popupWindow.width = LinearLayout.LayoutParams.WRAP_CONTENT
-//        popupWindow.height = LinearLayout.LayoutParams.WRAP_CONTENT
-//        popupWindow.isFocusable = true
-//        popupWindow.showAsDropDown(floatingView, 0, 0)
-//    }
-//
-//
-//    private fun showMenu3() {
-//        // 创建一个 PopupWindow
-//        val popupWindow = PopupWindow(this)
-//
-//        // 创建一个 LinearLayout 作为 PopupWindow 的内容
-//        val layout = LinearLayout(this)
-//        layout.orientation = LinearLayout.VERTICAL
-//
-//        // 创建菜单项
-//        val menuItem1 = TextView(this)
-//        menuItem1.text = "Show RustDesk"
-//        menuItem1.setOnClickListener {
-//            openMainActivity()
-//            popupWindow.dismiss()
-//        }
-//        val menuItem2 = TextView(this)
-//        menuItem2.text = "Stop service"
-//        menuItem2.setOnClickListener {
-//            stopMainService()
-//            popupWindow.dismiss()
-//        }
-//
-//        // 将菜单项添加到 LinearLayout
-//        layout.addView(menuItem1)
-//        layout.addView(menuItem2)
-//
-//        // 为 LinearLayout 设置边距
-//        val params = LinearLayout.LayoutParams(
-//            LinearLayout.LayoutParams.WRAP_CONTENT,
-//            LinearLayout.LayoutParams.WRAP_CONTENT
-//        )
-//        val marginInPixels = 50 // 设置为所需的边距值
-//        params.setMargins(marginInPixels, marginInPixels, marginInPixels, marginInPixels)
-//        layout.layoutParams = params
-//
-//        // 将 LinearLayout 设置为 PopupWindow 的内容
-//        popupWindow.contentView = layout
-//
-//        // 设置 PopupWindow 的宽度和高度
-//        popupWindow.width = LinearLayout.LayoutParams.WRAP_CONTENT
-//        popupWindow.height = LinearLayout.LayoutParams.WRAP_CONTENT
-//
-//        // 显示 PopupWindow
-//        popupWindow.showAsDropDown(floatingView)
-//    }
 
     private fun openMainActivity() {
         val intent = Intent(this, MainActivity::class.java)
