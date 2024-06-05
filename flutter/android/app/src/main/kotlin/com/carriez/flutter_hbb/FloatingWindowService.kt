@@ -44,8 +44,9 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         private var firsCreate = true
         private var viewWidth = 120
         private var viewHeight = 120
-        private val maxViewSize = 320
-        private var viewTransparency = 1f
+        private const val MIN_VIEW_SIZE = 32 // size 0 does not help prevent the service from being killed
+        private const val MAX_VIEW_SIZE = 320
+        private var viewTransparency = 1f // 0 means invisible but can help prevent the service from being killed
         private var customSvg = ""
         private var lastLayoutX = 0
         private var lastLayoutY = 0
@@ -65,10 +66,10 @@ class FloatingWindowService : Service(), View.OnTouchListener {
             }
             Log.d(logTag, "floating window size: $viewWidth x $viewHeight, transparency: $viewTransparency, lastLayoutX: $lastLayoutX, lastLayoutY: $lastLayoutY, customSvg: $customSvg")
             createView(windowManager)
+            Log.d(logTag, "onCreate success")
         } catch (e: Exception) {
             Log.d(logTag, "onCreate failed: $e")
         }
-
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -78,8 +79,10 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         if (customSvg.isNotEmpty()) {
             try {
                 val svg = SVG.getFromString(customSvg)
-                svg.documentWidth = viewWidth * 1f
-                svg.documentHeight = viewHeight * 1f
+                Log.d(logTag, "custom svg info: ${svg.documentWidth} x ${svg.documentHeight}");
+                // This make the svg render clear
+               svg.documentWidth = viewWidth * 1f
+               svg.documentHeight = viewHeight * 1f
                 originalDrawable = svg.renderToPicture().let {
                     BitmapDrawable(
                         resources,
@@ -154,7 +157,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
             if (it.isNotEmpty()) {
                 try {
                     val size = it.toInt()
-                    if (size in 0..maxViewSize && size <= w / 2 && size <= h / 2) {
+                    if (size in MIN_VIEW_SIZE..MAX_VIEW_SIZE && size <= w / 2 && size <= h / 2) {
                         viewWidth = size
                         viewHeight = size
                     }
