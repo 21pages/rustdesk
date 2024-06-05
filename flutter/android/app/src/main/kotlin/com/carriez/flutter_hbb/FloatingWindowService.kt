@@ -44,6 +44,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         private var firsCreate = true
         private var viewWidth = 120
         private var viewHeight = 120
+        private val maxViewSize = 320
         private var viewTransparency = 1f
         private var customSvg = ""
         private var lastLayoutX = 0
@@ -153,7 +154,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
             if (it.isNotEmpty()) {
                 try {
                     val size = it.toInt()
-                    if (size < w / 2 && size < h / 2) {
+                    if (size in 0..maxViewSize && size <= w / 2 && size <= h / 2) {
                         viewWidth = size
                         viewHeight = size
                     }
