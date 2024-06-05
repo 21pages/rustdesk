@@ -2224,20 +2224,15 @@ pub mod server_side {
         input: JString,
     ) -> jstring {
         let mut env = env;
-        let res =
-            env.with_local_frame_returning_local(10, |env: &mut JNIEnv| -> JniResult<JObject> {
-                let res = if let (Ok(input), Ok(locale)) =
-                    (env.get_string(&input), env.get_string(&locale))
-                {
-                    let input: String = input.into();
-                    let locale: String = locale.into();
-                    crate::client::translate_locale(input, &locale)
-                } else {
-                    "".into()
-                };
-                env.new_string(res).map(|v| v.into())
-            });
-        res.unwrap_or(input.into()).into_raw()
+        let res = if let (Ok(input), Ok(locale)) = (env.get_string(&input), env.get_string(&locale))
+        {
+            let input: String = input.into();
+            let locale: String = locale.into();
+            crate::client::translate_locale(input, &locale)
+        } else {
+            "".into()
+        };
+        return env.new_string(res).unwrap_or(input).into_raw();
     }
 
     #[no_mangle]

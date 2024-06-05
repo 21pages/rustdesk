@@ -384,7 +384,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Wayland requires higher version of linux distro. Please try X11 desktop or change your OS.", "Для Wayland требуется более поздняя версия дистрибутива Linux. Используйте рабочий стол X11 или смените ОС."),
         ("JumpLink", "Просмотр"),
         ("Please Select the screen to be shared(Operate on the peer side).", "Выберите экран для демонстрации (работайте на одноранговой стороне)."),
-        ("Show RustDesk", "Показать RustDesk"),
+        ("Show {}", "Показать {}"),
         ("This PC", "Этот компьютер"),
         ("or", "или"),
         ("Continue with", "Продолжить с"),

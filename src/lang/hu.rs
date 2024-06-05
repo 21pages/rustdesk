@@ -384,7 +384,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Wayland requires higher version of linux distro. Please try X11 desktop or change your OS.", "A Wayland a Linux disztró magasabb verzióját igényli. Próbálja ki az X11 desktopot, vagy változtassa meg az operációs rendszert."),
         ("JumpLink", "Hiperhivatkozás"),
         ("Please Select the screen to be shared(Operate on the peer side).", "Kérjük, válassza ki a megosztani kívánt képernyőt."),
-        ("Show RustDesk", "A RustDesk megjelenítése"),
+        ("Show {}", "A {} megjelenítése"),
         ("This PC", "Ez a számítógép"),
         ("or", "vagy"),
         ("Continue with", "Folytatás a következővel"),
