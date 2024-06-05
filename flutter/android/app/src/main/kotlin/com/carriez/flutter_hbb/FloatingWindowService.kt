@@ -56,16 +56,18 @@ class FloatingWindowService : Service(), View.OnTouchListener {
 
     override fun onCreate() {
         super.onCreate()
-
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        if (firsCreate) {
-            firsCreate = false
-            onFirstCreate(windowManager)
+        try {
+            if (firsCreate) {
+                firsCreate = false
+                onFirstCreate(windowManager)
+            }
+            Log.d(logTag, "floating window size: $viewWidth x $viewHeight, transparency: $viewTransparency, lastLayoutX: $lastLayoutX, lastLayoutY: $lastLayoutY, customSvg: $customSvg")
+            createView(windowManager)
+        } catch (e: Exception) {
+            Log.d(logTag, "onCreate failed: $e")
         }
-        Log.d(logTag, "floating window size: $viewWidth x $viewHeight, transparency: $viewTransparency, lastLayoutX: $lastLayoutX, lastLayoutY: $lastLayoutY, customSvg: $customSvg")
 
-        createView(windowManager)
     }
 
     @SuppressLint("ClickableViewAccessibility")
