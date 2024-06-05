@@ -54,7 +54,6 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         return null
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate() {
         super.onCreate()
 
@@ -62,57 +61,29 @@ class FloatingWindowService : Service(), View.OnTouchListener {
 
         if (firsCreate) {
             firsCreate = false
-            val wh = getScreenSize(windowManager)
-            val w = wh.first
-            val h = wh.second
-            // size
-            FFI.getLocalOption("floating-window-size").let {
-                if (it.isNotEmpty()) {
-                    try {
-                        val size = it.toInt()
-                        if (size < w / 2 && size < h / 2) {
-                            viewWidth = size
-                            viewHeight = size
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-            // transparency
-            FFI.getLocalOption("floating-window-transparency").let {
-                if (it.isNotEmpty()) {
-                    try {
-                        val transparency = it.toInt()
-                        if (transparency in 0..100) {
-                            viewTransparency = transparency / 100
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-            // custom svg
-            FFI.getLocalOption("floating-window-svg").let {
-                if (it.isNotEmpty()) {
-                    customSvg = it
-                }
-            }
-            // position
-            lastLayoutX = 0
-            lastLayoutY = (wh.second - viewHeight) / 2
+            onFirstCreate(windowManager)
         }
         Log.d(logTag, "floating window size: $viewWidth x $viewHeight, transparency: $viewTransparency, lastLayoutX: $lastLayoutX, lastLayoutY: $lastLayoutY, customSvg: $customSvg")
 
+        createView(windowManager)
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun createView(windowManager: WindowManager) {
         floatingView = ImageView(this)
         originalDrawable = resources.getDrawable(R.drawable.floating_window, null)
         if (customSvg.isNotEmpty()) {
             try {
                 val svg = SVG.getFromString(customSvg)
+                svg.documentWidth = viewWidth * 1f
+                svg.documentHeight = viewHeight * 1f
                 originalDrawable = svg.renderToPicture().let {
-                    BitmapDrawable(resources, Bitmap.createBitmap(it.width, it.height, Bitmap.Config.ARGB_8888).also { bitmap ->
-                        it.draw(Canvas(bitmap))
-                    })
+                    BitmapDrawable(
+                        resources,
+                        Bitmap.createBitmap(it.width, it.height, Bitmap.Config.ARGB_8888)
+                            .also { bitmap ->
+                                it.draw(Canvas(bitmap))
+                            })
                 }
                 floatingView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
                 Log.d(logTag, "custom svg loaded")
@@ -120,12 +91,33 @@ class FloatingWindowService : Service(), View.OnTouchListener {
                 e.printStackTrace()
             }
         }
-        val originalBitmap = Bitmap.createBitmap(originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
+        val originalBitmap = Bitmap.createBitmap(
+            originalDrawable.intrinsicWidth,
+            originalDrawable.intrinsicHeight,
+            Bitmap.Config.ARGB_8888
+        )
         val canvas = Canvas(originalBitmap)
-        originalDrawable.setBounds(0, 0, originalDrawable.intrinsicWidth, originalDrawable.intrinsicHeight)
+        originalDrawable.setBounds(
+            0,
+            0,
+            originalDrawable.intrinsicWidth,
+            originalDrawable.intrinsicHeight
+        )
         originalDrawable.draw(canvas)
-        val leftHalfBitmap = Bitmap.createBitmap(originalBitmap, 0, 0, originalDrawable.intrinsicWidth / 2, originalDrawable.intrinsicHeight)
-        val rightHalfBitmap = Bitmap.createBitmap(originalBitmap, originalDrawable.intrinsicWidth / 2, 0, originalDrawable.intrinsicWidth / 2, originalDrawable.intrinsicHeight)
+        val leftHalfBitmap = Bitmap.createBitmap(
+            originalBitmap,
+            0,
+            0,
+            originalDrawable.intrinsicWidth / 2,
+            originalDrawable.intrinsicHeight
+        )
+        val rightHalfBitmap = Bitmap.createBitmap(
+            originalBitmap,
+            originalDrawable.intrinsicWidth / 2,
+            0,
+            originalDrawable.intrinsicWidth / 2,
+            originalDrawable.intrinsicHeight
+        )
         leftHalfDrawable = BitmapDrawable(resources, leftHalfBitmap)
         rightHalfDrawable = BitmapDrawable(resources, rightHalfBitmap)
 
@@ -133,7 +125,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         floatingView.setOnTouchListener(this)
         floatingView.alpha = viewTransparency * 1f
 
-        val flags =  FLAG_LAYOUT_IN_SCREEN or FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
+        val flags = FLAG_LAYOUT_IN_SCREEN or FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
         layoutParams = WindowManager.LayoutParams(
             viewWidth / 2,
             viewHeight,
@@ -148,6 +140,48 @@ class FloatingWindowService : Service(), View.OnTouchListener {
 
         windowManager.addView(floatingView, layoutParams)
         moveToScreenSide()
+    }
+
+    private fun onFirstCreate(windowManager: WindowManager) {
+        val wh = getScreenSize(windowManager)
+        val w = wh.first
+        val h = wh.second
+        // size
+        FFI.getLocalOption("floating-window-size").let {
+            if (it.isNotEmpty()) {
+                try {
+                    val size = it.toInt()
+                    if (size < w / 2 && size < h / 2) {
+                        viewWidth = size
+                        viewHeight = size
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        // transparency
+        FFI.getLocalOption("floating-window-transparency").let {
+            if (it.isNotEmpty()) {
+                try {
+                    val transparency = it.toInt()
+                    if (transparency in 0..100) {
+                        viewTransparency = transparency / 100
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        // custom svg
+        FFI.getLocalOption("floating-window-svg").let {
+            if (it.isNotEmpty()) {
+                customSvg = it
+            }
+        }
+        // position
+        lastLayoutX = 0
+        lastLayoutY = (wh.second - viewHeight) / 2
     }
 
     override fun onDestroy() {
