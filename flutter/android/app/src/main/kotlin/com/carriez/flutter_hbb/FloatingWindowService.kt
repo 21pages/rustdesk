@@ -44,7 +44,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         private var firsCreate = true
         private var viewWidth = 120
         private var viewHeight = 120
-        private var viewTransparency = 1
+        private var viewTransparency = 1f
         private var customSvg = ""
         private var lastLayoutX = 0
         private var lastLayoutY = 0
@@ -167,8 +167,8 @@ class FloatingWindowService : Service(), View.OnTouchListener {
             if (it.isNotEmpty()) {
                 try {
                     val transparency = it.toInt()
-                    if (transparency in 0..100) {
-                        viewTransparency = transparency / 100
+                    if (transparency in 0..10) {
+                        viewTransparency = transparency * 1f / 10
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -196,6 +196,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     }
 
     override fun onTouch(view: View?, event: MotionEvent?): Boolean {
+        if (viewTransparency == 0f) return false
         when (event?.action) {
             MotionEvent.ACTION_DOWN -> {
                 dragging = false
