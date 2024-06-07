@@ -47,7 +47,6 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         private var viewHeight = 120
         private const val MIN_VIEW_SIZE = 32 // size 0 does not help prevent the service from being killed
         private const val MAX_VIEW_SIZE = 320
-        private var viewUntouchable = false
         private var viewTransparency = 1f // 0 means invisible but can help prevent the service from being killed
         private var customSvg = ""
         private var lastLayoutX = 0
@@ -136,9 +135,6 @@ class FloatingWindowService : Service(), View.OnTouchListener {
         floatingView.alpha = viewTransparency * 1f
 
         var flags = FLAG_LAYOUT_IN_SCREEN or FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE
-        if (viewUntouchable || viewTransparency == 0f) {
-            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        }
         layoutParams = WindowManager.LayoutParams(
             viewWidth / 2,
             viewHeight,
@@ -173,8 +169,6 @@ class FloatingWindowService : Service(), View.OnTouchListener {
                 }
             }
         }
-        // untouchable
-        viewUntouchable = FFI.getLocalOption("floating-window-untouchable") == "Y"
         // transparency
         FFI.getLocalOption("floating-window-transparency").let {
             if (it.isNotEmpty()) {
@@ -212,6 +206,7 @@ class FloatingWindowService : Service(), View.OnTouchListener {
     }
 
     override fun onTouch(view: View?, event: MotionEvent?): Boolean {
+        if (viewTransparency == 0f) return false
         when (event?.action) {
             MotionEvent.ACTION_DOWN -> {
                 dragging = false
