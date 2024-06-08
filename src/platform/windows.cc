@@ -31,6 +31,8 @@ void flog(char const *fmt, ...)
 DWORD GetLogonPid(DWORD dwSessionId, BOOL as_user)
 {
     DWORD dwLogonPid = 0;
+    DWORD dwOtherUserPid = 0;
+    const wchar_t* otherUserProc[] = {L"svchost.exe", L"conhost.exe", L"dllhost.exe"};
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnap != INVALID_HANDLE_VALUE)
     {
@@ -48,10 +50,24 @@ DWORD GetLogonPid(DWORD dwSessionId, BOOL as_user)
                     dwLogonPid = procEntry.th32ProcessID;
                     break;
                 }
+                else if (as_user && dwOtherUserPid == 0)
+                {
+                    for (int i = 0; dwOtherUserPid == 0 && i < sizeof(otherUserProc) / sizeof(otherUserProc[0]); i++)
+                    {
+                        if (_wcsicmp(procEntry.szExeFile, otherUserProc[i]) == 0)
+                        {
+                            dwOtherUserPid = procEntry.th32ProcessID;
+                        }
+                    }
+                }
             } while (Process32NextW(hSnap, &procEntry));
         CloseHandle(hSnap);
     }
-    return dwLogonPid;
+    if (as_user) {
+        return dwLogonPid != 0 ? dwLogonPid : dwOtherUserPid;
+    } else {
+        return dwLogonPid;
+    }
 }
 
 // START the app as system
@@ -59,10 +75,12 @@ extern "C"
 {
     // if should try WTSQueryUserToken?
     // https://stackoverflow.com/questions/7285666/example-code-a-service-calls-createprocessasuser-i-want-the-process-to-run-in
-    BOOL GetSessionUserTokenWin(OUT LPHANDLE lphUserToken, DWORD dwSessionId, BOOL as_user)
+    BOOL GetSessionUserTokenWin(OUT LPHANDLE lphUserToken, DWORD dwSessionId, BOOL as_user, DWORD* pDwLogonPid)
     {
         BOOL bResult = FALSE;
         DWORD Id = GetLogonPid(dwSessionId, as_user);
+        if (pDwLogonPid)
+            *pDwLogonPid = Id;
         if (HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, Id))
         {
             bResult = OpenProcessToken(hProcess, TOKEN_ALL_ACCESS, lphUserToken);
@@ -76,11 +94,11 @@ extern "C"
         return IsWindowsServer();
     }
 
-    HANDLE LaunchProcessWin(LPCWSTR cmd, DWORD dwSessionId, BOOL as_user)
+    HANDLE LaunchProcessWin(LPCWSTR cmd, DWORD dwSessionId, BOOL as_user, DWORD* pDwLogonPid)
     {
         HANDLE hProcess = NULL;
         HANDLE hToken = NULL;
-        if (GetSessionUserTokenWin(&hToken, dwSessionId, as_user))
+        if (GetSessionUserTokenWin(&hToken, dwSessionId, as_user, pDwLogonPid))
         {
             STARTUPINFOW si;
             ZeroMemory(&si, sizeof si);

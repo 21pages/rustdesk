@@ -67,7 +67,8 @@ use winreg::enums::*;
 use winreg::RegKey;
 
 pub const FLUTTER_RUNNER_WIN32_WINDOW_CLASS: &'static str = "FLUTTER_RUNNER_WIN32_WINDOW"; // main window, install window
-pub const EXPLORER_EXE: &'static str = "explorer.exe";
+// pub const EXPLORER_EXE: &'static str = "explorer.exe";
+pub const ERR_PROCESS_NOT_FOUND: &'static str = "Process not found";
 
 pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
     unsafe {
@@ -461,8 +462,8 @@ const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 extern "C" {
     fn get_current_session(rdp: BOOL) -> DWORD;
-    fn LaunchProcessWin(cmd: *const u16, session_id: DWORD, as_user: BOOL) -> HANDLE;
-    fn GetSessionUserTokenWin(lphUserToken: LPHANDLE, dwSessionId: DWORD, as_user: BOOL) -> BOOL;
+    fn LaunchProcessWin(cmd: *const u16, session_id: DWORD, as_user: BOOL, logon_pid: *mut DWORD) -> HANDLE;
+    fn GetSessionUserTokenWin(lphUserToken: LPHANDLE, dwSessionId: DWORD, as_user: BOOL, logon_pid: *mut DWORD) -> BOOL;
     fn selectInputDesktop() -> BOOL;
     fn inputDesktopSelected() -> BOOL;
     fn is_windows_server() -> BOOL;
@@ -645,7 +646,7 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         .chain(Some(0).into_iter())
         .collect();
     let wstr = wstr.as_ptr();
-    let h = unsafe { LaunchProcessWin(wstr, session_id, FALSE) };
+    let h = unsafe { LaunchProcessWin(wstr, session_id, FALSE, NULL as _) };
     if h.is_null() {
         log::error!("Failed to launch server: {}", io::Error::last_os_error());
     }
@@ -667,16 +668,25 @@ pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
         .chain(Some(0).into_iter())
         .collect();
     let wstr = wstr.as_ptr();
-    let h = unsafe { LaunchProcessWin(wstr, session_id, TRUE) };
+    let mut logon_pid = 0;
+    let h = unsafe { LaunchProcessWin(wstr, session_id, TRUE, &mut logon_pid) };
     if h.is_null() {
-        if !is_process_running(EXPLORER_EXE, session_id) {
+        if logon_pid == 0 {
             bail!(
-                "Failed to launch {:?} with session id {}: no process {}",
+                "Failed to launch {:?} with session id {}: {}",
                 arg,
                 session_id,
-                EXPLORER_EXE
+                ERR_PROCESS_NOT_FOUND
             );
         }
+        // if !is_process_running(EXPLORER_EXE, session_id) {
+        //     bail!(
+        //         "Failed to launch {:?} with session id {}: no process {}",
+        //         arg,
+        //         session_id,
+        //         EXPLORER_EXE
+        //     );
+        // }
         bail!(
             "Failed to launch {:?} with session id {}: {}",
             arg,
@@ -1555,6 +1565,7 @@ pub fn get_user_token(session_id: u32, as_user: bool) -> HANDLE {
                 &mut token as _,
                 session_id,
                 if as_user { TRUE } else { FALSE },
+                NULL as _,
             )
         {
             NULL as _
