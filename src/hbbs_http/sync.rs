@@ -48,6 +48,15 @@ pub struct StrategyOptions {
     pub extra: HashMap<String, String>,
 }
 
+#[derive(Debug, Default)]
+struct SysinfoCtl {
+    uploaded: bool,
+    url: String,
+    instant: Option<Instant>,
+    id: String,
+    username: String,
+}
+
 #[cfg(not(any(target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 async fn start_hbbs_sync_async() {
@@ -56,8 +65,18 @@ async fn start_hbbs_sync_async() {
         TIME_CONN,
     ));
     let mut last_sent: Option<Instant> = None;
-    let mut info_uploaded: (bool, String, Option<Instant>, String) =
-        (false, "".to_owned(), None, "".to_owned());
+    let mut sysinfo_ctl = SysinfoCtl::default();
+    let has_username = cfg!(not(any(target_os = "android", target_os = "ios")));
+    let get_username = || {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            let username = crate::platform::get_active_username();
+            if !username.is_empty() && (!cfg!(windows) || username != "SYSTEM") {
+                return username;
+            }
+        }
+        String::default()
+    };
     loop {
         tokio::select! {
             _ = interval.tick() => {
@@ -71,12 +90,18 @@ async fn start_hbbs_sync_async() {
                     continue;
                 }
                 let conns = Connection::alive_conns();
-                if info_uploaded.0 && (url != info_uploaded.1 || id != info_uploaded.3){
-                    info_uploaded.0 = false;
+                if sysinfo_ctl.uploaded && (url != sysinfo_ctl.url || id != sysinfo_ctl.id){
+                    sysinfo_ctl.uploaded = false;
                     *PRO.lock().unwrap() = false;
                 }
-                if !info_uploaded.0 && info_uploaded.2.map(|x| x.elapsed() >= UPLOAD_SYSINFO_TIMEOUT).unwrap_or(true){
+                // username is empty in login screen
+                let need_reupload_username = has_username && sysinfo_ctl.uploaded && sysinfo_ctl.username.is_empty() && !get_username().is_empty();
+                if (!sysinfo_ctl.uploaded || need_reupload_username) && sysinfo_ctl.instant.map(|x| x.elapsed() >= UPLOAD_SYSINFO_TIMEOUT).unwrap_or(true) {
                     let mut v = crate::get_sysinfo();
+                    let username = get_username();
+                    if has_username {
+                        v["username"] = json!(username.clone());
+                    }
                     v["version"] = json!(crate::VERSION);
                     v["id"] = json!(id);
                     v["uuid"] = json!(crate::encode64(hbb_common::get_uuid()));
@@ -91,17 +116,22 @@ async fn start_hbbs_sync_async() {
                     match crate::post_request(url.replace("heartbeat", "sysinfo"), v.to_string(), "").await {
                         Ok(x)  => {
                             if x == "SYSINFO_UPDATED" {
-                                info_uploaded = (true, url.clone(), None, id.clone());
-                                hbb_common::log::info!("sysinfo updated");
+                                sysinfo_ctl = SysinfoCtl {
+                                    uploaded: true,
+                                    url: url.clone(),
+                                    instant: None,
+                                    id: id.clone(),
+                                    username,
+                                };
                                 *PRO.lock().unwrap() = true;
                             } else if x == "ID_NOT_FOUND" {
-                                info_uploaded.2 = None; // next heartbeat will upload sysinfo again
+                                sysinfo_ctl.instant = None; // next heartbeat will upload sysinfo again
                             } else {
-                                info_uploaded.2 = Some(Instant::now());
+                                sysinfo_ctl.instant = Some(Instant::now());
                             }
                         }
                         _ => {
-                            info_uploaded.2 = Some(Instant::now());
+                            sysinfo_ctl.instant = Some(Instant::now());
                         }
                     }
                 }
