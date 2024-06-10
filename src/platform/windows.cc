@@ -31,6 +31,8 @@ void flog(char const *fmt, ...)
 DWORD GetLogonPid(DWORD dwSessionId, BOOL as_user)
 {
     DWORD dwLogonPid = 0;
+    DWORD dwSubstitutePid = 0;
+    const wchar_t* otherUserProc[] = {L"sihost.exe"};
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnap != INVALID_HANDLE_VALUE)
     {
@@ -48,10 +50,26 @@ DWORD GetLogonPid(DWORD dwSessionId, BOOL as_user)
                     dwLogonPid = procEntry.th32ProcessID;
                     break;
                 }
+                else if (as_user && dwSubstitutePid == 0)
+                {
+                    for (int i = 0; dwSubstitutePid == 0 && i < sizeof(otherUserProc) / sizeof(otherUserProc[0]); i++)
+                    {
+                        if (_wcsicmp(procEntry.szExeFile, otherUserProc[i]) == 0 &&
+                            ProcessIdToSessionId(procEntry.th32ProcessID, &dwLogonSessionId) &&
+                            dwLogonSessionId == dwSessionId)
+                        {
+                            dwSubstitutePid = procEntry.th32ProcessID;
+                        }
+                    }
+                }
             } while (Process32NextW(hSnap, &procEntry));
         CloseHandle(hSnap);
     }
-    return dwLogonPid;
+    if (as_user) {
+        return dwLogonPid != 0 ? dwLogonPid : dwSubstitutePid;
+    } else {
+        return dwLogonPid;
+    }
 }
 
 // START the app as system
