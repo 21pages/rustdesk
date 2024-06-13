@@ -311,9 +311,6 @@ class MainActivity : FlutterActivity() {
                         codecObject.put("low_latency", caps.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency))
                     }
                 }
-                if (!codec.isEncoder) {
-                    return@forEach
-                }
                 codecArray.put(codecObject)
             }
         }

@@ -59,7 +59,8 @@ gstreamer-app = { version = "0.16", features = ["v1_10"], optional = true }
 gstreamer-video = { version = "0.16", optional = true }
 
 [dependencies.hwcodec]
-git = "https://github.com/21pages/hwcodec"
+# git = "https://github.com/21pages/hwcodec"
+path = "/home/sun/develop/codec/hwcodec"
 optional = true
 
 

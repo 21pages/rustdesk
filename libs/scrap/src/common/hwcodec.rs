@@ -305,20 +305,20 @@ pub struct HwRamDecoder {
 impl HwRamDecoder {
     pub fn try_get(format: CodecFormat) -> Option<CodecInfo> {
         let mut info = None;
-        let soft = CodecInfo::soft();
-        match format {
-            CodecFormat::H264 => {
-                if let Some(v) = soft.h264 {
-                    info = Some(v);
-                }
-            }
-            CodecFormat::H265 => {
-                if let Some(v) = soft.h265 {
-                    info = Some(v);
-                }
-            }
-            _ => {}
-        }
+        // let soft = CodecInfo::soft();
+        // match format {
+        //     CodecFormat::H264 => {
+        //         if let Some(v) = soft.h264 {
+        //             info = Some(v);
+        //         }
+        //     }
+        //     CodecFormat::H265 => {
+        //         if let Some(v) = soft.h265 {
+        //             info = Some(v);
+        //         }
+        //     }
+        //     _ => {}
+        // }
         if enable_hwcodec_option() {
             let best = CodecInfo::prioritized(HwCodecConfig::get().ram_decode);
             match format {
@@ -515,8 +515,11 @@ impl HwCodecConfig {
     pub fn get() -> HwCodecConfig {
         #[cfg(target_os = "android")]
         {
+            use core::sync::atomic::Ordering;
+            use std::sync::atomic::AtomicBool;
+            static mut FIRST: AtomicBool = AtomicBool::new(true);
+
             let info = crate::android::ffi::get_codec_info();
-            log::info!("all codec info: {info:?}");
             struct T {
                 name_prefix: &'static str,
                 data_format: DataFormat,
@@ -531,8 +534,9 @@ impl HwCodecConfig {
                     data_format: DataFormat::H265,
                 },
             ];
-            let mut e = vec![];
-            if let Some(info) = info {
+            let mut ram_encode = vec![];
+            let mut ram_decode = vec![];
+            if let Some(info) = &info {
                 ts.iter().for_each(|t| {
                     let codecs: Vec<_> = info
                         .codecs
@@ -562,7 +566,7 @@ impl HwCodecConfig {
                         }
                     }
                     if let Some(best) = best {
-                        e.push(CodecInfo {
+                        ram_encode.push(CodecInfo {
                             name: format!("{}_mediacodec", t.name_prefix),
                             mc_name: Some(best),
                             format: t.data_format,
@@ -572,9 +576,48 @@ impl HwCodecConfig {
                     }
                 });
             }
-            log::debug!("e: {e:?}");
+            if let Some(info) = &info {
+                ts.iter().for_each(|t| {
+                    let codecs: Vec<_> = info
+                        .codecs
+                        .iter()
+                        .filter(|c| {
+                            !c.is_encoder
+                                && c.mime_type.as_str() == get_mime_type(t.data_format)
+                                && c.nv12
+                                && c.hw == Some(true) //only use hardware codec
+                                && c.low_latency == Some(true)
+                        })
+                        .collect();
+                    let mut best = None;
+                    // find the max resolution
+                    let mut max_area = 0;
+                    for codec in codecs.iter() {
+                        if codec.max_width * codec.max_height > max_area {
+                            best = Some(codec.name.clone());
+                            max_area = codec.max_width * codec.max_height;
+                        }
+                    }
+                    if let Some(best) = best {
+                        ram_decode.push(CodecInfo {
+                            name: format!("{}_mediacodec", t.name_prefix),
+                            mc_name: Some(best),
+                            format: t.data_format,
+                            hwdevice: hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_MEDIACODEC,
+                            priority: 0,
+                        });
+                    }
+                });
+            }
+            if unsafe { FIRST.load(Ordering::Relaxed) } {
+                unsafe { FIRST.store(false, Ordering::Relaxed) };
+                log::debug!("all codec info: {info:?}");
+                log::debug!("ram encode: {ram_encode:?}");
+                log::debug!("ram decode: {ram_decode:?}");
+            }
             HwCodecConfig {
-                ram_encode: e,
+                ram_encode,
+                ram_decode,
                 ..Default::default()
             }
         }
