@@ -576,48 +576,13 @@ impl HwCodecConfig {
                     }
                 });
             }
-            if let Some(info) = &info {
-                ts.iter().for_each(|t| {
-                    let codecs: Vec<_> = info
-                        .codecs
-                        .iter()
-                        .filter(|c| {
-                            !c.is_encoder
-                                && c.mime_type.as_str() == get_mime_type(t.data_format)
-                                && c.nv12
-                                && c.hw == Some(true) //only use hardware codec
-                                && c.low_latency == Some(true)
-                        })
-                        .collect();
-                    let mut best = None;
-                    // find the max resolution
-                    let mut max_area = 0;
-                    for codec in codecs.iter() {
-                        if codec.max_width * codec.max_height > max_area {
-                            best = Some(codec.name.clone());
-                            max_area = codec.max_width * codec.max_height;
-                        }
-                    }
-                    if let Some(best) = best {
-                        ram_decode.push(CodecInfo {
-                            name: format!("{}_mediacodec", t.name_prefix),
-                            mc_name: Some(best),
-                            format: t.data_format,
-                            hwdevice: hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_MEDIACODEC,
-                            priority: 0,
-                        });
-                    }
-                });
-            }
             if unsafe { FIRST.load(Ordering::Relaxed) } {
                 unsafe { FIRST.store(false, Ordering::Relaxed) };
                 log::debug!("all codec info: {info:?}");
                 log::debug!("ram encode: {ram_encode:?}");
-                log::debug!("ram decode: {ram_decode:?}");
             }
             HwCodecConfig {
                 ram_encode,
-                ram_decode,
                 ..Default::default()
             }
         }
