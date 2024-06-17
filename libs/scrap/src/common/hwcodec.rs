@@ -606,7 +606,39 @@ impl HwCodecConfig {
         {
             CONFIG.lock().unwrap().clone().unwrap_or_default()
         }
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        #[cfg(target_os = "macos")]
+        {
+            match CONFIG.lock().unwrap().clone() {
+                Some(c) => c,
+                None => {
+                    let ctx = EncodeContext {
+                        name: String::from(""),
+                        mc_name: None,
+                        width: 1280,
+                        height: 720,
+                        pixfmt: DEFAULT_PIXFMT,
+                        align: HW_STRIDE_ALIGN as _,
+                        kbs: 0,
+                        timebase: DEFAULT_TIME_BASE,
+                        gop: DEFAULT_GOP,
+                        quality: DEFAULT_HW_QUALITY,
+                        rc: RC_CBR,
+                        q: -1,
+                        thread_count: 4,
+                    };
+                    let ram_encode = Encoder::available_encoders(ctx, None);
+                    let ram_decode = Decoder::available_decoders(None);
+                    let config = HwCodecConfig {
+                        ram_encode,
+                        ram_decode,
+                        ..Default::default()
+                    };
+                    *CONFIG.lock().unwrap() = Some(config.clone());
+                    config
+                }
+            }
+        }
+        #[cfg(target_os = "ios")]
         {
             HwCodecConfig::default()
         }
