@@ -34,7 +34,7 @@ env:
   API_SERVER: "${{ secrets.API_SERVER }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
-  ZSTD_LEVEL: "15"
+  BROTLI_LEVEL: "5"
 
 jobs:
   build-RustDeskTempTopMostWindow:
@@ -165,10 +165,10 @@ jobs:
         run: |
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe -l ${{ env.ZSTD_LEVEL }}
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe -l ${{ env.BROTLI_LEVEL }}
           popd
           mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-${{ env.ZSTD_LEVEL }}.exe
+          mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-brotli${{ env.BROTLI_LEVEL }}.exe
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
