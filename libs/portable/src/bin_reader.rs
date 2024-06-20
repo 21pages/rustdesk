@@ -36,10 +36,7 @@ impl Default for BinaryReader {
 impl BinaryData {
     fn decompress(&self) -> Vec<u8> {
         let cursor = Cursor::new(self.raw);
-        let mut decoder = brotli::Decompressor::new(cursor, BUF_SIZE);
-        let mut buf = Vec::new();
-        decoder.read_to_end(&mut buf).ok();
-        buf
+        zstd::decode_all(cursor).unwrap_or_default()
     }
 
     pub fn write_to_file(&self, prefix: &PathBuf) {

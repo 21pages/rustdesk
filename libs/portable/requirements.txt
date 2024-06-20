@@ -1,1 +1,1 @@
-brotli
+zstandard
