@@ -3,7 +3,7 @@
 import os
 import optparse
 from hashlib import md5
-import zstandard
+import brotli
 import datetime
 
 # 4GB maximum
@@ -26,8 +26,8 @@ def generate_md5_table(folder: str, level) -> dict:
             print(f"Processing {full_path}...")
             f = open(full_path, "rb")
             content = f.read()
-            cctx = zstandard.ZstdCompressor(level=level)
-            content_compressed = cctx.compress(content)
+            content_compressed = brotli.compress(
+                content, quality=level)
             md5_generator.update(content)
             md5_code = md5_generator.hexdigest().encode(encoding=encoding)
             res[full_path] = (content_compressed, md5_code)

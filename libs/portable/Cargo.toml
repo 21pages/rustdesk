@@ -9,7 +9,7 @@ description = "RustDesk Remote Desktop"
 build = "build.rs"
 
 [dependencies]
-zstd = "0.13"
+brotli = "3.4"
 dirs = "5.0"
 md5 = "0.7"
 winapi = { version = "0.3", features = ["winbase"] }
