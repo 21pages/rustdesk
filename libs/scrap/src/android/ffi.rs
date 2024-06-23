@@ -67,10 +67,12 @@ impl FrameRaw {
     // release when success
     fn take<'a>(&mut self, dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
         if self.enable.not() {
+            log::info!("not enable");
             return None;
         }
         let ptr = self.ptr.load(SeqCst);
         if ptr.is_null() || self.len == 0 {
+            log::info!("ptr is null or len is 0");
             None
         } else {
             if self.last_update.elapsed() > self.timeout {
@@ -80,6 +82,7 @@ impl FrameRaw {
             let slice = unsafe { std::slice::from_raw_parts(ptr, self.len) };
             self.release();
             if last.len() == slice.len() && crate::would_block_if_equal(last, slice).is_err() {
+                log::info!("would block");
                 return None;
             }
             dst.resize(slice.len(), 0);
@@ -113,6 +116,7 @@ pub extern "system" fn Java_ffi_FFI_onVideoFrameUpdate(
     let jb = JByteBuffer::from(buffer);
     if let Ok(data) = env.get_direct_buffer_address(&jb) {
         if let Ok(len) = env.get_direct_buffer_capacity(&jb) {
+            log::info!("video frame update:{}", len);
             VIDEO_RAW.lock().unwrap().update(data, len);
         }
     }

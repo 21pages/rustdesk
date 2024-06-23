@@ -383,6 +383,7 @@ fn get_capturer(current: usize, portable_service_running: bool) -> ResultType<Ca
 }
 
 fn run(vs: VideoService) -> ResultType<()> {
+    log::info!("video service run: {:?}", vs.idx);
     let _raii = Raii::new(vs.idx);
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
@@ -407,6 +408,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let display_idx = vs.idx;
     let sp = vs.sp;
     let mut c = get_capturer(display_idx, last_portable_service_running)?;
+    log::info!("video service get_capturer ok");
     #[cfg(windows)]
     if !scrap::codec::enable_directx_capture() && !c.is_gdi() {
         log::info!("disable dxgi with option, fall back to gdi");
@@ -450,6 +452,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             )?
         }
     };
+    log::info!("create encoder ok");
     #[cfg(feature = "vram")]
     c.set_output_texture(encoder.input_texture());
     #[cfg(target_os = "android")]
@@ -563,8 +566,10 @@ fn run(vs: VideoService) -> ResultType<()> {
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
         let res = match c.frame(spf) {
             Ok(frame) => {
+                log::info!("frame ok");
                 repeat_encode_counter = 0;
                 if frame.valid() {
+                    log::info!("frame valid");
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
                     let send_conn_ids = handle_one_frame(
                         display_idx,
@@ -587,7 +592,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                 }
                 Ok(())
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                log::error!("frame error: {:?}", err);
+                Err(err)
+            }
         };
 
         match res {
@@ -914,6 +922,7 @@ fn handle_one_frame(
     let mut send_conn_ids: HashSet<i32> = Default::default();
     match encoder.encode_to_message(frame, ms) {
         Ok(mut vf) => {
+            log::info!("encode ok");
             *encode_fail_counter = 0;
             vf.display = display as _;
             let mut msg = Message::new();
@@ -926,6 +935,7 @@ fn handle_one_frame(
             send_conn_ids = sp.send_video_frame(msg);
         }
         Err(e) => {
+            log::error!("encode err: {e:?}");
             let max_fail_times = if cfg!(target_os = "android") && encoder.is_hardware() {
                 12
             } else {
