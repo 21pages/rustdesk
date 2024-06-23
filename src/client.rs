@@ -2178,6 +2178,8 @@ where
                         if let Some(handler_controller) = handler_controller_map.get_mut(&display) {
                             let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
+                            let format_changed =
+                                handler_controller.handler.decoder.format() != format;
                             match handler_controller.handler.handle_frame(
                                 vf,
                                 &mut pixelbuffer,
@@ -2198,27 +2200,13 @@ where
                                     }
 
                                     // fps calculation
-                                    // The first frame will be very slow
-                                    if handler_controller.skip_beginning < 5 {
-                                        handler_controller.skip_beginning += 1;
-                                        continue;
-                                    }
-
-                                    handler_controller.duration += start.elapsed();
-                                    handler_controller.count += 1;
-                                    if handler_controller.count % 10 == 0 {
-                                        fps_map.write().unwrap().insert(
-                                            display,
-                                            (handler_controller.count * 1000
-                                                / handler_controller.duration.as_millis())
-                                                as usize,
-                                        );
-                                    }
-                                    // Clear to get real-time fps
-                                    if handler_controller.count > 150 {
-                                        handler_controller.count = 0;
-                                        handler_controller.duration = Duration::ZERO;
-                                    }
+                                    fps_calculate(
+                                        handler_controller,
+                                        display,
+                                        &fps_map,
+                                        format_changed,
+                                        start.elapsed(),
+                                    );
                                 }
                                 Err(e) => {
                                     // This is a simple workaround.
@@ -2332,6 +2320,40 @@ pub fn start_audio_thread() -> MediaSender {
         log::info!("Audio decoder loop exits");
     });
     audio_sender
+}
+
+#[inline]
+fn fps_calculate(
+    handler_controller: &mut VideoHandlerController,
+    display: usize,
+    fps_map: &Arc<RwLock<HashMap<usize, usize>>>,
+    format_changed: bool,
+    elapsed: std::time::Duration,
+) {
+    if format_changed {
+        handler_controller.count = 0;
+        handler_controller.duration = std::time::Duration::ZERO;
+        handler_controller.skip_beginning = 0;
+    }
+    // // The first frame will be very slow
+    if handler_controller.skip_beginning < 3 {
+        handler_controller.skip_beginning += 1;
+        return;
+    }
+    handler_controller.duration += elapsed;
+    handler_controller.count += 1;
+    let duration = handler_controller.duration.as_millis();
+    if handler_controller.count % 10 == 0 && duration > 0 {
+        fps_map.write().unwrap().insert(
+            display,
+            (handler_controller.count * 1000 / duration) as usize,
+        );
+    }
+    // Clear to get real-time fps
+    if handler_controller.count >= 30 {
+        handler_controller.count = 0;
+        handler_controller.duration = Duration::ZERO;
+    }
 }
 
 fn get_hwcodec_config() {

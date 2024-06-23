@@ -972,6 +972,7 @@ impl<T: InvokeUiSession> Remote<T> {
             custom_fps = 30;
         }
         let decode_fps_read = self.decode_fps_map.read().unwrap();
+        let mut auto_fps_set = None;
         for (display, decode_fps) in decode_fps_read.iter() {
             let video_queue_map_read = self.video_queue_map.read().unwrap();
             let Some(video_queue) = video_queue_map_read.get(display) else {
@@ -1017,17 +1018,14 @@ impl<T: InvokeUiSession> Remote<T> {
                 if auto_fps < 1 {
                     auto_fps = 1;
                 }
-                // send custom fps
-                let mut misc = Misc::new();
-                misc.set_option(OptionMessage {
-                    custom_fps: auto_fps,
-                    ..Default::default()
-                });
-                let mut msg = Message::new();
-                msg.set_misc(misc);
-                self.sender.send(Data::Message(msg)).ok();
+                if let Some(fps) = auto_fps_set.as_mut() {
+                    if auto_fps < *fps {
+                        *fps = auto_fps;
+                    }
+                } else {
+                    auto_fps_set = Some(auto_fps);
+                }
                 ctl.last_queue_size = len;
-                ctl.last_auto_fps = Some(auto_fps);
             }
             // send refresh
             let tolerable = std::cmp::min(decode_fps, video_queue.capacity() / 2);
@@ -1042,6 +1040,25 @@ impl<T: InvokeUiSession> Remote<T> {
                 ctl.refresh_times += 1;
                 ctl.last_refresh_instant = Instant::now();
             }
+        }
+        // all display share the same max fps
+        if let Some(auto_fps) = auto_fps_set {
+            // send max fps
+            let mut misc = Misc::new();
+            misc.set_option(OptionMessage {
+                custom_fps: auto_fps,
+                ..Default::default()
+            });
+            let mut msg = Message::new();
+            msg.set_misc(misc);
+            self.sender.send(Data::Message(msg)).ok();
+            log::info!("Set auto fps to {}", auto_fps);
+            self.fps_control_map
+                .iter_mut()
+                .map(|e| {
+                    e.1.last_auto_fps = Some(auto_fps);
+                })
+                .count();
         }
     }
 
