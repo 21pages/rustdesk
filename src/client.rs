@@ -2111,7 +2111,7 @@ pub fn start_video_audio_threads<F, T>(
     MediaSender,
     MediaSender,
     Arc<RwLock<HashMap<usize, ArrayQueue<VideoFrame>>>>,
-    Arc<RwLock<HashMap<usize, usize>>>,
+    Arc<RwLock<HashMap<usize, (usize, std::time::Instant)>>>,
     Arc<RwLock<Option<Chroma>>>,
 )
 where
@@ -2326,7 +2326,7 @@ pub fn start_audio_thread() -> MediaSender {
 fn fps_calculate(
     handler_controller: &mut VideoHandlerController,
     display: usize,
-    fps_map: &Arc<RwLock<HashMap<usize, usize>>>,
+    fps_map: &Arc<RwLock<HashMap<usize, (usize, std::time::Instant)>>>,
     format_changed: bool,
     elapsed: std::time::Duration,
 ) {
@@ -2343,12 +2343,31 @@ fn fps_calculate(
     handler_controller.duration += elapsed;
     handler_controller.count += 1;
     let duration = handler_controller.duration.as_millis();
+    // log::info!(
+    //     "duration: {:?}, count: {}",
+    //     duration,
+    //     handler_controller.count
+    // );
     if handler_controller.count % 10 == 0 && duration > 0 {
         fps_map.write().unwrap().insert(
             display,
-            (handler_controller.count * 1000 / duration) as usize,
+            (
+                (handler_controller.count * 1000 / duration) as usize,
+                std::time::Instant::now(),
+            ),
         );
     }
+    // log::info!(
+    //     "display: {display}, fps_map: {:?}",
+    //     fps_map.read().unwrap().clone()
+    // );
+    fps_map
+        .write()
+        .unwrap()
+        .get_mut(&display)
+        .map(|(fps, instant)| {
+            *instant = std::time::Instant::now();
+        });
     // Clear to get real-time fps
     if handler_controller.count >= 30 {
         handler_controller.count = 0;

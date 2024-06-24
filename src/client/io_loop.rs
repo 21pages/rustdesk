@@ -72,7 +72,8 @@ pub struct Remote<T: InvokeUiSession> {
     video_format: CodecFormat,
     elevation_requested: bool,
     fps_control_map: HashMap<usize, FpsControl>,
-    decode_fps_map: Arc<RwLock<HashMap<usize, usize>>>,
+    last_auto_fps: Option<usize>,
+    decode_fps_map: Arc<RwLock<HashMap<usize, (usize, std::time::Instant)>>>,
     chroma: Arc<RwLock<Option<Chroma>>>,
 }
 
@@ -85,7 +86,7 @@ impl<T: InvokeUiSession> Remote<T> {
         receiver: mpsc::UnboundedReceiver<Data>,
         sender: mpsc::UnboundedSender<Data>,
         frame_count_map: Arc<RwLock<HashMap<usize, usize>>>,
-        decode_fps: Arc<RwLock<HashMap<usize, usize>>>,
+        decode_fps: Arc<RwLock<HashMap<usize, (usize, std::time::Instant)>>>,
         chroma: Arc<RwLock<Option<Chroma>>>,
     ) -> Self {
         Self {
@@ -111,6 +112,7 @@ impl<T: InvokeUiSession> Remote<T> {
             voice_call_request_timestamp: None,
             elevation_requested: false,
             fps_control_map: Default::default(),
+            last_auto_fps: None,
             decode_fps_map: decode_fps,
             chroma,
         }
@@ -971,9 +973,26 @@ impl<T: InvokeUiSession> Remote<T> {
         if custom_fps < 5 || custom_fps > 120 {
             custom_fps = 30;
         }
-        let decode_fps_read = self.decode_fps_map.read().unwrap();
-        let mut auto_fps_set = None;
-        for (display, decode_fps) in decode_fps_read.iter() {
+        // let decode_fps_read = self.decode_fps_map.read().unwrap().clone();
+        let decode_fps_read = self.decode_fps_map.read().unwrap().clone();
+        log::info!(
+            "last set fps: {:?},  all decode fps: {:?}, all queue size: {:?}",
+            self.last_auto_fps,
+            decode_fps_read.iter().map(|v| v.1 .0).collect::<Vec<_>>(),
+            self.video_queue_map
+                .read()
+                .unwrap()
+                .iter()
+                .map(|v| v.1.len())
+                .collect::<Vec<_>>()
+        );
+        #[derive(Debug, Clone)]
+        struct Action {
+            decrease: Option<bool>,
+            fps: usize,
+        }
+        let mut actions: Vec<(Option<Action>, std::time::Instant)> = vec![];
+        for (display, (decode_fps, instant)) in decode_fps_read.iter() {
             let video_queue_map_read = self.video_queue_map.read().unwrap();
             let Some(video_queue) = video_queue_map_read.get(display) else {
                 continue;
@@ -996,36 +1015,52 @@ impl<T: InvokeUiSession> Remote<T> {
             if limited_fps > custom_fps {
                 limited_fps = custom_fps;
             }
-            let should_decrease = len > 1 && ctl.last_auto_fps.unwrap_or(0) > limited_fps as i32;
+            let should_decrease = (len > 1
+                && self.last_auto_fps.clone().unwrap_or(custom_fps as _) > limited_fps)
+                || len > std::cmp::max(1, limited_fps / 2);
 
             // increase judgement
             if len <= 1 {
-                ctl.idle_counter += 1;
+                if ctl.idle_counter < usize::MAX {
+                    ctl.idle_counter += 1;
+                }
             } else {
                 ctl.idle_counter = 0;
             }
             let mut should_increase = false;
-            if let Some(last_auto_fps) = ctl.last_auto_fps {
+            if let Some(last_auto_fps) = self.last_auto_fps.clone() {
                 // ever set
-                if last_auto_fps + 3 <= limited_fps as i32 && ctl.idle_counter > 3 {
+                if last_auto_fps + 3 <= limited_fps && ctl.idle_counter > 3 {
                     // limited_fps is 5 larger than last set, and idle time is more than 3 seconds
                     should_increase = true;
                 }
             }
-            if ctl.last_auto_fps.is_none() || should_decrease || should_increase {
+            if self.last_auto_fps.is_none() || should_decrease || should_increase {
                 // limited_fps to ensure decoding is faster than encoding
                 let mut auto_fps = limited_fps as i32;
                 if auto_fps < 1 {
                     auto_fps = 1;
                 }
-                if let Some(fps) = auto_fps_set.as_mut() {
-                    if auto_fps < *fps {
-                        *fps = auto_fps;
-                    }
-                } else {
-                    auto_fps_set = Some(auto_fps);
-                }
                 ctl.last_queue_size = len;
+                actions.push((
+                    Some(Action {
+                        decrease: if should_decrease {
+                            Some(true)
+                        } else if should_increase {
+                            Some(false)
+                        } else {
+                            None
+                        },
+                        fps: auto_fps as usize,
+                    }),
+                    instant.clone(),
+                ));
+                log::info!(
+                    "display: {display}, action: {:?}",
+                    actions.clone().last().unwrap()
+                )
+            } else {
+                actions.push((None, instant.clone()));
             }
             // send refresh
             let tolerable = std::cmp::min(decode_fps, video_queue.capacity() / 2);
@@ -1042,23 +1077,74 @@ impl<T: InvokeUiSession> Remote<T> {
             }
         }
         // all display share the same max fps
+        let label;
+        let auto_fps_set = if self.last_auto_fps.is_none() {
+            // When setting for the first time, all decreases are None.
+            label = "first set fps";
+            actions
+                .iter()
+                .filter_map(|(action, _)| action.as_ref().map(|a| a.fps))
+                .min()
+        } else if actions.iter().any(|(action, _)| {
+            matches!(
+                action,
+                Some(Action {
+                    decrease: Some(true),
+                    ..
+                })
+            )
+        }) {
+            // There are actions whose decrease is Some(true). Find the smallest fps among these actions.
+            label = "decrease fps";
+            actions
+                .iter()
+                .filter_map(|(action, _)| {
+                    if let Some(Action {
+                        decrease: Some(true),
+                        fps,
+                    }) = action
+                    {
+                        Some(*fps)
+                    } else {
+                        None
+                    }
+                })
+                .min()
+        } else if actions
+            .iter()
+            .filter(|(_, instant)| instant.elapsed().as_secs() < 5)
+            .all(|(action, _)| {
+                matches!(
+                    action,
+                    Some(Action {
+                        decrease: Some(false),
+                        ..
+                    })
+                )
+            })
+        {
+            // The decrease of all actions is Some(false), find the smallest fps among all actions
+            label = "increase fps";
+            actions
+                .iter()
+                .filter_map(|(action, _)| action.as_ref().map(|a| a.fps))
+                .min()
+        } else {
+            label = "";
+            None
+        };
         if let Some(auto_fps) = auto_fps_set {
             // send max fps
             let mut misc = Misc::new();
             misc.set_option(OptionMessage {
-                custom_fps: auto_fps,
+                custom_fps: auto_fps as _,
                 ..Default::default()
             });
             let mut msg = Message::new();
             msg.set_misc(misc);
             self.sender.send(Data::Message(msg)).ok();
-            log::info!("Set auto fps to {}", auto_fps);
-            self.fps_control_map
-                .iter_mut()
-                .map(|e| {
-                    e.1.last_auto_fps = Some(auto_fps);
-                })
-                .count();
+            log::info!("{label} to {auto_fps}");
+            self.last_auto_fps = Some(auto_fps);
         }
     }
 
@@ -1857,7 +1943,6 @@ struct FpsControl {
     last_queue_size: usize,
     refresh_times: usize,
     last_refresh_instant: Instant,
-    last_auto_fps: Option<i32>,
     idle_counter: usize,
 }
 
@@ -1867,7 +1952,6 @@ impl Default for FpsControl {
             last_queue_size: Default::default(),
             refresh_times: Default::default(),
             last_refresh_instant: Instant::now(),
-            last_auto_fps: None,
             idle_counter: 0,
         }
     }
