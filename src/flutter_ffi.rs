@@ -2200,6 +2200,10 @@ pub fn session_request_new_display_init_msgs(session_id: SessionID, display: usi
     }
 }
 
+pub fn log_to_rust(msg: String) {
+    log::info!("{}", msg);
+}
+
 #[cfg(target_os = "android")]
 pub mod server_side {
     use hbb_common::{config, log};

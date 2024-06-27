@@ -2548,6 +2548,7 @@ class FFI {
         } else if (message is EventToUI_Rgba) {
           final display = message.field0;
           if (imageModel.useTextureRender || ffiModel.pi.forceTextureRender) {
+            bind.logToRust(msg: 'EventToUI_Rgba texture render');
             //debugPrint("EventToUI_Rgba display:$display");
             textureModel.setTextureType(display: display, gpuTexture: false);
             onEvent2UIRgba();
@@ -2582,6 +2583,7 @@ class FFI {
 
   void onEvent2UIRgba() async {
     if (ffiModel.waitForImageDialogShow.isTrue) {
+      bind.logToRust(msg: 'onEvent2UIRgba clear waiting for image dialog');
       ffiModel.waitForImageDialogShow.value = false;
       ffiModel.waitForImageTimer?.cancel();
       clearWaitingForImage(dialogManager, sessionId);

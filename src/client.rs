@@ -2135,6 +2135,7 @@ where
         let mut handler_controller_map = HashMap::new();
         let mut count = 0;
         let mut duration = std::time::Duration::ZERO;
+        let mut log_count = 0;
         loop {
             if let Ok(data) = video_receiver.recv() {
                 match data {
@@ -2159,6 +2160,10 @@ where
                                 continue;
                             }
                         };
+                        if log_count < 5 {
+                            log::info!("receive video frame: {:?}", vf);
+                            log_count += 1;
+                        }
                         let display = vf.display as usize;
                         let start = std::time::Instant::now();
                         let format = CodecFormat::from(&vf);
