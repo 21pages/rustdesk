@@ -8,7 +8,7 @@ use std::{
 use bin_reader::BinaryReader;
 
 pub mod bin_reader;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "ui"))]
 mod ui;
 
 #[cfg(windows)]
@@ -121,7 +121,7 @@ fn main() {
     let click_setup = args.is_empty() && arg_exe.to_lowercase().ends_with("install.exe");
     let quick_support = args.is_empty() && arg_exe.to_lowercase().ends_with("qs.exe");
 
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "ui"))]
     if args.is_empty() {
         ui::setup();
     }

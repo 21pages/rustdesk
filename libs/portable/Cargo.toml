@@ -8,6 +8,9 @@ description = "RustDesk Remote Desktop"
 
 build = "build.rs"
 
+[features]
+ui=["native-windows-gui"]
+
 [dependencies]
 brotli = "3.4"
 dirs = "5.0"
@@ -15,7 +18,7 @@ md5 = "0.7"
 winapi = { version = "0.3", features = ["winbase"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-native-windows-gui = "1.0"
+native-windows-gui = {version = "1.0", optional = true}
 
 [package.metadata.winres]
 LegalCopyright = "Copyright © 2024 Purslane Ltd. All rights reserved."
