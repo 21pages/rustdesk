@@ -420,9 +420,11 @@ impl VideoRenderer {
             write_lock.get_mut(&display)
         };
         let Some(info) = opt_info else {
+            log::error!("opt_info is None");
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
+            log::error!("texture_rgba_ptr is null");
             return false;
         }
 
@@ -454,6 +456,7 @@ impl VideoRenderer {
         }
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
             info.notify_render_type = Some(RenderType::PixelBuffer);
+            log::info!("notify_render_type: PixelBuffer");
             true
         } else {
             false
@@ -469,9 +472,11 @@ impl VideoRenderer {
             write_lock.get_mut(&display)
         };
         let Some(info) = opt_info else {
+            log::error!("opt_info is None");
             return false;
         };
         if info.gpu_output_ptr == usize::default() {
+            log::error!("gpu_output_ptr is null");
             return false;
         }
         if let Some(func) = &self.on_texture_func {
@@ -479,6 +484,7 @@ impl VideoRenderer {
         }
         if info.notify_render_type != Some(RenderType::Texture) {
             info.notify_render_type = Some(RenderType::Texture);
+            log::info!("notify_render_type: Texture");
             true
         } else {
             false
