@@ -798,6 +798,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         _updateWindowSize();
       });
     }
+    // Future.delayed(const Duration(milliseconds: 100), () {
+    //   windowOnTop(null);
+    // });
   }
 
   _updateWindowSize() {
