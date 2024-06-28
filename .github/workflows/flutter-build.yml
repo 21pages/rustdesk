@@ -969,12 +969,12 @@ jobs:
               distro: ubuntu18.04,
               on: ubuntu-20.04,
             }
-          - {
-              arch: aarch64,
-              target: aarch64-unknown-linux-gnu,
-              distro: ubuntu18.04,
-              on: [self-hosted, Linux, ARM64],
-            }
+          # - {
+          #     arch: aarch64,
+          #     target: aarch64-unknown-linux-gnu,
+          #     distro: ubuntu18.04,
+          #     on: [self-hosted, Linux, ARM64],
+          #   }
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
@@ -1280,14 +1280,14 @@ jobs:
               deb_arch: amd64,
               sciter_arch: x64,
             }
-          - {
-              arch: armv7,
-              target: armv7-unknown-linux-gnueabihf,
-              on: [self-hosted, Linux, ARM64],
-              distro: ubuntu18.04-rustdesk,
-              deb_arch: armhf,
-              sciter_arch: arm32,
-            }
+          # - {
+          #     arch: armv7,
+          #     target: armv7-unknown-linux-gnueabihf,
+          #     on: [self-hosted, Linux, ARM64],
+          #     distro: ubuntu18.04-rustdesk,
+          #     deb_arch: armhf,
+          #     sciter_arch: arm32,
+          #   }
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
