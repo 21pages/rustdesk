@@ -229,5 +229,8 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("floating_window_tip", "It helps to keep RustDesk background service"),
         ("enable-bot-tip", "If you enable this feature, you can receive the 2FA code from your bot. It can also function as a connection notification."),
         ("enable-bot-desc", "1, Open a chat with @BotFather.\n2, Send the command \"/newbot\". You will receive a token after completing this step.\n3, Start a chat with your newly created bot. Send a message beginning with a forward slash (\"/\") like \"/hello\" to activate it.\n"),
+        ("no-permanent-password-tip", "Please set the permanent password first."),
+        ("cancel-2fa-confirm-tip", "Are you sure you want to cancel 2fa?"),
+        ("cancel-bot-confirm-tip", "Are you sure you want to cancel Telegram bot?"),
     ].iter().cloned().collect();
 }

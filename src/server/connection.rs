@@ -1,8 +1,8 @@
 use super::{input_service::*, *};
-#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-use crate::clipboard_file::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::update_clipboard;
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+use crate::clipboard_file::*;
 #[cfg(target_os = "android")]
 use crate::keyboard::client::map_key_to_control_key;
 #[cfg(target_os = "linux")]
@@ -1748,8 +1748,10 @@ impl Connection {
             } else if password::approve_mode() == ApproveMode::Password
                 && !password::has_valid_password()
             {
-                self.send_login_error("Connection not allowed").await;
-                return false;
+                self.try_start_cm(lr.my_id, lr.my_name, false);
+                self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
+                    .await;
+                return true;
             } else if self.is_recent_session(false) {
                 if err_msg.is_empty() {
                     #[cfg(target_os = "linux")]

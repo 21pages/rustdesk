@@ -627,5 +627,8 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Telegram bot", ""),
         ("enable-bot-tip", ""),
         ("enable-bot-desc", ""),
+        ("no-permanent-password-tip", ""),
+        ("cancel-2fa-confirm-tip", ""),
+        ("cancel-bot-confirm-tip", ""),
     ].iter().cloned().collect();
 }
