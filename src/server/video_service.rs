@@ -207,7 +207,8 @@ fn create_capturer(
             {
                 log::debug!("Create capturer from scrap");
                 return Ok(Box::new(
-                    Capturer::new(display).with_context(|| "Failed to create capturer")?,
+                    Capturer::new(display)
+                        .with_context(|| "Failed to create capturer in video service")?,
                 ));
             }
         }
@@ -383,6 +384,7 @@ fn get_capturer(current: usize, portable_service_running: bool) -> ResultType<Ca
 }
 
 fn run(vs: VideoService) -> ResultType<()> {
+    // log::info!("display all: {:?}", Display::all());
     let _raii = Raii::new(vs.idx);
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //

@@ -8,7 +8,6 @@ use super::x11::PixelBuffer;
 
 pub struct Capturer(Display, Box<dyn Recorder>, Vec<u8>);
 
-
 lazy_static::lazy_static! {
     static ref MAP_ERR: RwLock<Option<fn(err: String)-> io::Error>> = Default::default();
 }
@@ -61,6 +60,7 @@ impl TraitCapturer for Capturer {
     }
 }
 
+#[derive(Debug)]
 pub struct Display(pipewire::PipeWireCapturable);
 
 impl Display {

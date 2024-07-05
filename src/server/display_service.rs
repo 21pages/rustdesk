@@ -56,6 +56,7 @@ impl SyncDisplaysInfo {
             return None;
         }
         self.is_synced = true;
+        log::info!("======================== displays: {:?}", self.displays);
         Some(self.displays.clone())
     }
 }
@@ -394,7 +395,8 @@ pub fn try_get_displays_(add_amyuni_headless: bool) -> ResultType<Vec<Display>> 
     let mut displays = Display::all()?;
 
     // Do not add virtual display if the platform is not installed or the virtual display is not supported.
-    if !crate::platform::is_installed() || !virtual_display_manager::is_virtual_display_supported() {
+    if !crate::platform::is_installed() || !virtual_display_manager::is_virtual_display_supported()
+    {
         return Ok(displays);
     }
 

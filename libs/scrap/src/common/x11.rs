@@ -78,6 +78,7 @@ impl<'a> TraitPixelBuffer for PixelBuffer<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct Display(x11::Display);
 
 impl Display {

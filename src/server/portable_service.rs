@@ -905,9 +905,9 @@ pub mod client {
             return Ok(Box::new(CapturerPortable::new(current_display)));
         } else {
             log::debug!("Create capturer dxgi|gdi");
-            return Ok(Box::new(
-                Capturer::new(display).with_context(|| "Failed to create capturer")?,
-            ));
+            return Ok(Box::new(Capturer::new(display).with_context(|| {
+                "Failed to create capturer in portable service"
+            })?));
         }
     }
 

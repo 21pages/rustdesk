@@ -17,7 +17,7 @@ use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app::AppSink;
 
-use hbb_common::config;
+use hbb_common::{config, log};
 
 use super::capturable::PixelProvider;
 use super::capturable::{Capturable, Recorder};
@@ -32,6 +32,7 @@ lazy_static! {
 
 #[inline]
 pub fn close_session() {
+    log::info!("close_session");
     let _ = RDP_RESPONSE.lock().unwrap().take();
 }
 
@@ -41,6 +42,7 @@ pub fn is_rdp_session_hold() -> bool {
 }
 
 pub fn try_close_session() {
+    log::info!("try_close_session");
     let mut rdp_res = RDP_RESPONSE.lock().unwrap();
     let mut close = false;
     if let Some(rdp_res) = &*rdp_res {
@@ -106,6 +108,7 @@ pub struct PipeWireCapturable {
 
 impl PipeWireCapturable {
     fn new(conn: Arc<SyncConnection>, fd: OwnedFd, stream: PwStreamInfo) -> Self {
+        log::info!("new PipeWireCapturable");
         // alternative to get screen resolution as stream.size is not always correct ex: on fractional scaling
         // https://github.com/rustdesk/rustdesk/issues/6116#issuecomment-1817724244
         let res = get_res(Self {
@@ -116,6 +119,7 @@ impl PipeWireCapturable {
             position: stream.position,
             size: stream.size,
         });
+        log::info!("new PipeWireCapturable, res is ok: {}", res.is_ok());
         Self {
             dbus_conn: conn,
             fd,
@@ -165,21 +169,26 @@ impl Capturable for PipeWireCapturable {
 
 fn get_res(capturable: PipeWireCapturable) -> Result<(usize, usize), Box<dyn Error>> {
     let rec = PipeWireRecorder::new(capturable)?;
+    log::info!("get res PipeWireRecorder::new finished");
     if let Some(sample) = rec
         .appsink
         .try_pull_sample(gst::ClockTime::from_mseconds(300))
     {
+        log::info!("get res try_pull_sample is some");
         let cap = sample
             .get_caps()
             .ok_or("Failed get caps")?
             .get_structure(0)
             .ok_or("Failed to get structure")?;
+        log::info!("get res get caps ok");
         let w: i32 = cap.get_value("width")?.get_some()?;
         let h: i32 = cap.get_value("height")?.get_some()?;
         let w = w as usize;
         let h = h as usize;
+        log::info!("get res ok, w: {w}, h: {h}");
         Ok((w, h))
     } else {
+        log::info!("get res try_pull_sample is none");
         Err(Box::new(GStreamerError(
             "Error getting screen resolution".into(),
         )))
@@ -200,27 +209,39 @@ pub struct PipeWireRecorder {
 
 impl PipeWireRecorder {
     pub fn new(capturable: PipeWireCapturable) -> Result<Self, Box<dyn Error>> {
+        log::info!("new PipeWireRecorder");
         let pipeline = gst::Pipeline::new(None);
 
         let src = gst::ElementFactory::make("pipewiresrc", None)?;
+        log::info!("new PipeWireRecorder pipewiresrc ok");
         src.set_property("fd", &capturable.fd.as_raw_fd())?;
+        log::info!("new PipeWireRecorder fd ok");
         src.set_property("path", &format!("{}", capturable.path))?;
+        log::info!("new PipeWireRecorder path ok");
         src.set_property("keepalive_time", &1_000.as_raw_fd())?;
+        log::info!("new PipeWireRecorder keepalive_time ok");
 
         // For some reason pipewire blocks on destruction of AppSink if this is not set to true,
         // see: https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/982
         src.set_property("always-copy", &true)?;
+        log::info!("new PipeWireRecorder always-copy ok");
 
         let sink = gst::ElementFactory::make("appsink", None)?;
+        log::info!("new PipeWireRecorder appsink ok");
         sink.set_property("drop", &true)?;
+        log::info!("new PipeWireRecorder drop ok");
         sink.set_property("max-buffers", &1u32)?;
+        log::info!("new PipeWireRecorder max-buffers ok");
 
         pipeline.add_many(&[&src, &sink])?;
+        log::info!("new PipeWireRecorder add_many ok");
         src.link(&sink)?;
+        log::info!("new PipeWireRecorder link ok");
 
         let appsink = sink
             .dynamic_cast::<AppSink>()
             .map_err(|_| GStreamerError("Sink element is expected to be an appsink!".into()))?;
+        log::info!("new PipeWireRecorder dynamic_cast ok");
         let mut caps = gst::Caps::new_empty();
         caps.merge_structure(gst::structure::Structure::new(
             "video/x-raw",
@@ -232,7 +253,9 @@ impl PipeWireRecorder {
         ));
         appsink.set_caps(Some(&caps));
 
+        log::info!("ew PipeWireRecorder before playing");
         pipeline.set_state(gst::State::Playing)?;
+        log::info!("new PipeWireRecorder Playing ok");
         Ok(Self {
             pipeline,
             appsink,
@@ -376,9 +399,11 @@ where
     m.sender = Some("org.freedesktop.portal.Desktop".into());
     m.interface = Some("org.freedesktop.portal.Request".into());
     conn.add_match(m, move |r: OrgFreedesktopPortalRequestResponse, c, m| {
-        debug!("Response from DBus: response: {:?}, message: {:?}", r, m);
+        log::info!("Response from DBus: response: {:?}, message: {:?}", r, m);
         match r.response {
-            0 => {}
+            0 => {
+                log::info!("response ok");
+            }
             1 => {
                 warn!("DBus response: User cancelled interaction.");
                 failure_out.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -511,7 +536,9 @@ pub fn request_remote_desktop() -> Result<
             INIT = true;
         }
     }
+    log::info!("request_remote_desktop");
     let conn = SyncConnection::new_session()?;
+    log::info!("request_remote_desktop new_session ok");
     let portal = get_portal(&conn);
     let mut args: PropMap = HashMap::new();
     let fd: Arc<Mutex<Option<OwnedFd>>> = Arc::new(Mutex::new(None));
@@ -537,6 +564,9 @@ pub fn request_remote_desktop() -> Result<
             is_support_restore_token = true;
         }
     }
+    log::info!(
+        "request_remote_desktop new_session is_support_restore_token:{is_support_restore_token}. is_server_running(): {}", is_server_running()
+    );
 
     // The following code may be improved.
     // https://flatpak.github.io/xdg-desktop-portal/#:~:text=To%20avoid%20a%20race%20condition
@@ -550,6 +580,7 @@ pub fn request_remote_desktop() -> Result<
     } else {
         path = remote_desktop_portal::create_session(&portal, args)?;
     }
+    log::info!("request_remote_desktop create_session ok");
     handle_response(
         &conn,
         path,
@@ -562,10 +593,13 @@ pub fn request_remote_desktop() -> Result<
         ),
         failure_res.clone(),
     )?;
+    log::info!("request_remote_desktop handle_response ok");
 
     // wait 3 minutes for user interaction
-    for _ in 0..1800 {
+    for i in 0..1800 {
+        log::info!("request_remote_desktop wait for user interaction: {}", i);
         conn.process(Duration::from_millis(100))?;
+        log::info!("request_remote_desktop process ok");
         // Once we got a file descriptor we are done!
         if fd_res.lock().unwrap().is_some() {
             break;
@@ -578,10 +612,17 @@ pub fn request_remote_desktop() -> Result<
     let fd_res = fd_res.lock().unwrap();
     let streams_res = streams_res.lock().unwrap();
     let session_res = session_res.lock().unwrap();
+    log::info!(
+        "request_remote_desktop fd_res: {}, stream_res: {}, session_res: {:?}",
+        fd_res.is_some(),
+        streams_res.len(),
+        session_res.clone()
+    );
 
     if let Some(fd_res) = fd_res.clone() {
         if let Some(session) = session_res.clone() {
             if !streams_res.is_empty() {
+                log::info!("request_remote_desktop ok");
                 return Ok((
                     conn,
                     fd_res,
@@ -608,6 +649,7 @@ fn on_create_session_response(
     &SyncConnection,
     &dbus::Message,
 ) -> Result<(), Box<dyn Error>> {
+    log::info!("on_create_session_response");
     move |r: OrgFreedesktopPortalRequestResponse, c, _| {
         let ses: dbus::Path = r
             .results
@@ -627,6 +669,7 @@ fn on_create_session_response(
             Ok(session) => session,
             Err(_) => return Err(Box::new(DBusError("Failed to lock session.".into()))),
         };
+        log::info!("on_create_session_response session ok");
         session.replace(ses.clone());
 
         let portal = get_portal(c);
@@ -743,6 +786,10 @@ fn on_select_sources_response(
     &SyncConnection,
     &dbus::Message,
 ) -> Result<(), Box<dyn Error>> {
+    log::info!(
+        "on_select_sources_response is_server_running(): {}",
+        is_server_running()
+    );
     move |_: OrgFreedesktopPortalRequestResponse, c, _| {
         let portal = get_portal(c);
         let mut args: PropMap = HashMap::new();
@@ -753,8 +800,10 @@ fn on_select_sources_response(
         let path;
         if is_server_running() {
             path = screencast_portal::start(&portal, session.clone(), "", args)?;
+            log::info!("on_select_sources_response screencast_portal::start ok");
         } else {
             path = remote_desktop_portal::start(&portal, session.clone(), "", args)?;
+            log::info!("on_select_sources_response remote_desktop_portal::start ok");
         }
         handle_response(
             c,
@@ -767,6 +816,7 @@ fn on_select_sources_response(
             ),
             failure.clone(),
         )?;
+        log::info!("on_select_sources_response handle_response ok");
 
         Ok(())
     }
@@ -783,11 +833,13 @@ fn on_start_response(
     &dbus::Message,
 ) -> Result<(), Box<dyn Error>> {
     move |r: OrgFreedesktopPortalRequestResponse, c, _| {
+        log::info!("on_start_response is_support_restore_token: {is_support_restore_token}");
         let portal = get_portal(c);
         // See `is_server_running()` to understand the following code.
         if is_server_running() {
             if is_support_restore_token {
                 if let Some(restore_token) = r.results.get(RESTORE_TOKEN) {
+                    log::info!("on_start_response restore_token: {:?}", restore_token);
                     if let Some(restore_token) = restore_token.as_str() {
                         config::LocalConfig::set_option(
                             RESTORE_TOKEN_CONF_KEY.to_owned(),
@@ -807,6 +859,7 @@ fn on_start_response(
             .lock()
             .unwrap()
             .replace(portal.open_pipe_wire_remote(session.clone(), HashMap::new())?);
+        log::info!("on_start_response open_pipe_wire_remote ok");
 
         Ok(())
     }

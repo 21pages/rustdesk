@@ -139,7 +139,9 @@ pub(super) async fn check_init() -> ResultType<()> {
         if *CAP_DISPLAY_INFO.read().unwrap() == 0 {
             let mut lock = CAP_DISPLAY_INFO.write().unwrap();
             if *lock == 0 {
+                log::info!("check init");
                 let mut all = Display::all()?;
+                log::info!("check init all: {all:?}");
                 let num = all.len();
                 let primary = super::display_service::get_primary_2(&all);
                 let current = primary;
@@ -156,7 +158,7 @@ pub(super) async fn check_init() -> ResultType<()> {
 
                 let display = all.remove(current);
                 let (origin, width, height) = (display.origin(), display.width(), display.height());
-                log::debug!(
+                log::info!(
                     "#displays={}, current={}, origin: {:?}, width={}, height={}, cpus={}/{}",
                     num,
                     current,
@@ -177,8 +179,7 @@ pub(super) async fn check_init() -> ResultType<()> {
                             .unwrap_or(origin.1 + height as i32);
                         if w < origin.0 + width as i32 || h < origin.1 + height as i32 {
                             (origin.0 + width as i32, origin.1 + height as i32)
-                        }
-                        else{
+                        } else {
                             (w, h)
                         }
                     }
@@ -189,9 +190,11 @@ pub(super) async fn check_init() -> ResultType<()> {
                 maxx = max_width;
                 miny = 0;
                 maxy = max_height;
+                log::info!("maxx:{maxx}, maxy: {maxy}");
 
                 let capturer = Box::into_raw(Box::new(
-                    Capturer::new(display).with_context(|| "Failed to create capturer")?,
+                    Capturer::new(display)
+                        .with_context(|| "Failed to create capturer in wayland")?,
                 ));
                 let capturer = CapturerPtr(capturer);
                 let cap_display_info = Box::into_raw(Box::new(CapDisplayInfo {
@@ -202,6 +205,7 @@ pub(super) async fn check_init() -> ResultType<()> {
                     current,
                     capturer,
                 }));
+                log::info!("cap_display_info:{cap_display_info:?}");
                 *lock = cap_display_info as _;
             }
         }
