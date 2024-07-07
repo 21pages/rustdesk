@@ -115,6 +115,8 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
 
       - name: Install vcpkg dependencies
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         run: |
           $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
         shell: bash
@@ -255,6 +257,8 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
 
       - name: Install vcpkg dependencies
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         run: |
           $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
         shell: bash
@@ -427,7 +431,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install nasm
+          brew install nasm yasm
       - name: Checkout source code
         uses: actions/checkout@v3
       - name: Install flutter
@@ -442,9 +446,26 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
 
       - name: Install vcpkg dependencies
+        continue-on-error: true
         run: |
+          # (curl -L https://github.com/libav/gas-preprocessor/raw/master/gas-preprocessor.pl \
+          #   -o /usr/local/bin/gas-preprocessor.pl \
+          #   && chmod +x /usr/local/bin/gas-preprocessor.pl) \
+          #   || exit 1
           $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
         shell: bash
+
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+             /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/detect_compiler/config-arm64-osx-rel-CMakeCache.txt.log 
+             /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/ffmpeg/build-arm64-ios-rel-config.log
+             /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/ffmpeg/build-arm64-ios-rel-out.log
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
