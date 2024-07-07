@@ -85,6 +85,7 @@ jobs:
 
       - name: Install flutter
         uses: subosito/flutter-action@v2.12.0 #https://github.com/subosito/flutter-action/issues/277
+        if: false
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -92,16 +93,19 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
+        if: false
         with:
           toolchain: ${{ env.WIN_RUST_VERSION }}
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
       - uses: Swatinem/rust-cache@v2
+        if: false
         with:
           prefix-key: ${{ matrix.job.os }}
 
       - name: Install flutter rust bridge deps
+        if: false
         run: |
           git config --global core.longpaths true
           cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid"
@@ -239,12 +243,14 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
+        if: false
         with:
           toolchain: nightly-2023-10-13-${{ matrix.job.target }} # must use nightly here, because of abi_thiscall feature required
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
       - uses: Swatinem/rust-cache@v2
+        if: false
         with:
           prefix-key: ${{ matrix.job.os }}-sciter
 
