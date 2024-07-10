@@ -1380,7 +1380,25 @@ impl Connection {
         wait_session_id_confirm: &mut bool,
     ) {
         let sessions = crate::platform::get_available_sessions(true);
+        log::info!("================= begin dump sessions ===================");
+        for s in &sessions {
+            log::info!("session: {:?}", s);
+        }
         if let Some(current_sid) = crate::platform::get_current_process_session_id() {
+            log::info!("current_sid: {:?}", current_sid);
+            log::info!("is_installed: {:?}", crate::platform::is_installed());
+            log::info!("is_share_rdp: {:?}", crate::platform::is_share_rdp());
+            log::info!(
+                "remote_and_file_conn_count: {:?}",
+                raii::AuthedConnID::remote_and_file_conn_count()
+            );
+            log::info!("sessions.len: {:?}", sessions.len());
+            log::info!(
+                "sessions.iter().any(|e| e.sid == current_sid): {}",
+                sessions.iter().any(|e| e.sid == current_sid)
+            );
+            log::info!("version: {:?}", get_version_number(&self.lr.version));
+
             if crate::platform::is_installed()
                 && crate::platform::is_share_rdp()
                 && raii::AuthedConnID::remote_and_file_conn_count() == 1
@@ -1388,6 +1406,7 @@ impl Connection {
                 && sessions.iter().any(|e| e.sid == current_sid)
                 && get_version_number(&self.lr.version) >= get_version_number("1.2.4")
             {
+                log::info!("can use multi sessions");
                 pi.windows_sessions = Some(WindowsSessions {
                     sessions,
                     current_sid,
@@ -1396,7 +1415,10 @@ impl Connection {
                 .into();
                 *wait_session_id_confirm = true;
             }
+        } else {
+            log::info!("current_sid is none");
         }
+        log::info!("================= end dump sessions ===================");
     }
 
     fn on_remote_authorized(&self) {
@@ -2368,10 +2390,27 @@ impl Connection {
                         .user_record(self.inner.id(), status),
                     #[cfg(windows)]
                     Some(misc::Union::SelectedSid(sid)) => {
+                        log::info!(
+                            "=================== begin handle selected sid ====================="
+                        );
+                        log::info!("selected sid: {}", sid);
                         if let Some(current_process_sid) =
                             crate::platform::get_current_process_session_id()
                         {
+                            log::info!("current process sid: {}", current_process_sid);
                             let sessions = crate::platform::get_available_sessions(false);
+                            for s in &sessions {
+                                log::info!("session: {}", s.sid);
+                            }
+                            log::info!(
+                                "current_process_sid != sid:
+                                 {}",
+                                current_process_sid != sid
+                            );
+                            log::info!(
+                                "sessions.iter().any(|e| e.sid == sid): {}",
+                                sessions.iter().any(|e| e.sid == sid)
+                            );
                             if crate::platform::is_installed()
                                 && crate::platform::is_share_rdp()
                                 && raii::AuthedConnID::remote_and_file_conn_count() == 1
@@ -2391,7 +2430,12 @@ impl Connection {
                             } else {
                                 self.try_sub_services();
                             }
+                        } else {
+                            log::error!("Failed to get current process session id");
                         }
+                        log::info!(
+                            "=================== end handle selected sid ====================="
+                        );
                     }
                     Some(misc::Union::MessageQuery(mq)) => {
                         if let Some(msg_out) =
