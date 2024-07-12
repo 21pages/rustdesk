@@ -24,11 +24,22 @@
     "avformat"
   ],
   "features": {
-    "win": {
-      "description": "Windows",
+    "amf": {
+      "description": "AMD AMF codec support",
       "dependencies": [
-        "amd-amf",
-        "ffnvcodec",
+        "amd-amf"
+      ]
+    },
+    "nvcodec": {
+      "description": "Nvidia video decoding/encoding acceleration",
+      "supports": "linux | (!osx & !uwp & !(arm64 & windows))",
+      "dependencies": [
+        "ffnvcodec"
+      ]
+    },
+    "qsv": {
+      "description": "Intel QSV Codec",
+      "dependencies": [
         "mfx-dispatch"
       ]
     }

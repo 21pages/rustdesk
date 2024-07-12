@@ -1,8 +1,16 @@
+if(VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_LINUX)
+    set(FF_VERSION "n5.1.5")
+    set(FF_SHA512 "a933f18e53207ccc277b42c9a68db00f31cefec555e6d5d7c57db3409023b2c38fd93ebe2ccfcd17ba2397adb912e93f2388241ca970b7d8bd005ccfe86d5679")
+else()
+    set(FF_VERSION "n7.0.1")
+    set(FF_SHA512 "1212ebcb78fdaa103b0304373d374e41bf1fe680e1fa4ce0f60624857491c26b4dda004c490c3ef32d4a0e10f42ae6b54546f9f318e2dcfbaa116117f687bc88")
+endif()
+
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO ffmpeg/ffmpeg
-    REF "n${VERSION}"
-    SHA512 a933f18e53207ccc277b42c9a68db00f31cefec555e6d5d7c57db3409023b2c38fd93ebe2ccfcd17ba2397adb912e93f2388241ca970b7d8bd005ccfe86d5679
+    REF "${FF_VERSION}"
+    SHA512 "${FF_SHA512}"
     HEAD_REF master
     PATCHES
     0002-fix-msvc-link.patch # upstreamed in future version
@@ -11,6 +19,23 @@ vcpkg_from_github(
     0012-Fix-ssl-110-detection.patch
     0013-define-WINVER.patch
 )
+
+if(VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_LINUX)
+    vcpkg_apply_patches(
+        SOURCE_PATH ${SOURCE_PATH}
+        PATCHES
+            ${CMAKE_CURRENT_LIST_DIR}/5.1/0001-avcodec-amfenc-add-query_timeout-option-for-h264-hev.patch
+            ${CMAKE_CURRENT_LIST_DIR}/5.1/0002-libavcodec-amfenc-reconfig-when-bitrate-change.patch
+            ${CMAKE_CURRENT_LIST_DIR}/5.1/0003-use-release-7.0-s-qsvenc-update_bitrate.patch
+            ${CMAKE_CURRENT_LIST_DIR}/5.1/0004-amf-colorspace.patch
+    )
+elseif(VCPKG_TARGET_IS_ANDROID)
+    vcpkg_apply_patches(
+        SOURCE_PATH ${SOURCE_PATH}
+        PATCHES
+            ${CMAKE_CURRENT_LIST_DIR}/7.0/0001-android-mediacodec-encode-align-64.patch
+    )
+endif()
 
 if(SOURCE_PATH MATCHES " ")
     message(FATAL_ERROR "Error: ffmpeg will not build with spaces in the path. Please use a directory with no spaces")
@@ -58,11 +83,11 @@ elseif(VCPKG_TARGET_IS_WINDOWS)
         message(FATAL_ERROR "Unsupported target architecture")
     endif()
 elseif(VCPKG_TARGET_IS_OSX)
-    string(APPEND OPTIONS " --target-os=darwin --enable-appkit --enable-avfoundation --enable-coreimage --enable-audiotoolbox --enable-videotoolbox")
+    string(APPEND OPTIONS " --target-os=darwin --disable-autodetect --enable-videotoolbox --enable-encoder=h264_videotoolbox,hevc_videotoolbox --enable-hwaccel=h264_videotoolbox,hevc_videotoolbox")
 elseif(VCPKG_TARGET_IS_IOS)
-    string(APPEND OPTIONS " --enable-avfoundation --enable-coreimage --enable-videotoolbox")
+    string(APPEND OPTIONS " --arch=arm64 --disable-autodetect --disable-hwaccels --disable-encoders --disable-videotoolbox")
 elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Android")
-    string(APPEND OPTIONS " --target-os=android --enable-jni --enable-mediacodec")
+    string(APPEND OPTIONS " --target-os=android --enable-jni --enable-mediacodec --disable-hwaccels --enable-encoder=h264_mediacodec --enable-encoder=hevc_mediacodec --enable-decoder=h264_mediacodec --enable-decoder=hevc_mediacodec")
 endif()
 
 if(VCPKG_TARGET_IS_OSX)

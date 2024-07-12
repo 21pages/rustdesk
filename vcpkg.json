@@ -56,9 +56,25 @@
       "name": "ffmpeg",
       "host": true,
       "features": [
-        "win"
+        {
+          "name": "amf",
+          "platform": "((windows | linux) & static)"
+        },
+        {
+          "name": "nvcodec",
+          "platform": "((windows | linux) & static)"
+        },
+        {
+          "name": "qsv",
+          "platform": "(windows & static)"
+        }
       ],
-      "platform": "(windows & static)"
+      "platform": "((windows | linux | osx) & static)"
+    },
+    {
+      "name": "ffmpeg",
+      "host": false,
+      "platform": "((android | ios) & static)"
     }
   ],
   "vcpkg-configuration": {
