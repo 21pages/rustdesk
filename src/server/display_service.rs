@@ -426,6 +426,7 @@ pub fn try_get_displays_(add_amyuni_headless: bool) -> ResultType<Vec<Display>> 
         if let Err(e) = virtual_display_manager::plug_in_headless() {
             log::error!("plug in headless failed {}", e);
         } else {
+            log::info!("plug_in_headless ok");
             displays = Display::all()?;
         }
     }

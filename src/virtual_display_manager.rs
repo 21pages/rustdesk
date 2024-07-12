@@ -496,6 +496,7 @@ pub mod amyuni_idd {
     // If the driver is installed by "deviceinstaller64.exe", the driver will be installed asynchronously.
     // The caller must wait some time before using the driver.
     fn check_install_driver(is_async: &mut bool) -> ResultType<()> {
+        log::info!("check_install_driver 1");
         let _l = LOCK.lock().unwrap();
         let drivers = windows::get_display_drivers();
         if drivers
@@ -503,8 +504,10 @@ pub mod amyuni_idd {
             .any(|(s, c)| s == super::AMYUNI_IDD_DEVICE_STRING && *c == 0)
         {
             *is_async = false;
+            log::info!("check_install_driver 2");
             return Ok(());
         }
+        log::info!("check_install_driver 3");
 
         if let Ok(Some(work_dir)) = get_deviceinstaller64_work_dir() {
             if crate::platform::windows::is_x64() {
@@ -516,6 +519,7 @@ pub mod amyuni_idd {
         }
 
         let exe_file = std::env::current_exe()?;
+        log::info!("check_install_driver 4");
         let Some(cur_dir) = exe_file.parent() else {
             bail!("Cannot get parent of current exe file");
         };
@@ -523,12 +527,14 @@ pub mod amyuni_idd {
         if !inf_path.exists() {
             bail!("Driver inf file not found.");
         }
+        log::info!("check_install_driver 5");
         let inf_path = inf_path.to_string_lossy().to_string();
 
         log::info!("Installing driver by SetupAPI");
         let mut reboot_required = false;
         let _ =
             unsafe { win_device::install_driver(&inf_path, HARDWARE_ID, &mut reboot_required)? };
+        log::info!("check_install_driver 6");
         *is_async = false;
         Ok(())
     }
@@ -572,18 +578,25 @@ pub mod amyuni_idd {
     }
 
     pub fn plug_in_headless() -> ResultType<()> {
+        log::info!("plug_in_headless 1");
         let mut tm = LAST_PLUG_IN_HEADLESS_TIME.lock().unwrap();
+        log::info!("plug_in_headless 1-1: {:?}", tm.elapsed());
         if tm.elapsed() < Duration::from_secs(3) {
+            log::info!("plug_in_headless 1-2");
             bail!("Plugging in too frequently.");
         }
+        log::info!("plug_in_headless 1-3");
         *tm = Instant::now();
+        log::info!("plug_in_headless 1-4");
         drop(tm);
+        log::info!("plug_in_headless 2");
 
         let mut is_async = false;
         if let Err(e) = check_install_driver(&mut is_async) {
             log::error!("Failed to install driver: {}", e);
             bail!("Failed to install driver.");
         }
+        log::info!("plug_in_headless 3");
 
         plug_in_monitor_(true, is_async)
     }
@@ -653,6 +666,7 @@ pub mod amyuni_idd {
 }
 
 mod windows {
+    use hbb_common::log;
     use std::ptr::null_mut;
     use winapi::{
         shared::{
@@ -743,6 +757,7 @@ mod windows {
     }
 
     pub(super) fn get_display_drivers() -> Vec<(String, u32)> {
+        log::info!("get_display_drivers 1");
         let mut display_drivers: Vec<(String, u32)> = Vec::new();
 
         let device_info_set = unsafe {
@@ -753,6 +768,7 @@ mod windows {
                 DIGCF_PRESENT,
             )
         };
+        log::info!("get_display_drivers 2");
 
         if device_info_set == INVALID_HANDLE_VALUE {
             println!(
@@ -761,6 +777,7 @@ mod windows {
             );
             return display_drivers;
         }
+        log::info!("get_display_drivers 3");
 
         let mut device_info_data = SP_DEVINFO_DATA {
             cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
@@ -771,10 +788,12 @@ mod windows {
 
         let mut device_index = 0;
         loop {
+            log::info!("get_display_drivers 4");
             let result = unsafe {
                 SetupDiEnumDeviceInfo(device_info_set, device_index, &mut device_info_data)
             };
             if result == 0 {
+                log::info!("get_display_drivers 5");
                 break;
             }
 
@@ -794,6 +813,7 @@ mod windows {
                     &mut required_size,
                 );
 
+                log::info!("get_display_drivers 6");
                 buffer = vec![0; required_size as usize / 2];
                 SetupDiGetDeviceRegistryPropertyW(
                     device_info_set,
@@ -804,6 +824,7 @@ mod windows {
                     required_size,
                     null_mut(),
                 );
+                log::info!("get_display_drivers 7");
             }
 
             let Ok(driver_description) = String::from_utf16(&buffer) else {
@@ -811,6 +832,7 @@ mod windows {
                 device_index += 1;
                 continue;
             };
+            log::info!("get_display_drivers 8");
 
             let mut status: ULONG = 0;
             let mut problem_number: ULONG = 0;
@@ -823,6 +845,7 @@ mod windows {
                     0,
                 )
             };
+            log::info!("get_display_drivers 9");
             if config_ret != CR_SUCCESS {
                 println!(
                     "Failed to get device status. Error: {}",
@@ -834,6 +857,7 @@ mod windows {
             display_drivers.push((driver_description, problem_number));
             device_index += 1;
         }
+        log::info!("get_display_drivers 10");
 
         display_drivers
     }

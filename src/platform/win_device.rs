@@ -114,14 +114,17 @@ pub unsafe fn install_driver(
     hardware_id: &str,
     reboot_required: &mut bool,
 ) -> Result<(), DeviceError> {
+    log::info!("install_driver 1");
     let driver_inf_path = OsStr::new(inf_path)
         .encode_wide()
         .chain(Some(0).into_iter())
         .collect::<Vec<u16>>();
+    log::info!("install_driver 2");
     let hardware_id = OsStr::new(hardware_id)
         .encode_wide()
         .chain(Some(0).into_iter())
         .collect::<Vec<u16>>();
+    log::info!("install_driver 3");
 
     let mut class_guid: GUID = std::mem::zeroed();
     let mut class_name: [u16; 32] = [0; 32];
@@ -134,10 +137,13 @@ pub unsafe fn install_driver(
         null_mut(),
     ) == FALSE
     {
+        log::info!("install_driver 4");
         return Err(DeviceError::new_api_last_err("SetupDiGetINFClassW"));
     }
 
+    log::info!("install_driver 5");
     let dev_info = DeviceInfo::setup_di_create_device_info_list(&mut class_guid)?;
+    log::info!("install_driver 6");
 
     let mut dev_info_data = SP_DEVINFO_DATA {
         cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as _,
@@ -155,9 +161,11 @@ pub unsafe fn install_driver(
         &mut dev_info_data,
     ) == FALSE
     {
+        log::info!("install_driver 7");
         return Err(DeviceError::new_api_last_err("SetupDiCreateDeviceInfoW"));
     }
 
+    log::info!("install_driver 8");
     if SetupDiSetDeviceRegistryPropertyW(
         *dev_info,
         &mut dev_info_data,
@@ -171,11 +179,13 @@ pub unsafe fn install_driver(
         ));
     }
 
+    log::info!("install_driver 9");
     if SetupDiCallClassInstaller(DIF_REGISTERDEVICE, *dev_info, &mut dev_info_data) == FALSE {
         return Err(DeviceError::new_api_last_err("SetupDiCallClassInstaller"));
     }
 
     let mut reboot_required_ = FALSE;
+    log::info!("install_driver 10");
     if UpdateDriverForPlugAndPlayDevicesW(
         null_mut(),
         hardware_id.as_ptr(),
@@ -188,6 +198,7 @@ pub unsafe fn install_driver(
             "UpdateDriverForPlugAndPlayDevicesW",
         ));
     }
+    log::info!("install_driver 11");
     *reboot_required = reboot_required_ == TRUE;
 
     Ok(())
