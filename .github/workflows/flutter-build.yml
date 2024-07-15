@@ -458,7 +458,8 @@ jobs:
         with:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
-          files: | 
+          files: |
+             /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/detect_compiler/config-arm64-osx-rel-CMakeCache.txt.log 
              /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/ffmpeg/build-arm64-ios-rel-config.log
              /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/ffmpeg/build-arm64-ios-rel-out.log
 
