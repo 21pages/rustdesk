@@ -669,8 +669,21 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
 
       - name: Install vcpkg dependencies
+        continue-on-error: true
         run: |
           $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"
+
+          - name: Publish
+          uses: softprops/action-gh-release@v1
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          with:
+            prerelease: true
+            tag_name: ${{ env.TAG_NAME }}
+            files: |
+              /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/ffmpeg/build-arm64-osx-rel-config.log
+              /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/ffmpeg/build-arm64-osx-rel-out.log
+              /Users/runner/work/rustdesk/rustdesk/vcpkg/buildtrees/ffmpeg/build-arm64-osx-rel-err.log
 
       - name: Show version information (Rust, cargo, Clang)
         shell: bash

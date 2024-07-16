@@ -50,7 +50,45 @@ if(NOT VCPKG_TARGET_ARCHITECTURE STREQUAL "wasm32")
     vcpkg_add_to_path("${NASM_EXE_PATH}")
 endif()
 
-set(OPTIONS "--disable-shared --enable-static --enable-pic --disable-everything  --disable-programs  --disable-doc  --disable-htmlpages  --disable-manpages  --disable-podpages  --disable-txtpages  --disable-network  --disable-appkit  --disable-coreimage   --disable-metal  --disable-sdl2  --disable-securetransport  --disable-vulkan  --disable-audiotoolbox  --disable-v4l2-m2m  --disable-debug  --disable-valgrind-backtrace  --disable-large-tests  --disable-avdevice  --enable-avcodec  --enable-avformat  --disable-avfilter --disable-swresample  --disable-swscale  --disable-postproc  --enable-decoder=h264  --enable-decoder=hevc  --enable-parser=h264  --enable-parser=hevc  --enable-bsf=h264_mp4toannexb  --enable-bsf=hevc_mp4toannexb   --enable-muxer=mp4  --enable-protocol=file")
+set(OPTIONS "\
+--disable-shared \
+--enable-static \
+--enable-pic \
+--disable-everything \
+--disable-programs \
+--disable-doc \
+--disable-htmlpages \
+--disable-manpages \
+--disable-podpages \
+--disable-txtpages \
+--disable-network \
+--disable-appkit \
+--disable-coreimage \
+--disable-metal \
+--disable-sdl2 \
+--disable-securetransport \
+--disable-vulkan \
+--disable-audiotoolbox \
+--disable-v4l2-m2m \
+--disable-debug \
+--disable-valgrind-backtrace \
+--disable-large-tests \
+--disable-avdevice \
+--enable-avcodec \
+--enable-avformat \
+--disable-avfilter \
+--disable-swresample \
+--disable-swscale \
+--disable-postproc \
+--enable-decoder=h264 \
+--enable-decoder=hevc \
+--enable-parser=h264 \
+--enable-parser=hevc \
+--enable-bsf=h264_mp4toannexb \
+--enable-bsf=hevc_mp4toannexb  \
+--enable-muxer=mp4 \
+--enable-protocol=file \
+")
 
 if(VCPKG_HOST_IS_WINDOWS)
     vcpkg_acquire_msys(MSYS_ROOT PACKAGES automake1.16)
@@ -61,21 +99,48 @@ else()
     find_program(SHELL bash)
 endif()
 
-if(VCPKG_TARGET_IS_MINGW)
-    if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
-        string(APPEND OPTIONS " --target-os=mingw32")
-    elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
-        string(APPEND OPTIONS " --target-os=mingw64")
-    endif()
-elseif(VCPKG_TARGET_IS_LINUX)
-    string(APPEND OPTIONS " --target-os=linux --enable-pthreads")
-
-    if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
-        string(APPEND OPTIONS " --enable-cuda --enable-cuda_llvm --enable-ffnvcodec --enable-encoder=h264_nvenc --enable-encoder=hevc_nvenc --enable-hwaccel=h264_nvdec --enable-hwaccel=hevc_nvdec --enable-amf  --enable-encoder=h264_amf --enable-encoder=hevc_amf --enable-hwaccel=h264_vaapi --enable-hwaccel=hevc_vaapi --enable-encoder=h264_vaapi --enable-encoder=hevc_vaapi")
-    endif()
+if(VCPKG_TARGET_IS_LINUX)
+    string(APPEND OPTIONS  "\
+--target-os=linux \
+--enable-pthreads \
+--enable-cuda \
+--enable-cuda_llvm \
+--enable-ffnvcodec \
+--enable-encoder=h264_nvenc \
+--enable-encoder=hevc_nvenc \
+--enable-hwaccel=h264_nvdec \
+--enable-hwaccel=hevc_nvdec \
+--enable-amf  \
+--enable-encoder=h264_amf \
+--enable-encoder=hevc_amf \
+--enable-hwaccel=h264_vaapi \
+--enable-hwaccel=hevc_vaapi \
+--enable-encoder=h264_vaapi \
+--enable-encoder=hevc_vaapi \
+")
 elseif(VCPKG_TARGET_IS_WINDOWS)
-    string(APPEND OPTIONS " --target-os=win32 --toolchain=msvc --enable-gpl --enable-d3d11va --enable-cuda --enable-ffnvcodec --enable-hwaccel=h264_nvdec --enable-hwaccel=hevc_nvdec --enable-hwaccel=h264_d3d11va --enable-hwaccel=hevc_d3d11va --enable-hwaccel=h264_d3d11va2 --enable-hwaccel=hevc_d3d11va2 --enable-amf --enable-encoder=h264_amf --enable-encoder=hevc_amf --enable-encoder=h264_nvenc --enable-encoder=hevc_nvenc --enable-libmfx --enable-encoder=h264_qsv --enable-encoder=hevc_qsv")
-
+    string(APPEND OPTIONS "\
+--target-os=win32 \
+--toolchain=msvc \
+--enable-gpl \
+--enable-d3d11va \
+--enable-cuda \
+--enable-ffnvcodec \
+--enable-hwaccel=h264_nvdec \
+--enable-hwaccel=hevc_nvdec \
+--enable-hwaccel=h264_d3d11va \
+--enable-hwaccel=hevc_d3d11va \
+--enable-hwaccel=h264_d3d11va2 \
+--enable-hwaccel=hevc_d3d11va2 \
+--enable-amf \
+--enable-encoder=h264_amf \
+--enable-encoder=hevc_amf \
+--enable-encoder=h264_nvenc \
+--enable-encoder=hevc_nvenc \
+--enable-libmfx \
+--enable-encoder=h264_qsv \
+--enable-encoder=hevc_qsv \
+")    
     if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
         set(LIB_MACHINE_ARG /machine:x86)
         string(APPEND OPTIONS " --arch=i686 --enable-cross-compile")
@@ -86,11 +151,33 @@ elseif(VCPKG_TARGET_IS_WINDOWS)
         message(FATAL_ERROR "Unsupported target architecture")
     endif()
 elseif(VCPKG_TARGET_IS_OSX)
-    string(APPEND OPTIONS " --disable-autodetect --enable-videotoolbox --enable-encoder=h264_videotoolbox,hevc_videotoolbox --enable-hwaccel=h264_videotoolbox,hevc_videotoolbox")
+    string(APPEND OPTIONS "\  
+--disable-autodetect \
+--enable-videotoolbox \
+--enable-encoder=h264_videotoolbox,hevc_videotoolbox \
+--enable-hwaccel=h264_videotoolbox,hevc_videotoolbox \
+")
 elseif(VCPKG_TARGET_IS_IOS)
-    string(APPEND OPTIONS " --arch=arm64 --disable-autodetect --disable-hwaccels --disable-encoders --disable-videotoolbox --extra-cflags=\"-arch arm64 -mios-version-min=8.0 -fembed-bitcode\" --extra-ldflags=\"-arch arm64 -mios-version-min=8.0 -fembed-bitcode\"")
+    string(APPEND OPTIONS "\   
+--arch=arm64 \
+--disable-autodetect \
+--disable-hwaccels \
+--disable-encoders \
+--disable-videotoolbox \
+--extra-cflags=\"-arch arm64 -mios-version-min=8.0 -fembed-bitcode\" \
+--extra-ldflags=\"-arch arm64 -mios-version-min=8.0 -fembed-bitcode\" \
+")
 elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Android")
-    string(APPEND OPTIONS " --target-os=android --enable-jni --enable-mediacodec --disable-hwaccels --enable-encoder=h264_mediacodec --enable-encoder=hevc_mediacodec --enable-decoder=h264_mediacodec --enable-decoder=hevc_mediacodec")
+    string(APPEND OPTIONS "\
+--target-os=android \
+--enable-jni \
+--enable-mediacodec \
+--disable-hwaccels \
+--enable-encoder=h264_mediacodec \
+--enable-encoder=hevc_mediacodec \
+--enable-decoder=h264_mediacodec \
+--enable-decoder=hevc_mediacodec \
+")
 endif()
 
 if(VCPKG_TARGET_IS_OSX)
