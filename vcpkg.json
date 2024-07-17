@@ -69,7 +69,7 @@
           "platform": "(windows & static)"
         }
       ],
-      "platform": "((windows | linux | osx) & static)"
+      "platform": "((windows | (linux & x64)  | osx) & static)"
     },
     {
       "name": "ffmpeg",

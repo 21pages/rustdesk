@@ -3088,7 +3088,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hwcodec"
 version = "0.5.0"
-source = "git+https://github.com/21pages/hwcodec#470d18826dc334b964c51acf0c6ac3bcf56f56ad"
+source = "git+https://github.com/21pages/hwcodec?branch=arm_linux_prebuild#0dee2b244849ea5388c810c1648954ce00071d7c"
 dependencies = [
  "bindgen 0.59.2",
  "cc",

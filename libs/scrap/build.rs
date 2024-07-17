@@ -189,9 +189,12 @@ fn gen_vcpkg_package(package: &str, ffi_header: &str, generated: &str, regex: &s
 }
 
 // If you have problems installing ffmpeg, you can download $VCPKG_ROOT/installed from ci
+// Link ffmpeg in hwcodec temporarily until arm64/arm linux can build with vcpkg
+/*
 fn ffmpeg() {
     // ffmpeg
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let static_libs = vec!["avcodec", "avutil", "avformat"];
     static_libs.iter().for_each(|lib| {
         find_package(lib);
@@ -201,8 +204,6 @@ fn ffmpeg() {
     }
 
     // os
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
-    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let dyn_libs: Vec<&str> = if target_os == "windows" {
         ["User32", "bcrypt", "ole32", "advapi32"].to_vec()
     } else if target_os == "linux" {
@@ -231,6 +232,7 @@ fn ffmpeg() {
         println!("cargo:rustc-link-lib=framework=AVFoundation");
     }
 }
+*/
 
 fn main() {
     // note: all link symbol names in x86 (32-bit) are prefixed wth "_".
@@ -248,7 +250,7 @@ fn main() {
     gen_vcpkg_package("libvpx", "vpx_ffi.h", "vpx_ffi.rs", "^[vV].*");
     gen_vcpkg_package("aom", "aom_ffi.h", "aom_ffi.rs", "^(aom|AOM|OBU|AV1).*");
     gen_vcpkg_package("libyuv", "yuv_ffi.h", "yuv_ffi.rs", ".*");
-    ffmpeg();
+    // ffmpeg();
 
     // there is problem with cfg(target_os) in build.rs, so use our workaround
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
