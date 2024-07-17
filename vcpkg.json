@@ -10,7 +10,7 @@
         },
         {
           "name": "nvcodec",
-          "platform": "((windows | (linux & x64)) & static)"
+          "platform": "((windows | linux) & static)"
         },
         {
           "name": "qsv",
