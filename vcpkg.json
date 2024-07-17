@@ -58,11 +58,11 @@
       "features": [
         {
           "name": "amf",
-          "platform": "((windows | linux) & static)"
+          "platform": "((windows | (linux & x64)) & static)"
         },
         {
           "name": "nvcodec",
-          "platform": "((windows | linux) & static)"
+          "platform": "((windows | (linux & x64)) & static)"
         },
         {
           "name": "qsv",
