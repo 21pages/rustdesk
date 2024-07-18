@@ -978,6 +978,7 @@ jobs:
     needs: [generate-bridge-linux]
     name: build rustdesk linux ${{ matrix.job.target }} 
     runs-on: ${{ matrix.job.on }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -1281,7 +1282,7 @@ jobs:
 
   build-rustdesk-linux-sciter:
     if: ${{ inputs.upload-artifact }}
-    needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
+    # needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
     strategy:
@@ -1297,7 +1298,7 @@ jobs:
               deb_arch: amd64,
               sciter_arch: x64,
               vcpkg-triplet: x64-linux,
-              extra_features: ",hwcodec",
+              extra_features: "",
             }
           - {
               arch: armv7,
@@ -1319,6 +1320,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          ldd --version
           sudo apt-get update
           sudo apt-get install -y \
                cmake \
