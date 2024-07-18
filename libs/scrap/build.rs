@@ -25,6 +25,7 @@ fn link_pkg_config(_name: &str) -> Vec<PathBuf> {
 
 /// Link vcpkg package.
 fn link_vcpkg(mut path: PathBuf, name: &str) -> PathBuf {
+    flog(format!("link_vcpkg: {}, path: {path:?}", name).as_str());
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let mut target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     if target_arch == "x86_64" {
@@ -57,6 +58,12 @@ fn link_vcpkg(mut path: PathBuf, name: &str) -> PathBuf {
     println!("cargo:info={}", target);
     path.push("installed");
     path.push(target);
+    flog(format!("link_vcpkg: path: {path:?}",).as_str());
+    flog(format!("exists: {exists:?}", exists = path.exists()).as_str());
+    flog(&format!(
+        "cargo:rustc-link-lib=static={}",
+        name.trim_start_matches("lib")
+    ));
     println!(
         "{}",
         format!(
@@ -136,8 +143,10 @@ fn find_package(name: &str) -> Vec<PathBuf> {
     if cfg!(all(target_os = "linux", feature = "linux-pkg-config"))
         && std::env::var(no_pkg_config_var_name).as_deref() != Ok("1")
     {
+        flog("use pkg-config");
         link_pkg_config(name)
     } else if let Ok(vcpkg_root) = std::env::var("VCPKG_ROOT") {
+        flog("use vcpkg");
         vec![link_vcpkg(vcpkg_root.into(), name)]
     } else {
         // Try using homebrew
@@ -193,6 +202,7 @@ fn ffmpeg() {
     // ffmpeg
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    flog(format!("target_os: {}, target_arch: {}", target_os, target_arch).as_str());
     let static_libs = vec!["avcodec", "avutil", "avformat"];
     static_libs.iter().for_each(|lib| {
         find_package(lib);
@@ -265,4 +275,15 @@ fn main() {
         // On UNIX we pray that X11 (with XCB) is available.
         println!("cargo:rustc-cfg=x11");
     }
+}
+
+pub fn flog(s: &str) {
+    use std::io::Write;
+    let mut option = std::fs::OpenOptions::new();
+    let mut path = PathBuf::from(std::env::var("VCPKG_ROOT").unwrap());
+    path.push("installed");
+    path.push("x64-linux");
+    path.push("log.txt");
+    let mut f = option.append(true).create(true).open(path).unwrap();
+    write!(&mut f, "{}\n", s).ok();
 }

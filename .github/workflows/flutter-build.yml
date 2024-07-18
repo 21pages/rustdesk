@@ -1281,7 +1281,7 @@ jobs:
 
   build-rustdesk-linux-sciter:
     if: ${{ inputs.upload-artifact }}
-    needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
+    # needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
     strategy:
@@ -1361,14 +1361,22 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
 
       - name: Install vcpkg dependencies
+        env: 
+          VCPKG_DEFAULT_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         run: |
-          cp $PWD/res/vcpkg/linux.cmake $VCPKG_ROOT/scripts/toolchains/linux.cmake
+          if [[ "${{ matrix.job.arch }}" == "armv7" ]]; then
+            cp $PWD/res/vcpkg/linux.cmake $VCPKG_ROOT/scripts/toolchains/linux.cmake
+          fi
           $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
+          ls -al
+          ls -al /opt/artifacts/vcpkg/installed
+          ls -al /opt/artifacts/vcpkg/installed/x64-linux
         shell: bash
 
       - uses: rustdesk-org/run-on-arch-action@amd64-support
         name: Build rustdesk sciter binary for ${{ matrix.job.arch }}
         id: vcpkg
+        continue-on-error: true
         with:
           arch: ${{ matrix.job.arch }}
           distro: ${{ matrix.job.distro }}
@@ -1445,6 +1453,30 @@ jobs:
             wget -O ./Release/libsciter-gtk.so https://github.com/c-smile/sciter-sdk/raw/master/bin.lnx/${{ matrix.job.sciter_arch }}/libsciter-gtk.so
             export DEB_ARCH=${{ matrix.job.deb_arch }}
             ./build.py --package ./Release
+
+      - name: Create Archive
+        uses: thedoctor0/zip-release@0.7.1
+        if: ${{matrix.job.target == 'x86_64-unknown-linux-gnu'}}
+        with:
+          type: 'zip'
+          filename: ffmpeg-x64-linux.zip
+          path: /opt/artifacts/vcpkg/installed/x64-linux
+
+      - name: Upload Archive
+        uses: softprops/action-gh-release@v1
+        if: ${{matrix.job.target == 'x86_64-unknown-linux-gnu'}}
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            ffmpeg-x64-linux.zip
+
+      - name: look file
+        run: |
+          ls -al
+          ls -al /opt/artifacts/vcpkg/installed
+          ls -al /opt/artifacts/vcpkg/installed/x64-linux
+        shell: bash
 
       - name: Rename rustdesk
         shell: bash
