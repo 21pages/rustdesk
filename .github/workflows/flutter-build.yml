@@ -1281,7 +1281,7 @@ jobs:
 
   build-rustdesk-linux-sciter:
     if: ${{ inputs.upload-artifact }}
-    needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
+    # needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
     strategy:
@@ -1362,7 +1362,9 @@ jobs:
 
       - name: Install vcpkg dependencies
         run: |
-          cp $PWD/res/vcpkg/linux.cmake $VCPKG_ROOT/scripts/toolchains/linux.cmake
+          if [[ "${{ matrix.job.arch }}" == "armv7" ]]; then
+            cp $PWD/res/vcpkg/linux.cmake $VCPKG_ROOT/scripts/toolchains/linux.cmake
+          fi
           $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
         shell: bash
 
