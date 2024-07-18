@@ -976,6 +976,7 @@ jobs:
 
   build-rustdesk-linux:
     needs: [generate-bridge-linux]
+    if: false
     name: build rustdesk linux ${{ matrix.job.target }} 
     runs-on: ${{ matrix.job.on }}
     strategy:
@@ -1281,7 +1282,7 @@ jobs:
 
   build-rustdesk-linux-sciter:
     if: ${{ inputs.upload-artifact }}
-    needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
+    # needs: build-rustdesk-linux # not for dep, just make it run later for parallelism
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
     strategy:
@@ -1354,21 +1355,22 @@ jobs:
           RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
           echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
 
-      - name: Setup vcpkg with Github Actions binary cache
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: /opt/artifacts/vcpkg
-          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+      # - name: Setup vcpkg with Github Actions binary cache
+      #   uses: lukka/run-vcpkg@v11
+      #   with:
+      #     vcpkgDirectory: /opt/artifacts/vcpkg
+      #     vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
 
-      - name: Install vcpkg dependencies
-        run: |
-          cp $PWD/res/vcpkg/linux.cmake $VCPKG_ROOT/scripts/toolchains/linux.cmake
-          $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
-        shell: bash
+      # - name: Install vcpkg dependencies
+      #   run: |
+      #     cp $PWD/res/vcpkg/linux.cmake $VCPKG_ROOT/scripts/toolchains/linux.cmake
+      #     $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
+      #   shell: bash
 
       - uses: rustdesk-org/run-on-arch-action@amd64-support
         name: Build rustdesk sciter binary for ${{ matrix.job.arch }}
         id: vcpkg
+        continue-on-error: true
         with:
           arch: ${{ matrix.job.arch }}
           distro: ${{ matrix.job.distro }}
@@ -1407,17 +1409,41 @@ jobs:
                libxcb-xfixes0-dev \
                libxdo-dev \
                libxfixes-dev \
-               nasm \
                ninja-build \
                pkg-config \
                python3 \
                rpm \
                unzip \
                wget \
-               xz-utils
+               xz-utils \
+               zip
           run: |
             # disable git safe.directory
             git config --global --add safe.directory "*"
+
+            # nasm
+            curl -O -L http://www.nasm.us/pub/nasm/releasebuilds/2.16.03/nasm-2.16.03.tar.bz2
+            tar xjvf nasm-2.16.03.tar.bz2
+            cd nasm-2.16.03/
+            ./configure
+            ./autogen.sh 
+            make install
+            nasm -v
+            
+            # vcpkg
+            mkdir -p /opt/artifacts
+            export VCPKG_ROOT=/opt/artifacts/vcpkg
+            pushd /opt/artifacts
+            git clone https://github.com/microsoft/vcpkg.git
+            cd vcpkg
+            git checkout ${{ env.VCPKG_COMMIT_ID }}
+            ./bootstrap-vcpkg.sh
+            if [[ "${{ matrix.job.arch }}" == "aarch64" ]]; then
+              cp $PWD/res/vcpkg/linux.cmake $VCPKG_ROOT/scripts/toolchains/linux.cmake
+            fi
+            pushd /workspace
+            $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"
+
             # rust
             pushd /opt
             # do not use rustup, because memory overflow in qemu
@@ -1436,7 +1462,6 @@ jobs:
             # build
             pushd /workspace
             python3 ./res/inline-sciter.py
-            export VCPKG_ROOT=/opt/artifacts/vcpkg
             export CARGO_INCREMENTAL=0
             cargo build --features inline${{ matrix.job.extra_features }} --release --bins --jobs 1
             # package
@@ -1445,6 +1470,14 @@ jobs:
             wget -O ./Release/libsciter-gtk.so https://github.com/c-smile/sciter-sdk/raw/master/bin.lnx/${{ matrix.job.sciter_arch }}/libsciter-gtk.so
             export DEB_ARCH=${{ matrix.job.deb_arch }}
             ./build.py --package ./Release
+
+      - name: Upload Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            /opt/artifacts/vcpkg/buildtrees/aom/install-x64-linux-dbg-out.log
 
       - name: Rename rustdesk
         shell: bash
