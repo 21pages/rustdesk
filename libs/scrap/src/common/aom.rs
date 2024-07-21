@@ -251,12 +251,14 @@ impl EncoderApi for AomEncoder {
 
     fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
         let mut frames = Vec::new();
+        let instant = std::time::Instant::now();
         for ref frame in self
             .encode(ms, input.yuv()?, STRIDE_ALIGN)
             .with_context(|| "Failed to encode")?
         {
             frames.push(Self::create_frame(frame));
         }
+        log::info!("aom encode time: {:?}", instant.elapsed());
         if frames.len() > 0 {
             Ok(Self::create_video_frame(frames))
         } else {
@@ -491,12 +493,14 @@ impl AomDecoder {
     }
 
     pub fn decode(&mut self, data: &[u8]) -> Result<DecodeFrames> {
+        let instant = std::time::Instant::now();
         call_aom!(aom_codec_decode(
             &mut self.ctx,
             data.as_ptr(),
             data.len() as _,
             ptr::null_mut(),
         ));
+        log::info!("aom decode time: {:?}", instant.elapsed());
 
         Ok(DecodeFrames {
             ctx: &mut self.ctx,

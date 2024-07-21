@@ -398,6 +398,7 @@ impl HwRamDecoderImage<'_> {
                     let i420_offset_y = unsafe { i420.as_ptr().add(0) as _ };
                     let i420_offset_u = unsafe { i420.as_ptr().add(offset_i420[0] as _) as _ };
                     let i420_offset_v = unsafe { i420.as_ptr().add(offset_i420[1] as _) as _ };
+                    let instant = std::time::Instant::now();
                     call_yuv!(NV12ToI420(
                         frame.data[0].as_ptr(),
                         frame.linesize[0],
@@ -412,11 +413,13 @@ impl HwRamDecoderImage<'_> {
                         width,
                         height,
                     ));
+                    log::info!("nv12 -> i420: {:?}", instant.elapsed());
                     let f = match rgb.fmt() {
                         ImageFormat::ARGB => I420ToARGB,
                         ImageFormat::ABGR => I420ToABGR,
                         _ => bail!("unsupported format: {:?} -> {:?}", frame.pixfmt, rgb.fmt()),
                     };
+                    let instant = std::time::Instant::now();
                     call_yuv!(f(
                         i420_offset_y,
                         linesize_i420[0],
@@ -429,12 +432,14 @@ impl HwRamDecoderImage<'_> {
                         width,
                         height,
                     ));
+                    log::info!("i420 -> {:?}: {:?}", rgb.fmt(), instant.elapsed());
                 } else {
                     let f = match rgb.fmt() {
                         ImageFormat::ARGB => NV12ToARGB,
                         ImageFormat::ABGR => NV12ToABGR,
                         _ => bail!("unsupported format: {:?} -> {:?}", frame.pixfmt, rgb.fmt()),
                     };
+                    let instant = std::time::Instant::now();
                     call_yuv!(f(
                         frame.data[0].as_ptr(),
                         frame.linesize[0],
@@ -445,6 +450,7 @@ impl HwRamDecoderImage<'_> {
                         width,
                         height,
                     ));
+                    log::info!("nv12 -> {:?}: {:?}", rgb.fmt(), instant.elapsed());
                 }
             }
             AVPixelFormat::AV_PIX_FMT_YUV420P => {
@@ -453,6 +459,7 @@ impl HwRamDecoderImage<'_> {
                     ImageFormat::ABGR => I420ToABGR,
                     _ => bail!("unsupported format: {:?} -> {:?}", frame.pixfmt, rgb.fmt()),
                 };
+                let instant = std::time::Instant::now();
                 call_yuv!(f(
                     frame.data[0].as_ptr(),
                     frame.linesize[0],
@@ -465,6 +472,7 @@ impl HwRamDecoderImage<'_> {
                     width,
                     height,
                 ));
+                log::info!("i420 -> {:?}: {:?}", rgb.fmt(), instant.elapsed());
             }
         }
         Ok(())

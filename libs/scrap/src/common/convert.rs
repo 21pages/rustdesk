@@ -75,6 +75,7 @@ pub fn convert_to_yuv(
                 crate::Pixfmt::RGB565LE => RGB565ToI420,
                 _ => bail!(unsupported),
             };
+            let instant = std::time::Instant::now();
             call_yuv!(f(
                 src.as_ptr(),
                 src_stride[0] as _,
@@ -87,6 +88,12 @@ pub fn convert_to_yuv(
                 src_width as _,
                 src_height as _,
             ));
+            log::info!(
+                "{:?} -> {:?}: {:?}",
+                src_pixfmt,
+                dst_fmt.pixfmt,
+                instant.elapsed()
+            );
         }
         (crate::Pixfmt::BGRA, crate::Pixfmt::NV12)
         | (crate::Pixfmt::RGBA, crate::Pixfmt::NV12)
@@ -123,6 +130,7 @@ pub fn convert_to_yuv(
                 crate::Pixfmt::RGB565LE => ARGBToNV12,
                 _ => bail!(unsupported),
             };
+            let instant = std::time::Instant::now();
             call_yuv!(f(
                 input,
                 input_stride as _,
@@ -133,6 +141,12 @@ pub fn convert_to_yuv(
                 src_width as _,
                 src_height as _,
             ));
+            log::info!(
+                "{:?} -> {:?}: {:?}",
+                src_pixfmt,
+                dst_fmt.pixfmt,
+                instant.elapsed()
+            );
         }
         (crate::Pixfmt::BGRA, crate::Pixfmt::I444)
         | (crate::Pixfmt::RGBA, crate::Pixfmt::I444)
@@ -178,6 +192,7 @@ pub fn convert_to_yuv(
                 _ => bail!(unsupported),
             };
 
+            let instant = std::time::Instant::now();
             call_yuv!(ARGBToI444(
                 input,
                 input_stride as _,
@@ -190,6 +205,12 @@ pub fn convert_to_yuv(
                 src_width as _,
                 src_height as _,
             ));
+            log::info!(
+                "{:?} -> {:?}: {:?}",
+                src_pixfmt,
+                dst_fmt.pixfmt,
+                instant.elapsed()
+            );
         }
         _ => {
             bail!(unsupported);
