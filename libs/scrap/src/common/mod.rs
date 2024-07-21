@@ -412,6 +412,7 @@ pub trait GoogleImage {
         rgb.raw.resize(rgb.h * bytes_per_row, 0);
         let stride = self.stride();
         let planes = self.planes();
+        let instant = std::time::Instant::now();
         unsafe {
             match (self.chroma(), rgb.fmt()) {
                 (Chroma::I420, ImageFormat::Raw) => {
@@ -488,6 +489,12 @@ pub trait GoogleImage {
                 _ => log::error!("unsupported pixfmt: {:?}", self.chroma()),
             }
         }
+        log::info!(
+            "{:?} -> {:?}: {:?}",
+            self.chroma(),
+            rgb.fmt(),
+            instant.elapsed()
+        );
     }
     fn data(&self) -> (&[u8], &[u8], &[u8]) {
         unsafe {
