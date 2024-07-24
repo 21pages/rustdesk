@@ -459,6 +459,10 @@ async fn handle(data: Data, stream: &mut Connection) {
                         None
                     };
                 } else if name == "hide_cm" {
+                    log::info!(
+                        "crate::hbbs_http::sync::is_pro(): {}, hbb_common::password_security::hide_cm(): {}",
+                        crate::hbbs_http::sync::is_pro(), hbb_common::password_security::hide_cm()
+                    );
                     value = if crate::hbbs_http::sync::is_pro() {
                         Some(hbb_common::password_security::hide_cm().to_string())
                     } else {
@@ -828,9 +832,21 @@ pub async fn get_config(name: &str) -> ResultType<Option<String>> {
 }
 
 async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<String>> {
+    if name == "hide_cm" {
+        log::info!("get_config_async before connect");
+    }
     let mut c = connect(ms_timeout, "").await?;
+    if name == "hide_cm" {
+        log::info!("get_config_async after connect");
+    }
     c.send(&Data::Config((name.to_owned(), None))).await?;
+    if name == "hide_cm" {
+        log::info!("get_config_async send ok");
+    }
     if let Some(Data::Config((name2, value))) = c.next_timeout(ms_timeout).await? {
+        if name == "hide_cm" {
+            log::info!("get_config_async next_timeout ok, value: {value:?}");
+        }
         if name == name2 {
             return Ok(value);
         }

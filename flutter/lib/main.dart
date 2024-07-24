@@ -242,6 +242,7 @@ void runConnectionManagerScreen() async {
     MyTheme.currentThemeMode(),
   );
   final hide = await bind.cmGetConfig(name: "hide_cm") == 'true';
+  print("hide cm: $hide");
   gFFI.serverModel.hideCm = hide;
   if (hide) {
     await hideCmWindow(isStartup: true);
