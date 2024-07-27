@@ -86,11 +86,8 @@ pub fn make_tray() -> hbb_common::ResultType<()> {
             crate::run_me::<&str>(vec![]).ok();
         }
         #[cfg(target_os = "linux")]
-        if !std::process::Command::new("xdg-open")
-            .arg(&crate::get_uri_prefix())
-            .spawn()
-            .is_ok()
         {
+            // Don't use uni link, https://github.com/rustdesk/rustdesk/issues/8600#issuecomment-2254170721
             crate::run_me::<&str>(vec![]).ok();
         }
     };
