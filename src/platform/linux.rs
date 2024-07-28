@@ -730,7 +730,8 @@ pub fn block_input(_v: bool) -> (bool, String) {
 
 pub fn is_installed() -> bool {
     if let Ok(p) = std::env::current_exe() {
-        p.to_str().unwrap_or_default().starts_with("/usr") || p.to_str().unwrap_or_default().starts_with("/nix/store")
+        p.to_str().unwrap_or_default().starts_with("/usr")
+            || p.to_str().unwrap_or_default().starts_with("/nix/store")
     } else {
         false
     }
@@ -1402,9 +1403,9 @@ pub fn install_service() -> bool {
 fn check_if_stop_service() {
     if Config::get_option("stop-service".into()) == "Y" {
         let app_name = crate::get_app_name().to_lowercase();
-        allow_err!(run_cmds(
+        allow_err!(run_cmds(&format!(
             "systemctl disable {app_name}; systemctl stop {app_name}"
-        ));
+        )));
     }
 }
 
