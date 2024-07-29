@@ -418,7 +418,7 @@ jobs:
 
 
   run-rustdesk-linux-armv7-sciter:
-    if: true
+    if: false
     runs-on: ${{ matrix.job.on }}
     name: run-rustdesk-linux-sciter ${{ matrix.job.target }}
     strategy:
@@ -476,3 +476,55 @@ jobs:
             rm rustdesk-1.2.7-armv7-sciter.deb
             sleep 5
             rustdesk
+
+  run-rustdesk-linux-arm64:
+    if: true
+    runs-on: ${{ matrix.job.on }}
+    name: run-rustdesk-linux ${{ matrix.job.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # use a high level qemu-user-static
+        job:
+          - {
+              arch: aarch64,
+              target: aarch64-unknown-linux-gnu,
+              on: [self-hosted, Linux, ARM64],
+              distro: ubuntu18.04,
+            }
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Free Space
+        run: |
+          df -h
+          free -m
+
+      - uses: rustdesk-org/run-on-arch-action@amd64-support
+        name: Run rustdesk sciter binary for ${{ matrix.job.arch }}
+        id: vcpkg
+        with:
+          arch: ${{ matrix.job.arch }}
+          distro: ${{ matrix.job.distro }}
+          githubToken: ${{ github.token }}
+          setup: |
+            ls -l "${PWD}"
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+          shell: /bin/bash
+          run: |
+            apt-get update
+            apt-get install -y wget
+            wget https://github.com/rustdesk/rustdesk/releases/download/1.2.7/rustdesk-1.2.7-aarch64.deb
+            apt install rustdesk-1.2.7-aarch64.deb --fix-missing
+            sleep 5
+            export PASSWORD="wK765is1"
+            rustdesk --password $PASSWORD
+            sleep 1
+            rustdesk --connect `rustdesk --get-id` --password $PASSWORD & && sleep 5 && killall rustdesk
+
