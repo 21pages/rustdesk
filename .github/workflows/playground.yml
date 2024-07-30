@@ -34,6 +34,7 @@ jobs:
   build-for-macOS:
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -414,3 +415,37 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           files: |
             ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
+
+
+  run-armv7-linux-sciter:
+    name: ${{ matrix.job.target }}
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - {
+            target: aarch64-apple-darwin,
+            os: macos-latest,
+            arch: aarch64,
+          }
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install docker
+        run: |
+          brew install docker docker-compose colima
+          colima start
+          brew install qemu
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+          docker run --platform=linux/arm -it --rm arm32v7/debian /bin/bash
+          apt update
+          apt install wget
+          wget https://github.com/rustdesk/rustdesk/releases/download/nightly/rustdesk-1.3.0-armv7-sciter.deb
+          apt install ./rustdesk-1.3.0-armv7-sciter.deb --fix-missing
+          timeout 5s rustdesk
