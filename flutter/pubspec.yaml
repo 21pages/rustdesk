@@ -104,6 +104,7 @@ dependencies:
   pull_down_button: ^0.9.3
   device_info_plus: ^9.1.0
   qr_flutter: ^4.1.0
+  google_fonts: ^6.0.0 # Flutter 3.13.9, https://stackoverflow.com/questions/78090711/error-type-fontfeature-not-found-flutter-google-fonts-package-error
 
 dev_dependencies:
   icons_launcher: ^2.0.4

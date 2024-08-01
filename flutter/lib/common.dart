@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
@@ -12,12 +13,14 @@ import 'package:flutter_hbb/common/formatter/id_formatter.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/main.dart';
+import 'package:flutter_hbb/models/native_model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_hbb/utils/platform_channel.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:uni_links/uni_links.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -368,13 +371,13 @@ class MyTheme {
             ),
           )
         : null,
-    textTheme: const TextTheme(
+    textTheme: textTheme(const TextTheme(
         titleLarge: TextStyle(fontSize: 19, color: Colors.black87),
         titleSmall: TextStyle(fontSize: 14, color: Colors.black87),
         bodySmall: TextStyle(fontSize: 12, color: Colors.black87, height: 1.25),
         bodyMedium:
             TextStyle(fontSize: 14, color: Colors.black87, height: 1.25),
-        labelLarge: TextStyle(fontSize: 16.0, color: MyTheme.accent80)),
+        labelLarge: TextStyle(fontSize: 16.0, color: MyTheme.accent80))),
     cardColor: grayBg,
     hintColor: Color(0xFFAAAAAA),
     visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -463,7 +466,7 @@ class MyTheme {
             ),
           )
         : null,
-    textTheme: const TextTheme(
+    textTheme: textTheme(const TextTheme(
       titleLarge: TextStyle(fontSize: 19),
       titleSmall: TextStyle(fontSize: 14),
       bodySmall: TextStyle(fontSize: 12, height: 1.25),
@@ -473,7 +476,7 @@ class MyTheme {
         fontWeight: FontWeight.bold,
         color: accent80,
       ),
-    ),
+    )),
     cardColor: Color(0xFF24252B),
     visualDensity: VisualDensity.adaptivePlatformDensity,
     tabBarTheme: const TabBarTheme(
@@ -592,6 +595,36 @@ class MyTheme {
       default:
         return ThemeMode.system;
     }
+  }
+
+  static TextTheme textTheme(TextTheme textTheme) {
+    if (!Platform.version.contains("linux_arm64")) {
+      return textTheme;
+    }
+    var lang = bind.mainGetLocalOption(key: kCommConfKeyLang);
+    if (lang.isEmpty) {
+      String locale = PlatformFFI.localeName;
+      if (locale.startsWith("zh")) {
+        lang = locale.contains("tw") ? "zh-tw" : "zh-cn";
+      } else {
+        lang = locale.split("-").first.split("_").first;
+      }
+    }
+    const map = {
+      'ar': GoogleFonts.notoSansArabicTextTheme,
+      'fa': GoogleFonts.notoSansOldPersianTextTheme,
+      'he': GoogleFonts.notoSansHebrewTextTheme,
+      'ja': GoogleFonts.notoSansJpTextTheme,
+      'ko': GoogleFonts.notoSansKrTextTheme,
+      'th': GoogleFonts.notoSansThaiTextTheme,
+      'vn': GoogleFonts.notoSansTaiVietTextTheme,
+      'zh-cn': GoogleFonts.notoSansScTextTheme,
+      'zh-tw': GoogleFonts.notoSansHkTextTheme,
+    };
+    if (map.containsKey(lang)) {
+      return map[lang]!(textTheme);
+    }
+    return textTheme;
   }
 }
 
