@@ -1617,6 +1617,14 @@ pub fn main_check_super_user_permission() -> bool {
     check_super_user_permission()
 }
 
+pub fn main_get_unlock_password() -> SyncReturn<String> {
+    SyncReturn(get_unlock_password())
+}
+
+pub fn main_set_unlock_password(pin: String) {
+    set_unlock_password(pin)
+}
+
 pub fn main_check_mouse_time() {
     check_mouse_time();
 }

@@ -679,6 +679,7 @@ class PasswordWidget extends StatefulWidget {
     this.reRequestFocus = false,
     this.hintText,
     this.errorText,
+    this.title,
   }) : super(key: key);
 
   final TextEditingController controller;
@@ -686,6 +687,7 @@ class PasswordWidget extends StatefulWidget {
   final bool reRequestFocus;
   final String? hintText;
   final String? errorText;
+  final String? title;
 
   @override
   State<PasswordWidget> createState() => _PasswordWidgetState();
@@ -729,7 +731,7 @@ class _PasswordWidgetState extends State<PasswordWidget> {
   @override
   Widget build(BuildContext context) {
     return DialogTextField(
-      title: translate(DialogTextField.kPasswordTitle),
+      title: translate(widget.title ?? DialogTextField.kPasswordTitle),
       hintText: translate(widget.hintText ?? 'Enter your password'),
       controller: widget.controller,
       prefixIcon: DialogTextField.kPasswordIcon,
@@ -2205,6 +2207,82 @@ void CommonConfirmDialog(OverlayDialogManager dialogManager, String content,
                 style: const TextStyle(fontSize: 15),
                 textAlign: TextAlign.start),
           ),
+        ],
+      ).marginOnly(bottom: 12),
+      actions: [
+        dialogButton(translate("Cancel"), onPressed: close, isOutline: true),
+        dialogButton(translate("OK"), onPressed: submit),
+      ],
+      onSubmit: submit,
+      onCancel: close,
+    );
+  });
+}
+
+void changeUnlockPasswordDialog(String oldPin, Function() callback) {
+  final controller = TextEditingController(text: oldPin);
+  String? errorText;
+  gFFI.dialogManager.show((setState, close, context) {
+    submit() async {
+      final pin = controller.text.trim();
+      if (pin.isNotEmpty && pin.length < 4) {
+        setState(() {
+          errorText = translate('length >= 4');
+        });
+        return;
+      }
+      await bind.mainSetUnlockPassword(pin: pin);
+      callback.call();
+      close();
+    }
+
+    return CustomAlertDialog(
+      content: Row(
+        children: [
+          Expanded(
+              child: DialogTextField(
+            title: '',
+            controller: controller,
+            obscureText: true,
+            errorText: errorText,
+          ))
+        ],
+      ).marginOnly(bottom: 12),
+      actions: [
+        dialogButton(translate("Cancel"), onPressed: close, isOutline: true),
+        dialogButton(translate("OK"), onPressed: submit),
+      ],
+      onSubmit: submit,
+      onCancel: close,
+    );
+  });
+}
+
+void checkUnlockPasswordDialog(String correctPin, Function() passCallback) {
+  final controller = TextEditingController();
+  String? errorText;
+  gFFI.dialogManager.show((setState, close, context) {
+    submit() async {
+      final pin = controller.text.trim();
+      if (correctPin != pin) {
+        setState(() {
+          errorText = translate('Wrong Password');
+        });
+        return;
+      }
+      passCallback.call();
+      close();
+    }
+
+    return CustomAlertDialog(
+      content: Row(
+        children: [
+          Expanded(
+              child: PasswordWidget(
+            controller: controller,
+            errorText: errorText,
+            hintText: '',
+          ))
         ],
       ).marginOnly(bottom: 12),
       actions: [

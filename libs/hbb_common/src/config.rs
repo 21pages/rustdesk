@@ -211,6 +211,8 @@ pub struct Config2 {
 
     #[serde(default)]
     socks: Option<Socks5Server>,
+    #[serde(default, deserialize_with = "deserialize_string")]
+    unlock_password: String,
 
     // the other scalar value must before this
     #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
@@ -427,14 +429,20 @@ fn patch(path: PathBuf) -> PathBuf {
 impl Config2 {
     fn load() -> Config2 {
         let mut config = Config::load_::<Config2>("2");
+        let mut store = false;
         if let Some(mut socks) = config.socks {
-            let (password, _, store) =
+            let (password, _, store2) =
                 decrypt_str_or_original(&socks.password, PASSWORD_ENC_VERSION);
             socks.password = password;
             config.socks = Some(socks);
-            if store {
-                config.store();
-            }
+            store |= store2;
+        }
+        let (unlock_password, _, store2) =
+            decrypt_str_or_original(&config.unlock_password, PASSWORD_ENC_VERSION);
+        config.unlock_password = unlock_password;
+        store |= store2;
+        if store {
+            config.store();
         }
         config
     }
@@ -450,6 +458,11 @@ impl Config2 {
                 encrypt_str_or_original(&socks.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
             config.socks = Some(socks);
         }
+        config.unlock_password = encrypt_str_or_original(
+            &config.unlock_password,
+            PASSWORD_ENC_VERSION,
+            ENCRYPT_MAX_LEN,
+        );
         Config::store_(&config, "2");
     }
 
@@ -1079,6 +1092,19 @@ impl Config {
             return NetworkType::ProxySocks;
         }
         NetworkType::Direct
+    }
+
+    pub fn get_unlock_password() -> String {
+        CONFIG2.read().unwrap().unlock_password.clone()
+    }
+
+    pub fn set_unlock_password(password: String) {
+        let mut config = CONFIG2.write().unwrap();
+        if password == config.unlock_password {
+            return;
+        }
+        config.unlock_password = password;
+        config.store();
     }
 
     pub fn get() -> Config {

@@ -302,6 +302,20 @@ pub fn core_main() -> Option<Vec<String>> {
                 }
             }
             return None;
+        } else if args[0] == "--unlock-password" {
+            if args.len() == 2 {
+                if crate::platform::is_installed() && is_root() {
+                    if let Err(err) = crate::ipc::set_config("unlock-password", args[1].to_owned())
+                    {
+                        println!("{err}");
+                    } else {
+                        println!("Done!");
+                    }
+                } else {
+                    println!("Installation and administrative privileges required!");
+                }
+            }
+            return None;
         } else if args[0] == "--get-id" {
             println!("{}", crate::ipc::get_id());
             return None;
@@ -398,7 +412,8 @@ pub fn core_main() -> Option<Vec<String>> {
                         "uuid": uuid,
                     });
                     let header = "Authorization: Bearer ".to_owned() + &token;
-                    if user_name.is_none() && strategy_name.is_none() && address_book_name.is_none() {
+                    if user_name.is_none() && strategy_name.is_none() && address_book_name.is_none()
+                    {
                         println!(
                             "--user_name or --strategy_name or --address_book_name is required!"
                         );

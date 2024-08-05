@@ -484,6 +484,8 @@ async fn handle(data: Data, stream: &mut Connection) {
                     };
                 } else if name == "voice-call-input" {
                     value = crate::audio_service::get_voice_call_input_device();
+                } else if name == "unlock-password" {
+                    value = Some(Config::get_unlock_password());
                 } else {
                     value = None;
                 }
@@ -501,6 +503,8 @@ async fn handle(data: Data, stream: &mut Connection) {
                     Config::set_salt(&value);
                 } else if name == "voice-call-input" {
                     crate::audio_service::set_voice_call_input_device(Some(value), true);
+                } else if name == "unlock-password" {
+                    Config::set_unlock_password(value);
                 } else {
                     return;
                 }
@@ -889,6 +893,14 @@ pub fn get_fingerprint() -> String {
 pub fn set_permanent_password(v: String) -> ResultType<()> {
     Config::set_permanent_password(&v);
     set_config("permanent-password", v)
+}
+
+pub fn set_unlock_password(v: String) -> ResultType<()> {
+    let v = v.trim().to_owned();
+    if !v.is_empty() && v.len() < 4 {
+        bail!("length>=4");
+    }
+    set_config("unlock-password", v)
 }
 
 pub fn get_id() -> String {

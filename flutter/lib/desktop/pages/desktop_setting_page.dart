@@ -1018,6 +1018,8 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
         _OptionCheckBox(context, 'allow-only-conn-window-open-tip',
             'allow-only-conn-window-open',
             reverse: false, enabled: enabled),
+      // if (bind.mainIsInstalled())
+      unlockPassword(),
     ]);
   }
 
@@ -1265,6 +1267,40 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
       }(),
     ];
   }
+
+  Widget unlockPassword() {
+    bool enabled = !locked;
+    RxString unlockPin = bind.mainGetUnlockPassword().obs;
+    update() async {
+      unlockPin.value = bind.mainGetUnlockPassword();
+    }
+
+    onChanged(bool? checked) async {
+      changeUnlockPasswordDialog(unlockPin.value, update);
+    }
+
+    final isOptFixed = isOptionFixed(kOptionWhitelist);
+    return GestureDetector(
+      child: Obx(() => Row(
+            children: [
+              Checkbox(
+                      value: unlockPin.isNotEmpty,
+                      onChanged: enabled && !isOptFixed ? onChanged : null)
+                  .marginOnly(right: 5),
+              Expanded(
+                  child: Text(
+                translate('Unlock settings with a custom password'),
+                style: TextStyle(color: disabledTextColor(context, enabled)),
+              ))
+            ],
+          )),
+      onTap: enabled
+          ? () {
+              onChanged(!unlockPin.isNotEmpty);
+            }
+          : null,
+    ).marginOnly(left: _kCheckBoxLeftMargin);
+  }
 }
 
 class _Network extends StatefulWidget {
@@ -1277,7 +1313,7 @@ class _Network extends StatefulWidget {
 class _NetworkState extends State<_Network> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  bool locked = bind.mainIsInstalled();
+  bool locked = true; //bind.mainIsInstalled();
 
   @override
   Widget build(BuildContext context) {
@@ -2160,9 +2196,14 @@ Widget _lock(
                             Text(translate(label)).marginOnly(left: 5),
                           ]).marginSymmetric(vertical: 2)),
                   onPressed: () async {
-                    bool checked = await callMainCheckSuperUserPermission();
-                    if (checked) {
-                      onUnlock();
+                    final unlockPassword = bind.mainGetUnlockPassword();
+                    if (unlockPassword.isEmpty) {
+                      bool checked = await callMainCheckSuperUserPermission();
+                      if (checked) {
+                        onUnlock();
+                      }
+                    } else {
+                      checkUnlockPasswordDialog(unlockPassword, onUnlock);
                     }
                   },
                 ).marginSymmetric(horizontal: 2, vertical: 4),

@@ -1443,3 +1443,24 @@ pub fn check_hwcodec() {
         })
     }
 }
+
+#[cfg(feature = "flutter")]
+pub fn get_unlock_password() -> String {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return String::default();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    return ipc::get_config("unlock-password")
+        .unwrap_or_default()
+        .unwrap_or_default();
+}
+
+#[cfg(feature = "flutter")]
+pub fn set_unlock_password(password: String) -> String {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    match ipc::set_unlock_password(password) {
+        Ok(_) => ""
+        Err(err) => {
+            err.to_string()
+        }
+    }
+}
