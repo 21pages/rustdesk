@@ -2453,9 +2453,15 @@ pub fn try_kill_rustdesk_main_window_process() -> ResultType<()> {
     // Kill rustdesk.exe without extra arg, should only be called by --server
     // We can find the exact process which occupies the ipc, see more from https://github.com/winsiderss/systeminformer
     log::info!("try kill rustdesk main window process");
-    use hbb_common::sysinfo::System;
+    use hbb_common::sysinfo::{ProcessesToUpdate, System};
     let mut sys = System::new();
-    sys.refresh_processes();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        ProcessRefreshKind::new()
+            .with_cmd(UpdateKind::Always)
+            .with_exe(UpdateKind::Always)
+            .with_user(UpdateKind::Always),
+    );
     let my_uid = sys
         .process((std::process::id() as usize).into())
         .map(|x| x.user_id())
@@ -2466,7 +2472,7 @@ pub fn try_kill_rustdesk_main_window_process() -> ResultType<()> {
         bail!("app name is empty");
     }
     for (_, p) in sys.processes().iter() {
-        let p_name = p.name().to_lowercase();
+        let p_name = p.name().to_string_lossy().to_lowercase();
         // name equal
         if !(p_name == app_name || p_name == app_name.clone() + ".exe") {
             continue;
@@ -2476,11 +2482,16 @@ pub fn try_kill_rustdesk_main_window_process() -> ResultType<()> {
             continue;
         }
         // first arg contain app name
-        if !p.cmd()[0].to_lowercase().contains(&p_name) {
+        if !p.cmd()[0]
+            .to_string_lossy()
+            .to_lowercase()
+            .contains(&p_name)
+        {
             continue;
         }
         // only one arg or the second arg is empty uni link
-        let is_empty_uni = p.cmd().len() == 2 && crate::common::is_empty_uni_link(&p.cmd()[1]);
+        let is_empty_uni =
+            p.cmd().len() == 2 && crate::common::is_empty_uni_link(&p.cmd()[1].to_string_lossy());
         if !(p.cmd().len() == 1 || is_empty_uni) {
             continue;
         }

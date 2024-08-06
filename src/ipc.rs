@@ -730,15 +730,21 @@ fn get_pid_file(postfix: &str) -> String {
 
 #[cfg(not(any(windows, target_os = "android", target_os = "ios")))]
 async fn check_pid(postfix: &str) {
+    use hbb_common::sysinfo::ProcessRefreshKind;
+
     let pid_file = get_pid_file(postfix);
     if let Ok(mut file) = File::open(&pid_file) {
         let mut content = String::new();
         file.read_to_string(&mut content).ok();
         let pid = content.parse::<usize>().unwrap_or(0);
         if pid > 0 {
-            use hbb_common::sysinfo::System;
+            use hbb_common::sysinfo::{Pid, ProcessesToUpdate, System, UpdateKind};
             let mut sys = System::new();
-            sys.refresh_processes();
+            let pids: [Pid; 2] = [pid.into(), (std::process::id() as usize).into()];
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&pids),
+                ProcessRefreshKind::new().with_exe(UpdateKind::Always),
+            );
             if let Some(p) = sys.process(pid.into()) {
                 if let Some(current) = sys.process((std::process::id() as usize).into()) {
                     if current.name() == p.name() {

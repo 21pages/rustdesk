@@ -720,10 +720,10 @@ pub fn hostname() -> String {
 
 #[inline]
 pub fn get_sysinfo() -> serde_json::Value {
-    use hbb_common::sysinfo::System;
+    use hbb_common::sysinfo::{MemoryRefreshKind, System};
     let mut system = System::new();
-    system.refresh_memory();
-    system.refresh_cpu();
+    system.refresh_memory_specifics(MemoryRefreshKind::new().with_ram());
+    system.refresh_cpu_frequency();
     let memory = system.total_memory();
     let memory = (memory as f64 / 1024. / 1024. / 1024. * 100.).round() / 100.;
     let cpus = system.cpus();
@@ -738,11 +738,11 @@ pub fn get_sysinfo() -> serde_json::Value {
     };
     let num_cpus = num_cpus::get();
     let num_pcpus = num_cpus::get_physical();
-    let mut os = system.distribution_id();
-    os = format!("{} / {}", os, system.long_os_version().unwrap_or_default());
+    let mut os = System::distribution_id();
+    os = format!("{} / {}", os, System::long_os_version().unwrap_or_default());
     #[cfg(windows)]
     {
-        os = format!("{os} - {}", system.os_version().unwrap_or_default());
+        os = format!("{os} - {}", System::os_version().unwrap_or_default());
     }
     let hostname = hostname(); // sys.hostname() return localhost on android in my test
     use serde_json::json;
@@ -1146,9 +1146,15 @@ pub fn check_process(arg: &str, mut same_uid: bool) -> bool {
         log::warn!("Can not get other process's command line arguments on macos without root");
         same_uid = true;
     }
-    use hbb_common::sysinfo::System;
+    use hbb_common::sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
     let mut sys = System::new();
-    sys.refresh_processes();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        ProcessRefreshKind::new()
+            .with_cmd(UpdateKind::Always)
+            .with_exe(UpdateKind::Always)
+            .with_user(UpdateKind::Always),
+    );
     let mut path = std::env::current_exe().unwrap_or_default();
     if let Ok(linked) = path.read_link() {
         path = linked;
@@ -1159,7 +1165,10 @@ pub fn check_process(arg: &str, mut same_uid: bool) -> bool {
         .map(|x| x.user_id())
         .unwrap_or_default();
     for (_, p) in sys.processes().iter() {
-        let mut cur_path = p.exe().to_path_buf();
+        let mut cur_path = p.exe().map(|p| p.to_path_buf());
+        let Some(mut cur_path) = cur_path else {
+            continue;
+        };
         if let Ok(linked) = cur_path.read_link() {
             cur_path = linked;
         }
@@ -1173,7 +1182,11 @@ pub fn check_process(arg: &str, mut same_uid: bool) -> bool {
             continue;
         }
         // on mac, p.cmd() get "/Applications/RustDesk.app/Contents/MacOS/RustDesk", "XPC_SERVICE_NAME=com.carriez.RustDesk_server"
-        let parg = if p.cmd().len() <= 1 { "" } else { &p.cmd()[1] };
+        let parg = if p.cmd().len() <= 1 {
+            "".to_string()
+        } else {
+            p.cmd()[1].to_string_lossy().to_string()
+        };
         if arg.is_empty() {
             if !parg.starts_with("--") {
                 return true;

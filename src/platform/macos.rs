@@ -21,12 +21,12 @@ use hbb_common::{
     anyhow::anyhow,
     bail, log,
     message_proto::{DisplayInfo, Resolution},
-    sysinfo::{Pid, Process, ProcessRefreshKind, System},
+    sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind},
 };
 use include_dir::{include_dir, Dir};
 use objc::{class, msg_send, sel, sel_impl};
 use scrap::{libc::c_void, quartz::ffi::*};
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 static PRIVILEGES_SCRIPTS_DIR: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/platform/privileges_scripts");
@@ -527,7 +527,9 @@ pub fn start_os_service() {
             std::process::exit(-1);
         }
         // only refresh this pid and check if valid, no need to refresh all processes since refreshing all is expensive, about 10ms on my machine
-        if !sys.refresh_process_specifics(pid, ProcessRefreshKind::new()) {
+        if 0 == sys
+            .refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), ProcessRefreshKind::new())
+        {
             server = None;
             continue;
         }
@@ -649,7 +651,10 @@ fn get_server_start_time_of(p: &Process, path: &PathBuf) -> Option<i64> {
     if &cmd[1] != "--server" {
         return None;
     }
-    let Ok(cur) = std::fs::canonicalize(p.exe()) else {
+    let Some(exe) = p.exe() else {
+        return None;
+    };
+    let Ok(cur) = std::fs::canonicalize(exe) else {
         return None;
     };
     if &cur != path {
@@ -660,7 +665,12 @@ fn get_server_start_time_of(p: &Process, path: &PathBuf) -> Option<i64> {
 
 #[inline]
 fn get_server_start_time(sys: &mut System, path: &PathBuf) -> Option<(i64, Pid)> {
-    sys.refresh_processes_specifics(ProcessRefreshKind::new());
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        ProcessRefreshKind::new()
+            .with_exe(UpdateKind::Always)
+            .with_cmd(UpdateKind::Always),
+    );
     for (_, p) in sys.processes() {
         if let Some(t) = get_server_start_time_of(p, path) {
             return Some((t, p.pid() as _));
