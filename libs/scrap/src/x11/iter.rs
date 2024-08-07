@@ -67,7 +67,8 @@ impl Iterator for DisplayIter {
                     unsafe {
                         let data = &*inner.data;
                         let name = get_atom_name(self.server.raw(), data.name);
-                        let pixfmt = get_pixfmt(self.server.raw(), root).unwrap_or(Pixfmt::BGRA);
+                        let pixfmt = get_pixfmt(self.server.raw(), self.server.setup(), root)
+                            .unwrap_or(Pixfmt::BGRA);
                         let display = Display::new(
                             self.server.clone(),
                             data.primary != 0,
@@ -120,7 +121,15 @@ fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> String {
     }
 }
 
-unsafe fn get_pixfmt(conn: *mut xcb_connection_t, root: xcb_window_t) -> Option<Pixfmt> {
+// https://github.com/FFmpeg/FFmpeg/blob/a9c05eb657d0d05f3ac79fe9973581a41b265a5e/libavdevice/xcbgrab.c#L519
+unsafe fn get_pixfmt(
+    conn: *mut xcb_connection_t,
+    setup: *const xcb_setup_t,
+    root: xcb_window_t,
+) -> Option<Pixfmt> {
+    if conn.is_null() || setup.is_null() {
+        return None;
+    }
     let geo_cookie = xcb_get_geometry_unchecked(conn, root);
     let geo = xcb_get_geometry_reply(conn, geo_cookie, ptr::null_mut());
     if geo.is_null() {
@@ -128,11 +137,69 @@ unsafe fn get_pixfmt(conn: *mut xcb_connection_t, root: xcb_window_t) -> Option<
     }
     let depth = (*geo).depth;
     libc::free(geo as _);
-    // now only support little endian
-    // https://github.com/FFmpeg/FFmpeg/blob/a9c05eb657d0d05f3ac79fe9973581a41b265a5e/libavdevice/xcbgrab.c#L519
-    match depth {
-        16 => Some(Pixfmt::RGB565LE),
-        32 => Some(Pixfmt::BGRA),
-        _ => None,
+
+    let fmt = xcb_setup_pixmap_formats(setup);
+    let length = xcb_setup_pixmap_formats_length(setup);
+    if fmt.is_null() || length == 0 {
+        return None;
     }
+    let fmts = std::slice::from_raw_parts(fmt, length as _);
+    let lsb_first = (*setup).image_byte_order == XCB_IMAGE_ORDER_LSB_FIRST;
+    for i in 0..length {
+        let fmt = &fmts[i as usize];
+        if fmt.depth != depth {
+            continue;
+        }
+        match depth {
+            32 => {
+                if fmt.bits_per_pixel == 32 {
+                    if lsb_first {
+                        return Some(Pixfmt::BGRA);
+                    } else {
+                        return Some(Pixfmt::ARGB);
+                    }
+                }
+            }
+            24 => {
+                if fmt.bits_per_pixel == 32 {
+                    if lsb_first {
+                        return Some(Pixfmt::BGRA);
+                    } else {
+                        return Some(Pixfmt::ARGB);
+                    }
+                } else if fmt.bits_per_pixel == 24 {
+                    if lsb_first {
+                        return Some(Pixfmt::BGR24);
+                    } else {
+                        return Some(Pixfmt::RGB24);
+                    }
+                }
+            }
+            16 => {
+                if fmt.bits_per_pixel == 16 {
+                    if lsb_first {
+                        return Some(Pixfmt::RGB565LE);
+                    } else {
+                        return Some(Pixfmt::RGB565BE);
+                    }
+                }
+            }
+            15 => {
+                if fmt.bits_per_pixel == 16 {
+                    if lsb_first {
+                        return Some(Pixfmt::RGB555LE);
+                    } else {
+                        return Some(Pixfmt::RGB555BE);
+                    }
+                }
+            }
+            8 => {
+                if fmt.bits_per_pixel == 8 {
+                    return Some(Pixfmt::RGB8);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }

@@ -100,9 +100,14 @@ extern "C" {
         e: *mut *mut xcb_generic_error_t,
     ) -> *mut xcb_get_geometry_reply_t;
 
+    pub fn xcb_setup_pixmap_formats(r: *const xcb_setup_t) -> *mut xcb_format_t;
+
+    pub fn xcb_setup_pixmap_formats_length(r: *const xcb_setup_t) -> i32;
 }
 
 pub const XCB_IMAGE_FORMAT_Z_PIXMAP: u8 = 2;
+
+pub const XCB_IMAGE_ORDER_LSB_FIRST: u8 = 0;
 
 pub type xcb_atom_t = u32;
 pub type xcb_connection_t = c_void;
@@ -280,4 +285,12 @@ pub struct xcb_get_geometry_reply_t {
     pub height: u16,
     pub border_width: u16,
     pub pad0: [u8; 2],
+}
+
+#[repr(C)]
+pub struct xcb_format_t {
+    pub depth: u8,
+    pub bits_per_pixel: u8,
+    pub scanline_pad: u8,
+    pub pad0: [u8; 5],
 }

@@ -207,9 +207,18 @@ impl<'a> EncodeInput<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Pixfmt {
+    // rgb, AV_PIX_FMT_XXX
     BGRA,
+    ARGB,
     RGBA,
+    BGR24,
+    RGB24,
     RGB565LE,
+    RGB565BE,
+    RGB555LE,
+    RGB555BE,
+    RGB8,
+    // yuv
     I420,
     NV12,
     I444,
@@ -217,11 +226,14 @@ pub enum Pixfmt {
 
 impl Pixfmt {
     pub fn bpp(&self) -> usize {
+        use Pixfmt::*;
         match self {
-            Pixfmt::BGRA | Pixfmt::RGBA => 32,
-            Pixfmt::RGB565LE => 16,
-            Pixfmt::I420 | Pixfmt::NV12 => 12,
-            Pixfmt::I444 => 24,
+            BGRA | ARGB | RGBA => 32,
+            RGB565LE | RGB565BE | RGB555LE | RGB555BE => 16,
+            RGB24 | BGR24 => 24,
+            RGB8 => 8,
+            I420 | NV12 => 12,
+            I444 => 24,
         }
     }
 
