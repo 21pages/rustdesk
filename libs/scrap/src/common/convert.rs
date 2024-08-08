@@ -26,9 +26,12 @@ pub fn convert_to_yuv(
     mid_data: &mut Vec<u8>,
 ) -> ResultType<()> {
     use crate::Pixfmt::*;
-    let src = captured.data();
-    let src_stride = captured.stride();
-    let src_pixfmt = captured.pixfmt();
+
+    // let src = captured.data();
+    // let src_pixfmt = captured.pixfmt();
+    // let src_stride = captured.stride();
+    let src_pixfmt = RGBA;
+    let (src, src_stride) = unsafe { test::change_src_fmt_to(captured, src_pixfmt) };
     let src_width = captured.width();
     let src_height = captured.height();
     if src_width > dst_fmt.w || src_height > dst_fmt.h {
@@ -185,4 +188,121 @@ pub fn convert_to_yuv(
         }
     }
     Ok(())
+}
+
+#[cfg(not(target_os = "ios"))]
+mod test {
+    use super::*;
+    use crate::Pixfmt;
+    use hbb_common::libc::c_int;
+
+    pub(super) unsafe fn change_src_fmt_to<'a>(
+        captured: &PixelBuffer,
+        dst_fmt: Pixfmt,
+    ) -> (Vec<u8>, Vec<usize>) {
+        use crate::Pixfmt::*;
+        let mut dst = vec![];
+        if captured.pixfmt() != BGRA {
+            return (dst, vec![]);
+        }
+        let src = captured.data().as_ptr();
+        // let mut src = captured.data().to_vec();
+        let src_stride = captured.stride()[0] as c_int;
+        let width = captured.width() as c_int;
+        let height = captured.height() as c_int;
+        let color_height = 32;
+
+        // for h in 0..color_height {
+        //     for w in 0..width {
+        //         let offset = (src_stride * h + w * 4) as usize;
+        //         src[offset + 0] = 0;
+        //         src[offset + 1] = 0;
+        //         src[offset + 2] = 0xff;
+        //     }
+        // }
+
+        match dst_fmt {
+            ARGB => {
+                let dst_stride = width * 4;
+                dst.resize((dst_stride * height) as usize, 0);
+                ARGBToBGRA(src, src_stride, dst.as_mut_ptr(), dst_stride, width, height);
+                for h in 0..color_height {
+                    for w in 0..width {
+                        let offset = (dst_stride * h + w * 4) as usize;
+                        dst[offset + 1] = 0xff;
+                        dst[offset + 2] = 0;
+                        dst[offset + 3] = 0;
+                    }
+                }
+            }
+            RGBA => {
+                let dst_stride = width * 4;
+                dst.resize((dst_stride * height) as usize, 0);
+                ARGBToABGR(src, src_stride, dst.as_mut_ptr(), dst_stride, width, height);
+                for h in 0..color_height {
+                    for w in 0..width {
+                        let offset = (dst_stride * h + w * 4) as usize;
+                        dst[offset + 0] = 0xff;
+                        dst[offset + 1] = 0;
+                        dst[offset + 2] = 0;
+                    }
+                }
+            }
+            BGR24 => {
+                let dst_stride = width * 3;
+                dst.resize((dst_stride * height) as usize, 0);
+                ARGBToRAW(src, src_stride, dst.as_mut_ptr(), dst_stride, width, height);
+                for h in 0..color_height {
+                    for w in 0..width {
+                        let offset = (dst_stride * h + w * 3) as usize;
+                        dst[offset + 0] = 0;
+                        dst[offset + 1] = 0;
+                        dst[offset + 2] = 0xff;
+                    }
+                }
+            }
+            RGB24 => {
+                let dst_stride = width * 3;
+                dst.resize((dst_stride * height) as usize, 0);
+                ARGBToRGB24(src, src_stride, dst.as_mut_ptr(), dst_stride, width, height);
+                for h in 0..color_height {
+                    for w in 0..width {
+                        let offset = (dst_stride * h + w * 3) as usize;
+                        dst[offset + 0] = 0xff;
+                        dst[offset + 1] = 0;
+                        dst[offset + 2] = 0;
+                    }
+                }
+            }
+            RGB565LE => {
+                let dst_stride = width * 2;
+                dst.resize((dst_stride * height) as usize, 0);
+                ARGBToRGB565(src, src_stride, dst.as_mut_ptr(), dst_stride, width, height);
+                for h in 0..color_height {
+                    for w in 0..width {
+                        let offset = (dst_stride * h + w * 2) as usize;
+                        // order: BRG
+                        dst[offset + 0] = 0x03;
+                        dst[offset + 1] = 0xe0;
+                    }
+                }
+            }
+            RGB555LE => {
+                let dst_stride = width * 2;
+                dst.resize((dst_stride * height) as usize, 0);
+                ARGBToARGB1555(src, src_stride, dst.as_mut_ptr(), dst_stride, width, height);
+                for h in 0..color_height {
+                    for w in 0..width {
+                        let offset = (dst_stride * h + w * 2) as usize;
+                        // order: BRG
+                        dst[offset + 0] = 0x03;
+                        dst[offset + 1] = 0xc0;
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        (dst, vec![dst_fmt.bytes_per_pixel() * width as usize])
+    }
 }
