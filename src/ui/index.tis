@@ -920,6 +920,7 @@ class PasswordArea: Reactor.Component {
             { !show_password ? '' : <TemporaryPasswordLengthMenu /> }
             <div .separator />
             <li #tfa><span>{svg_checkmark}</span>{translate('enable-2fa-title')}</li>
+            <li #enable-trusted-devices><span>{svg_checkmark}</span>{translate('Enable trusted devices')}</li>
         </menu></popup>;
     }
 
@@ -943,6 +944,8 @@ class PasswordArea: Reactor.Component {
                 el.attributes.toggleClass("selected", el.id == pwd_id);
             if (el.id == "tfa")
                 el.attributes.toggleClass("selected", has_valid_2fa);
+            if (el.id == "enable-trusted-devices")
+                el.attributes.toggleClass("selected", handler.get_option('enable-trusted-devices') != 'N');
         }
     }
 
@@ -1020,6 +1023,12 @@ class PasswordArea: Reactor.Component {
                 me.update();
             }, 400);
         }
+    }
+    event click $(li#enable-trusted-devices) {
+        var me = this;
+        var enable_trusted_devices = !(handler.get_option('enable-trusted-devices') != 'N');
+        handler.set_option('enable-trusted-devices', enable_trusted_devices ? '' : 'N');
+        me.update();
     }
 }
 

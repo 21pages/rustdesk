@@ -1135,6 +1135,17 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
                 Some(message::Union::LoginResponse(lr)) => match lr.union {
                     Some(login_response::Union::Error(err)) => {
+                        if err == client::REQUIRE_2FA {
+                            self.handler.lc.write().unwrap().enable_trusted_devices =
+                                lr.enable_trusted_devices;
+                            if !lr.enable_trusted_devices {
+                                self.handler
+                                    .lc
+                                    .write()
+                                    .unwrap()
+                                    .set_option("trust-this-device".to_string(), "".to_string());
+                            }
+                        }
                         if !self.handler.handle_login_error(&err) {
                             return false;
                         }

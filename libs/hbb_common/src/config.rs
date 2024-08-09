@@ -10,6 +10,7 @@ use std::{
 };
 
 use anyhow::Result;
+use bytes::Bytes;
 use rand::Rng;
 use regex::Regex;
 use serde as de;
@@ -210,6 +211,8 @@ pub struct Config2 {
     serial: i32,
     #[serde(default, deserialize_with = "deserialize_string")]
     unlock_pin: String,
+    #[serde(default, deserialize_with = "deserialize_string")]
+    trusted_devices: String,
 
     #[serde(default)]
     socks: Option<Socks5Server>,
@@ -998,6 +1001,7 @@ impl Config {
         }
         config.password = password.into();
         config.store();
+        Self::clear_trusted_devices();
     }
 
     pub fn get_permanent_password() -> String {
@@ -1102,6 +1106,46 @@ impl Config {
         }
         config.unlock_pin = pin.to_string();
         config.store();
+    }
+
+    pub fn get_trusted_devices_field() -> String {
+        CONFIG2.read().unwrap().trusted_devices.clone()
+    }
+
+    pub fn get_trusted_devices() -> Vec<TrustedDevice> {
+        let devices = CONFIG2.read().unwrap().trusted_devices.clone();
+        let mut devices: Vec<TrustedDevice> = serde_json::from_str(&devices).unwrap_or_default();
+        let len = devices.len();
+        devices.retain(|d| !d.outdate());
+        if devices.len() != len {
+            Self::set_trusted_devices(devices.clone());
+        }
+        devices
+    }
+
+    fn set_trusted_devices(mut devices: Vec<TrustedDevice>) {
+        devices.retain(|d| !d.outdate());
+        let devices = serde_json::to_string(&devices).unwrap_or_default();
+        let mut config = CONFIG2.write().unwrap();
+        config.trusted_devices = devices;
+        config.store();
+    }
+
+    pub fn add_trusted_device(device: TrustedDevice) {
+        let mut devices = Self::get_trusted_devices();
+        devices.retain(|d| d.hwid != device.hwid);
+        devices.push(device);
+        Self::set_trusted_devices(devices);
+    }
+
+    pub fn remove_trusted_devices(hwids: &Vec<Bytes>) {
+        let mut devices = Self::get_trusted_devices();
+        devices.retain(|d| !hwids.contains(&d.hwid));
+        Self::set_trusted_devices(devices);
+    }
+
+    pub fn clear_trusted_devices() {
+        Self::set_trusted_devices(Default::default());
     }
 
     pub fn get() -> Config {
@@ -1934,6 +1978,30 @@ impl Group {
     }
 }
 
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct TrustedDevice {
+    pub hwid: Bytes,
+    pub time: i64,
+    pub id: String,
+    pub name: String,
+    pub platform: String,
+}
+
+impl TrustedDevice {
+    pub fn encrypt_hwid(hwid: &Bytes) -> Bytes {
+        Bytes::from(encrypt_vec_or_original(
+            hwid,
+            PASSWORD_ENC_VERSION,
+            ENCRYPT_MAX_LEN,
+        ))
+    }
+
+    pub fn outdate(&self) -> bool {
+        const DAYS_90: i64 = 90 * 24 * 60 * 60 * 1000;
+        self.time + DAYS_90 < crate::get_time()
+    }
+}
+
 deserialize_default!(deserialize_string, String);
 deserialize_default!(deserialize_bool, bool);
 deserialize_default!(deserialize_i32, i32);
@@ -2123,6 +2191,7 @@ pub mod keys {
     pub const OPTION_ENABLE_DIRECTX_CAPTURE: &str = "enable-directx-capture";
     pub const OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE: &str =
         "enable-android-software-encoding-half-scale";
+    pub const OPTION_ENABLE_TRUSTED_DEVICES: &str = "enable-trusted-devices";
 
     // buildin options
     pub const OPTION_DISPLAY_NAME: &str = "display-name";
@@ -2264,6 +2333,7 @@ pub mod keys {
         OPTION_PRESET_ADDRESS_BOOK_TAG,
         OPTION_ENABLE_DIRECTX_CAPTURE,
         OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE,
+        OPTION_ENABLE_TRUSTED_DEVICES,
     ];
 
     // BUILDIN_SETTINGS

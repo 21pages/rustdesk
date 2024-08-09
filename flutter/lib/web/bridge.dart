@@ -142,7 +142,10 @@ class RustdeskImpl {
   }
 
   Future<void> sessionSend2Fa(
-      {required UuidValue sessionId, required String code, dynamic hint}) {
+      {required UuidValue sessionId,
+      required String code,
+      required bool trustThisDevice,
+      dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', ['send_2fa', code]));
   }
 
@@ -1627,6 +1630,24 @@ class RustdeskImpl {
   }
 
   String mainSetUnlockPin({required String pin, dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  bool sessionGetEnableTrustedDevices(
+      {required UuidValue sessionId, dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  Future<String> mainGetTrustedDevices({dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  Future<void> mainRemoveTrustedDevice(
+      {required Uint8List hwid, dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  Future<void> mainClearTrustedDevices({dynamic hint}) {
     throw UnimplementedError();
   }
 

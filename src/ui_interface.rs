@@ -1471,3 +1471,25 @@ pub fn set_unlock_pin(pin: String) -> String {
         Err(err) => err.to_string(),
     }
 }
+
+pub fn get_trusted_devices() -> String {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return Config::get_trusted_devices_field();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    return ipc::get_trusted_devices();
+}
+
+pub fn remove_trusted_devices(json: &str) {
+    let hwids = serde_json::from_str::<Vec<Bytes>>(json).unwrap_or_default();
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    Config::remove_trusted_devices(&hwids);
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    ipc::remove_trusted_devices(hwids);
+}
+
+pub fn clear_trusted_devices() {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    Config::clear_trusted_devices();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    ipc::clear_trusted_devices();
+}
