@@ -382,7 +382,7 @@ class _GeneralState extends State<_General> {
       Obx(() => _Button(serviceStop.value ? 'Start' : 'Stop', () {
             () async {
               serviceBtnEnabled.value = false;
-              await start_service(serviceStop.value);
+              await desktop_start_service(serviceStop.value);
               // enable the button after 1 second
               Future.delayed(const Duration(seconds: 1), () {
                 serviceBtnEnabled.value = true;

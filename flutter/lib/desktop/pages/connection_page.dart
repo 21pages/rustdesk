@@ -68,7 +68,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
           offstage: !_svcStopped.value,
           child: InkWell(
                   onTap: () async {
-                    await start_service(true);
+                    await desktop_start_service(true);
                   },
                   child: Text(translate("Start service"),
                       style: TextStyle(

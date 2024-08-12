@@ -9,6 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/formatter/id_formatter.dart';
+import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/main.dart';
@@ -2755,12 +2756,24 @@ Future<bool> callMainCheckSuperUserPermission() async {
   return checked;
 }
 
-Future<void> start_service(bool is_start) async {
-  bool checked = !bind.mainIsInstalled() ||
-      !isMacOS ||
-      await callMainCheckSuperUserPermission();
-  if (checked) {
+Future<void> desktop_start_service(bool is_start) async {
+  toggleService() {
     mainSetBoolOption(kOptionStopService, !is_start);
+  }
+
+  if (!bind.mainIsInstalled() || !isMacOS) {
+    toggleService();
+  } else {
+    final unlockPin = bind.mainGetUnlockPin();
+    if (unlockPin.isEmpty) {
+      if (await callMainCheckSuperUserPermission()) {
+        toggleService();
+      }
+    } else {
+      checkUnlockPinDialog(unlockPin, () {
+        toggleService();
+      });
+    }
   }
 }
 
