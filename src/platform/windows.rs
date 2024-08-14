@@ -2451,6 +2451,7 @@ impl WallPaperRemover {
             }
             let sid = get_sid_of_user(&username)?;
             log::info!("username: {username}, sid: {sid}");
+            // let sid = get_current_process_session_id().ok_or(anyhow!("failed to get sid"))?;
             (RegKey::predef(HKEY_USERS), format!("{}\\", sid))
         } else {
             (RegKey::predef(HKEY_CURRENT_USER), "".to_string())
