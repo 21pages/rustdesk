@@ -2370,33 +2370,33 @@ fn get_license() -> Option<CustomServer> {
     Some(lic)
 }
 
-fn get_sid_of_user(username: &str) -> ResultType<String> {
-    let mut output = Command::new("wmic")
-        .args(&[
-            "useraccount",
-            "where",
-            &format!("name='{}'", username),
-            "get",
-            "sid",
-            "/value",
-        ])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(Stdio::piped())
-        .spawn()?
-        .stdout
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Failed to open stdout"))?;
-    let mut result = String::new();
-    output.read_to_string(&mut result)?;
-    let sid_start_index = result
-        .find('=')
-        .map(|i| i + 1)
-        .ok_or(anyhow!("bad output format"))?;
-    if sid_start_index > 0 && sid_start_index < result.len() + 1 {
-        Ok(result[sid_start_index..].trim().to_string())
-    } else {
-        bail!("bad output format");
-    }
-}
+// fn get_sid_of_user(username: &str) -> ResultType<String> {
+//     let mut output = Command::new("wmic")
+//         .args(&[
+//             "useraccount",
+//             "where",
+//             &format!("name='{}'", username),
+//             "get",
+//             "sid",
+//             "/value",
+//         ])
+//         .creation_flags(CREATE_NO_WINDOW)
+//         .stdout(Stdio::piped())
+//         .spawn()?
+//         .stdout
+//         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Failed to open stdout"))?;
+//     let mut result = String::new();
+//     output.read_to_string(&mut result)?;
+//     let sid_start_index = result
+//         .find('=')
+//         .map(|i| i + 1)
+//         .ok_or(anyhow!("bad output format"))?;
+//     if sid_start_index > 0 && sid_start_index < result.len() + 1 {
+//         Ok(result[sid_start_index..].trim().to_string())
+//     } else {
+//         bail!("bad output format");
+//     }
+// }
 
 pub struct WallPaperRemover {
     old_path: String,
@@ -2442,15 +2442,16 @@ impl WallPaperRemover {
         // https://www.makeuseof.com/find-desktop-wallpapers-file-location-windows-11/
         // https://superuser.com/questions/1218413/write-to-current-users-registry-through-a-different-admin-account
         let (hkcu, sid) = if is_root() {
-            log::info!("is root");
-            let username = get_active_username();
-            log::info!("active username: {:?}", username);
-            if username.is_empty() {
-                log::info!("failed to get username");
-                bail!("failed to get username");
-            }
-            let sid = get_sid_of_user(&username)?;
-            log::info!("username: {username}, sid: {sid}");
+            // log::info!("is root");
+            // let username = get_active_username();
+            // log::info!("active username: {:?}", username);
+            // if username.is_empty() {
+            //     log::info!("failed to get username");
+            //     bail!("failed to get username");
+            // }
+            // let sid = get_sid_of_user(&username)?;
+            // log::info!("username: {username}, sid: {sid}");
+            let sid = get_current_process_session_id().ok_or(anyhow!("failed to get sid"))?;
             (RegKey::predef(HKEY_USERS), format!("{}\\", sid))
         } else {
             (RegKey::predef(HKEY_CURRENT_USER), "".to_string())
