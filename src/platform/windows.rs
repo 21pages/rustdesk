@@ -2404,8 +2404,10 @@ pub struct WallPaperRemover {
 
 impl WallPaperRemover {
     pub fn new() -> ResultType<Self> {
+        log::info!("creating wallpaper remover");
         let start = std::time::Instant::now();
         if !Self::need_remove() {
+            log::info!("no need to remove wallpaper");
             bail!("already solid color");
         }
         let old_path = match Self::get_recent_wallpaper() {
@@ -2415,6 +2417,7 @@ impl WallPaperRemover {
                 wallpaper::get().map_err(|e| anyhow!(e.to_string()))?
             }
         };
+        log::info!("old wallpaper path: {:?}", old_path);
         Self::set_wallpaper(None)?;
         log::info!(
             "created wallpaper remover,  old_path: {:?},  elapsed: {:?}",
@@ -2425,16 +2428,25 @@ impl WallPaperRemover {
     }
 
     pub fn support() -> bool {
-        wallpaper::get().is_ok() || !Self::get_recent_wallpaper().unwrap_or_default().is_empty()
+        log::info!("checking wallpaper support");
+        let get = wallpaper::get();
+        log::info!("wallpaper get: {:?}", get);
+        let recent = Self::get_recent_wallpaper();
+        log::info!("recent wallpaper: {:?}", recent);
+        get.is_ok() || !recent.unwrap_or_default().is_empty()
     }
 
     fn get_recent_wallpaper() -> ResultType<String> {
+        log::info!("getting recent wallpaper");
         // SystemParametersInfoW may return %appdata%\Microsoft\Windows\Themes\TranscodedWallpaper, not real path and may not real cache
         // https://www.makeuseof.com/find-desktop-wallpapers-file-location-windows-11/
         // https://superuser.com/questions/1218413/write-to-current-users-registry-through-a-different-admin-account
         let (hkcu, sid) = if is_root() {
+            log::info!("is root");
             let username = get_active_username();
+            log::info!("active username: {:?}", username);
             if username.is_empty() {
+                log::info!("failed to get username");
                 bail!("failed to get username");
             }
             let sid = get_sid_of_user(&username)?;
@@ -2443,6 +2455,7 @@ impl WallPaperRemover {
         } else {
             (RegKey::predef(HKEY_CURRENT_USER), "".to_string())
         };
+        log::info!("get sid and hkcu");
         let explorer_key = hkcu.open_subkey_with_flags(
             &format!(
                 "{}Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Wallpapers",
@@ -2450,25 +2463,34 @@ impl WallPaperRemover {
             ),
             KEY_READ,
         )?;
+        log::info!("open explorer key");
         Ok(explorer_key.get_value("BackgroundHistoryPath0")?)
     }
 
     fn need_remove() -> bool {
+        log::info!("checking need remove wallpaper");
         if let Ok(wallpaper) = wallpaper::get() {
+            log::info!("wallpaper get: {:?}", wallpaper);
             return !wallpaper.is_empty();
         }
         false
     }
 
     fn set_wallpaper(path: Option<String>) -> ResultType<()> {
-        wallpaper::set_from_path(&path.unwrap_or_default()).map_err(|e| anyhow!(e.to_string()))
+        log::info!("setting wallpaper");
+        let res =
+            wallpaper::set_from_path(&path.unwrap_or_default()).map_err(|e| anyhow!(e.to_string()));
+        log::info!("set wallpaper: {:?}", res);
+        res
     }
 }
 
 impl Drop for WallPaperRemover {
     fn drop(&mut self) {
         // If the old background is a slideshow, it will be converted into an image. AnyDesk does the same.
+        log::info!("dropping wallpaper remover");
         allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
+        log::info!("dropped wallpaper remover ok");
     }
 }
 
@@ -2612,8 +2634,7 @@ pub mod reg_display_settings {
         new: (Vec<u8>, isize),
     }
 
-    pub fn read_reg_connectivity() -> ResultType<HashMap<String, HashMap<String, RegValue>>>
-    {
+    pub fn read_reg_connectivity() -> ResultType<HashMap<String, HashMap<String, RegValue>>> {
         let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
         let reg_connectivity = hklm.open_subkey_with_flags(
             format!("{}\\{}", REG_GRAPHICS_DRIVERS_PATH, REG_CONNECTIVITY_PATH),

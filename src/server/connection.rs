@@ -2391,7 +2391,12 @@ impl Connection {
                     Some(misc::Union::AudioFormat(format)) => {
                         if !self.disable_audio {
                             // Drop the audio sender previously.
+                            log::info!("======================== before drop audio_sender");
                             drop(std::mem::replace(&mut self.audio_sender, None));
+                            log::info!(
+                                "======================== Audio format changed: {:?}",
+                                format
+                            );
                             self.audio_sender = Some(start_audio_thread());
                             self.audio_sender
                                 .as_ref()
