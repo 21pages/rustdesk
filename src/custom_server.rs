@@ -75,7 +75,7 @@ pub fn get_custom_server_from_string(s: &str) -> ResultType<CustomServer> {
                 api = &el[4..el.len()];
             }
             if el.starts_with("relay=") {
-                relay = &el[4..el.len()];
+                relay = &el[6..el.len()];
             }
         }
         return Ok(CustomServer {
@@ -146,8 +146,10 @@ mod test {
             }
         );
         assert_eq!(
-            get_custom_server_from_string("rustdesk-host=server.example.net,key=Zm9vYmFyLiwyCg==,.exe")
-                .unwrap(),
+            get_custom_server_from_string(
+                "rustdesk-host=server.example.net,key=Zm9vYmFyLiwyCg==,.exe"
+            )
+            .unwrap(),
             CustomServer {
                 host: "server.example.net".to_owned(),
                 key: "Zm9vYmFyLiwyCg==".to_owned(),

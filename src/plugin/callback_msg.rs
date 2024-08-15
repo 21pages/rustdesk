@@ -164,7 +164,7 @@ pub(super) extern "C" fn cb_msg(
             cb_msg_field!(peer);
             let content_slice = unsafe { std::slice::from_raw_parts(content as *const u8, len) };
             let channel = u16::from_le_bytes([content_slice[0], content_slice[1]]);
-            let content = std::string::String::from_utf8(content_slice[2..].to_vec())
+            let content = std::string::String::from_utf8(content_slice[2..].to_vec()) //
                 .unwrap_or("".to_string());
             push_event_to_ui(channel, &peer, &content);
             PluginReturn::success()

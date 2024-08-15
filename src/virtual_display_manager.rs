@@ -699,6 +699,7 @@ mod windows {
             false
         } else {
             &device_name[..name.len()] == name && device_name.as_bytes()[name.len() as usize] == 0
+            //
         }
     }
 
@@ -744,6 +745,7 @@ mod windows {
             ) {
                 if let Some(s) = device_string {
                     if ds.len() >= s.len() && &ds[..s.len()] == s {
+                        //
                         device_names.push(device_name);
                     }
                 } else {

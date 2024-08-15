@@ -92,7 +92,7 @@ where
         match cstr_to_string(json) {
             Ok(s) => {
                 if let Ok(json) = serde_json::from_str(s.as_str()) {
-                    let method_suffix = &method[prefix.len()..];
+                    let method_suffix = &method[prefix.len()..]; //
                     if raw != std::ptr::null() && raw_len > 0 {
                         return self.on_message_raw(method_suffix, &json, raw, raw_len);
                     } else {
