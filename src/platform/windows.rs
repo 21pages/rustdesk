@@ -2371,6 +2371,7 @@ fn get_license() -> Option<CustomServer> {
 }
 
 fn get_sid_of_user(username: &str) -> ResultType<String> {
+    log::info!("================== get_sid_of_user: {username}");
     let mut output = Command::new("wmic")
         .args(&[
             "useraccount",
@@ -2385,15 +2386,21 @@ fn get_sid_of_user(username: &str) -> ResultType<String> {
         .spawn()?
         .stdout
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Failed to open stdout"))?;
+    log::info!("================== get_sid_of_user: command ok");
     let mut result = String::new();
     output.read_to_string(&mut result)?;
+    log::info!("================== get_sid_of_user: result: {result}");
     let sid_start_index = result
         .find('=')
         .map(|i| i + 1)
         .ok_or(anyhow!("bad output format"))?;
+    log::info!("================== get_sid_of_user: sid_start_index: {sid_start_index}, result.len(): {:?}", result.len());
     if sid_start_index > 0 && sid_start_index < result.len() + 1 {
-        Ok(result[sid_start_index..].trim().to_string())
+        let res = Ok(result[sid_start_index..].trim().to_string());
+        log::info!("================== get_sid_of_user: res: {:?}", res);
+        res
     } else {
+        log::info!("================== get_sid_of_user: bad output format");
         bail!("bad output format");
     }
 }
@@ -2612,8 +2619,7 @@ pub mod reg_display_settings {
         new: (Vec<u8>, isize),
     }
 
-    pub fn read_reg_connectivity() -> ResultType<HashMap<String, HashMap<String, RegValue>>>
-    {
+    pub fn read_reg_connectivity() -> ResultType<HashMap<String, HashMap<String, RegValue>>> {
         let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
         let reg_connectivity = hklm.open_subkey_with_flags(
             format!("{}\\{}", REG_GRAPHICS_DRIVERS_PATH, REG_CONNECTIVITY_PATH),
