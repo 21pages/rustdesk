@@ -33,10 +33,12 @@ env:
   API_SERVER: "${{ secrets.API_SERVER }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  BUILD_DATE: "240501_34c7c25"
 
 jobs:
   build-RustDeskTempTopMostWindow:
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
+    if: false
     with:
       upload-artifact: ${{ inputs.upload-artifact }}
       target: windows-2022
@@ -49,6 +51,7 @@ jobs:
   build-for-windows-flutter:
     name: ${{ matrix.job.target }} 
     needs: [build-RustDeskTempTopMostWindow]
+    if: false
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
@@ -201,6 +204,7 @@ jobs:
   build-for-windows-sciter:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
+    if: false
     # Temporarily disable this action due to additional test is needed.
     # if: false
     strategy:
@@ -393,7 +397,7 @@ jobs:
             rustdesk*-aarch64.dmg
 
   build-rustdesk-ios:
-    if: ${{ inputs.upload-artifact }}
+    if: false
     name: build rustdesk ios ipa ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
     runs-on: ${{ matrix.job.os }}
     strategy:
@@ -542,6 +546,7 @@ jobs:
   build-for-macOS:
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -708,7 +713,7 @@ jobs:
       - build-for-windows-flutter
       - build-rustdesk-linux
     runs-on: ubuntu-latest
-    if: ${{ inputs.upload-artifact }}
+    if: false
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@master
@@ -756,6 +761,7 @@ jobs:
 
   build-rustdesk-android:
     needs: [generate-bridge-linux]
+    if: false
     name: build rustdesk android apk ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-features }}]
     runs-on: ${{ matrix.job.os }}
     strategy:
@@ -977,46 +983,46 @@ jobs:
               enable-headless: true,
               on: ubuntu-20.04,
             }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              distro: ubuntu18.04,
-              extra-build-features: "flatpak",
-              enable-headless: false,
-              on: ubuntu-20.04,
-            }
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              distro: ubuntu18.04,
-              extra-build-features: "appimage",
-              enable-headless: false,
-              on: ubuntu-20.04,
-            }
-          - {
-              arch: aarch64,
-              target: aarch64-unknown-linux-gnu,
-              distro: ubuntu18.04,
-              extra-build-features: "",
-              enable-headless: true,
-              on: [self-hosted, Linux, ARM64],
-            }
-          - {
-              arch: aarch64,
-              target: aarch64-unknown-linux-gnu,
-              distro: ubuntu20.04,
-              extra-build-features: "flatpak",
-              enable-headless: false,
-              on: [self-hosted, Linux, ARM64],
-            }
-          - {
-              arch: aarch64,
-              target: aarch64-unknown-linux-gnu,
-              distro: ubuntu20.04,
-              extra-build-features: "appimage",
-              enable-headless: false,
-              on: [self-hosted, Linux, ARM64],
-            }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-unknown-linux-gnu,
+          #     distro: ubuntu18.04,
+          #     extra-build-features: "flatpak",
+          #     enable-headless: false,
+          #     on: ubuntu-20.04,
+          #   }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-unknown-linux-gnu,
+          #     distro: ubuntu18.04,
+          #     extra-build-features: "appimage",
+          #     enable-headless: false,
+          #     on: ubuntu-20.04,
+          #   }
+          # - {
+          #     arch: aarch64,
+          #     target: aarch64-unknown-linux-gnu,
+          #     distro: ubuntu18.04,
+          #     extra-build-features: "",
+          #     enable-headless: true,
+          #     on: [self-hosted, Linux, ARM64],
+          #   }
+          # - {
+          #     arch: aarch64,
+          #     target: aarch64-unknown-linux-gnu,
+          #     distro: ubuntu20.04,
+          #     extra-build-features: "flatpak",
+          #     enable-headless: false,
+          #     on: [self-hosted, Linux, ARM64],
+          #   }
+          # - {
+          #     arch: aarch64,
+          #     target: aarch64-unknown-linux-gnu,
+          #     distro: ubuntu20.04,
+          #     extra-build-features: "appimage",
+          #     enable-headless: false,
+          #     on: [self-hosted, Linux, ARM64],
+          #   }
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
@@ -1183,7 +1189,7 @@ jobs:
           path: target/release/liblibrustdesk.so
 
   build-rustdesk-sciter-arm:
-    if: ${{ inputs.upload-artifact }}
+    if: false
     runs-on: [self-hosted, Linux, ARM64]
     name: build-rustdesk-sciter-arm ${{ matrix.job.target }}
     strategy:
@@ -1378,36 +1384,36 @@ jobs:
               target: x86_64-unknown-linux-gnu,
               extra-build-features: "",
             }
-          - {
-              arch: x86_64,
-              distro: ubuntu18.04,
-              target: x86_64-unknown-linux-gnu,
-              extra-build-features: "flatpak",
-            }
-          - {
-              arch: x86_64,
-              distro: ubuntu18.04,
-              target: x86_64-unknown-linux-gnu,
-              extra-build-features: "appimage",
-            }
-          - {
-              arch: aarch64,
-              distro: ubuntu18.04,
-              target: aarch64-unknown-linux-gnu,
-              extra-build-features: "",
-            }
-          - {
-              arch: aarch64,
-              distro: ubuntu20.04,
-              target: aarch64-unknown-linux-gnu,
-              extra-build-features: "flatpak",
-            }
-          - {
-              arch: aarch64,
-              distro: ubuntu20.04,
-              target: aarch64-unknown-linux-gnu,
-              extra-build-features: "appimage",
-            }
+          # - {
+          #     arch: x86_64,
+          #     distro: ubuntu18.04,
+          #     target: x86_64-unknown-linux-gnu,
+          #     extra-build-features: "flatpak",
+          #   }
+          # - {
+          #     arch: x86_64,
+          #     distro: ubuntu18.04,
+          #     target: x86_64-unknown-linux-gnu,
+          #     extra-build-features: "appimage",
+          #   }
+          # - {
+          #     arch: aarch64,
+          #     distro: ubuntu18.04,
+          #     target: aarch64-unknown-linux-gnu,
+          #     extra-build-features: "",
+          #   }
+          # - {
+          #     arch: aarch64,
+          #     distro: ubuntu20.04,
+          #     target: aarch64-unknown-linux-gnu,
+          #     extra-build-features: "flatpak",
+          #   }
+          # - {
+          #     arch: aarch64,
+          #     distro: ubuntu20.04,
+          #     target: aarch64-unknown-linux-gnu,
+          #     extra-build-features: "appimage",
+          #   }
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
@@ -1546,7 +1552,7 @@ jobs:
         run: |
           for name in rustdesk*??.deb; do
               # use cp to duplicate deb files to fit other packages.
-              cp "$name" "${name%%.deb}-${{ matrix.job.arch }}.deb"
+              cp "$name" "${name%%.deb}-${{ matrix.job.arch }}--${{env.BUILD_DATE}}.deb"
           done
 
       - name: Publish debian package
@@ -1556,18 +1562,18 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
+            rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-${{env.BUILD_DATE}}.deb
 
       - name: Upload Artifact
         uses: actions/upload-artifact@master
-        if: matrix.job.extra-build-features == 'flatpak' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         with:
           name: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
           path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
 
       # Temporary disable for there is no many archlinux arm hosts
       - name: Patch archlinux PKGBUILD
-        if: matrix.job.extra-build-features == '' && env.UPLOAD_ARTIFACT == 'true' && matrix.job.arch == 'x86_64'
+        if: false
         run: |
           sed -i "s/arch=('x86_64')/arch=('${{ matrix.job.arch }}')/g" res/PKGBUILD
           case ${{ matrix.job.arch }} in
@@ -1578,7 +1584,7 @@ jobs:
 
       # Temporary disable for there is no many archlinux arm hosts
       - name: Build archlinux package
-        if: matrix.job.extra-build-features == '' && env.UPLOAD_ARTIFACT == 'true' && matrix.job.arch == 'x86_64'
+        if: false
         uses: rustdesk-org/arch-makepkg-action@master
         with:
           packages: >
@@ -1615,7 +1621,7 @@ jobs:
             cd res && HBB=`pwd`/.. FLUTTER=1 makepkg -f
 
       - name: Publish archlinux package
-        if: matrix.job.extra-build-features == '' && env.UPLOAD_ARTIFACT == 'true' && matrix.job.arch == 'x86_64'
+        if: false
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
@@ -1624,7 +1630,7 @@ jobs:
             res/rustdesk-${{ env.VERSION }}*.zst
 
       - name: Build appimage package
-        if: matrix.job.extra-build-features == 'appimage' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         shell: bash
         run: |
           # set-up appimage-builder
@@ -1638,7 +1644,7 @@ jobs:
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml
 
       - name: Publish appimage package
-        if: matrix.job.extra-build-features == 'appimage' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
@@ -1647,7 +1653,7 @@ jobs:
             ./appimage/rustdesk-${{ env.VERSION }}-*.AppImage
 
       - name: Publish fedora package
-        if: matrix.job.extra-build-features == '' && env.UPLOAD_ARTIFACT == 'true'
+        if: false
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
@@ -1659,7 +1665,7 @@ jobs:
     name: Build Flatpak ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ${{ matrix.job.on }}
-    if: ${{ inputs.upload-artifact }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -1749,6 +1755,7 @@ jobs:
   build-rustdesk-web:
     name: build-rustdesk-web
     runs-on: ubuntu-20.04
+    if: false
     strategy:
       fail-fast: false
     env:
