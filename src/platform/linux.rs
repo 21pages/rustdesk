@@ -135,9 +135,13 @@ pub fn reset_input_cache() {}
 
 pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
     let mut res = None;
+    log::info!("============= into get_focused_display, displays:{displays:?}");
     XDO.with(|xdo| {
+        log::info!("============ with xdo");
         if let Ok(xdo) = xdo.try_borrow_mut() {
+            log::info!("============ xdo.try_borrow_mut");
             if xdo.is_null() {
+                log::info!("============ xdo.is_null");
                 return;
             }
             let mut x: c_int = 0;
@@ -148,8 +152,10 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
 
             unsafe {
                 if xdo_get_active_window(*xdo, &mut window) != 0 {
+                    log::info!("============ xdo_get_active_window failed");
                     return;
                 }
+                log::info!("============ xdo_get_active_window success");
                 if xdo_get_window_location(
                     *xdo,
                     window,
@@ -158,11 +164,15 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
                     std::ptr::null_mut(),
                 ) != 0
                 {
+                    log::info!("============ xdo_get_window_location failed");
                     return;
                 }
+                log::info!("============ xdo_get_window_location success");
                 if xdo_get_window_size(*xdo, window, &mut width as _, &mut height as _) != 0 {
+                    log::info!("============ xdo_get_window_size failed");
                     return;
                 }
+                log::info!("============ xdo_get_window_size success");
                 let center_x = x + width / 2;
                 let center_y = y + height / 2;
                 res = displays.iter().position(|d| {
