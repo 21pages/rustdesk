@@ -383,6 +383,7 @@ fn get_capturer(current: usize, portable_service_running: bool) -> ResultType<Ca
 }
 
 fn run(vs: VideoService) -> ResultType<()> {
+    log::info!("video service run: {:?}", vs.idx);
     let _raii = Raii::new(vs.idx);
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
@@ -407,6 +408,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let display_idx = vs.idx;
     let sp = vs.sp;
     let mut c = get_capturer(display_idx, last_portable_service_running)?;
+    log::info!("video service get_capturer ok");
     #[cfg(windows)]
     if !scrap::codec::enable_directx_capture() && !c.is_gdi() {
         log::info!("disable dxgi with option, fall back to gdi");
@@ -450,6 +452,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             )?
         }
     };
+    log::info!("create encoder ok: {encoder_cfg:?}");
     #[cfg(feature = "vram")]
     c.set_output_texture(encoder.input_texture());
     #[cfg(target_os = "android")]
@@ -486,8 +489,11 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
     let mut encode_fail_counter = 0;
+    let max_log_times = 10;
+    let mut log_times = 0;
 
     while sp.ok() {
+        log_times += 1;
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
 
@@ -563,9 +569,18 @@ fn run(vs: VideoService) -> ResultType<()> {
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
         let res = match c.frame(spf) {
             Ok(frame) => {
+                if log_times < max_log_times {
+                    log::info!("frame ok");
+                }
                 repeat_encode_counter = 0;
                 if frame.valid() {
+                    if log_times < max_log_times {
+                        log::info!("frame valid");
+                    }
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    if log_times < max_log_times {
+                        log::info!("frame to yuv ok");
+                    }
                     let send_conn_ids = handle_one_frame(
                         display_idx,
                         &sp,
@@ -575,6 +590,9 @@ fn run(vs: VideoService) -> ResultType<()> {
                         recorder.clone(),
                         &mut encode_fail_counter,
                     )?;
+                    if log_times < max_log_times {
+                        log::info!("frame encode ok");
+                    }
                     frame_controller.set_send(now, send_conn_ids);
                 }
                 #[cfg(windows)]
@@ -742,6 +760,7 @@ fn get_encoder_config(
     // https://www.wowza.com/community/t/the-correct-keyframe-interval-in-obs-studio/95162
     let keyframe_interval = if record { Some(240) } else { None };
     let negotiated_codec = Encoder::negotiated_codec();
+    log::info!("negotiated_codec: {:?}", negotiated_codec);
     match negotiated_codec {
         CodecFormat::H264 | CodecFormat::H265 => {
             #[cfg(feature = "vram")]
