@@ -303,6 +303,10 @@ pub fn new_pos() -> GenericService {
 }
 
 pub fn new_window_focus() -> GenericService {
+    #[cfg(target_os = "linux")]
+    {
+        log::info!("new_window_focus is_x11: {:?}", crate::platform::is_x11());
+    }
     let svc = EmptyExtraFieldService::new(NAME_WINDOW_FOCUS.to_owned(), false);
     GenericService::repeat::<StateWindowFocus, _, _>(&svc.clone(), 33, run_window_focus);
     svc.sp
@@ -384,6 +388,14 @@ fn run_cursor(sp: MouseCursorService, state: &mut StateCursor) -> ResultType<()>
 }
 
 fn run_window_focus(sp: EmptyExtraFieldService, state: &mut StateWindowFocus) -> ResultType<()> {
+    #[cfg(target_os = "linux")]
+    {
+        let is_x11 = crate::platform::is_x11();
+        log::info!("is_x11: {:?}", is_x11);
+        if !is_x11 {
+            return Ok(());
+        }
+    }
     let displays = super::display_service::get_sync_displays();
     let disp_idx = crate::get_focused_display(displays);
     if let Some(disp_idx) = disp_idx.map(|id| id as i32) {
