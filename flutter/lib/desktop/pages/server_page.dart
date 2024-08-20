@@ -720,6 +720,9 @@ class _CmControlPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Provider.of<ServerModel>(context);
+    print(
+        "================== _CmControlPanel rebuild, client.id: ${client.id}  disconnected: ${client.disconnected}");
     return client.authorized
         ? client.disconnected
             ? buildDisconnected(context)

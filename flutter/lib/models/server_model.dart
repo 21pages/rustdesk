@@ -497,6 +497,7 @@ class ServerModel with ChangeNotifier {
       debugPrint("Failed to decode clientsJson: '$res', error $e");
       return;
     }
+    print("============= updateClientState: $clientsJson");
 
     final oldClientLenght = _clients.length;
     _clients.clear();
@@ -525,6 +526,8 @@ class ServerModel with ChangeNotifier {
   }
 
   void addConnection(Map<String, dynamic> evt) {
+    print(
+        "=================== addConnection: $evt, _clients: ${jsonEncode(_clients)}");
     try {
       final client = Client.fromJson(jsonDecode(evt["client"]));
       if (client.authorized) {
@@ -537,17 +540,29 @@ class ServerModel with ChangeNotifier {
         }
       } else {
         if (_clients.any((c) => c.id == client.id)) {
+          print("=================== id equal return");
           return;
         }
+        // final indexExistingOne =
+        //     _clients.indexWhere((c) => c.peerId == client.peerId);
+        // if (indexExistingOne >= 0) {
+        //   _clients.removeAt(indexExistingOne);
+        //   tabController.remove(indexExistingOne);
+        // }
         _clients.add(client);
       }
       _addTab(client);
       // remove disconnected
       final index_disconnected = _clients
           .indexWhere((c) => c.disconnected && c.peerId == client.peerId);
+      print(
+          "=================== index_disconnected: $index_disconnected, _clients: ${jsonEncode(_clients)}, tabs: ${tabController.state.value.tabs.map((e) => e.key)}");
       if (index_disconnected >= 0) {
         _clients.removeAt(index_disconnected);
+        print("after remove clients: ${jsonEncode(_clients)}");
         tabController.remove(index_disconnected);
+        print(
+            "after remove tabController: ${tabController.state.value.tabs.map((e) => e.key)}");
       }
       if (desktopType == DesktopType.cm && !hideCm) {
         showCmWindow();
@@ -562,6 +577,7 @@ class ServerModel with ChangeNotifier {
   }
 
   void _addTab(Client client) {
+    print("============= _addTab, client id: ${client.id}");
     tabController.add(TabInfo(
         key: client.id.toString(),
         label: client.name,
@@ -662,6 +678,7 @@ class ServerModel with ChangeNotifier {
   }
 
   void sendLoginResponse(Client client, bool res) async {
+    print("=================== sendLoginResponse: $client, res: $res");
     if (res) {
       bind.cmLoginRes(connId: client.id, res: res);
       if (!client.isFileTransfer) {
@@ -681,6 +698,7 @@ class ServerModel with ChangeNotifier {
   }
 
   void onClientRemove(Map<String, dynamic> evt) {
+    print("=================== onClientRemove: $evt");
     try {
       final id = int.parse(evt['id'] as String);
       final close = (evt['close'] as String) == 'true';
@@ -708,6 +726,7 @@ class ServerModel with ChangeNotifier {
   }
 
   Future<void> closeAll() async {
+    print("=================== closeAll: $_clients");
     await Future.wait(
         _clients.map((client) => bind.cmCloseConnection(connId: client.id)));
     _clients.clear();
@@ -826,7 +845,7 @@ class Client {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['id'] = id;
-    data['is_start'] = authorized;
+    data['authorized'] = authorized;
     data['is_file_transfer'] = isFileTransfer;
     data['port_forward'] = portForward;
     data['name'] = name;
