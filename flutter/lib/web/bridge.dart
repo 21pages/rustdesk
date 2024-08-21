@@ -14,7 +14,7 @@ mixin _$EventToUI {
   Object get field0 => throw _privateConstructorUsedError;
 }
 
-sealed class EventToUI {
+sealed class EventToUI with _$EventToUI {
   const factory EventToUI.event(
     String field0,
   ) = EventToUI_Event;
@@ -23,6 +23,7 @@ sealed class EventToUI {
   ) = EventToUI_Rgba;
   const factory EventToUI.texture(
     int field0,
+    bool field1,
   ) = EventToUI_Texture;
 }
 
@@ -39,9 +40,13 @@ class EventToUI_Rgba implements EventToUI {
 }
 
 class EventToUI_Texture implements EventToUI {
-  const EventToUI_Texture(final int field0) : this.field = field0;
-  final int field;
-  int get field0 => field;
+  const EventToUI_Texture(final int field0, final bool field1)
+      : this._field0 = field0,
+        this._field1 = field1;
+  final int _field0;
+  final bool _field1;
+  int get field0 => _field0;
+  bool get field1 => _field1;
 }
 
 class RustdeskImpl {
@@ -1647,6 +1652,37 @@ class RustdeskImpl {
   }
 
   Future<void> mainClearTrustedDevices({dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  String installInstallOptions({dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  String mainGetBuildinOption({required String key, dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  bool isPresetPasswordMobileOnly({dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  Future<String> getVoiceCallInputDevice({required bool isCm, dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  Future<void> setVoiceCallInputDevice(
+      {required bool isCm, required String device, dynamic hint}) {
+    throw UnimplementedError();
+  }
+
+  Future<void> sessionRenameFile(
+      {required UuidValue sessionId,
+      required int actId,
+      required String path,
+      required String newName,
+      required bool isRemote,
+      dynamic hint}) {
     throw UnimplementedError();
   }
 
