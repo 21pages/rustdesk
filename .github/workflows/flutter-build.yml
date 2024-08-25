@@ -977,7 +977,9 @@ jobs:
         if: $${{ env.ANDROID_FLUTTER_VERSION == '3.13.9' }}
         run: |
           sed -i 's/uni_links_desktop/#uni_links_desktop/g' flutter/pubspec.yaml
-          cd flutter/lib
+          sed -i '/extended_text/{N;N;N;N;s/.*/  extended_text: 11.1.0/;}' flutter/pubspec.yaml
+          cd flutter && flutter pub get
+          cd lib
           find . | grep dart | xargs sed -i 's/textScaler: TextScaler.linear(\(.*\)),/textScaleFactor: \1,/g'
 
       - name: Build rustdesk lib
@@ -1211,7 +1213,9 @@ jobs:
         if: $${{ env.ANDROID_FLUTTER_VERSION == '3.13.9' }}
         run: |
           sed -i 's/uni_links_desktop/#uni_links_desktop/g' flutter/pubspec.yaml
-          cd flutter/lib
+          sed -i '/extended_text/{N;N;N;N;s/.*/  extended_text: 11.1.0/;}' flutter/pubspec.yaml
+          cd flutter && flutter pub get
+          cd lib
           find . | grep dart | xargs sed -i 's/textScaler: TextScaler.linear(\(.*\)),/textScaleFactor: \1,/g'
 
       - name: Build rustdesk

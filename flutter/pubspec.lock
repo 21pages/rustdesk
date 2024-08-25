@@ -380,6 +380,24 @@ packages:
       url: "https://github.com/rustdesk-org/dynamic_layouts.git"
     source: git
     version: "0.0.1+1"
+  extended_text:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: "679b2f853376ae1502b55197a0ef51657603daab"
+      resolved-ref: "679b2f853376ae1502b55197a0ef51657603daab"
+      url: "https://github.com/21pages/extended_text.git"
+    source: git
+    version: "13.0.2"
+  extended_text_library:
+    dependency: transitive
+    description:
+      path: "."
+      ref: "48f679d6a0748d3b54ced5d9edab53b8997e0876"
+      resolved-ref: "48f679d6a0748d3b54ced5d9edab53b8997e0876"
+      url: "https://github.com/21pages/extended_text_library.git"
+    source: git
+    version: "12.0.0"
   external_path:
     dependency: "direct main"
     description:
