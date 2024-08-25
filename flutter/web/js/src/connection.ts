@@ -1,4 +1,3 @@
-import Websock from "./websock";
 import * as message from "./message.js";
 import * as rendezvous from "./rendezvous.js";
 import { loadVp9 } from "./codec";
@@ -6,6 +5,7 @@ import * as sha256 from "fast-sha256";
 import * as globals from "./globals";
 import * as consts from "./consts";
 import { decompress, mapKey, sleep } from "./common";
+import Rtcsock from "./rtc";
 
 export const PORT = 21116;
 const HOSTS = [
@@ -14,7 +14,6 @@ const HOSTS = [
   "rs-us.rustdesk.com",
 ];
 let HOST = localStorage.getItem("rendezvous-server") || HOSTS[0];
-const SCHEMA = "ws://";
 
 type MsgboxCallback = (type: string, title: string, text: string, link: string) => void;
 type DrawCallback = (display: number, data: Uint8Array) => void;
@@ -22,7 +21,7 @@ type DrawCallback = (display: number, data: Uint8Array) => void;
 
 export default class Connection {
   _msgs: any[];
-  _ws: Websock | undefined;
+  _ws: Rtcsock | undefined;
   _interval: any;
   _id: string;
   _hash: message.Hash | undefined;
@@ -79,7 +78,7 @@ export default class Connection {
     }, 1);
     this.loadVideoDecoder();
     const uri = getDefaultUri();
-    const ws = new Websock(uri, true);
+    const ws = new Rtcsock(uri, true);
     this._ws = ws;
     this._id = id;
     console.log(
@@ -142,7 +141,7 @@ export default class Connection {
     }
     const uuid = rr.uuid;
     console.log(new Date() + ": Connecting to relay server: " + uri);
-    const ws = new Websock(uri, false);
+    const ws = new Rtcsock(uri, false);
     await ws.open();
     console.log(new Date() + ": Connected to relay server");
     this._ws = ws;
@@ -1007,7 +1006,7 @@ function testDelay() {
   var nearest = "";
   HOSTS.forEach((host) => {
     const now = new Date().getTime();
-    new Websock(getrUriFromRs(host), true).open().then(() => {
+    new Rtcsock(getrUriFromRs(host), true).open().then(() => {
       console.log("latency of " + host + ": " + (new Date().getTime() - now));
       if (!nearest) {
         HOST = host;
@@ -1029,6 +1028,7 @@ function getrUriFromRs(
   isRelay: Boolean = false,
   roffset: number = 0
 ): string {
+  return "127.0.0.1";
   if (uri.indexOf(":") > 0) {
     const tmp = uri.split(":");
     const port = parseInt(tmp[1]);
@@ -1036,7 +1036,7 @@ function getrUriFromRs(
   } else {
     uri += ":" + (PORT + (isRelay ? 3 : 2));
   }
-  return SCHEMA + uri;
+  return uri;
 }
 
 function hash(datas: (string | Uint8Array)[]): Uint8Array {
