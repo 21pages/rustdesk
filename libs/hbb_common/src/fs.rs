@@ -145,8 +145,16 @@ fn read_dir_recursive(
                         &prefix.join(&entry.name),
                         include_hidden,
                     ) {
-                        for entry in tmp.drain(0..) {
-                            files.push(entry);
+                        if tmp.is_empty() {
+                            files.push(FileEntry {
+                                entry_type: FileType::Dir.into(),
+                                name: get_string(&prefix.join(&entry.name)),
+                                ..Default::default()
+                            });
+                        } else {
+                            for entry in tmp.drain(0..) {
+                                files.push(entry);
+                            }
                         }
                     }
                 }
