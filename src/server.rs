@@ -100,6 +100,17 @@ pub fn new() -> ServerPtr {
     server.add_service(Box::new(audio_service::new()));
     #[cfg(not(target_os = "ios"))]
     server.add_service(Box::new(display_service::new()));
+
+    #[cfg(target_os = "linux")]
+    {
+        log::info!(
+            "================= linux is x11: {}, is_preLogin: {}, is_login_screen_wayland: {}",
+            crate::platform::linux::is_x11(),
+            crate::platform::linux::is_prelogin(),
+            crate::platform::linux::is_login_screen_wayland(),
+        );
+    }
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         server.add_service(Box::new(clipboard_service::new()));

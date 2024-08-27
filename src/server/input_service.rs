@@ -384,6 +384,14 @@ fn run_cursor(sp: MouseCursorService, state: &mut StateCursor) -> ResultType<()>
 }
 
 fn run_window_focus(sp: EmptyExtraFieldService, state: &mut StateWindowFocus) -> ResultType<()> {
+    // wayland does not support multiple displays, and is not well supported by libxdo
+    #[cfg(target_os = "linux")]
+    {
+        log::info!("run_window_focus is_x11: {}", crate::platform::is_x11());
+        if !crate::platform::is_x11() {
+            return Ok(());
+        }
+    }
     let displays = super::display_service::get_sync_displays();
     if displays.len() <= 1 {
         return Ok(());
