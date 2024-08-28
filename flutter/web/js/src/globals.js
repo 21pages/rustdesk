@@ -2,7 +2,7 @@ import Connection from "./connection";
 import PORT from "./connection";
 import _sodium from "libsodium-wrappers";
 import { CursorData } from "./message";
-import { loadVp9 } from "./codec";
+import { loadFFmpeg } from "./codec";
 import { checkIfRetry, version } from "./gen_js_from_hbb";
 import { initZstd, translate } from "./common";
 import PCMPlayer from "pcm-player";
@@ -471,7 +471,7 @@ window.init = async () => {
   opusWorker.onmessage = (e) => {
     pcmPlayer.feed(e.data);
   }
-  loadVp9(() => { });
+  loadFFmpeg(() => { });
   await initZstd();
   console.log('init done');
 }

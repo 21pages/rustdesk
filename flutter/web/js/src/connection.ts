@@ -1,7 +1,7 @@
 import Websock from "./websock";
 import * as message from "./message.js";
 import * as rendezvous from "./rendezvous.js";
-import { loadVp9 } from "./codec";
+import { loadFFmpeg } from "./codec";
 import * as sha256 from "fast-sha256";
 import * as globals from "./globals";
 import * as consts from "./consts";
@@ -513,6 +513,10 @@ export default class Connection {
       msg.disable_clipboard = yes;
       n += 1;
     }
+    msg.supported_decoding = message.SupportedDecoding.fromPartial({
+      ability_av1: 1,
+    });
+    n += 1;
     return n > 0 ? msg : undefined;
   }
 
@@ -522,18 +526,21 @@ export default class Connection {
   }
 
   handleVideoFrame(vf: message.VideoFrame) {
+    console.log("handleVideoFrame");
     if (!this._firstFrame) {
       this.msgbox("", "", "");
       this._firstFrame = true;
     }
-    if (vf.vp9s) {
+    
+    if (vf.av1s) {
       const dec = this._videoDecoder;
       var tm = new Date().getTime();
       var i = 0;
-      const n = vf.vp9s?.frames.length;
-      vf.vp9s.frames.forEach((f) => {
+      const n = vf.av1s?.frames.length;
+      vf.av1s.frames.forEach((f) => {
         dec.processFrame(f.data.slice(0).buffer, (ok: any) => {
           i++;
+          console.log("processFrame: " + i + "/" + n + ", ok:", ok);
           if (i == n) this.sendVideoReceived();
           if (ok && dec.frameBuffer && n == i) {
             this.draw(vf.display, dec.frameBuffer);
@@ -995,7 +1002,7 @@ export default class Connection {
 
   loadVideoDecoder() {
     this._videoDecoder?.close();
-    loadVp9((decoder: any) => {
+    loadFFmpeg((decoder: any) => {
       this._videoDecoder = decoder;
       console.log("vp9 loaded");
       console.log('The decoder: ', decoder);

@@ -288,7 +288,8 @@ impl Encoder {
 
     #[inline]
     pub fn negotiated_codec() -> CodecName {
-        ENCODE_CODEC_NAME.lock().unwrap().clone()
+        // ENCODE_CODEC_NAME.lock().unwrap().clone()
+        CodecName::AV1
     }
 
     pub fn supported_encoding() -> SupportedEncoding {

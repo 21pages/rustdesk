@@ -41,3 +41,24 @@ export async function loadVp9(callback) {
     { worker: true, threading: true }
   );
 }
+
+export async function loadFFmpeg(callback) {
+  // Multithreading is used only if `options.threading` is true.
+  // This requires browser support for the new `SharedArrayBuffer` and `Atomics` APIs,
+  // currently available in Firefox and Chrome with experimental flags enabled.
+  // All major browsers disabled SharedArrayBuffer by default on January 5, 2018
+  const isSIMD = await simd();
+  console.log('isSIMD: ' + isSIMD);
+  window.OGVLoader.loadClass(
+    "OGVDecoderVideoFFmpegW",
+    (videoCodecClass) => {
+      window.videoCodecClass = videoCodecClass;
+      videoCodecClass({ videoFormat: {} }).then((decoder) => {
+        decoder.init(() => {
+          callback(decoder);
+        })
+      })
+    },
+    { worker: false, threading: false }
+  );
+}
