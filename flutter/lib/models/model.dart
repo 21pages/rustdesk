@@ -1098,8 +1098,7 @@ class ImageModel with ChangeNotifier {
         rgba,
         parent.target?.ffiModel.rect?.width.toInt() ?? 0,
         parent.target?.ffiModel.rect?.height.toInt() ?? 0,
-        isWeb ? ui.PixelFormat.rgba8888 : ui.PixelFormat.bgra8888,
-        onPixelsCopied: () {
+        ui.PixelFormat.bgra8888, onPixelsCopied: () {
       // Unlock the rgba memory from rust codes.
       platformFFI.nextRgba(sessionId, display);
     }).then((image) {

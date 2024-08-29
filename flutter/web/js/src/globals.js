@@ -2,7 +2,6 @@ import Connection from "./connection";
 import PORT from "./connection";
 import _sodium from "libsodium-wrappers";
 import { CursorData } from "./message";
-import { loadVp9 } from "./codec";
 import { checkIfRetry, version } from "./gen_js_from_hbb";
 import { initZstd, translate } from "./common";
 import PCMPlayer from "pcm-player";
@@ -45,66 +44,18 @@ export function pushEvent(name, payload) {
   onGlobalEvent(JSON.stringify(payload));
 }
 
-let yuvWorker;
-let yuvCanvas;
+
+let canvas;
 let gl;
 let pixels;
 let flipPixels;
 let oldSize;
-if (YUVCanvas.WebGLFrameSink.isAvailable()) {
-  var canvas = document.createElement('canvas');
-  yuvCanvas = YUVCanvas.attach(canvas, { webGL: true });
-  gl = canvas.getContext("webgl");
-} else {
-  yuvWorker = new Worker("./yuv.js");
-}
 let testSpeed = [0, 0];
+canvas =  document.createElement('canvas');
 
-export function draw(display, frame) {
-  if (yuvWorker) {
-    // frame's (y/u/v).bytes already detached, can not transferrable any more.
-    yuvWorker.postMessage({ display, frame });
-  } else {
-    var tm0 = new Date().getTime();
-    yuvCanvas.drawFrame(frame);
-    var width = canvas.width;
-    var height = canvas.height;
-    var size = width * height * 4;
-    if (size != oldSize) {
-      pixels = new Uint8Array(size);
-      flipPixels = new Uint8Array(size);
-      oldSize = size;
-    }
-    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    const row = width * 4;
-    const end = (height - 1) * row;
-    for (let i = 0; i < size; i += row) {
-      flipPixels.set(pixels.subarray(i, i + row), end - i);
-    }
-    onRgba(display, flipPixels);
-    testSpeed[1] += new Date().getTime() - tm0;
-    testSpeed[0] += 1;
-    if (testSpeed[0] > 30) {
-      console.log('gl: ' + parseInt('' + testSpeed[1] / testSpeed[0]));
-      testSpeed = [0, 0];
-    }
-  }
-  /*
-  var testCanvas = document.getElementById("test-yuv-decoder-canvas");
-  if (testCanvas && currentFrame) {
-    var ctx = testCanvas.getContext("2d");
-    testCanvas.width = frame.format.displayWidth;
-    testCanvas.height = frame.format.displayHeight;
-    var img = ctx.createImageData(testCanvas.width, testCanvas.height);
-    img.data.set(currentFrame);
-    ctx.putImageData(img, 0, 0);
-  }
-  */
-}
 
-export function sendOffCanvas(c) {
-  let canvas = c.transferControlToOffscreen();
-  yuvWorker.postMessage({ canvas }, [canvas]);
+export function draw(display, bgraData) {
+  onRgba(display, bgraData);
 }
 
 export function setConn(conn) {
@@ -471,7 +422,6 @@ window.init = async () => {
   opusWorker.onmessage = (e) => {
     pcmPlayer.feed(e.data);
   }
-  loadVp9(() => { });
   await initZstd();
   console.log('init done');
 }

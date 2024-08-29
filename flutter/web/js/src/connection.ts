@@ -1,7 +1,7 @@
 import Websock from "./websock";
 import * as message from "./message.js";
 import * as rendezvous from "./rendezvous.js";
-import { loadVp9 } from "./codec";
+import { loadFFmpeg } from "./codec";
 import * as sha256 from "fast-sha256";
 import * as globals from "./globals";
 import * as consts from "./consts";
@@ -407,8 +407,7 @@ export default class Connection {
   }
 
   draw(display: number, frame: any) {
-    this._draw?.(display, frame);
-    globals.draw(display, frame);
+    globals.draw(display, frame.data);
   }
 
   close() {
@@ -513,6 +512,14 @@ export default class Connection {
       msg.disable_clipboard = yes;
       n += 1;
     }
+    msg.supported_decoding = message.SupportedDecoding.fromPartial({
+      ability_vp8: 1, 
+      ability_vp9: 1,
+      ability_av1: 1,
+      ability_h264: 1,
+      ability_h265: 1,
+     });
+     n += 1;
     return n > 0 ? msg : undefined;
   }
 
@@ -526,16 +533,38 @@ export default class Connection {
       this.msgbox("", "", "");
       this._firstFrame = true;
     }
-    if (vf.vp9s) {
-      const dec = this._videoDecoder;
+    const dec = this._videoDecoder; 
+    if (dec) { // todo: lose keyframe?
       var tm = new Date().getTime();
       var i = 0;
-      const n = vf.vp9s?.frames.length;
-      vf.vp9s.frames.forEach((f) => {
-        dec.processFrame(f.data.slice(0).buffer, (ok: any) => {
+      var codec = 0;
+      var encodedFrame = undefined;
+      if (vf.vp8s) {
+        codec = 0;
+        encodedFrame = vf.vp8s;
+      } else if (vf.vp9s) {
+        codec = 1;
+        encodedFrame = vf.vp9s;
+      } else if (vf.av1s) {
+        codec = 2;
+        encodedFrame = vf.av1s;
+      } else if (vf.h264s) {
+        codec = 3;
+        encodedFrame = vf.h264s;
+      } else if (vf.h265s) {
+        codec = 4;
+        encodedFrame = vf.h265s;
+      } else {
+        console.log("unknown codec");
+        return;
+      }
+      console.log("codec: " + codec);
+      const n = encodedFrame?.frames.length;
+      encodedFrame.frames.forEach((f) => {
+        dec.processFrame(codec, f.data.slice(0).buffer, (ok: any) => {
           i++;
           if (i == n) this.sendVideoReceived();
-          if (ok && dec.frameBuffer && n == i) {
+          if (ok == 0 && dec.frameBuffer && n == i) {
             this.draw(vf.display, dec.frameBuffer);
             const now = new Date().getTime();
             var elapsed = now - tm;
@@ -995,7 +1024,7 @@ export default class Connection {
 
   loadVideoDecoder() {
     this._videoDecoder?.close();
-    loadVp9((decoder: any) => {
+    loadFFmpeg((decoder: any) => {
       this._videoDecoder = decoder;
       console.log("vp9 loaded");
       console.log('The decoder: ', decoder);
