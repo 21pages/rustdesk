@@ -205,15 +205,16 @@ impl EncoderApi for VRamEncoder {
 
 impl VRamEncoder {
     pub fn try_get(device: &AdapterDevice, format: CodecFormat) -> Option<FeatureContext> {
-        let v: Vec<_> = Self::available(format)
+        let mut v: Vec<_> = Self::available(format)
             .drain(..)
             .filter(|e| e.luid == device.luid)
             .collect();
+        v.retain(|c| c.driver != Driver::FFMPEG);
         if v.len() > 0 {
             // prefer ffmpeg
-            if let Some(ctx) = v.iter().find(|c| c.driver == Driver::FFMPEG) {
-                return Some(ctx.clone());
-            }
+            // if let Some(ctx) = v.iter().find(|c| c.driver == Driver::FFMPEG) {
+            //     return Some(ctx.clone());
+            // }
             Some(v[0].clone())
         } else {
             None
@@ -327,12 +328,13 @@ pub struct VRamDecoder {
 
 impl VRamDecoder {
     pub fn try_get(format: CodecFormat, luid: Option<i64>) -> Option<DecodeContext> {
-        let v: Vec<_> = Self::available(format, luid);
+        let mut v: Vec<_> = Self::available(format, luid);
+        v.retain(|c| c.driver != Driver::FFMPEG);
         if v.len() > 0 {
-            // prefer ffmpeg
-            if let Some(ctx) = v.iter().find(|c| c.driver == Driver::FFMPEG) {
-                return Some(ctx.clone());
-            }
+            // // prefer ffmpeg
+            // if let Some(ctx) = v.iter().find(|c| c.driver == Driver::FFMPEG) {
+            //     return Some(ctx.clone());
+            // }
             Some(v[0].clone())
         } else {
             None

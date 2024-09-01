@@ -221,7 +221,9 @@ impl EncoderApi for HwRamEncoder {
 impl HwRamEncoder {
     pub fn try_get(format: CodecFormat) -> Option<CodecInfo> {
         let mut info = None;
-        let best = CodecInfo::prioritized(HwCodecConfig::get().ram_encode);
+        let mut codecs = HwCodecConfig::get().ram_encode;
+        codecs.retain(|c| !c.name.contains("qsv"));
+        let best = CodecInfo::prioritized(codecs);
         match format {
             CodecFormat::H264 => {
                 if let Some(v) = best.h264 {
@@ -507,7 +509,7 @@ impl HwCodecConfig {
     pub fn set(config: String) {
         let config = serde_json::from_str(&config).unwrap_or_default();
         log::info!("set hwcodec config");
-        log::debug!("{config:?}");
+        log::info!("{config:?}");
         #[cfg(any(windows, target_os = "macos"))]
         hbb_common::config::common_store(&config, "_hwcodec");
         *CONFIG.lock().unwrap() = Some(config);
