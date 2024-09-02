@@ -59,7 +59,9 @@ gstreamer-app = { version = "0.16", features = ["v1_10"], optional = true }
 gstreamer-video = { version = "0.16", optional = true }
 
 [dependencies.hwcodec]
-git = "https://github.com/rustdesk-org/hwcodec"
+git = "https://github.com/21pages/hwcodec"
+branch = "disable_ffmpeg_qsv_vram_encode"
+# path = "D:/rustdesk/hwcodec"
 optional = true
 
 
