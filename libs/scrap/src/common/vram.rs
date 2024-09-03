@@ -379,6 +379,7 @@ impl VRamDecoder {
         }
     }
     pub fn decode(&mut self, data: &[u8]) -> ResultType<Vec<VRamDecoderImage>> {
+        log::info!("=========== decode data len: {}", data.len());
         match self.decoder.decode(data) {
             Ok(v) => Ok(v.iter().map(|f| VRamDecoderImage { frame: f }).collect()),
             Err(e) => Err(anyhow!(e)),
