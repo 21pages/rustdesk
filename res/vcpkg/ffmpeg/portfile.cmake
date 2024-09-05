@@ -216,8 +216,9 @@ if(VCPKG_DETECTED_CMAKE_C_COMPILER)
     get_filename_component(CC_filename "${VCPKG_DETECTED_CMAKE_C_COMPILER}" NAME)
     set(ENV{CC} "${CC_filename}")
     string(APPEND OPTIONS " --cc=${CC_filename}")
-
-    # string(APPEND OPTIONS " --host_cc=${CC_filename}")
+    if(VCPKG_HOST_IS_WINDOWS)
+        string(APPEND OPTIONS " --host_cc=${CC_filename}")
+    endif()
     list(APPEND prog_env "${CC_path}")
 endif()
 
