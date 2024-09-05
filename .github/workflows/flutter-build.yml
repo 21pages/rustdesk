@@ -59,7 +59,7 @@ jobs:
 
   build-for-windows-flutter:
     name: ${{ matrix.job.target }}
-    needs: [build-RustDeskTempTopMostWindow]
+    # needs: [build-RustDeskTempTopMostWindow]
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
@@ -91,6 +91,7 @@ jobs:
           version: ${{ env.LLVM_VERSION }}
 
       - name: Install flutter
+        if: false
         uses: subosito/flutter-action@v2.12.0 #https://github.com/subosito/flutter-action/issues/277
         with:
           channel: "stable"
@@ -98,6 +99,7 @@ jobs:
           cache: true
 
       - name: Install Rust toolchain
+        if: false
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ env.SCITER_RUST_VERSION }}
@@ -109,6 +111,7 @@ jobs:
           prefix-key: ${{ matrix.job.os }}
 
       - name: Install flutter rust bridge deps
+        if: false
         run: |
           git config --global core.longpaths true
           cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid"
