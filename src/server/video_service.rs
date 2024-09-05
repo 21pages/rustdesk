@@ -488,6 +488,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut encode_fail_counter = 0;
     let mut first_frame = true;
 
+    let mut last_spf = Duration::ZERO;
     while sp.ok() {
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
@@ -675,6 +676,10 @@ fn run(vs: VideoService) -> ResultType<()> {
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {
             std::thread::sleep(spf - elapsed);
+        }
+        if last_spf != spf {
+            last_spf = spf;
+            log::info!("===== fps control ===== fps: {:?}", 1000 / spf.as_millis());
         }
     }
 

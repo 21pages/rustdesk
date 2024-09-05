@@ -247,6 +247,7 @@ impl VideoQoS {
     }
 
     pub fn user_custom_fps(&mut self, id: i32, fps: u32) {
+        log::info!("===== fps control ====,  user_custom_fps: fps={}", fps);
         if fps < MIN_FPS {
             return;
         }
@@ -265,6 +266,7 @@ impl VideoQoS {
     }
 
     pub fn user_auto_adjust_fps(&mut self, id: i32, fps: u32) {
+        log::info!("===== fps control ====,  user_auto_adjust_fps: fps={}", fps);
         if let Some(user) = self.users.get_mut(&id) {
             user.auto_adjust_fps = Some(fps);
         } else {

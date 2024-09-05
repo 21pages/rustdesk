@@ -1088,6 +1088,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 should_increase = true;
             }
         }
+        log::info!("==== fps control ====, len: {}, decode_fps: {}, limited_fps: {}, last_auto_fps: {:?}, should_decrease: {}, should_increase: {}, idle_counter: {}", len, decode_fps, limited_fps, last_auto_fps, should_decrease, should_increase, ctl.idle_counter);
         if last_auto_fps.is_none() || should_decrease || should_increase {
             // limited_fps to ensure decoding is faster than encoding
             let mut auto_fps = limited_fps;
@@ -1105,7 +1106,7 @@ impl<T: InvokeUiSession> Remote<T> {
             let mut msg = Message::new();
             msg.set_misc(misc);
             self.sender.send(Data::Message(msg)).ok();
-            log::info!("Set fps to {}", auto_fps);
+            log::info!("==== fps control ====, set fps to {}", auto_fps);
             ctl.last_queue_size = len;
             self.handler.lc.write().unwrap().last_auto_fps = Some(auto_fps);
         }
