@@ -10,24 +10,10 @@ vcpkg_from_github(
     0005-fix-nasm.patch # upstreamed in future version
     0012-Fix-ssl-110-detection.patch
     0013-define-WINVER.patch
+    7.0/0001-avcodec-amfenc-add-query_timeout-option-for-h264-hev.patch
+    7.0/0002-libavcodec-amfenc-reconfig-when-bitrate-change.patch
+    7.0/0003-amf-colorspace.patch
 )
-
-# if(VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_LINUX)
-#     vcpkg_apply_patches(
-#         SOURCE_PATH ${SOURCE_PATH}
-#         PATCHES
-#             ${CMAKE_CURRENT_LIST_DIR}/5.1/0001-avcodec-amfenc-add-query_timeout-option-for-h264-hev.patch
-#             ${CMAKE_CURRENT_LIST_DIR}/5.1/0002-libavcodec-amfenc-reconfig-when-bitrate-change.patch
-#             ${CMAKE_CURRENT_LIST_DIR}/5.1/0003-use-release-7.0-s-qsvenc-update_bitrate.patch
-#             ${CMAKE_CURRENT_LIST_DIR}/5.1/0004-amf-colorspace.patch
-#     )
-# elseif(VCPKG_TARGET_IS_ANDROID)
-#     vcpkg_apply_patches(
-#         SOURCE_PATH ${SOURCE_PATH}
-#         PATCHES
-#             ${CMAKE_CURRENT_LIST_DIR}/7.0/0001-android-mediacodec-encode-align-64.patch
-#     )
-# endif()
 
 if(SOURCE_PATH MATCHES " ")
     message(FATAL_ERROR "Error: ffmpeg will not build with spaces in the path. Please use a directory with no spaces")
