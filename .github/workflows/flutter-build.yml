@@ -671,12 +671,14 @@ jobs:
           brew install llvm create-dmg nasm cmake gcc wget ninja pkg-config
 
       - name: Install flutter
+        if: false
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Workaround for flutter issue
+        if: false
         shell: bash
         run: |
           cd "$(dirname "$(which flutter)")"
@@ -685,6 +687,7 @@ jobs:
           grep -n '_setFramesEnabledState(false);' ../packages/flutter/lib/src/scheduler/binding.dart
 
       - name: Install Rust toolchain
+        if: false
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
@@ -696,6 +699,7 @@ jobs:
           prefix-key: ${{ matrix.job.os }}
 
       - name: Install flutter rust bridge deps
+        if: false
         shell: bash
         run: |
           cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid"
