@@ -6,7 +6,7 @@ on:
   workflow_call:
 
 env:
-  FLUTTER_VERSION: "3.19.6"
+  FLUTTER_VERSION: "3.24.2"
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
   RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503
 
@@ -73,7 +73,7 @@ jobs:
       - name: Install flutter rust bridge deps
         shell: bash
         run: |
-          cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid"
+          cargo install flutter_rust_bridge_codegen --features "uuid"
           pushd flutter && flutter pub get && popd
 
       - name: Run flutter rust bridge
