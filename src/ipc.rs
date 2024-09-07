@@ -269,6 +269,8 @@ pub enum Data {
     HwCodecConfig(Option<String>),
     RemoveTrustedDevices(Vec<Bytes>),
     ClearTrustedDevices,
+    #[cfg(windows)]
+    Sid(Option<u32>),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -655,6 +657,10 @@ async fn handle(data: Data, stream: &mut Connection) {
         }
         Data::ClearTrustedDevices => {
             Config::clear_trusted_devices();
+        }
+        #[cfg(windows)]
+        Data::Sid(_) => {
+            allow_err!(stream.send(&Data::Sid(crate::platform::get_current_process_session_id())).await);
         }
         _ => {}
     }

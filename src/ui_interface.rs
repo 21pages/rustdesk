@@ -1138,16 +1138,25 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
         )
     ))]
     let mut enable_file_transfer = "".to_owned();
+    let is_cm = crate::common::is_cm();
 
     loop {
         if let Ok(mut c) = ipc::connect(1000, "").await {
             let mut timer = crate::rustdesk_interval(time::interval(time::Duration::from_secs(1)));
+            #[cfg(windows)]
+            if is_cm {
+                // oneshot is enough because cm will exit if ipc connection closed.
+                c.send(&ipc::Data::Sid(None)).await.ok();
+            }
             loop {
                 tokio::select! {
                     res = c.next() => {
                         match res {
                             Err(err) => {
                                 log::error!("ipc connection closed: {}", err);
+                                if is_cm {
+                                    crate::ui_cm_interface::quit_cm();
+                                }
                                 break;
                             }
                             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1205,6 +1214,17 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                     id: id.clone(),
                                 };
                             }
+                            #[cfg(windows)]
+                            Ok(Some(ipc::Data::Sid(server_sid))) => {
+                                if is_cm {
+                                    let my_sid = crate::platform::get_current_process_session_id();
+                                    log::info!("my sid: {my_sid:?}, server sid: {server_sid:?}");
+                                    if server_sid.is_some() && my_sid.is_some() && server_sid != my_sid {
+                                        log::info!("Windows sid not match, quit process");
+                                        crate::ui_cm_interface::quit_cm();
+                                    }
+                                }
+                            },
                             _ => {}
                         }
                     }
