@@ -613,6 +613,30 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
+async fn monitor_ipc_server() {
+    match ipc::connect(1000, "").await {
+        Ok(mut stream) => {
+            loop {
+                match stream.next().await {
+                    Err(e) => {
+                        log::error!("stream to ipc server closed: {:?}", e);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to connect to ipc server: {:?}", e);
+        }
+    }
+    log::info!("Exit due to ipc server monitor");
+    CLIENTS.write().unwrap().clear(); // in case of std::process::exit not work
+    crate::platform::quit_gui();
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tokio::main(flavor = "current_thread")]
 pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
     #[cfg(any(
         target_os = "windows",
@@ -625,7 +649,9 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
         OPTION_ENABLE_FILE_TRANSFER,
         &Config::get_option(OPTION_ENABLE_FILE_TRANSFER),
     ));
-
+    std::thread::spawn(|| {
+        monitor_ipc_server();
+    });
     match ipc::new_listener("_cm").await {
         Ok(mut incoming) => {
             while let Some(result) = incoming.next().await {
@@ -647,6 +673,7 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
             log::error!("Failed to start cm ipc server: {}", err);
         }
     }
+    CLIENTS.write().unwrap().clear();
     crate::platform::quit_gui();
 }
 
