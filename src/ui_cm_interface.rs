@@ -613,16 +613,35 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
-async fn monitor_ipc_server() {
+async fn ipc_server_monitor() {
     match ipc::connect(1000, "").await {
         Ok(mut stream) => {
+            #[cfg(windows)]
+            allow_err!(stream.send(&Data::Sid(None)).await);
             loop {
-                match stream.next().await {
-                    Err(e) => {
-                        log::error!("stream to ipc server closed: {:?}", e);
-                        break;
+                tokio::select! {
+                    res = stream.next() => {
+                        match res {
+                            Err(e) => {
+                                log::error!("stream to ipc server closed: {:?}", e);
+                                break;
+                            }
+                            Ok(Some(v)) =>{
+                                match v {
+                                    #[cfg(windows)]
+                                    Data::Sid(server_sid) => {
+                                        let cm_sid = crate::platform::get_current_process_session_id();
+                                        if server_sid.is_some() && cm_sid.is_some() && server_sid != cm_sid {
+                                            log::info!("Windows sid not match({:?} != {:?}), quit", server_sid, cm_sid);
+                                            break;
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
                     }
-                    _ => {}
                 }
             }
         }
@@ -650,7 +669,7 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
         &Config::get_option(OPTION_ENABLE_FILE_TRANSFER),
     ));
     std::thread::spawn(|| {
-        monitor_ipc_server();
+        ipc_server_monitor();
     });
     match ipc::new_listener("_cm").await {
         Ok(mut incoming) => {
