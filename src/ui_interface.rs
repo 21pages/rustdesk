@@ -1155,7 +1155,7 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                             Err(err) => {
                                 log::error!("ipc connection closed: {}", err);
                                 if is_cm {
-                                    crate::ui_cm_interface::quit_cm();
+                                    // crate::ui_cm_interface::quit_cm();
                                 }
                                 break;
                             }
