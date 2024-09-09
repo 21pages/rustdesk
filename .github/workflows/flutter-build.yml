@@ -141,6 +141,21 @@ jobs:
           fi
         shell: bash
 
+      - name: Create FFmpeg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: 'zip'
+          filename: ffmpeg-x64-windows-static.zip
+          path: /opt/artifacts/vcpkg/installed/x64-windows-static
+
+      - name: Upload FFmpeg Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            ffmpeg-x64-windows-static.zip
+
       - name: Build rustdesk
         run: |
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
@@ -956,6 +971,22 @@ jobs:
           fi
         shell: bash
 
+      - name: Create Archive
+        uses: thedoctor0/zip-release@0.7.1
+        if: ${{matrix.job.target == 'aarch64-linux-android'}}
+        with:
+          type: 'zip'
+          filename: ffmpeg-arm64-android.zip
+          path: /opt/artifacts/vcpkg/installed/arm64-android
+
+      - name: Upload Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            ffmpeg-arm64-android.zip
+
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
@@ -1390,6 +1421,23 @@ jobs:
             exit 1
           fi
         shell: bash
+
+      - name: Create FFmpeg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        continue-on-error: true
+        with:
+          type: 'zip'
+          filename: ffmpeg-x64-linux-static.zip
+          path: /opt/artifacts/vcpkg/installed/x64-linux
+
+      - name: Upload FFmpeg Archive
+        uses: softprops/action-gh-release@v1
+        continue-on-error: true
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            ffmpeg-x64-linux-static.zip
 
       - name: Restore bridge files
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
