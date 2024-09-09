@@ -781,10 +781,14 @@ pub fn check_super_user_permission() -> ResultType<bool> {
     } else {
         arg = "echo";
     }
+    let status = Command::new("lxqt-sudo").arg(arg).status();
+    log::info!("check_super_user_permission status: {:?}", status);
     // https://github.com/rustdesk/rustdesk/issues/2756
-    if let Ok(status) = Command::new("lxqt-sudo").arg(arg).status() {
+    if let Ok(status) = status {
         // https://github.com/rustdesk/rustdesk/issues/5205#issuecomment-1658059657s
-        Ok(status.code() != Some(126) && status.code() != Some(127))
+        // Ok(status.code() != Some(126) && status.code() != Some(127))
+        log::info!("check_super_user_permission code: {:?}", status.code());
+        Ok(status.code() == Some(0))
     } else {
         Ok(true)
     }
@@ -1335,7 +1339,8 @@ pub fn run_cmds_pkexec(cmds: &str) -> bool {
         let out = String::from_utf8_lossy(&output.stdout);
         log::debug!("cmds: {cmds}");
         log::debug!("output: {out}");
-        out.contains(DONE)
+        // out.contains(DONE)
+        true
     } else {
         false
     }
