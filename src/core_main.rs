@@ -272,7 +272,11 @@ pub fn core_main() -> Option<Vec<String>> {
                     .arg(&format!("{} --tray", crate::get_app_name().to_lowercase()))
                     .status()
                     .ok();
-                hbb_common::allow_err!(crate::run_me(vec!["--tray"]));
+                hbb_common::allow_err!(crate::platform::run_as_user(
+                    vec!["--tray"],
+                    None,
+                    None::<(&str, &str)>,
+                ));
             }
             #[cfg(windows)]
             crate::privacy_mode::restore_reg_connectivity(true);

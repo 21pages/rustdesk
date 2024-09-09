@@ -767,7 +767,7 @@ pub fn quit_gui() {
 }
 
 pub fn exec_privileged(args: &[&str]) -> ResultType<Child> {
-    Ok(Command::new("pkexec").args(args).spawn()?)
+    Ok(Command::new("lxqt-sudo").args(args).spawn()?)
 }
 
 pub fn check_super_user_permission() -> ResultType<bool> {
@@ -782,7 +782,7 @@ pub fn check_super_user_permission() -> ResultType<bool> {
         arg = "echo";
     }
     // https://github.com/rustdesk/rustdesk/issues/2756
-    if let Ok(status) = Command::new("pkexec").arg(arg).status() {
+    if let Ok(status) = Command::new("lxqt-sudo").arg(arg).status() {
         // https://github.com/rustdesk/rustdesk/issues/5205#issuecomment-1658059657s
         Ok(status.code() != Some(126) && status.code() != Some(127))
     } else {
@@ -1326,7 +1326,7 @@ fn has_cmd(cmd: &str) -> bool {
 
 pub fn run_cmds_pkexec(cmds: &str) -> bool {
     const DONE: &str = "RUN_CMDS_PKEXEC_DONE";
-    if let Ok(output) = std::process::Command::new("pkexec")
+    if let Ok(output) = std::process::Command::new("lxqt-sudo")
         .arg("sh")
         .arg("-c")
         .arg(&format!("{cmds} echo {DONE}"))
