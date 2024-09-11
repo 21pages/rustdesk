@@ -1425,6 +1425,7 @@ jobs:
                git \
                g++ \
                libayatana-appindicator3-dev \
+               libayatana-appindicator-dev \
                libasound2-dev \
                libclang-10-dev \
                libgstreamer1.0-dev \

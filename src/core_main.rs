@@ -482,6 +482,13 @@ pub fn core_main() -> Option<Vec<String>> {
                 crate::flutter::connection_manager::start_cm_no_ui();
             }
             return None;
+        } else if args[0] == "gtk-sudo" {
+            // stop service will kill rustdesk --
+            #[cfg(target_os = "linux")]
+            if args.len() == 2 {
+                crate::platform::gtk_sudo::exec(&args[1])
+            }
+            return None;
         } else {
             #[cfg(all(feature = "flutter", feature = "plugin_framework"))]
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
