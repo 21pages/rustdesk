@@ -70,16 +70,16 @@ class AbModel {
 
   AbModel(this.parent) {
     addressbooks.clear();
-    if (desktopType == DesktopType.main) {
-      Timer.periodic(Duration(milliseconds: 500), (timer) async {
-        if (_timerCounter++ % 6 == 0) {
-          if (!gFFI.userModel.isLogin) return;
-          if (!listInitialized) return;
-          if (!current.initialized || !current.canWrite()) return;
-          _syncFromRecent();
-        }
-      });
-    }
+    // if (desktopType == DesktopType.main) {
+    //   Timer.periodic(Duration(milliseconds: 500), (timer) async {
+    //     if (_timerCounter++ % 6 == 0) {
+    //       if (!gFFI.userModel.isLogin) return;
+    //       if (!listInitialized) return;
+    //       if (!current.initialized || !current.canWrite()) return;
+    //       _syncFromRecent();
+    //     }
+    //   });
+    // }
   }
 
   reset() async {

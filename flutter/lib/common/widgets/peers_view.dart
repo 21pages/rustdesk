@@ -96,7 +96,7 @@ class _PeersViewState extends State<_PeersView>
   final _scrollController = ScrollController();
 
   _PeersViewState() {
-    _startCheckOnlines();
+    // _startCheckOnlines();
   }
 
   @override
@@ -234,10 +234,11 @@ class _PeersViewState extends State<_PeersView>
                             physics: DraggableNeverScrollableScrollPhysics(),
                             itemCount: peers.length,
                             itemBuilder: (BuildContext context, int index) {
-                              return buildOnePeer(peers[index], false).marginOnly(
-                                  right: space,
-                                  top: index == 0 ? 0 : space / 2,
-                                  bottom: space / 2);
+                              return buildOnePeer(peers[index], false)
+                                  .marginOnly(
+                                      right: space,
+                                      top: index == 0 ? 0 : space / 2,
+                                      bottom: space / 2);
                             }),
                       )
                     : DesktopScrollWrapper(
@@ -304,16 +305,16 @@ class _PeersViewState extends State<_PeersView>
   }
 
   _queryOnlines(bool isLoadEvent) {
-    if (_curPeers.isNotEmpty) {
-      bind.queryOnlines(ids: _curPeers.toList(growable: false));
-      _queryCount = 0;
-    }
-    _lastQueryPeers = {..._curPeers};
-    if (isLoadEvent) {
-      _lastChangeTime = DateTime.now();
-    } else {
-      _lastQueryTime = DateTime.now().subtract(_queryInterval);
-    }
+    // if (_curPeers.isNotEmpty) {
+    //   bind.queryOnlines(ids: _curPeers.toList(growable: false));
+    //   _queryCount = 0;
+    // }
+    // _lastQueryPeers = {..._curPeers};
+    // if (isLoadEvent) {
+    //   _lastChangeTime = DateTime.now();
+    // } else {
+    //   _lastQueryTime = DateTime.now().subtract(_queryInterval);
+    // }
   }
 
   Future<List<Peer>>? matchPeers(
