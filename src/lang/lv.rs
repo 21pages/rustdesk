@@ -644,5 +644,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Parent directory", "Vecākdirektorijs"),
         ("Resume", "Atsākt"),
         ("Invalid file name", "Nederīgs faila nosaukums"),
+        ("Authentication Required", ""),
+        ("Authenticate", ""),
     ].iter().cloned().collect();
 }

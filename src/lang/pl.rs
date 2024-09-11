@@ -644,5 +644,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Parent directory", "Folder nadrzędny"),
         ("Resume", "Wznów"),
         ("Invalid file name", "Nieprawidłowa nazwa pliku"),
+        ("Authentication Required", ""),
+        ("Authenticate", ""),
     ].iter().cloned().collect();
 }

@@ -98,11 +98,8 @@ fn make_tray() -> hbb_common::ResultType<()> {
             crate::run_me::<&str>(vec![]).ok();
         }
         #[cfg(target_os = "linux")]
-        if !std::process::Command::new("xdg-open")
-            .arg(&crate::get_uri_prefix())
-            .spawn()
-            .is_ok()
         {
+            // Do not use "xdg-open", it won't read config
             crate::run_me::<&str>(vec![]).ok();
         }
     };
