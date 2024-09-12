@@ -36,6 +36,36 @@ struct UserData {
     delay: Option<Delay>,
     response_delayed: bool,
     record: bool,
+    fps: Option<u32>,
+}
+
+impl UserData {
+    fn calc_fps(&self) -> u32 {
+        let mut fps = self.custom_fps.unwrap_or(FPS);
+        // auto adjust fps
+        if let Some(auto_adjust_fps) = self.auto_adjust_fps {
+            if fps == 0 || auto_adjust_fps < fps {
+                fps = auto_adjust_fps;
+            }
+        }
+        // delay
+        if let Some(delay) = self.delay {
+            fps = match delay.state {
+                DelayState::Normal => fps,
+                DelayState::LowDelay => fps * 3 / 4,
+                DelayState::HighDelay => fps / 2,
+                DelayState::Broken => fps / 4,
+            }
+        }
+        // delay response
+        if self.response_delayed {
+            if fps > MIN_FPS {
+                fps = MIN_FPS;
+            }
+        } else {
+        }
+        fps
+    }
 }
 
 pub struct VideoQoS {
@@ -89,6 +119,7 @@ impl Default for VideoQoS {
 #[derive(Debug, PartialEq, Eq)]
 pub enum RefreshType {
     SetImageQuality,
+    DelayTimer,
 }
 
 impl VideoQoS {
@@ -130,36 +161,10 @@ impl VideoQoS {
 
     pub fn refresh(&mut self, typ: Option<RefreshType>) {
         // fps
-        let user_fps = |u: &UserData| {
-            // custom_fps
-            let mut fps = u.custom_fps.unwrap_or(FPS);
-            // auto adjust fps
-            if let Some(auto_adjust_fps) = u.auto_adjust_fps {
-                if fps == 0 || auto_adjust_fps < fps {
-                    fps = auto_adjust_fps;
-                }
-            }
-            // delay
-            if let Some(delay) = u.delay {
-                fps = match delay.state {
-                    DelayState::Normal => fps,
-                    DelayState::LowDelay => fps * 3 / 4,
-                    DelayState::HighDelay => fps / 2,
-                    DelayState::Broken => fps / 4,
-                }
-            }
-            // delay response
-            if u.response_delayed {
-                if fps > MIN_FPS + 2 {
-                    fps = MIN_FPS + 2;
-                }
-            }
-            return fps;
-        };
         let mut fps = self
             .users
             .iter()
-            .map(|(_, u)| user_fps(u))
+            .map(|(_, u)| u.fps.unwrap_or(FPS))
             .filter(|u| *u >= MIN_FPS)
             .min()
             .unwrap_or(FPS);
@@ -167,6 +172,10 @@ impl VideoQoS {
             fps = MAX_FPS;
         }
         self.fps = fps;
+        log::info!("refresh: fps={}", fps);
+        if typ == Some(RefreshType::DelayTimer) {
+            return;
+        }
 
         // quality
         // latest image quality
@@ -312,11 +321,11 @@ impl VideoQoS {
     }
 
     pub fn user_network_delay(&mut self, id: i32, delay: u32) {
+        log::info!("user_network_delay: id={}, delay={}", id, delay);
         let state = DelayState::from_delay(delay);
         let debounce = 3;
         if let Some(user) = self.users.get_mut(&id) {
             if let Some(d) = &mut user.delay {
-                d.delay = (delay + d.delay) / 2;
                 let new_state = DelayState::from_delay(d.delay);
                 let slower_than_old_state = new_state as i32 - d.staging_state as i32;
                 let slower_than_old_state = if slower_than_old_state > 0 {
@@ -371,10 +380,30 @@ impl VideoQoS {
     pub fn user_delay_response_elapsed(&mut self, id: i32, elapsed: u128) {
         if let Some(user) = self.users.get_mut(&id) {
             let old = user.response_delayed;
-            user.response_delayed = elapsed > 3000;
-            if old != user.response_delayed {
-                self.refresh(None);
+            user.response_delayed = elapsed > TEST_DELAY_TIMEOUT.as_millis() * 3 / 2;
+            log::info!("user_delay_response_elapsed: id={}, elapsed={}, response_delayed={}", id, elapsed, user.response_delayed);
+            let calc_fps = user.calc_fps();
+            let mut refresh = false;
+            match user.fps {
+                Some(mut fps) => {
+                    if fps < calc_fps && elapsed < TEST_DELAY_TIMEOUT.as_millis() * 3 / 2 &&  user.delay.map(|d| d.delay < 100).unwrap_or_default()  {
+                        fps += 1;
+                        refresh = true;
+                    } else if fps > calc_fps {
+                        fps = calc_fps;
+                        refresh = true;
+                    }
+                    user.fps = Some(fps);
+                }
+                None => {
+                    user.fps = Some(calc_fps);
+                    refresh = true;
+                }
             }
+            if refresh {
+                self.refresh(Some(RefreshType::DelayTimer));
+            }
+            
         }
     }
 
