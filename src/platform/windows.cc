@@ -548,8 +548,9 @@ extern "C"
                     if (info.pWinStationName == NULL)
                         continue;
                     if (!stricmp(info.pWinStationName, "console"))
-                    {
-                        return info.SessionId;
+                    {   
+                        rdp_or_console = info.SessionId;
+                        break;
                     }
                     if (!strnicmp(info.pWinStationName, rdp, nrdp))
                     {
