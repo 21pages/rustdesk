@@ -289,6 +289,7 @@ impl RendezvousMediator {
                 }
             }
             Some(rendezvous_message::Union::PunchHole(ph)) => {
+                log::info!("==== receive PunchHole: {ph:?}");
                 let rz = self.clone();
                 let server = server.clone();
                 tokio::spawn(async move {
@@ -296,6 +297,7 @@ impl RendezvousMediator {
                 });
             }
             Some(rendezvous_message::Union::RequestRelay(rr)) => {
+                log::info!("==== receive RequestRelay: {rr:?}");
                 let rz = self.clone();
                 let server = server.clone();
                 tokio::spawn(async move {
@@ -303,6 +305,7 @@ impl RendezvousMediator {
                 });
             }
             Some(rendezvous_message::Union::FetchLocalAddr(fla)) => {
+                log::info!("==== receive FetchLocalAddr: {fla:?}");
                 let rz = self.clone();
                 let server = server.clone();
                 tokio::spawn(async move {
@@ -381,7 +384,7 @@ impl RendezvousMediator {
     }
 
     pub async fn start(server: ServerPtr, host: String) -> ResultType<()> {
-        log::info!("start rendezvous mediator of {}", host);
+        log::info!("==== start rendezvous mediator of {}", host);
         //If the investment agent type is http or https, then tcp forwarding is enabled.
         let is_http_proxy = if let Some(conf) = Config::get_socks() {
             let proxy = Proxy::from_conf(&conf, None)?;
@@ -400,6 +403,7 @@ impl RendezvousMediator {
     }
 
     async fn handle_request_relay(&self, rr: RequestRelay, server: ServerPtr) -> ResultType<()> {
+        log::info!("===== handle_request_relay rr: {rr:?}");
         self.create_relay(
             rr.socket_addr.into(),
             rr.relay_server,
@@ -422,11 +426,12 @@ impl RendezvousMediator {
     ) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&socket_addr);
         log::info!(
-            "create_relay requested from {:?}, relay_server: {}, uuid: {}, secure: {}",
+            "create_relay requested from {:?}, relay_server: {}, uuid: {}, secure: {}, initiate: {}",
             peer_addr,
             relay_server,
             uuid,
             secure,
+            initiate,
         );
 
         let mut socket = connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
@@ -458,6 +463,7 @@ impl RendezvousMediator {
 
     async fn handle_intranet(&self, fla: FetchLocalAddr, server: ServerPtr) -> ResultType<()> {
         let relay_server = self.get_relay_server(fla.relay_server.clone());
+        log::info!("==== handle_intranet get_relay_server: {relay_server:?}");
         // nat64, go relay directly, because current hbbs will crash if demangle ipv6 address
         if is_ipv4(&self.addr) && !config::is_disable_tcp_listen() && !Config::is_proxy() {
             if let Err(err) = self
@@ -510,12 +516,14 @@ impl RendezvousMediator {
     }
 
     async fn handle_punch_hole(&self, ph: PunchHole, server: ServerPtr) -> ResultType<()> {
-        let relay_server = self.get_relay_server(ph.relay_server);
+        let relay_server = self.get_relay_server(ph.relay_server.clone());
+        log::info!("===== handle_punch_hole ph: {ph:?}, relay_server:{relay_server}");
         if ph.nat_type.enum_value() == Ok(NatType::SYMMETRIC)
             || Config::get_nat_type() == NatType::SYMMETRIC as i32
             || config::is_disable_tcp_listen()
         {
             let uuid = Uuid::new_v4().to_string();
+            log::info!("===== create relay in handle_punch_hole");
             return self
                 .create_relay(
                     ph.socket_addr.into(),
@@ -616,6 +624,7 @@ impl RendezvousMediator {
 
     fn get_relay_server(&self, provided_by_rendezvous_server: String) -> String {
         let mut relay_server = Config::get_option("relay-server");
+        log::info!("==== get_relay_server: option: {relay_server:?}, provided_by_rendezvous_server: {provided_by_rendezvous_server}, host: {}", self.host);
         if relay_server.is_empty() {
             relay_server = provided_by_rendezvous_server;
         }

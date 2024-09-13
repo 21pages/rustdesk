@@ -742,14 +742,17 @@ impl Config {
     pub fn get_rendezvous_servers() -> Vec<String> {
         let s = EXE_RENDEZVOUS_SERVER.read().unwrap().clone();
         if !s.is_empty() {
+            log::info!("==== EXE_RENDEZVOUS_SERVER: {s}");
             return vec![s];
         }
         let s = Self::get_option("custom-rendezvous-server");
         if !s.is_empty() {
+            log::info!("==== custom-rendezvous-server: {s}");
             return vec![s];
         }
         let s = PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
         if !s.is_empty() {
+            log::info!("==== PROD_RENDEZVOUS_SERVER {s}");
             return vec![s];
         }
         let serial_obsolute = CONFIG2.read().unwrap().serial > SERIAL;
@@ -760,9 +763,11 @@ impl Config {
                 .map(|x| x.to_owned())
                 .collect();
             if !ss.is_empty() {
+                log::info!("==== rendezvous-servers {ss:?}");
                 return ss;
             }
         }
+        log::info!("==== RENDEZVOUS_SERVERS");
         return RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect();
     }
 
