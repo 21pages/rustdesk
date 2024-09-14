@@ -357,12 +357,14 @@ fn should_start_server(
             // From having a monitor to not having a monitor.
             *uid = "".to_owned();
             should_kill = true;
+            log::info!("============ desktop.is_headless !uid.is_empty() ");
         }
     } else if is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty() {
         *uid = desktop.uid.clone();
         if try_x11 {
             set_x11_env(&desktop);
         }
+        log::info!("============ is_display_changed:{is_display_changed}");
         should_kill = true;
     }
 
@@ -371,6 +373,11 @@ fn should_start_server(
         && ((*cm0 && last_restart.elapsed().as_secs() > 60)
             || last_restart.elapsed().as_secs() > 3600)
     {
+        log::info!(
+            "============ cm:{cm}, *cm0: {:?}, last_restart.elapsed(): {:?}",
+            *cm0,
+            last_restart.elapsed()
+        );
         // restart server if new connections all closed, or every one hour,
         // as a workaround to resolve "SpotUdp" (dns resolve)
         // and x server get displays failure issue
@@ -378,9 +385,11 @@ fn should_start_server(
         log::info!("restart server");
     }
 
+    should_kill = false;
     if should_kill {
         if let Some(ps) = server.as_mut() {
             allow_err!(ps.kill());
+            log::info!("============ do kill");
             sleep_millis(30);
             *last_restart = Instant::now();
         }
