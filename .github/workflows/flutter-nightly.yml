@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "new-appindicator"
+      upload-tag: "tag_recommends_not_exist"
