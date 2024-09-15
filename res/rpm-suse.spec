@@ -4,7 +4,7 @@ Release:    0
 Summary:    RPM package
 License:    GPL-3.0
 Requires:   gtk3 libxcb1 xdotool libXfixes3 alsa-utils libXtst6 libvdpau1 libva2 pam gstreamer-plugins-base gstreamer-plugin-pipewire
-Suggests:   libayatana-appindicator3-1
+Suggests:   abcxyzhello
 
 %description
 The best open-source remote desktop client software, written in Rust.

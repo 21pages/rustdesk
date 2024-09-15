@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "rpm_suggests"
+      upload-tag: "tag_suggests_not_exists"
