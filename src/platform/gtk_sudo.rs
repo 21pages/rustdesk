@@ -57,41 +57,41 @@ pub fn exec() {
     let tx_from_ui_clone = tx_from_ui.clone();
 
     application.connect_activate(glib::clone!(@weak application =>move |_| {
-    let rx_to_ui = rx_to_ui_clone.clone();
-    let tx_from_ui = tx_from_ui_clone.clone();
-    let last_password = Arc::new(Mutex::new(String::new()));
+        let rx_to_ui = rx_to_ui_clone.clone();
+        let tx_from_ui = tx_from_ui_clone.clone();
+        let last_password = Arc::new(Mutex::new(String::new()));
 
-    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-        if let Ok(msg) = rx_to_ui.lock().unwrap().try_recv() {
-            match msg {
-                Message::PasswordPrompt(err_msg) => {
-                    let last = last_password.lock().unwrap().clone();
-                    if let Some(password) = password_prompt(&err_msg, &last) {
-                        *last_password.lock().unwrap() = password.clone();
-                        if let Err(e) = tx_from_ui
-                            .lock()
-                            .unwrap()
-                            .send(Message::Password(password)) {
+        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            if let Ok(msg) = rx_to_ui.lock().unwrap().try_recv() {
+                match msg {
+                    Message::PasswordPrompt(err_msg) => {
+                        let last = last_password.lock().unwrap().clone();
+                        if let Some(password) = password_prompt(&err_msg, &last) {
+                            *last_password.lock().unwrap() = password.clone();
+                            if let Err(e) = tx_from_ui
+                                .lock()
+                                .unwrap()
+                                .send(Message::Password(password)) {
+                                    error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
+                                }
+                        } else {
+                        if let Err(e) = tx_from_ui.lock().unwrap().send(Message::Cancel) {
                                 error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
-                            }
-                    } else {
-                       if let Err(e) = tx_from_ui.lock().unwrap().send(Message::Cancel) {
-                            error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
-                       }
+                        }
+                        }
                     }
+                    Message::ErrorDialog(err_msg) => {
+                        error_dialog_and_exit(&err_msg, EXIT_CODE);
+                    }
+                    Message::Exit(code) => {
+                        log::info!("Exit code: {}", code);
+                        std::process::exit(code);
+                    }
+                    _ => {}
                 }
-                Message::ErrorDialog(err_msg) => {
-                    error_dialog_and_exit(&err_msg, EXIT_CODE);
-                }
-                Message::Exit(code) => {
-                    log::info!("Exit code: {}", code);
-                    std::process::exit(code);
-                }
-                _ => {}
             }
-        }
-        glib::ControlFlow::Continue
-    });
+            glib::ControlFlow::Continue
+        });
     }));
 
     let tx_to_ui_clone = tx_to_ui.clone();
