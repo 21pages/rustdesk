@@ -344,7 +344,42 @@ fn password_prompt(err: &str, last_password: &str) -> Option<String> {
     content_area.add(&image);
 
     let user_label = gtk::Label::new(Some(&crate::platform::get_active_username()));
-    content_area.add(&user_label);
+    let edit_button = gtk::Button::new();
+    let edit_icon =
+        gtk::Image::from_icon_name(Some("document-edit-symbolic"), gtk::IconSize::Button.into());
+    edit_button.set_image(Some(&edit_icon));
+    let user_entry = gtk::Entry::new();
+    user_entry.set_alignment(0.5);
+    user_entry.set_width_request(100);
+    let user_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+    user_box.add(&user_label);
+    user_box.add(&edit_button);
+    user_box.add(&user_entry);
+    user_box.set_halign(gtk::Align::Center);
+    user_box.set_valign(gtk::Align::Center);
+    content_area.add(&user_box);
+
+    edit_button.connect_clicked(
+        glib::clone!(@weak user_label, @weak edit_button, @weak user_entry=>  move |_| {
+            let username = user_label.text().to_string();
+            user_entry.set_text(&username);
+            user_label.hide();
+            edit_button.hide();
+            user_entry.show();
+            user_entry.grab_focus();
+        }),
+    );
+
+    user_entry.connect_focus_out_event(
+        glib::clone!(@weak user_label, @weak edit_button, @weak user_entry => @default-return glib::Propagation::Proceed,  move |_, _| {
+            let username = user_entry.text().to_string();
+            user_label.set_text(&username);
+            user_entry.hide();
+            user_label.show();
+            edit_button.show();
+            glib::Propagation::Proceed
+        }),
+    );
 
     let password_input = gtk::Entry::builder()
         .visibility(false)
@@ -356,6 +391,7 @@ fn password_prompt(err: &str, last_password: &str) -> Option<String> {
         .activates_default(true)
         .text(last_password)
         .build();
+    password_input.set_alignment(0.5);
     // https://docs.gtk.org/gtk3/signal.Entry.activate.html
     password_input.connect_activate(glib::clone!(@weak dialog => move |_| {
         dialog.response(gtk::ResponseType::Ok);
@@ -404,6 +440,8 @@ fn password_prompt(err: &str, last_password: &str) -> Option<String> {
     dialog.show_all();
     dialog.set_position(gtk::WindowPosition::Center);
     dialog.set_keep_above(true);
+    user_entry.hide();
+    dialog.check_resize();
     let response = dialog.run();
     dialog.hide();
 
