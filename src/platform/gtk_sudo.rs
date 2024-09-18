@@ -3,8 +3,7 @@
 use crate::lang::translate;
 use gtk::{glib, prelude::*};
 use hbb_common::{
-    anyhow::{bail, Error},
-    log, ResultType,
+    anyhow::{bail, Error}, log, ResultType
 };
 use nix::{
     libc::{fcntl, kill},
@@ -25,13 +24,24 @@ use std::{
         Arc, Mutex,
     },
 };
+use users::os::unix::GroupExt;
 
-const ERR_PREFIX: &'static str = "sudo:";
 const EXIT_CODE: i32 = -1;
+
+enum Message {
+    PasswordPrompt((Vec<String>, String)),
+    Password((String, String)),
+    ErrorDialog(String),
+    Cancel,
+    Exit(i32),
+}
 
 pub fn run(cmds: Vec<&str>) -> ResultType<()> {
     // rustdesk service kill `rustdesk --` processes
-    let mut args = vec!["gtk-sudo"];
+    let second_arg = std::env::args().nth(1).unwrap_or_default();
+    let cmd_mode = second_arg.starts_with("--") && second_arg != "--tray";
+    let mod_arg = if cmd_mode { "cmd" } else { "gui" };
+    let mut args = vec!["-gtk-sudo", mod_arg];
     args.append(&mut cmds.clone());
     let mut child = crate::run_me(args)?;
     let exit_status = child.wait()?;
@@ -43,6 +53,43 @@ pub fn run(cmds: Vec<&str>) -> ResultType<()> {
 }
 
 pub fn exec() {
+    let mut args = vec![];
+    for arg in std::env::args().skip(3) {
+        args.push(arg);
+    }
+    let cmd_mode = std::env::args().nth(2) == Some("cmd".to_string());
+    if cmd_mode {
+        cmd(args);
+    } else {
+        ui(args);
+    }
+}
+
+fn cmd(args: Vec<String>) {
+    match unsafe { forkpty(None, None) } {
+        Ok(forkpty_result) => match forkpty_result {
+            ForkptyResult::Parent { child, master } => {
+                if let Err(e) = cmd_parent(child, master) {
+                    log::error!("Parent error: {:?}", e);
+                    kill_child(child);
+                    std::process::exit(EXIT_CODE);
+                }
+            }
+            ForkptyResult::Child => {
+                if let Err(e) = child(None, args) {
+                    log::error!("Child error: {:?}", e);
+                    std::process::exit(EXIT_CODE);
+                }
+            }
+        },
+        Err(err) => {
+            log::error!("forkpty error: {:?}", err);
+            std::process::exit(EXIT_CODE);
+        }
+    }
+}
+
+fn ui(args: Vec<String>) {
     // https://docs.gtk.org/gtk4/ctor.Application.new.html
     // https://docs.gtk.org/gio/type_func.Application.id_is_valid.html
     let application = gtk::Application::new(None, Default::default());
@@ -56,32 +103,31 @@ pub fn exec() {
     let rx_to_ui_clone = rx_to_ui.clone();
     let tx_from_ui_clone = tx_from_ui.clone();
 
+    let username = Arc::new(Mutex::new(crate::platform::get_active_username()));
+    let username_clone = username.clone();
+
+
     application.connect_activate(glib::clone!(@weak application =>move |_| {
         let rx_to_ui = rx_to_ui_clone.clone();
         let tx_from_ui = tx_from_ui_clone.clone();
-        let last_username = Arc::new(Mutex::new(crate::platform::get_active_username()));
         let last_password = Arc::new(Mutex::new(String::new()));
+        let username = username_clone.clone();
 
         glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
             if let Ok(msg) = rx_to_ui.lock().unwrap().try_recv() {
                 match msg {
-                    Message::PasswordPrompt(err_msg) => {
-                        let last_user = last_username.lock().unwrap().clone();
+                    Message::PasswordPrompt((sudo_users, err_msg)) => {
                         let last_pwd = last_password.lock().unwrap().clone();
-                        if let Some((username, password)) = password_prompt(&last_user, &last_pwd, &err_msg) {
-                            if username == last_user {
-                                *last_username.lock().unwrap() = username.clone();
+                        let username = username.lock().unwrap().clone();
+                        if let Some((username, password)) = password_prompt(sudo_users, &username, &last_pwd, &err_msg) {
                                 *last_password.lock().unwrap() = password.clone();
                                 if let Err(e) = tx_from_ui
                                     .lock()
                                     .unwrap()
-                                    .send(Message::Password(password)) {
+                                    .send(Message::Password((username, password))) {
                                         error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
                                     }
-                            } else {
-
-                            } 
-                            
+                        
                         } else {
                         if let Err(e) = tx_from_ui.lock().unwrap().send(Message::Cancel) {
                                 error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
@@ -103,32 +149,69 @@ pub fn exec() {
     }));
 
     let tx_to_ui_clone = tx_to_ui.clone();
-    let mut args = vec![];
-    for arg in std::env::args().skip(2) {
-        args.push(arg);
-    }
-    std::thread::spawn(move || match unsafe { forkpty(None, None) } {
-        Ok(forkpty_result) => match forkpty_result {
-            ForkptyResult::Parent { child, master } => {
-                if let Err(e) = parent(child, master, tx_to_ui_clone, rx_from_ui) {
-                    log::error!("Parent error: {:?}", e);
-                    kill_child(child);
+    std::thread::spawn(move || {
+        let sudo_users = if let Some(group) = users::get_group_by_name("sudo") {
+            group
+                .members()
+                .iter()
+                .map(|u| u.to_string_lossy().to_string())
+                .collect::<Vec<String>>()
+        } else {
+            vec![]
+        };
+        log::info!("sudo_users: {:?}", sudo_users);
+        let acitve_user = crate::platform::get_active_username();
+        let mut su_user = None;
+        let mut initial_password = None;
+        if acitve_user != "root" && !sudo_users.contains(&acitve_user) {
+            if sudo_users.len() == 1 {
+                *username.lock().unwrap() = sudo_users[0].clone();
+            } else {
+                if let Err(e)  = tx_to_ui_clone.send(Message::PasswordPrompt((sudo_users, String::default()))) {
+                    log::error!("Channel error: {e:?}");
                     std::process::exit(EXIT_CODE);
                 }
-            }
-            ForkptyResult::Child => {
-                if let Err(e) = child(Some("sun".to_string()), args) {
-                    log::error!("Child error: {:?}", e);
-                    std::process::exit(EXIT_CODE);
+                match rx_from_ui.recv() {
+                    Ok(Message::Password((user, password))) => {
+                        *username.lock().unwrap() = user;
+                        initial_password = Some(password);
+                    }
+                    Ok(Message::Cancel) => {
+                        log::info!("User canceled");
+                        std::process::exit(EXIT_CODE);
+                    }
+                    _ => {
+                        log::error!("Unexpected message");
+                        std::process::exit(EXIT_CODE);
+                    }
                 }
             }
-        },
-        Err(err) => {
-            log::error!("forkpty error: {:?}", err);
-            if let Err(e) = tx_to_ui.send(Message::ErrorDialog(format!("Forkpty error: {:?}", err)))
-            {
-                log::error!("Channel error: {e:?}");
-                std::process::exit(EXIT_CODE);
+            su_user = Some(username.lock().unwrap().clone());            
+        }
+        match unsafe { forkpty(None, None) } {
+            Ok(forkpty_result) => match forkpty_result {
+                ForkptyResult::Parent { child, master } => {
+                    if let Err(e) = ui_parent(child, master, tx_to_ui_clone, rx_from_ui, su_user.is_some(), initial_password) {
+                        log::error!("Parent error: {:?}", e);
+                        kill_child(child);
+                        std::process::exit(EXIT_CODE);
+                    }
+                }
+                ForkptyResult::Child => {
+                    if let Err(e) = child(su_user, args) {
+                        log::error!("Child error: {:?}", e);
+                        std::process::exit(EXIT_CODE);
+                    }
+                }
+            },
+            Err(err) => {
+                log::error!("forkpty error: {:?}", err);
+                if let Err(e) =
+                    tx_to_ui.send(Message::ErrorDialog(format!("Forkpty error: {:?}", err)))
+                {
+                    log::error!("Channel error: {e:?}");
+                    std::process::exit(EXIT_CODE);
+                }
             }
         }
     });
@@ -140,20 +223,106 @@ pub fn exec() {
     std::process::exit(EXIT_CODE);
 }
 
-enum Message {
-    PasswordPrompt(String),
-    Password(String),
-    ErrorDialog(String),
-    Cancel,
-    Exit(i32),
+
+fn cmd_parent(child: Pid, master: OwnedFd) -> ResultType<()> {
+    let raw_fd = master.as_raw_fd();
+    if unsafe { fcntl(raw_fd, nix::libc::F_SETFL, nix::libc::O_NONBLOCK) } != 0 {
+        let errno = std::io::Error::last_os_error();
+        bail!("fcntl error: {errno:?}");
+    }
+    let mut file = unsafe { File::from_raw_fd(raw_fd) };
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let (tx, rx) = channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        loop {
+            let mut line = String::default();
+            match stdin.read_line(&mut line) {
+                Ok(0) => {
+
+                },
+                Ok(_) => {
+                    if let Err(e) = tx.send(line.as_bytes().to_vec()) {
+                        log::error!("write failed: {e:?}");
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock  => {
+
+                }
+                Err(e) => {
+                    log::info!("Read stdio error: {:?}", e);
+                }
+            };
+        }
+    });
+    loop {
+        let mut buf = [0; 1024];
+        match file.read(&mut buf) {
+            Ok(0) => {
+                log::info!("read from child: EOF");
+                break;
+            }
+            Ok(n) => {
+                let buf = String::from_utf8_lossy(&buf[..n]).to_string();
+                print!("{}", buf);
+                if let Err(e) = stdout.flush() {
+                    log::error!("flush failed: {e:?}");
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(e) => {
+                // Child process is dead
+                log::info!("Read child error: {:?}", e);
+                break;
+            }
+        }
+        match  rx.try_recv() {
+            Ok(v) => {
+                if let Err(e) = file.write_all(&v) {
+                    log::error!("write error: {e:?}");
+                    break;
+                }
+            },
+            Err(e)  => {
+                match e {
+                    std::sync::mpsc::TryRecvError::Empty => {},
+                    std::sync::mpsc::TryRecvError::Disconnected => {
+                        log::error!("receive error: {e:?}");
+                        break;
+                    },
+                }
+            },
+        }
+    }
+
+    // Wait for child process
+    let status = waitpid(child, None);
+    log::info!("waitpid status: {:?}", status);
+    let mut code = EXIT_CODE;
+    match status {
+        Ok(s) => match s {
+            nix::sys::wait::WaitStatus::Exited(_pid, status) => {
+                code = status;
+            }
+            _ => {}
+        },
+        Err(_) => {}
+    }
+    std::process::exit(code);
 }
 
-fn parent(
+fn ui_parent(
     child: Pid,
     master: OwnedFd,
     tx_to_ui: Sender<Message>,
     rx_from_ui: Receiver<Message>,
+    is_su: bool,
+    initial_password:Option<String>,
 ) -> ResultType<()> {
+    let mut initial_password = initial_password;
     let raw_fd = master.as_raw_fd();
     if unsafe { fcntl(raw_fd, nix::libc::F_SETFL, nix::libc::O_NONBLOCK) } != 0 {
         let errno = std::io::Error::last_os_error();
@@ -162,7 +331,8 @@ fn parent(
     }
     let mut file = unsafe { File::from_raw_fd(raw_fd) };
 
-    let mut first = true;
+    let mut first = initial_password.is_none();
+    let mut su_password_sent = false;
     loop {
         let mut buf = [0; 1024];
         match file.read(&mut buf) {
@@ -175,7 +345,7 @@ fn parent(
                 let last_line = buf.lines().last().unwrap_or(&buf).trim().to_string();
                 log::info!("read from child: {}", buf);
 
-                if last_line.starts_with(ERR_PREFIX) {
+                if last_line.starts_with("sudo:") || last_line.starts_with("su:") {
                     if let Err(e) = tx_to_ui.send(Message::ErrorDialog(last_line)) {
                         log::error!("Channel error: {e:?}");
                         kill_child(child);
@@ -185,17 +355,35 @@ fn parent(
                     match get_echo_turn_off(raw_fd) {
                         Ok(true) => {
                             log::debug!("get_echo_turn_off ok");
+                            if let Some(password) = initial_password.clone() {
+                                let v = format!("{}\n", password);
+                                if let Err(e) = file.write_all(v.as_bytes()) {
+                                    let e = format!("Failed to send password: {e:?}");
+                                    if let Err(e) = tx_to_ui.send(Message::ErrorDialog(e)) {
+                                        log::error!("Channel error: {e:?}");
+                                    }
+                                    kill_child(child);
+                                    break;
+                                }
+                                if is_su && !su_password_sent{
+                                    su_password_sent = true;
+                                    continue;
+                                }
+                                initial_password = None;
+                                continue;
+                            }
+                            // In fact, su mode can only input password once
                             let err_msg = if first { "" } else { "Sorry, try again." };
                             first = false;
                             if let Err(e) =
-                                tx_to_ui.send(Message::PasswordPrompt(err_msg.to_string()))
+                                tx_to_ui.send(Message::PasswordPrompt((vec![], err_msg.to_string())))
                             {
                                 log::error!("Channel error: {e:?}");
                                 kill_child(child);
                                 break;
                             }
                             match rx_from_ui.recv() {
-                                Ok(Message::Password(password)) => {
+                                Ok(Message::Password((_, password))) => {
                                     let v = format!("{}\n", password);
                                     if let Err(e) = file.write_all(v.as_bytes()) {
                                         let e = format!("Failed to send password: {e:?}");
@@ -219,6 +407,10 @@ fn parent(
                         }
                         Ok(false) => log::warn!("get_echo_turn_off timeout"),
                         Err(e) => log::error!("get_echo_turn_off error: {:?}", e),
+                    }
+                } else {
+                    if !last_line.is_empty() {
+                        initial_password = None;
                     }
                 }
             }
@@ -254,7 +446,7 @@ fn parent(
     Ok(())
 }
 
-fn child(su_user:Option<String>, args: Vec<String>) -> ResultType<()> {
+fn child(su_user: Option<String>, args: Vec<String>) -> ResultType<()> {
     // https://doc.rust-lang.org/std/env/consts/constant.OS.html
     let os = std::env::consts::OS;
     let bsd = os == "freebsd" || os == "dragonfly" || os == "netbsd" || os == "openbad";
@@ -267,7 +459,13 @@ fn child(su_user:Option<String>, args: Vec<String>) -> ResultType<()> {
 
     let command = args
         .iter()
-        .map(|s|s.to_string())
+        .map(|s| 
+            if su_user.is_some() {
+                s.to_string()
+            } else {
+                quote_shell_arg(s, true)
+            }
+        )
         .collect::<Vec<String>>()
         .join(" ");
     let mut command = if bsd {
@@ -275,7 +473,7 @@ fn child(su_user:Option<String>, args: Vec<String>) -> ResultType<()> {
             Ok(lc_all) => {
                 if lc_all.contains('\'') {
                     eprintln!(
-                        "{ERR_PREFIX} Detected attempt to inject privileged command via LC_ALL env({lc_all}). Exiting!\n",
+                        "sudo: Detected attempt to inject privileged command via LC_ALL env({lc_all}). Exiting!\n",
                     );
                     std::process::exit(EXIT_CODE);
                 }
@@ -290,7 +488,7 @@ fn child(su_user:Option<String>, args: Vec<String>) -> ResultType<()> {
         command.to_string()
     };
     if su_user.is_some() {
-        command = format!("'{}'", quote_shell_arg(&command));
+        command = format!("'{}'", quote_shell_arg(&command, false));
     }
     params.push(command);
     std::env::set_var("LC_ALL", "C.UTF-8");
@@ -301,7 +499,13 @@ fn child(su_user:Option<String>, args: Vec<String>) -> ResultType<()> {
             .map(|p| p.to_string())
             .collect::<Vec<String>>()
             .join(" ");
-        params = vec!["su".to_string(), "-".to_string(), user.to_string(), "-c".to_string(),  su_subcommand];
+        params = vec![
+            "su".to_string(),
+            "-".to_string(),
+            user.to_string(),
+            "-c".to_string(),
+            su_subcommand,
+        ];
     }
 
     // allow failure here
@@ -312,7 +516,7 @@ fn child(su_user:Option<String>, args: Vec<String>) -> ResultType<()> {
     }
     let su_or_sudo = if su_user.is_some() { "su" } else { "sudo" };
     let res = execvp(CString::new(su_or_sudo)?.as_c_str(), &cparams);
-    eprintln!("{ERR_PREFIX} execvp error: {:?}", res);
+    eprintln!("sudo: execvp error: {:?}", res);
     std::process::exit(EXIT_CODE);
 }
 
@@ -349,7 +553,8 @@ fn kill_child(child: Pid) {
 }
 
 fn password_prompt(
-    last_username: &str,
+    sudo_users: Vec<String>,
+    username: &str,
     last_password: &str,
     err: &str,
 ) -> Option<(String, String)> {
@@ -371,49 +576,30 @@ fn password_prompt(
     image.set_margin_top(10);
     content_area.add(&image);
 
-    let last_username = if last_username.is_empty() {
-        crate::platform::get_active_username()
+    let choose_user = sudo_users.len() > 1;
+    let mut username = username.to_string();
+    let combo_box = gtk::ComboBoxText::new();
+    let user_label = gtk::Label::new(Some(&username));
+    if choose_user {
+        combo_box.set_width_request(100);
+        combo_box.set_halign(gtk::Align::Center);
+        combo_box.set_can_focus(false);
+        for user in sudo_users.clone() {
+            combo_box.append_text(&user);
+        }
+        combo_box.set_active(Some(0));
+        let cells = combo_box.cells();
+        if cells.len() > 0 {
+            let cell = cells[0].clone();
+            if let Ok(cell) = cell.downcast::<gtk::CellRendererText>() {
+                cell.set_xalign(0.5);
+            }
+        }
+        username = sudo_users[0].clone();
+        content_area.add(&combo_box);
     } else {
-        last_username.to_owned()
-    };
-    let user_label = gtk::Label::new(Some(&last_username));
-    let edit_button = gtk::Button::new();
-    edit_button.set_relief(gtk::ReliefStyle::None);
-    let edit_icon =
-        gtk::Image::from_icon_name(Some("document-edit-symbolic"), gtk::IconSize::Button.into());
-    edit_button.set_image(Some(&edit_icon));
-    let user_entry = gtk::Entry::new();
-    user_entry.set_alignment(0.5);
-    user_entry.set_width_request(100);
-    let user_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-    user_box.add(&user_label);
-    user_box.add(&edit_button);
-    user_box.add(&user_entry);
-    user_box.set_halign(gtk::Align::Center);
-    user_box.set_valign(gtk::Align::Center);
-    content_area.add(&user_box);
-
-    edit_button.connect_clicked(
-        glib::clone!(@weak user_label, @weak edit_button, @weak user_entry=>  move |_| {
-            let username = user_label.text().to_string();
-            user_entry.set_text(&username);
-            user_label.hide();
-            edit_button.hide();
-            user_entry.show();
-            user_entry.grab_focus();
-        }),
-    );
-
-    user_entry.connect_focus_out_event(
-        glib::clone!(@weak user_label, @weak edit_button, @weak user_entry => @default-return glib::Propagation::Proceed,  move |_, _| {
-            let username = user_entry.text().to_string();
-            user_label.set_text(&username);
-            user_entry.hide();
-            user_label.show();
-            edit_button.show();
-            glib::Propagation::Proceed
-        }),
-    );
+        content_area.add(&user_label);
+    }
 
     let password_input = gtk::Entry::builder()
         .visibility(false)
@@ -474,17 +660,24 @@ fn password_prompt(
     dialog.show_all();
     dialog.set_position(gtk::WindowPosition::Center);
     dialog.set_keep_above(true);
-    user_entry.hide();
+    if choose_user {
+        user_label.hide();
+    } else {
+        combo_box.hide();
+    }
     dialog.check_resize();
     let response = dialog.run();
     dialog.hide();
 
     if response == gtk::ResponseType::Ok {
-        let username = if user_entry.get_visible() {
-            user_entry.text().to_string()
-        } else {
-            user_label.text().to_string()
-        };
+        if choose_user {
+            let active = combo_box.active();
+            if let Some(active) = active {
+                if active < sudo_users.len() as u32 {
+                    username = sudo_users[active as usize].clone();
+                }
+            }
+        }
         Some((username, password_input.text().to_string()))
     } else {
         None
@@ -508,7 +701,7 @@ fn error_dialog_and_exit(err_msg: &str, exit_code: i32) {
     std::process::exit(exit_code);
 }
 
-fn quote_shell_arg(arg: &str) -> String {
+fn quote_shell_arg(arg: &str, add_splash_if_match: bool) -> String {
     let mut rv = arg.to_string();
     let re = hbb_common::regex::Regex::new("(\\s|[][!\"#$&'()*,;<=>?\\^`{}|~])");
     let Ok(re) = re else {
@@ -516,8 +709,9 @@ fn quote_shell_arg(arg: &str) -> String {
     };
     if re.is_match(arg) {
         rv = rv.replace("'", "'\\''");
-        // rv.insert(0, '\'');
-        // rv.push('\'');
+        if add_splash_if_match {
+            rv = format!("'{}'", rv);
+        }
     }
     rv
 }
