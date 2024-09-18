@@ -59,21 +59,29 @@ pub fn exec() {
     application.connect_activate(glib::clone!(@weak application =>move |_| {
         let rx_to_ui = rx_to_ui_clone.clone();
         let tx_from_ui = tx_from_ui_clone.clone();
+        let last_username = Arc::new(Mutex::new(crate::platform::get_active_username()));
         let last_password = Arc::new(Mutex::new(String::new()));
 
         glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
             if let Ok(msg) = rx_to_ui.lock().unwrap().try_recv() {
                 match msg {
                     Message::PasswordPrompt(err_msg) => {
-                        let last = last_password.lock().unwrap().clone();
-                        if let Some(password) = password_prompt(&err_msg, &last) {
-                            *last_password.lock().unwrap() = password.clone();
-                            if let Err(e) = tx_from_ui
-                                .lock()
-                                .unwrap()
-                                .send(Message::Password(password)) {
-                                    error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
-                                }
+                        let last_user = last_username.lock().unwrap().clone();
+                        let last_pwd = last_password.lock().unwrap().clone();
+                        if let Some((username, password)) = password_prompt(&last_user, &last_pwd, &err_msg) {
+                            if username == last_user {
+                                *last_username.lock().unwrap() = username.clone();
+                                *last_password.lock().unwrap() = password.clone();
+                                if let Err(e) = tx_from_ui
+                                    .lock()
+                                    .unwrap()
+                                    .send(Message::Password(password)) {
+                                        error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
+                                    }
+                            } else {
+
+                            } 
+                            
                         } else {
                         if let Err(e) = tx_from_ui.lock().unwrap().send(Message::Cancel) {
                                 error_dialog_and_exit(&format!("Channel error: {e:?}"), EXIT_CODE);
@@ -109,7 +117,7 @@ pub fn exec() {
                 }
             }
             ForkptyResult::Child => {
-                if let Err(e) = child(args) {
+                if let Err(e) = child(Some("sun".to_string()), args) {
                     log::error!("Child error: {:?}", e);
                     std::process::exit(EXIT_CODE);
                 }
@@ -246,20 +254,23 @@ fn parent(
     Ok(())
 }
 
-fn child(args: Vec<String>) -> ResultType<()> {
+fn child(su_user:Option<String>, args: Vec<String>) -> ResultType<()> {
     // https://doc.rust-lang.org/std/env/consts/constant.OS.html
     let os = std::env::consts::OS;
     let bsd = os == "freebsd" || os == "dragonfly" || os == "netbsd" || os == "openbad";
     let mut params = vec!["sudo".to_string()];
+    if su_user.is_some() {
+        params.push("-S".to_string());
+    }
     params.push("/bin/sh".to_string());
     params.push("-c".to_string());
+
     let command = args
         .iter()
-        .map(|arg| quote_shell_arg(arg))
+        .map(|s|s.to_string())
         .collect::<Vec<String>>()
         .join(" ");
-
-    let command = if bsd {
+    let mut command = if bsd {
         let lc = match std::env::var("LC_ALL") {
             Ok(lc_all) => {
                 if lc_all.contains('\'') {
@@ -278,8 +289,20 @@ fn child(args: Vec<String>) -> ResultType<()> {
     } else {
         command.to_string()
     };
+    if su_user.is_some() {
+        command = format!("'{}'", quote_shell_arg(&command));
+    }
     params.push(command);
     std::env::set_var("LC_ALL", "C.UTF-8");
+
+    if let Some(user) = &su_user {
+        let su_subcommand = params
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+        params = vec!["su".to_string(), "-".to_string(), user.to_string(), "-c".to_string(),  su_subcommand];
+    }
 
     // allow failure here
     let _ = setsid();
@@ -287,7 +310,8 @@ fn child(args: Vec<String>) -> ResultType<()> {
     for param in &params {
         cparams.push(CString::new(param.as_str())?);
     }
-    let res = execvp(CString::new("sudo")?.as_c_str(), &cparams);
+    let su_or_sudo = if su_user.is_some() { "su" } else { "sudo" };
+    let res = execvp(CString::new(su_or_sudo)?.as_c_str(), &cparams);
     eprintln!("{ERR_PREFIX} execvp error: {:?}", res);
     std::process::exit(EXIT_CODE);
 }
@@ -324,7 +348,11 @@ fn kill_child(child: Pid) {
     }
 }
 
-fn password_prompt(err: &str, last_password: &str) -> Option<String> {
+fn password_prompt(
+    last_username: &str,
+    last_password: &str,
+    err: &str,
+) -> Option<(String, String)> {
     let dialog = gtk::Dialog::builder()
         .title(crate::get_app_name())
         .modal(true)
@@ -343,8 +371,14 @@ fn password_prompt(err: &str, last_password: &str) -> Option<String> {
     image.set_margin_top(10);
     content_area.add(&image);
 
-    let user_label = gtk::Label::new(Some(&crate::platform::get_active_username()));
+    let last_username = if last_username.is_empty() {
+        crate::platform::get_active_username()
+    } else {
+        last_username.to_owned()
+    };
+    let user_label = gtk::Label::new(Some(&last_username));
     let edit_button = gtk::Button::new();
+    edit_button.set_relief(gtk::ReliefStyle::None);
     let edit_icon =
         gtk::Image::from_icon_name(Some("document-edit-symbolic"), gtk::IconSize::Button.into());
     edit_button.set_image(Some(&edit_icon));
@@ -446,7 +480,12 @@ fn password_prompt(err: &str, last_password: &str) -> Option<String> {
     dialog.hide();
 
     if response == gtk::ResponseType::Ok {
-        Some(password_input.text().to_string())
+        let username = if user_entry.get_visible() {
+            user_entry.text().to_string()
+        } else {
+            user_label.text().to_string()
+        };
+        Some((username, password_input.text().to_string()))
     } else {
         None
     }
@@ -477,8 +516,8 @@ fn quote_shell_arg(arg: &str) -> String {
     };
     if re.is_match(arg) {
         rv = rv.replace("'", "'\\''");
-        rv.insert(0, '\'');
-        rv.push('\'');
+        // rv.insert(0, '\'');
+        // rv.push('\'');
     }
     rv
 }
