@@ -100,7 +100,9 @@ fn make_tray() -> hbb_common::ResultType<()> {
         #[cfg(target_os = "linux")]
         {
             // Do not use "xdg-open", it won't read config
-            crate::run_me::<&str>(vec![]).ok();
+            if crate::dbus::invoke_new_connection(crate::get_uri_prefix()).is_err() {
+                crate::run_me::<&str>(vec![]).ok();
+            }
         }
     };
 
