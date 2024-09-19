@@ -161,11 +161,24 @@ fn ui(args: Vec<String>) {
             vec![]
         };
         log::info!("sudo_users: {:?}", sudo_users);
+        if let Some(group) = users::get_group_by_name("wheel") {
+            let wheel_users = group
+                .members()
+                .iter()
+                .map(|u| u.to_string_lossy().to_string())
+                .collect::<Vec<String>>();
+            log::info!("wheel_users: {:?}", wheel_users);
+            for user in wheel_users {
+                if !sudo_users.contains(&user) {
+                    sudo_users.push(user);
+                }
+            }
+        }
         let acitve_user = crate::platform::get_active_username();
         let mut su_user = None;
         let mut initial_password = None;
         if acitve_user != "root" && !sudo_users.contains(&acitve_user) {
-            let mut err_str = format!("{} is not in sudoers file.", acitve_user);
+            let mut err_str = format!("{} is not in sudo or wheel group.", acitve_user);
             if sudo_users.is_empty() {
                 err_str = "no available sudoers".to_string();
                 sudo_users.push("root".to_string());
