@@ -231,15 +231,17 @@ fn cmd_parent(child: Pid, master: OwnedFd) -> ResultType<()> {
         bail!("fcntl error: {errno:?}");
     }
     let mut file = unsafe { File::from_raw_fd(raw_fd) };
-    let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
+    let stdin = std::io::stdin();
+    let stdin_fd = stdin.as_raw_fd();
+    turn_off_echo(stdin_fd).ok();
     let (tx, rx) = channel::<Vec<u8>>();
     std::thread::spawn(move || {
         loop {
             let mut line = String::default();
             match stdin.read_line(&mut line) {
                 Ok(0) => {
-
+                    break;
                 },
                 Ok(_) => {
                     if let Err(e) = tx.send(line.as_bytes().to_vec()) {
@@ -247,11 +249,9 @@ fn cmd_parent(child: Pid, master: OwnedFd) -> ResultType<()> {
                         break;
                     }
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock  => {
-
-                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => {
-                    log::info!("Read stdio error: {:?}", e);
+                    log::info!("Failed to read stdio: {e:?}");
                 }
             };
         }
@@ -529,6 +529,14 @@ fn get_echo_turn_off(fd: RawFd) -> Result<bool, Error> {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     Ok(false)
+}
+
+fn turn_off_echo(fd: RawFd) -> Result<(), Error> {
+    use termios::*;
+    let mut termios = Termios::from_fd(fd)?;
+    termios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    tcsetattr(fd, TCSANOW, &termios)?;
+    Ok(())
 }
 
 fn kill_child(child: Pid) {
