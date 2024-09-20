@@ -113,9 +113,6 @@ pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str =
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
 
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
-pub const AUDIO_BUFFER_MS: usize = 150;
-
 #[cfg(feature = "flutter")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) struct ClientClipboardContext;
@@ -906,15 +903,15 @@ struct AudioBuffer(pub Arc<std::sync::Mutex<ringbuf::HeapRb<f32>>>);
 impl Default for AudioBuffer {
     fn default() -> Self {
         Self(Arc::new(std::sync::Mutex::new(
-            ringbuf::HeapRb::<f32>::new(48000 * 2 * AUDIO_BUFFER_MS / 1000), // 48000hz, 2 channel
-        )))
+            ringbuf::HeapRb::<f32>::new(48000 * 2 * Self::buffer_ms(), // 48000hz, 2 channel
+        ))))
     }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
 impl AudioBuffer {
     pub fn resize(&self, sample_rate: usize, channels: usize) {
-        let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
+        let capacity = sample_rate * channels * Self::buffer_ms() / 1000;
         let old_capacity = self.0.lock().unwrap().capacity();
         if capacity != old_capacity {
             *self.0.lock().unwrap() = ringbuf::HeapRb::<f32>::new(capacity);
@@ -930,6 +927,14 @@ impl AudioBuffer {
             self.0.lock().unwrap().clear();
             log::trace!("Audio buffer cleared");
         }
+    }
+
+    fn buffer_ms() -> usize {
+         let mut v = Config::get_option(config::keys::OPTION_AUDIO_PLAYBACK_BUFFER_TIME).parse().unwrap_or(300);
+         if v < 50 || v > 1000 {
+             v = 300;
+         }
+        v
     }
 }
 

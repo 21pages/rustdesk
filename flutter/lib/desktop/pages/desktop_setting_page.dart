@@ -532,11 +532,7 @@ class _GeneralState extends State<_General> {
   }
 
   Widget audio(BuildContext context) {
-    if (bind.isOutgoingOnly()) {
-      return const Offstage();
-    }
-
-    builder(devices, currentDevice, setDevice) {
+    audioInputDeviceBuilder(devices, currentDevice, setDevice) {
       final child = ComboBox(
         keys: devices,
         values: devices,
@@ -546,10 +542,55 @@ class _GeneralState extends State<_General> {
           setState(() {});
         },
       ).marginOnly(left: _kContentHMargin);
-      return _Card(title: 'Audio Input Device', children: [child]);
+      return Row(
+        children: [
+          Text("${translate('Audio Input Device')}:"),
+          Expanded(child: child),
+        ],
+      ).marginOnly(left: _kContentHMargin);
     }
 
-    return AudioInput(builder: builder, isCm: false, isVoiceCall: false);
+    Widget playbackBuffer() {
+      final min = 50;
+      final max = 1000;
+      final step = 50;
+      RxInt value = (int.tryParse(bind.mainGetOptionSync(key: kOptionAudioPlaybackBuffer)) ?? 300).obs;
+      if (value.value < min || value.value > max) {
+        value.value = 300;
+      }
+      value.value = (value.value / step).round() * step;
+      return Row(
+        children: [
+          Text("${translate('Playback buffer time')}:"),
+          Expanded(
+            child: Obx(() => Slider(
+                value: value.value * 1.0,
+                divisions: ((max - min) / step).round(),
+                min: min * 1.0,
+                max: max * 1.0,
+                onChanged: (v) {
+                  value.value = v.round();
+                  bind.mainSetOption(
+                      key: kOptionAudioPlaybackBuffer,
+                      value: value.value.toString());
+                })),
+          ),
+          Obx(() => Text('${value.value} ms')),
+        ],
+      ).marginOnly(left: _kContentHMargin);
+    }
+
+    bool showInputDevice = !bind.isOutgoingOnly();
+    bool showPlaybackBuffer = !isLinux && !bind.isIncomingOnly();
+    if (!showInputDevice && !showPlaybackBuffer) {
+      return const Offstage();
+    }
+    return _Card(title: 'Audio', children: [
+      if (showInputDevice)
+       AudioInput(builder: audioInputDeviceBuilder, isCm: false, isVoiceCall: false),
+      if (showPlaybackBuffer) playbackBuffer(),       
+    ]);
+    
   }
 
   Widget record(BuildContext context) {
