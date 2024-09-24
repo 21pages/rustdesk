@@ -811,7 +811,7 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
 }
 
 pub fn check_software_update() {
-    std::thread::spawn(move || allow_err!(check_software_update_()));
+    allow_err!(check_software_update_());
 }
 
 #[tokio::main(flavor = "current_thread")]
