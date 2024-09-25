@@ -169,13 +169,17 @@ class Peers extends ChangeNotifier {
     platformFFI.registerEventHandler(_cbQueryOnlines, name, (evt) async {
       _updateOnlineState(evt);
     });
+    // print("============ registerEventHandler loadEvent $loadEvent, name:$name");
     platformFFI.registerEventHandler(loadEvent, name, (evt) async {
+      print(
+          "============ registerEventHandler onloadEvent: $loadEvent, name:$name");
       _updatePeers(evt);
     });
   }
 
   @override
   void dispose() {
+    // print("=============== unregisterEventHandler loadEvent $loadEvent, name");
     platformFFI.unregisterEventHandler(_cbQueryOnlines, name);
     platformFFI.unregisterEventHandler(loadEvent, name);
     super.dispose();

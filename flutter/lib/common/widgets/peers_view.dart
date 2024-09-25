@@ -128,8 +128,9 @@ class _PeersViewState extends State<_PeersView>
     //
     // Although `onWindowRestore()` is called after `onWindowBlur()` in my test,
     // we need the following comparison to ensure that `_isActive` is true in the end.
-    if (isWindows && DateTime.now().difference(_lastWindowRestoreTime) <
-        const Duration(milliseconds: 300)) {
+    if (isWindows &&
+        DateTime.now().difference(_lastWindowRestoreTime) <
+            const Duration(milliseconds: 300)) {
       return;
     }
     _queryCount = _maxQueryCount;
@@ -170,9 +171,16 @@ class _PeersViewState extends State<_PeersView>
     // We should avoid too many rebuilds. MacOS(m1, 14.6.1) on Flutter 3.19.6.
     // Continious rebuilds of `ChangeNotifierProvider` will cause memory leak.
     // Simple demo can reproduce this issue.
+    print("peers view build, peers len: ${widget.peers.peers.length}");
     return ChangeNotifierProvider<Peers>(
-      create: (context) => widget.peers,
+      create: (context) {
+        print(
+            "peers view ChangeNotifierProvider create, peers len: ${widget.peers.peers.length}");
+        return widget.peers;
+      },
       child: Consumer<Peers>(builder: (context, peers, child) {
+        print(
+            "peers view ChangeNotifierProvider build, peers len: ${peers.peers.length}");
         if (peers.peers.isEmpty) {
           gFFI.peerTabModel.setCurrentTabCachedPeers([]);
           return Center(
@@ -217,6 +225,7 @@ class _PeersViewState extends State<_PeersView>
   String _peerId(String cardId) => cardId.replaceAll(widget.peers.name, '');
 
   Widget _buildPeersView(Peers peers) {
+    print("_buildPeersView peers.len: ${peers.peers.length}");
     final updateEvent = peers.event;
     final body = ObxValue<RxList>((filters) {
       return FutureBuilder<List<Peer>>(

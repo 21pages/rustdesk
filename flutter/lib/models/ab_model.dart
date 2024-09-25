@@ -687,6 +687,7 @@ class AbModel {
   }
 
   void _refreshTab() {
+    print("=============== _refreshTab addressBook");
     platformFFI.tryHandle({'name': LoadEvent.addressBook});
   }
 
