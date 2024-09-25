@@ -29,6 +29,7 @@ pub struct RecorderContext {
     pub width: usize,
     pub height: usize,
     pub format: CodecFormat,
+    pub display: usize,
     pub tx: Option<Sender<RecordState>>,
 }
 
@@ -41,6 +42,7 @@ impl RecorderContext {
             + "_"
             + &self.id.clone()
             + &chrono::Local::now().format("_%Y%m%d%H%M%S%3f_").to_string()
+            + &format!("display{}_", self.display)
             + &self.format.to_string().to_lowercase()
             + if self.format == CodecFormat::VP9
                 || self.format == CodecFormat::VP8

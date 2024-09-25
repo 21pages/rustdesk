@@ -2198,6 +2198,7 @@ pub mod keys {
     pub const OPTION_AUTO_DISCONNECT_TIMEOUT: &str = "auto-disconnect-timeout";
     pub const OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN: &str = "allow-only-conn-window-open";
     pub const OPTION_ALLOW_AUTO_RECORD_INCOMING: &str = "allow-auto-record-incoming";
+    pub const OPTION_ALLOW_AUTO_RECORD_OUTGOING: &str = "allow-auto-record-outgoing";
     pub const OPTION_VIDEO_SAVE_DIRECTORY: &str = "video-save-directory";
     pub const OPTION_ENABLE_ABR: &str = "enable-abr";
     pub const OPTION_ALLOW_REMOVE_WALLPAPER: &str = "allow-remove-wallpaper";
@@ -2342,6 +2343,7 @@ pub mod keys {
         OPTION_AUTO_DISCONNECT_TIMEOUT,
         OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN,
         OPTION_ALLOW_AUTO_RECORD_INCOMING,
+        OPTION_ALLOW_AUTO_RECORD_OUTGOING,
         OPTION_VIDEO_SAVE_DIRECTORY,
         OPTION_ENABLE_ABR,
         OPTION_ALLOW_REMOVE_WALLPAPER,

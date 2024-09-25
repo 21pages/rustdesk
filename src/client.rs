@@ -1248,7 +1248,7 @@ impl VideoHandler {
     }
 
     /// Start or stop screen record.
-    pub fn record_screen(&mut self, start: bool, w: i32, h: i32, id: String) {
+    pub fn record_screen(&mut self, start: bool, w: i32, h: i32, id: String, display: usize) {
         self.record = false;
         if start {
             self.recorder = Recorder::new(RecorderContext {
@@ -1259,6 +1259,7 @@ impl VideoHandler {
                 width: w as _,
                 height: h as _,
                 format: scrap::CodecFormat::VP9,
+                display,
                 tx: None,
             })
             .map_or(Default::default(), |r| Arc::new(Mutex::new(Some(r))));
@@ -2405,12 +2406,16 @@ where
                         // For the sciter version, there're no multi-ui-sessions for one connection.
                         // The display is always 0, video_handler_controllers.len() is always 1. So we use the first video handler.
                         if let Some(handler_controler) = handler_controller_map.get_mut(&display) {
-                            handler_controler.handler.record_screen(start, w, h, id);
+                            handler_controler
+                                .handler
+                                .record_screen(start, w, h, id, display);
                         } else if handler_controller_map.len() == 1 {
                             if let Some(handler_controler) =
                                 handler_controller_map.values_mut().next()
                             {
-                                handler_controler.handler.record_screen(start, w, h, id);
+                                handler_controler
+                                    .handler
+                                    .record_screen(start, w, h, id, display);
                             }
                         }
                     }

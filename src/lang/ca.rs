@@ -364,6 +364,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Recording", "Gravant"),
         ("Directory", "Directori"),
         ("Automatically record incoming sessions", "Gravació automàtica de sessions entrants"),
+        ("Automatically record outgoing sessions", ""),
         ("Change", "Canvia"),
         ("Start session recording", "Comença la gravació de la sessió"),
         ("Stop session recording", "Atura la gravació de la sessió"),

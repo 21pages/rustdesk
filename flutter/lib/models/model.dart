@@ -2281,7 +2281,7 @@ class RecordingModel with ChangeNotifier {
   WeakReference<FFI> parent;
   RecordingModel(this.parent);
   bool _start = false;
-  get start => _start;
+  bool get start => _start;
 
   onSwitchDisplay() {
     if (isIOS || !_start) return;
@@ -2334,6 +2334,7 @@ class RecordingModel with ChangeNotifier {
     if (sessionId == null) return;
     if (!_start) return;
     _start = false;
+    notifyListeners();
     final pi = parent.target?.ffiModel.pi;
     if (pi == null) return;
     final currentDisplay = pi.currentDisplay;

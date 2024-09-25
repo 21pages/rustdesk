@@ -115,6 +115,10 @@ class _RemotePageState extends State<RemotePage>
     _ffi.imageModel.addCallbackOnFirstImage((String peerId) {
       showKBLayoutTypeChooserIfNeeded(
           _ffi.ffiModel.pi.platform, _ffi.dialogManager);
+      if (!_ffi.recordingModel.start &&
+          mainGetBoolOptionSync(kOptionAllowAutoRecordOutgoing)) {
+        _ffi.recordingModel.toggle();
+      }
     });
     _ffi.start(
       widget.id,
