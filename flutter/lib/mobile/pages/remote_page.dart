@@ -92,6 +92,12 @@ class _RemotePageState extends State<RemotePage> {
     gFFI.chatModel
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
     _blockableOverlayState.applyFfi(gFFI);
+    gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
+      if (!gFFI.recordingModel.start &&
+          mainGetBoolOptionSync(kOptionAllowAutoRecordOutgoing)) {
+        gFFI.recordingModel.toggle();
+      }
+    });
   }
 
   @override

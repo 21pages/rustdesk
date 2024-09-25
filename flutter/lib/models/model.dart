@@ -527,7 +527,7 @@ class FfiModel with ChangeNotifier {
       }
     }
 
-    parent.target?.recordingModel.onSwitchDisplay();
+    parent.target?.recordingModel.onRecvSwitchDisplay();
     if (!_pi.isSupportMultiUiSession || _pi.currentDisplay == display) {
       handleResolutions(peerId, evt['resolutions']);
     }
@@ -1135,8 +1135,8 @@ class FfiModel with ChangeNotifier {
   // Directly switch to the new display without waiting for the response.
   switchToNewDisplay(int display, SessionID sessionId, String peerId,
       {bool updateCursorPos = false}) {
-    // VideoHandler creation is upon when video frames are received, so either caching commands(don't know next width/height) or stopping recording when switching displays.
-    parent.target?.recordingModel.onClose();
+    parent.target?.recordingModel
+        .onSendSwitchDisplay(pi.currentDisplay, display);
     // no need to wait for the response
     pi.currentDisplay = display;
     updateCurDisplay(sessionId, updateCursorPos: updateCursorPos);
@@ -2342,34 +2342,32 @@ class RecordingModel with ChangeNotifier {
   WeakReference<FFI> parent;
   RecordingModel(this.parent);
   bool _start = false;
-  get start => _start;
+  bool get start => _start;
 
-  onSwitchDisplay() {
+  onSendSwitchDisplay(int from, int to) {
+    print(
+        "=========== onSendSwitchDisplay, from: $from, to: $to, _start: $_start");
     if (isIOS || !_start) return;
-    final sessionId = parent.target?.sessionId;
-    int? width = parent.target?.canvasModel.getDisplayWidth();
-    int? height = parent.target?.canvasModel.getDisplayHeight();
-    if (sessionId == null || width == null || height == null) return;
-    final pi = parent.target?.ffiModel.pi;
-    if (pi == null) return;
-    final currentDisplay = pi.currentDisplay;
-    if (currentDisplay == kAllDisplayValue) return;
-    bind.sessionRecordScreen(
-        sessionId: sessionId,
-        start: true,
-        display: currentDisplay,
-        width: width,
-        height: height);
+    _stopDisplay(from);
+    _startDisplay(to);
+  }
+
+  onRecvSwitchDisplay() {
+    print("=========== onRecvSwitchDisplay, _start: $_start");
+    if (isIOS || !_start) return;
+    final ffi = parent.target;
+    if (ffi == null) return;
+    final pi = ffi.ffiModel.pi;
+    _startDisplay(pi.currentDisplay);
   }
 
   toggle() async {
+    print("=========== toggle");
     if (isIOS) return;
     final sessionId = parent.target?.sessionId;
     if (sessionId == null) return;
     final pi = parent.target?.ffiModel.pi;
     if (pi == null) return;
-    final currentDisplay = pi.currentDisplay;
-    if (currentDisplay == kAllDisplayValue) return;
     _start = !_start;
     notifyListeners();
     await _sendStatusMessage(sessionId, pi, _start);
@@ -2377,35 +2375,79 @@ class RecordingModel with ChangeNotifier {
       sessionRefreshVideo(sessionId, pi);
       if (versionCmp(pi.version, '1.2.4') >= 0) {
         // will not receive SwitchDisplay since 1.2.4
-        onSwitchDisplay();
+        onRecvSwitchDisplay();
       }
     } else {
-      bind.sessionRecordScreen(
-          sessionId: sessionId,
-          start: false,
-          display: currentDisplay,
-          width: 0,
-          height: 0);
+      _stopDisplay(pi.currentDisplay);
     }
   }
 
   onClose() async {
+    print("=========== onClose");
     if (isIOS) return;
     final sessionId = parent.target?.sessionId;
     if (sessionId == null) return;
     if (!_start) return;
     _start = false;
+    notifyListeners();
     final pi = parent.target?.ffiModel.pi;
     if (pi == null) return;
     final currentDisplay = pi.currentDisplay;
     if (currentDisplay == kAllDisplayValue) return;
     await _sendStatusMessage(sessionId, pi, false);
-    bind.sessionRecordScreen(
-        sessionId: sessionId,
-        start: false,
-        display: currentDisplay,
-        width: 0,
-        height: 0);
+    _stopDisplay(currentDisplay);
+  }
+
+  _startDisplay(int display) {
+    if (isIOS) return;
+    final ffi = parent.target;
+    if (ffi == null) return;
+    final pi = ffi.ffiModel.pi;
+    if (display == kAllDisplayValue) {
+      for (var i = 0; i < pi.displays.length; i++) {
+        final d = pi.displays[i];
+        bind.sessionRecordScreen(
+            sessionId: ffi.sessionId,
+            start: true,
+            display: i,
+            width: d.width,
+            height: d.height);
+      }
+    } else {
+      if (pi.displays.length > display) {
+        final d = pi.displays[display];
+        bind.sessionRecordScreen(
+            sessionId: ffi.sessionId,
+            start: true,
+            display: display,
+            width: d.width,
+            height: d.height);
+      }
+    }
+  }
+
+  _stopDisplay(int display) {
+    if (isIOS) return;
+    final ffi = parent.target;
+    if (ffi == null) return;
+    final pi = ffi.ffiModel.pi;
+    if (display == kAllDisplayValue) {
+      for (var i = 0; i < pi.displays.length; i++) {
+        bind.sessionRecordScreen(
+            sessionId: ffi.sessionId,
+            start: false,
+            display: i,
+            width: 0,
+            height: 0);
+      }
+    } else {
+      bind.sessionRecordScreen(
+          sessionId: ffi.sessionId,
+          start: false,
+          display: display,
+          width: 0,
+          height: 0);
+    }
   }
 
   _sendStatusMessage(SessionID sessionId, PeerInfo pi, bool status) async {

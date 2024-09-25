@@ -1248,7 +1248,7 @@ impl VideoHandler {
     }
 
     /// Start or stop screen record.
-    pub fn record_screen(&mut self, start: bool, w: i32, h: i32, id: String) {
+    pub fn record_screen(&mut self, start: bool, w: i32, h: i32, id: String, display: usize) {
         self.record = false;
         if start {
             self.recorder = Recorder::new(RecorderContext {
@@ -1259,6 +1259,7 @@ impl VideoHandler {
                 width: w as _,
                 height: h as _,
                 format: scrap::CodecFormat::VP9,
+                display,
                 tx: None,
             })
             .map_or(Default::default(), |r| Arc::new(Mutex::new(Some(r))));
@@ -2237,6 +2238,13 @@ struct VideoHandlerController {
     skip_beginning: u32,
 }
 
+struct RecordCommand {
+    width: i32,
+    height: i32,
+    id: String,
+    start: bool,
+}
+
 /// Start video and audio thread.
 /// Return two [`MediaSender`], they should be given to the media producer.
 ///
@@ -2267,6 +2275,7 @@ where
     let chroma = Arc::new(RwLock::new(None));
     let chroma_cloned = chroma.clone();
     let mut last_chroma = None;
+    let mut cached_record_commands: HashMap<usize, RecordCommand> = Default::default();
 
     std::thread::spawn(move || {
         #[cfg(windows)]
@@ -2303,10 +2312,20 @@ where
                         let start = std::time::Instant::now();
                         let format = CodecFormat::from(&vf);
                         if !handler_controller_map.contains_key(&display) {
+                            let mut handler = VideoHandler::new(format, display);
+                            if let Some(command) = cached_record_commands.remove(&display) {
+                                handler.record_screen(
+                                    command.start,
+                                    command.width,
+                                    command.height,
+                                    command.id,
+                                    display,
+                                );
+                            }
                             handler_controller_map.insert(
                                 display,
                                 VideoHandlerController {
-                                    handler: VideoHandler::new(format, display),
+                                    handler,
                                     skip_beginning: 0,
                                 },
                             );
@@ -2401,16 +2420,35 @@ where
                     }
                     MediaData::RecordScreen(start, display, w, h, id) => {
                         log::info!("record screen command: start: {start}, display: {display}");
-                        // Compatible with the sciter version(single ui session).
-                        // For the sciter version, there're no multi-ui-sessions for one connection.
-                        // The display is always 0, video_handler_controllers.len() is always 1. So we use the first video handler.
                         if let Some(handler_controler) = handler_controller_map.get_mut(&display) {
-                            handler_controler.handler.record_screen(start, w, h, id);
-                        } else if handler_controller_map.len() == 1 {
-                            if let Some(handler_controler) =
-                                handler_controller_map.values_mut().next()
-                            {
-                                handler_controler.handler.record_screen(start, w, h, id);
+                            handler_controler
+                                .handler
+                                .record_screen(start, w, h, id, display);
+                        } else {
+                            // Compatible with version lower than 1.2.4.
+                            // The display is always 0, video_handler_controllers.len() is always 1. So we use the first video handler.
+                            let support_vf_display =
+                                session.get_peer_version() >= get_version_number("1.2.4");
+                            if support_vf_display {
+                                cached_record_commands.insert(
+                                    display,
+                                    RecordCommand {
+                                        width: w,
+                                        height: h,
+                                        id,
+                                        start,
+                                    },
+                                );
+                            } else {
+                                if handler_controller_map.len() == 1 {
+                                    if let Some(handler_controler) =
+                                        handler_controller_map.values_mut().next()
+                                    {
+                                        handler_controler
+                                            .handler
+                                            .record_screen(start, w, h, id, display);
+                                    }
+                                }
                             }
                         }
                     }
