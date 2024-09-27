@@ -139,77 +139,79 @@ class _PeerCardState extends State<_PeerCard>
         fontSize: 11,
         color: Theme.of(context).textTheme.titleLarge?.color?.withOpacity(0.6));
     makeChild(bool isPortrait) => Row(
-      mainAxisSize: MainAxisSize.max,
-      children: [
-        Container(
-            decoration: BoxDecoration(
-              color: str2color('${peer.id}${peer.platform}', 0x7f),
-              borderRadius: isPortrait
-                  ? BorderRadius.circular(_tileRadius)
-                  : BorderRadius.only(
-                      topLeft: Radius.circular(_tileRadius),
-                      bottomLeft: Radius.circular(_tileRadius),
-                    ),
-            ),
-            alignment: Alignment.center,
-            width: isPortrait ? 50 : 42,
-            height: isPortrait ? 50 : null,
-            child: Stack(
-              children: [
-                getPlatformImage(peer.platform, size: isPortrait ? 38 : 30)
-                    .paddingAll(6),
-                if (_shouldBuildPasswordIcon(peer))
-                  Positioned(
-                    top: 1,
-                    left: 1,
-                    child: Icon(Icons.key, size: 6, color: Colors.white),
-                  ),
-              ],
-            )),
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.background,
-              borderRadius: BorderRadius.only(
-                topRight: Radius.circular(_tileRadius),
-                bottomRight: Radius.circular(_tileRadius),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    children: [
-                      Row(children: [
-                        getOnline(isPortrait ? 4 : 8, peer.online),
-                        Expanded(
-                            child: Text(
-                          peer.alias.isEmpty ? formatID(peer.id) : peer.alias,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall,
-                        )),
-                      ]).marginOnly(top: isPortrait ? 0 : 2),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          name,
-                          style: isPortrait ? null : greyStyle,
-                          textAlign: TextAlign.start,
-                          overflow: TextOverflow.ellipsis,
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(
+                decoration: BoxDecoration(
+                  color: str2color('${peer.id}${peer.platform}', 0x7f),
+                  borderRadius: isPortrait
+                      ? BorderRadius.circular(_tileRadius)
+                      : BorderRadius.only(
+                          topLeft: Radius.circular(_tileRadius),
+                          bottomLeft: Radius.circular(_tileRadius),
                         ),
-                      ),
-                    ],
-                  ).marginOnly(top: 2),
                 ),
-                isPortrait
-                    ? checkBoxOrActionMorePortrait(peer)
-                    : checkBoxOrActionMoreLandscape(peer, isTile: true),
-              ],
-            ).paddingOnly(left: 10.0, top: 3.0),
-          ),
-        )
-      ],
-    );
+                alignment: Alignment.center,
+                width: isPortrait ? 50 : 42,
+                height: isPortrait ? 50 : null,
+                child: Stack(
+                  children: [
+                    getPlatformImage(peer.platform, size: isPortrait ? 38 : 30)
+                        .paddingAll(6),
+                    if (_shouldBuildPasswordIcon(peer))
+                      Positioned(
+                        top: 1,
+                        left: 1,
+                        child: Icon(Icons.key, size: 6, color: Colors.white),
+                      ),
+                  ],
+                )),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.background,
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(_tileRadius),
+                    bottomRight: Radius.circular(_tileRadius),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Row(children: [
+                            getOnline(isPortrait ? 4 : 8, peer.online),
+                            Expanded(
+                                child: Text(
+                              peer.alias.isEmpty
+                                  ? formatID(peer.id)
+                                  : peer.alias,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            )),
+                          ]).marginOnly(top: isPortrait ? 0 : 2),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              name,
+                              style: isPortrait ? null : greyStyle,
+                              textAlign: TextAlign.start,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ).marginOnly(top: 2),
+                    ),
+                    isPortrait
+                        ? checkBoxOrActionMorePortrait(peer)
+                        : checkBoxOrActionMoreLandscape(peer, isTile: true),
+                  ],
+                ).paddingOnly(left: 10.0, top: 3.0),
+              ),
+            )
+          ],
+        );
     final colors = _frontN(peer.tags, 25)
         .map((e) => gFFI.abModel.getCurrentAbTagColor(e))
         .toList();
@@ -220,21 +222,22 @@ class _PeerCardState extends State<_PeerCard>
               ? '${translate('Tags')}: ${peer.tags.join(', ')}'
               : '',
       child: Stack(children: [
-        Obx(() => deco == null
-            ? makeChild(stateGlobal.isPortrait.isTrue)
-            : Container(
+        Obx(
+          () => deco == null
+              ? makeChild(stateGlobal.isPortrait.isTrue)
+              : Container(
                   foregroundDecoration: deco.value,
                   child: makeChild(stateGlobal.isPortrait.isTrue),
                 ),
-              ),
+        ),
         if (colors.isNotEmpty)
-          Obx(()=> Positioned(
-            top: 2,
-            right: stateGlobal.isPortrait.isTrue ? 20 : 10,
-            child: CustomPaint(
-              painter: TagPainter(radius: 3, colors: colors),
-            ),
-          ))
+          Obx(() => Positioned(
+                top: 2,
+                right: stateGlobal.isPortrait.isTrue ? 20 : 10,
+                child: CustomPaint(
+                  painter: TagPainter(radius: 3, colors: colors),
+                ),
+              ))
       ]),
     );
   }
@@ -876,7 +879,7 @@ class RecentPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
-      if (!isWeb) _transferFileAction(context),
+      _transferFileAction(context),
     ];
 
     final List favs = (await bind.mainGetFav()).toList();
@@ -1259,54 +1262,53 @@ void _rdpDialog(String id) async {
               ],
             ).marginOnly(bottom: isDesktop ? 8 : 0),
             Obx(() => Row(
-              children: [
-                stateGlobal.isPortrait.isFalse
-                    ? ConstrainedBox(
-                        constraints: const BoxConstraints(minWidth: 140),
-                        child: Text(
-                          "${translate('Username')}:",
-                          textAlign: TextAlign.right,
-                        ).marginOnly(right: 10))
-                    : SizedBox.shrink(),
-                Expanded(
-                  child: TextField(
-                    decoration: InputDecoration(
-                        labelText: isDesktop
-                            ? null
-                            : translate('Username')),
-                    controller: userController,
-                  ),
-                ),
-              ],
-            ).marginOnly(bottom: stateGlobal.isPortrait.isFalse ? 8 : 0)),
-            Obx(() => Row(
-              children: [
-                stateGlobal.isPortrait.isFalse
-                    ? ConstrainedBox(
-                        constraints: const BoxConstraints(minWidth: 140),
-                        child: Text(
-                          "${translate('Password')}:",
-                          textAlign: TextAlign.right,
-                        ).marginOnly(right: 10))
-                    : SizedBox.shrink(),
-                Expanded(
-                  child: Obx(() => TextField(
-                        obscureText: secure.value,
-                        maxLength: maxLength,
+                  children: [
+                    stateGlobal.isPortrait.isFalse
+                        ? ConstrainedBox(
+                            constraints: const BoxConstraints(minWidth: 140),
+                            child: Text(
+                              "${translate('Username')}:",
+                              textAlign: TextAlign.right,
+                            ).marginOnly(right: 10))
+                        : SizedBox.shrink(),
+                    Expanded(
+                      child: TextField(
                         decoration: InputDecoration(
-                            labelText: isDesktop
-                                ? null
-                                : translate('Password'),
-                            suffixIcon: IconButton(
-                                onPressed: () => secure.value = !secure.value,
-                                icon: Icon(secure.value
-                                    ? Icons.visibility_off
-                                    : Icons.visibility))),
-                        controller: passwordController,
-                      )),
-                ),
-              ],
-            ))
+                            labelText:
+                                isDesktop ? null : translate('Username')),
+                        controller: userController,
+                      ),
+                    ),
+                  ],
+                ).marginOnly(bottom: stateGlobal.isPortrait.isFalse ? 8 : 0)),
+            Obx(() => Row(
+                  children: [
+                    stateGlobal.isPortrait.isFalse
+                        ? ConstrainedBox(
+                            constraints: const BoxConstraints(minWidth: 140),
+                            child: Text(
+                              "${translate('Password')}:",
+                              textAlign: TextAlign.right,
+                            ).marginOnly(right: 10))
+                        : SizedBox.shrink(),
+                    Expanded(
+                      child: Obx(() => TextField(
+                            obscureText: secure.value,
+                            maxLength: maxLength,
+                            decoration: InputDecoration(
+                                labelText:
+                                    isDesktop ? null : translate('Password'),
+                                suffixIcon: IconButton(
+                                    onPressed: () =>
+                                        secure.value = !secure.value,
+                                    icon: Icon(secure.value
+                                        ? Icons.visibility_off
+                                        : Icons.visibility))),
+                            controller: passwordController,
+                          )),
+                    ),
+                  ],
+                ))
           ],
         ),
       ),
