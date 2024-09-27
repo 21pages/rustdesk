@@ -52,12 +52,12 @@ class EventToUI_Texture implements EventToUI {
 
 class RustdeskImpl {
   Future<void> stopGlobalEventStream({required String appType, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("1");
   }
 
   Future<void> hostStopSystemKeyPropagate(
       {required bool stopped, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("2");
   }
 
   int peerGetDefaultSessionsCount({required String id, dynamic hint}) {
@@ -85,7 +85,8 @@ class RustdeskImpl {
       dynamic hint}) {
     return js.context.callMethod('setByName', [
       'session_add_sync',
-      jsonEncode({'id': id, 'password': password})
+      jsonEncode(
+          {'id': id, 'password': password, 'isFileTransfer': isFileTransfer})
     ]);
   }
 
@@ -103,7 +104,7 @@ class RustdeskImpl {
       required String id,
       required Int32List displays,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("3");
   }
 
   Future<bool?> sessionGetRemember(
@@ -171,12 +172,12 @@ class RustdeskImpl {
       required int width,
       required int height,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("4");
   }
 
   Future<void> sessionRecordStatus(
       {required UuidValue sessionId, required bool status, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("5");
   }
 
   Future<void> sessionReconnect(
@@ -428,7 +429,7 @@ class RustdeskImpl {
       required int lockModes,
       required bool downOrUp,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("6");
   }
 
   void sessionEnterOrLeave(
@@ -468,7 +469,7 @@ class RustdeskImpl {
 
   Future<void> sessionSendChat(
       {required UuidValue sessionId, required String text, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("7");
   }
 
   Future<void> sessionPeerOption(
@@ -499,7 +500,7 @@ class RustdeskImpl {
       required String path,
       required bool includeHidden,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("8");
   }
 
   Future<void> sessionSendFiles(
@@ -511,7 +512,7 @@ class RustdeskImpl {
       required bool includeHidden,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("9");
   }
 
   Future<void> sessionSetConfirmOverrideFile(
@@ -522,7 +523,7 @@ class RustdeskImpl {
       required bool remember,
       required bool isUpload,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("10");
   }
 
   Future<void> sessionRemoveFile(
@@ -532,7 +533,7 @@ class RustdeskImpl {
       required int fileNum,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("11");
   }
 
   Future<void> sessionReadDirRecursive(
@@ -542,7 +543,7 @@ class RustdeskImpl {
       required bool isRemote,
       required bool showHidden,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("12");
   }
 
   Future<void> sessionRemoveAllEmptyDirs(
@@ -551,12 +552,12 @@ class RustdeskImpl {
       required String path,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("13");
   }
 
   Future<void> sessionCancelJob(
       {required UuidValue sessionId, required int actId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("14");
   }
 
   Future<void> sessionCreateDir(
@@ -565,7 +566,7 @@ class RustdeskImpl {
       required String path,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("15");
   }
 
   Future<String> sessionReadLocalDirSync(
@@ -573,17 +574,21 @@ class RustdeskImpl {
       required String path,
       required bool showHidden,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("16");
   }
 
   Future<String> sessionGetPlatform(
       {required UuidValue sessionId, required bool isRemote, dynamic hint}) {
-    throw UnimplementedError();
+    if (isRemote) {
+      return Future(() => js.context.callMethod('getByName', ['platform']));
+    } else {
+      return Future(() => 'Web');
+    }
   }
 
   Future<void> sessionLoadLastTransferJobs(
       {required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("18");
   }
 
   Future<void> sessionAddJob(
@@ -595,7 +600,7 @@ class RustdeskImpl {
       required bool includeHidden,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("19");
   }
 
   Future<void> sessionResumeJob(
@@ -603,7 +608,7 @@ class RustdeskImpl {
       required int actId,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("20");
   }
 
   Future<void> sessionElevateDirect(
@@ -624,7 +629,7 @@ class RustdeskImpl {
 
   Future<void> sessionSwitchSides(
       {required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("21");
   }
 
   Future<void> sessionChangeResolution(
@@ -634,7 +639,7 @@ class RustdeskImpl {
       required int height,
       dynamic hint}) {
     // note: restore on disconnected
-    throw UnimplementedError();
+    throw UnimplementedError("22");
   }
 
   Future<void> sessionSetSize(
@@ -648,15 +653,15 @@ class RustdeskImpl {
 
   Future<void> sessionSendSelectedSessionId(
       {required UuidValue sessionId, required String sid, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("23");
   }
 
   Future<List<String>> mainGetSoundInputs({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("24");
   }
 
   Future<String?> mainGetDefaultSoundInput({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("25");
   }
 
   String mainGetLoginDeviceInfo({dynamic hint}) {
@@ -672,11 +677,11 @@ class RustdeskImpl {
   }
 
   Future<void> mainChangeId({required String newId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("26");
   }
 
   Future<String> mainGetAsyncStatus({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("27");
   }
 
   Future<String> mainGetOption({required String key, dynamic hint}) {
@@ -688,11 +693,11 @@ class RustdeskImpl {
   }
 
   Future<String> mainGetError({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("28");
   }
 
   bool mainShowOption({required String key, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("29");
   }
 
   Future<void> mainSetOption(
@@ -729,11 +734,11 @@ class RustdeskImpl {
       required String username,
       required String password,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("30");
   }
 
   Future<List<String>> mainGetSocks({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("31");
   }
 
   Future<String> mainGetAppName({dynamic hint}) {
@@ -745,7 +750,7 @@ class RustdeskImpl {
   }
 
   String mainUriPrefixSync({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("32");
   }
 
   Future<String> mainGetLicense({dynamic hint}) {
@@ -777,11 +782,11 @@ class RustdeskImpl {
 
   String mainGetPeerSync({required String id, dynamic hint}) {
     // TODO:
-    throw UnimplementedError();
+    throw UnimplementedError("33");
   }
 
   Future<String> mainGetLanPeers({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("34");
   }
 
   Future<String> mainGetConnectStatus({dynamic hint}) {
@@ -790,7 +795,7 @@ class RustdeskImpl {
   }
 
   Future<void> mainCheckConnectStatus({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("35");
   }
 
   Future<bool> mainIsUsingPublicServer({dynamic hint}) {
@@ -800,7 +805,7 @@ class RustdeskImpl {
   }
 
   Future<void> mainDiscover({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("36");
   }
 
   Future<String> mainGetApiServer({dynamic hint}) {
@@ -812,7 +817,7 @@ class RustdeskImpl {
       required String body,
       required String header,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("37");
   }
 
   Future<bool> mainGetProxyStatus({dynamic hint}) {
@@ -826,11 +831,11 @@ class RustdeskImpl {
     required String header,
     dynamic hint,
   }) {
-    throw UnimplementedError();
+    throw UnimplementedError("38");
   }
 
   Future<String?> mainGetHttpStatus({required String url, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("39");
   }
 
   String mainGetLocalOption({required String key, dynamic hint}) {
@@ -838,7 +843,7 @@ class RustdeskImpl {
   }
 
   String mainGetEnv({required String key, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("40");
   }
 
   Future<void> mainSetLocalOption(
@@ -932,7 +937,7 @@ class RustdeskImpl {
   }
 
   Future<String> mainGetNewStoredPeers({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("41");
   }
 
   Future<void> mainForgetPassword({required String id, dynamic hint}) {
@@ -965,7 +970,7 @@ class RustdeskImpl {
 
   Future<String> mainLoadRecentPeersForAb(
       {required String filter, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("42");
   }
 
   Future<void> mainLoadFavPeers({dynamic hint}) {
@@ -973,23 +978,23 @@ class RustdeskImpl {
   }
 
   Future<void> mainLoadLanPeers({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("43");
   }
 
   Future<void> mainRemoveDiscovered({required String id, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("44");
   }
 
   Future<void> mainChangeTheme({required String dark, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("45");
   }
 
   Future<void> mainChangeLanguage({required String lang, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("46");
   }
 
   String mainVideoSaveDirectory({required bool root, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("47");
   }
 
   Future<void> mainSetUserDefaultOption(
@@ -1018,7 +1023,7 @@ class RustdeskImpl {
   }
 
   String mainGetDisplays({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("48");
   }
 
   Future<void> sessionAddPortForward(
@@ -1027,35 +1032,35 @@ class RustdeskImpl {
       required String remoteHost,
       required int remotePort,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("49");
   }
 
   Future<void> sessionRemovePortForward(
       {required UuidValue sessionId, required int localPort, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("50");
   }
 
   Future<void> sessionNewRdp({required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("51");
   }
 
   Future<void> sessionRequestVoiceCall(
       {required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("52");
   }
 
   Future<void> sessionCloseVoiceCall(
       {required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("53");
   }
 
   Future<void> cmHandleIncomingVoiceCall(
       {required int id, required bool accept, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("54");
   }
 
   Future<void> cmCloseVoiceCall({required int id, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("55");
   }
 
   Future<String> mainGetLastRemoteId({dynamic hint}) {
@@ -1064,7 +1069,7 @@ class RustdeskImpl {
   }
 
   Future<void> mainGetSoftwareUpdateUrl({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("56");
   }
 
   Future<String> mainGetHomeDir({dynamic hint}) {
@@ -1088,15 +1093,15 @@ class RustdeskImpl {
   }
 
   Future<String> cmGetClientsState({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("57");
   }
 
   Future<String?> cmCheckClientsLength({required int length, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("58");
   }
 
   Future<int> cmGetClientsLength({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("59");
   }
 
   Future<void> mainInit({required String appDir, dynamic hint}) {
@@ -1105,12 +1110,12 @@ class RustdeskImpl {
 
   Future<void> mainDeviceId({required String id, dynamic hint}) {
     // TODO: ?
-    throw UnimplementedError();
+    throw UnimplementedError("60");
   }
 
   Future<void> mainDeviceName({required String name, dynamic hint}) {
     // TODO: ?
-    throw UnimplementedError();
+    throw UnimplementedError("61");
   }
 
   Future<void> mainRemovePeer({required String id, dynamic hint}) {
@@ -1118,11 +1123,11 @@ class RustdeskImpl {
   }
 
   bool mainHasHwcodec({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("62");
   }
 
   bool mainHasVram({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("63");
   }
 
   String mainSupportedHwdecodings({dynamic hint}) {
@@ -1130,44 +1135,44 @@ class RustdeskImpl {
   }
 
   Future<bool> mainIsRoot({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("64");
   }
 
   int getDoubleClickTime({dynamic hint}) {
-    throw UnimplementedError();
+    return 500;
   }
 
   Future<void> mainStartDbusServer({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("66");
   }
 
   Future<void> mainSaveAb({required String json, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("67");
   }
 
   Future<void> mainClearAb({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("68");
   }
 
   Future<String> mainLoadAb({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("69");
   }
 
   Future<void> mainSaveGroup({required String json, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("70");
   }
 
   Future<void> mainClearGroup({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("71");
   }
 
   Future<String> mainLoadGroup({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("72");
   }
 
   Future<void> sessionSendPointer(
       {required UuidValue sessionId, required String msg, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("73");
   }
 
   Future<void> sessionSendMouse(
@@ -1188,7 +1193,7 @@ class RustdeskImpl {
 
   Future<void> sessionSendNote(
       {required UuidValue sessionId, required String note, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("74");
   }
 
   Future<String> sessionAlternativeCodecs(
@@ -1220,76 +1225,76 @@ class RustdeskImpl {
   }
 
   Future<void> mainSetHomeDir({required String home, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("75");
   }
 
   String mainGetDataDirIos({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("76");
   }
 
   Future<void> mainStopService({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("77");
   }
 
   Future<void> mainStartService({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("78");
   }
 
   Future<void> mainUpdateTemporaryPassword({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("79");
   }
 
   Future<void> mainSetPermanentPassword(
       {required String password, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("80");
   }
 
   Future<bool> mainCheckSuperUserPermission({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("81");
   }
 
   Future<void> mainCheckMouseTime({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("82");
   }
 
   Future<double> mainGetMouseTime({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("83");
   }
 
   Future<void> mainWol({required String id, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("84");
   }
 
   Future<void> mainCreateShortcut({required String id, dynamic hint}) {
     // TODO:
-    throw UnimplementedError();
+    throw UnimplementedError("85");
   }
 
   Future<void> cmSendChat(
       {required int connId, required String msg, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("86");
   }
 
   Future<void> cmLoginRes(
       {required int connId, required bool res, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("87");
   }
 
   Future<void> cmCloseConnection({required int connId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("88");
   }
 
   Future<void> cmRemoveDisconnectedConnection(
       {required int connId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("89");
   }
 
   Future<void> cmCheckClickTime({required int connId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("90");
   }
 
   Future<double> cmGetClickTime({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("91");
   }
 
   Future<void> cmSwitchPermission(
@@ -1297,23 +1302,23 @@ class RustdeskImpl {
       required String name,
       required bool enabled,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("92");
   }
 
   bool cmCanElevate({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("93");
   }
 
   Future<void> cmElevatePortable({required int connId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("94");
   }
 
   Future<void> cmSwitchBack({required int connId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("95");
   }
 
   Future<String> cmGetConfig({required String name, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("96");
   }
 
   Future<String> mainGetBuildDate({dynamic hint}) {
@@ -1366,89 +1371,89 @@ class RustdeskImpl {
   }
 
   bool mainIsInstalled({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("97");
   }
 
   void mainInitInputSource({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("98");
   }
 
   bool mainIsInstalledLowerVersion({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("99");
   }
 
   bool mainIsInstalledDaemon({required bool prompt, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("100");
   }
 
   bool mainIsProcessTrusted({required bool prompt, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("101");
   }
 
   bool mainIsCanScreenRecording({required bool prompt, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("102");
   }
 
   bool mainIsCanInputMonitoring({required bool prompt, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("103");
   }
 
   bool mainIsShareRdp({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("104");
   }
 
   Future<void> mainSetShareRdp({required bool enable, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("105");
   }
 
   bool mainGotoInstall({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("106");
   }
 
   String mainGetNewVersion({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("107");
   }
 
   bool mainUpdateMe({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("108");
   }
 
   Future<void> setCurSessionId({required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("109");
   }
 
   bool installShowRunWithoutInstall({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("110");
   }
 
   Future<void> installRunWithoutInstall({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("111");
   }
 
   Future<void> installInstallMe(
       {required String options, required String path, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("112");
   }
 
   String installInstallPath({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("113");
   }
 
   Future<void> mainAccountAuth(
       {required String op, required bool rememberMe, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("114");
   }
 
   Future<void> mainAccountAuthCancel({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("115");
   }
 
   Future<String> mainAccountAuthResult({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("116");
   }
 
   Future<void> mainOnMainWindowClose({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("117");
   }
 
   bool mainCurrentIsWayland({dynamic hint}) {
@@ -1460,7 +1465,7 @@ class RustdeskImpl {
   }
 
   bool mainHideDock({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("118");
   }
 
   bool mainHasFileClipboard({dynamic hint}) {
@@ -1472,11 +1477,11 @@ class RustdeskImpl {
   }
 
   Future<void> cmInit({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("119");
   }
 
   Future<void> mainStartIpcUrlServer({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("120");
   }
 
   Future<void> mainTestWallpaper({required int second, dynamic hint}) {
@@ -1526,7 +1531,7 @@ class RustdeskImpl {
   }
 
   Future<void> sendUrlScheme({required String url, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("121");
   }
 
   Future<void> pluginEvent(
@@ -1534,12 +1539,12 @@ class RustdeskImpl {
       required String peer,
       required Uint8List event,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("122");
   }
 
   Stream<EventToUI> pluginRegisterEventStream(
       {required String id, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("123");
   }
 
   String? pluginGetSessionOption(
@@ -1547,7 +1552,7 @@ class RustdeskImpl {
       required String peer,
       required String key,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("124");
   }
 
   Future<void> pluginSetSessionOption(
@@ -1556,12 +1561,12 @@ class RustdeskImpl {
       required String key,
       required String value,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("125");
   }
 
   String? pluginGetSharedOption(
       {required String id, required String key, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("126");
   }
 
   Future<void> pluginSetSharedOption(
@@ -1569,36 +1574,36 @@ class RustdeskImpl {
       required String key,
       required String value,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("127");
   }
 
   Future<void> pluginReload({required String id, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("128");
   }
 
   void pluginEnable({required String id, required bool v, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("129");
   }
 
   bool pluginIsEnabled({required String id, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("130");
   }
 
   bool pluginFeatureIsEnabled({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("131");
   }
 
   Future<void> pluginSyncUi({required String syncTo, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("132");
   }
 
   Future<void> pluginListReload({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("133");
   }
 
   Future<void> pluginInstall(
       {required String id, required bool b, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("134");
   }
 
   bool isSupportMultiUiSession({required String version, dynamic hint}) {
@@ -1610,11 +1615,11 @@ class RustdeskImpl {
   }
 
   String mainDefaultPrivacyModeImpl({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("135");
   }
 
   String mainSupportedPrivacyModeImpls({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("136");
   }
 
   String mainSupportedInputSource({dynamic hint}) {
@@ -1625,33 +1630,33 @@ class RustdeskImpl {
   }
 
   Future<String> mainGenerate2Fa({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("137");
   }
 
   Future<bool> mainVerify2Fa({required String code, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("138");
   }
 
   bool mainHasValid2FaSync({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("139");
   }
 
   String mainGetHardOption({required String key, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("140");
   }
 
   Future<void> mainCheckHwcodec({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("141");
   }
 
   Future<void> sessionRequestNewDisplayInitMsgs(
       {required UuidValue sessionId, required int display, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("142");
   }
 
   Future<String> mainHandleWaylandScreencastRestoreToken(
       {required String key, required String value, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("143");
   }
 
   bool mainIsOptionFixed({required String key, dynamic hint}) {
@@ -1659,53 +1664,53 @@ class RustdeskImpl {
   }
 
   bool mainGetUseTextureRender({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("144");
   }
 
   bool mainHasValidBotSync({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("145");
   }
 
   Future<String> mainVerifyBot({required String token, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("146");
   }
 
   String mainGetUnlockPin({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("147");
   }
 
   String mainSetUnlockPin({required String pin, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("148");
   }
 
   bool sessionGetEnableTrustedDevices(
       {required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("149");
   }
 
   Future<String> mainGetTrustedDevices({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("150");
   }
 
   Future<void> mainRemoveTrustedDevices({required String json, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("151");
   }
 
   Future<void> mainClearTrustedDevices({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("152");
   }
 
   Future<String> getVoiceCallInputDevice({required bool isCm, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("153");
   }
 
   Future<void> setVoiceCallInputDevice(
       {required bool isCm, required String device, dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("154");
   }
 
   bool isPresetPasswordMobileOnly({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("155");
   }
 
   String mainGetBuildinOption({required String key, dynamic hint}) {
@@ -1713,11 +1718,11 @@ class RustdeskImpl {
   }
 
   String installInstallOptions({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("156");
   }
 
   int mainMaxEncryptLen({dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("157");
   }
 
   sessionRenameFile(
@@ -1727,7 +1732,7 @@ class RustdeskImpl {
       required String newName,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError();
+    throw UnimplementedError("158");
   }
 
   void dispose() {}

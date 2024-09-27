@@ -55,14 +55,14 @@ class FileManagerPage extends StatefulWidget {
       required this.id,
       required this.password,
       required this.isSharedPassword,
-      required this.tabController,
+      this.tabController,
       this.forceRelay})
       : super(key: key);
   final String id;
   final String? password;
   final bool? isSharedPassword;
   final bool? forceRelay;
-  final DesktopTabController tabController;
+  final DesktopTabController? tabController;
 
   @override
   State<StatefulWidget> createState() => _FileManagerPageState();
@@ -97,11 +97,14 @@ class _FileManagerPageState extends State<FileManagerPage>
     if (!isLinux) {
       WakelockPlus.enable();
     }
+    if (isWeb) {
+      _ffi.ffiModel.updateEventListener(_ffi.sessionId, widget.id);
+    }
     debugPrint("File manager page init success with id ${widget.id}");
     _ffi.dialogManager.setOverlayState(_overlayKeyState);
     // Call onSelected in post frame callback, since we cannot guarantee that the callback will not call setState.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.tabController.onSelected?.call(widget.id);
+      widget.tabController?.onSelected?.call(widget.id);
     });
     WidgetsBinding.instance.addObserver(this);
   }
