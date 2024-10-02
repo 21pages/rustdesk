@@ -804,6 +804,37 @@ class _FileManagerViewState extends State<FileManagerView> {
                   ],
                 ),
               ),
+              if (isWeb)
+                Obx(() => ElevatedButton.icon(
+                    style: ButtonStyle(
+                      padding: MaterialStateProperty.all<EdgeInsetsGeometry>(
+                          isLocal
+                              ? EdgeInsets.only(left: 10)
+                              : EdgeInsets.only(right: 10)),
+                      backgroundColor: MaterialStateProperty.all(
+                        selectedItems.items.isEmpty
+                            ? MyTheme.accent80
+                            : MyTheme.accent,
+                      ),
+                    ),
+                    onPressed: () => {},
+                    icon: SvgPicture.asset(
+                      "assets/upload.svg",
+                      width: 32,
+                      height: 32,
+                      colorFilter: svgColor(selectedItems.items.isEmpty
+                          ? Theme.of(context).brightness == Brightness.light
+                              ? MyTheme.grayBg
+                              : MyTheme.darkGray
+                          : Colors.white),
+                    ),
+                    label: Text(
+                      translate('Upload'),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: Colors.white,
+                      ),
+                    ))).marginOnly(left: 16),
               Obx(() => ElevatedButton.icon(
                     style: ButtonStyle(
                       padding: MaterialStateProperty.all<EdgeInsetsGeometry>(
@@ -838,9 +869,13 @@ class _FileManagerViewState extends State<FileManagerView> {
                             ),
                           )
                         : RotatedBox(
-                            quarterTurns: 2,
+                            quarterTurns: isWeb ? 0 : 2,
                             child: SvgPicture.asset(
-                              "assets/arrow.svg",
+                              isWeb
+                                  ? "assets/download.svg"
+                                  : "assets/arrow.svg",
+                              width: 32,
+                              height: 32,
                               colorFilter: svgColor(selectedItems.items.isEmpty
                                   ? Theme.of(context).brightness ==
                                           Brightness.light
@@ -861,7 +896,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                                 : Colors.white),
                           )
                         : Text(
-                            translate('Receive'),
+                            translate(isWeb ? 'Download' : 'Receive'),
                             style: TextStyle(
                               color: selectedItems.items.isEmpty
                                   ? Theme.of(context).brightness ==
