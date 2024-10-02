@@ -500,7 +500,10 @@ class RustdeskImpl {
       required String path,
       required bool includeHidden,
       dynamic hint}) {
-    throw UnimplementedError("8");
+    return Future(() => js.context.callMethod('setByName', [
+          'read_remote_dir',
+          jsonEncode({'path': path, 'include_hidden': includeHidden})
+        ]));
   }
 
   Future<void> sessionSendFiles(
