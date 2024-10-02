@@ -74,7 +74,7 @@ class FileModel {
 
   Future<void> onReady() async {
     await evtLoop.onReady();
-    await localController.onReady();
+    if (!isWeb) await localController.onReady();
     await remoteController.onReady();
   }
 

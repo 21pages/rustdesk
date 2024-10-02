@@ -143,10 +143,11 @@ class _FileManagerPageState extends State<FileManagerPage>
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           body: Row(
             children: [
-              Flexible(
-                  flex: 3,
-                  child: dropArea(FileManagerView(
-                      model.localController, _ffi, _mouseFocusScope))),
+              if (!isWeb)
+                Flexible(
+                    flex: 3,
+                    child: dropArea(FileManagerView(
+                        model.localController, _ffi, _mouseFocusScope))),
               Flexible(
                   flex: 3,
                   child: dropArea(FileManagerView(
