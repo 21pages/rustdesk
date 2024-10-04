@@ -515,7 +515,17 @@ class RustdeskImpl {
       required bool includeHidden,
       required bool isRemote,
       dynamic hint}) {
-    throw UnimplementedError("9");
+    return Future(() => js.context.callMethod('setByName', [
+          'send_files',
+          jsonEncode({
+            'id': actId,
+            'path': path,
+            'to': to,
+            'file_num': fileNum,
+            'include_hidden': includeHidden,
+            'is_remote': isRemote
+          })
+        ]));
   }
 
   Future<void> sessionSetConfirmOverrideFile(
