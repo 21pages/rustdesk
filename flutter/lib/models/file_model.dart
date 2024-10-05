@@ -86,7 +86,7 @@ class FileModel {
   }
 
   Future<void> refreshAll() async {
-    await localController.refresh();
+    if (!isWeb) await localController.refresh();
     await remoteController.refresh();
   }
 
@@ -462,7 +462,8 @@ class FileController {
           to: PathUtil.join(toPath, from.name, isWindows),
           fileNum: 0,
           includeHidden: showHidden,
-          isRemote: isRemoteToLocal);
+          isRemote: isRemoteToLocal,
+          isDir: from.isDirectory);
       debugPrint(
           "path: ${from.path}, toPath: $toPath, to: ${PathUtil.join(toPath, from.name, isWindows)}");
     }
@@ -489,7 +490,7 @@ class FileController {
       } else if (item.isDirectory) {
         title = translate("Not an empty directory");
         dialogManager?.showLoading(translate("Waiting"));
-        final fd = await fileFetcher.fetchDirectoryRecursive(
+        final fd = await fileFetcher.fetchDirectoryRecursiveToRemove(
             jobID, item.path, items.isLocal, true);
         if (fd.path.isEmpty) {
           fd.path = item.path;
@@ -1116,11 +1117,11 @@ class FileFetcher {
     }
   }
 
-  Future<FileDirectory> fetchDirectoryRecursive(
+  Future<FileDirectory> fetchDirectoryRecursiveToRemove(
       int actID, String path, bool isLocal, bool showHidden) async {
     // TODO test Recursive is show hidden default?
     try {
-      await bind.sessionReadDirRecursive(
+      await bind.sessionReadDirToRemoveRecursive(
           sessionId: sessionId,
           actId: actID,
           path: path,
