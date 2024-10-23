@@ -11,6 +11,7 @@ use crossbeam_queue::ArrayQueue;
 use magnum_opus::{Channels::*, Decoder as AudioDecoder};
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
 use ringbuf::{ring_buffer::RbBase, Rb};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -1320,6 +1321,12 @@ impl PasswordSource {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnToken {
+    pub password: Vec<u8>,
+    pub session_id: u64,
+}
+
 /// Login config handler for [`Client`].
 #[derive(Default)]
 pub struct LoginConfigHandler {
@@ -1376,6 +1383,7 @@ impl LoginConfigHandler {
         mut force_relay: bool,
         adapter_luid: Option<i64>,
         shared_password: Option<String>,
+        conn_token: Option<String>,
     ) {
         let mut id = id;
         if id.contains("@") {
@@ -1419,10 +1427,21 @@ impl LoginConfigHandler {
         let config = self.load_config();
         self.remember = !config.password.is_empty();
         self.config = config;
-        let mut sid = rand::random();
+
+        let conn_token = conn_token
+            .map(|x| serde_json::from_str::<ConnToken>(&x).ok())
+            .flatten();
+        let mut sid = 0;
+        if let Some(token) = conn_token {
+            sid = token.session_id;
+            self.password = token.password; // use as last password
+        }
         if sid == 0 {
-            // you won the lottery
-            sid = 1;
+            sid = rand::random();
+            if sid == 0 {
+                // you won the lottery
+                sid = 1;
+            }
         }
         self.session_id = sid;
         self.supported_encoding = Default::default();
@@ -2222,6 +2241,14 @@ impl LoginConfigHandler {
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         msg_out
+    }
+
+    pub fn get_conn_token(&self) -> Option<String> {
+        serde_json::to_string(&ConnToken {
+            password: self.password.clone(),
+            session_id: self.session_id,
+        })
+        .ok()
     }
 }
 
