@@ -279,8 +279,8 @@ impl RendezvousMediator {
                     Ok(register_pk_response::Result::UUID_MISMATCH) => {
                         self.handle_uuid_mismatch(sink).await?;
                     }
-                    _ => {
-                        log::error!("unknown RegisterPkResponse");
+                    v => {
+                        log::error!("unknown RegisterPkResponse: {v:?}");
                     }
                 }
                 if rpr.keep_alive > 0 {
@@ -362,15 +362,18 @@ impl RendezvousMediator {
                 }
                 _ = timer.tick() => {
                     if SHOULD_EXIT.load(Ordering::SeqCst) {
+                        log::info!("Rendezvous connection is closed");
                         break;
                     }
                     // https://www.emqx.com/en/blog/mqtt-keep-alive
                     if last_recv_msg.elapsed().as_millis() as u64 > rz.keep_alive as u64 * 3 / 2 {
+                        log::error!("Rendezvous connection is timeout");
                         bail!("Rendezvous connection is timeout");
                     }
                     if (!Config::get_key_confirmed() ||
                         !Config::get_host_key_confirmed(&host)) &&
                         last_register_sent.map(|x| x.elapsed().as_millis() as i64).unwrap_or(REG_INTERVAL) >= REG_INTERVAL {
+                        log::info!("register_pk");
                         rz.register_pk(Sink::Stream(&mut conn)).await?;
                         last_register_sent = Some(Instant::now());
                     }
@@ -389,14 +392,14 @@ impl RendezvousMediator {
         } else {
             false
         };
-        if (cfg!(debug_assertions) && option_env!("TEST_TCP").is_some())
-            || is_http_proxy
-            || get_builtin_option(config::keys::OPTION_DISABLE_UDP) == "Y"
-        {
-            Self::start_tcp(server, host).await
-        } else {
-            Self::start_udp(server, host).await
-        }
+        // if (cfg!(debug_assertions) && option_env!("TEST_TCP").is_some())
+        //     || is_http_proxy
+        //     || get_builtin_option(config::keys::OPTION_DISABLE_UDP) == "Y"
+        // {
+        Self::start_tcp(server, host).await
+        // } else {
+        //     Self::start_udp(server, host).await
+        // }
     }
 
     async fn handle_request_relay(&self, rr: RequestRelay, server: ServerPtr) -> ResultType<()> {
@@ -585,8 +588,10 @@ impl RendezvousMediator {
     }
 
     async fn register_peer(&mut self, socket: Sink<'_>) -> ResultType<()> {
+        log::info!("register_peer to {}", self.host);
         let solving = SOLVING_PK_MISMATCH.lock().await;
         if !(solving.is_empty() || *solving == self.host) {
+            log::info!("solving no need");
             return Ok(());
         }
         drop(solving);
@@ -598,7 +603,7 @@ impl RendezvousMediator {
             return self.register_pk(socket).await;
         }
         let id = Config::get_id();
-        log::trace!(
+        log::info!(
             "Register my id {:?} to rendezvous server {:?}",
             id,
             self.addr,

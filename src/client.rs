@@ -329,6 +329,7 @@ impl Client {
 
         let start = std::time::Instant::now();
         let mut peer_addr = Config::get_any_listen_addr(true);
+        log::info!("get_any_listen_addr peer_addr: {peer_addr:?}");
         let mut peer_nat_type = NatType::UNKNOWN_NAT;
         let my_nat_type = crate::get_nat_type(100).await;
         let mut is_local = false;
@@ -358,6 +359,7 @@ impl Client {
             {
                 match msg_in.union {
                     Some(rendezvous_message::Union::PunchHoleResponse(ph)) => {
+                        log::info!("Punch hole response: {:?}", ph);
                         if ph.socket_addr.is_empty() {
                             if !ph.other_failure.is_empty() {
                                 bail!(ph.other_failure);
@@ -383,6 +385,7 @@ impl Client {
                             signed_id_pk = ph.pk.into();
                             relay_server = ph.relay_server;
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
+                            log::info!("decode peer_addr: {peer_addr:?}");
                             feedback = ph.feedback;
                             log::info!("Hole Punched {} = {}", peer, peer_addr);
                             break;
