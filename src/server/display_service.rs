@@ -226,6 +226,7 @@ fn get_displays_msg() -> Option<Message> {
 }
 
 fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
+    let mut counter = 0;
     while sp.ok() {
         sp.snapshot(|sps| {
             if !TEMP_IGNORE_DISPLAYS_CHANGED.load(Ordering::Relaxed) {
@@ -242,6 +243,15 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
             log::info!("Displays changed");
         }
         std::thread::sleep(Duration::from_millis(300));
+        counter += 1;
+        // 900ms timer
+        if counter % 3 == 0 {
+            counter = 0;
+            video_service::VIDEO_QOS
+                .lock()
+                .unwrap()
+                .refresh(Some(video_qos::RefreshType::Timer));
+        }
     }
 
     Ok(())
