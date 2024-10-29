@@ -489,6 +489,8 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut first_frame = true;
     let capture_width = c.width;
     let capture_height = c.height;
+    let mut current_fps = VIDEO_QOS.lock().unwrap().fps();
+    log::info!("============================= service fps: {}", current_fps);
 
     while sp.ok() {
         #[cfg(windows)]
@@ -496,6 +498,10 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         let mut video_qos = VIDEO_QOS.lock().unwrap();
         spf = video_qos.spf();
+        if current_fps != video_qos.fps() {
+            current_fps = video_qos.fps();
+            log::info!("============================= service fps: {}", current_fps);
+        }
         if quality != video_qos.quality() {
             log::debug!("quality: {:?} -> {:?}", quality, video_qos.quality());
             quality = video_qos.quality();
@@ -728,13 +734,7 @@ fn setup_encoder(
     );
     Encoder::set_fallback(&encoder_cfg);
     let codec_format = Encoder::negotiated_codec();
-    let recorder = get_recorder(
-        c.width,
-        c.height,
-        &codec_format,
-        record_incoming,
-        display_idx,
-    );
+    let recorder = get_recorder(record_incoming, display_idx);
     let use_i444 = Encoder::use_i444(&encoder_cfg);
     let encoder = Encoder::new(encoder_cfg.clone(), use_i444)?;
     Ok((encoder, encoder_cfg, codec_format, use_i444, recorder))
@@ -816,13 +816,7 @@ fn get_encoder_config(
     }
 }
 
-fn get_recorder(
-    width: usize,
-    height: usize,
-    codec_format: &CodecFormat,
-    record_incoming: bool,
-    display: usize,
-) -> Arc<Mutex<Option<Recorder>>> {
+fn get_recorder(record_incoming: bool, display: usize) -> Arc<Mutex<Option<Recorder>>> {
     #[cfg(windows)]
     let root = crate::platform::is_root();
     #[cfg(not(windows))]

@@ -9,6 +9,7 @@ use hbb_common::get_version_number;
 use hbb_common::protobuf::MessageField;
 use scrap::Display;
 use std::sync::atomic::{AtomicBool, Ordering};
+use video_service::VIDEO_QOS;
 
 // https://github.com/rustdesk/rustdesk/discussions/6042, avoiding dbus call
 
@@ -226,6 +227,7 @@ fn get_displays_msg() -> Option<Message> {
 }
 
 fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
+    let mut counter = 0;
     while sp.ok() {
         sp.snapshot(|sps| {
             if !TEMP_IGNORE_DISPLAYS_CHANGED.load(Ordering::Relaxed) {
@@ -242,6 +244,14 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
             log::info!("Displays changed");
         }
         std::thread::sleep(Duration::from_millis(300));
+        counter += 1;
+        if counter % 3 == 0 {
+            counter = 0;
+            VIDEO_QOS
+                .lock()
+                .unwrap()
+                .refresh(Some(video_qos::RefreshType::Timer));
+        }
     }
 
     Ok(())

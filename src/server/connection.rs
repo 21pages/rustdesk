@@ -228,7 +228,8 @@ pub struct Connection {
     #[cfg(target_os = "linux")]
     linux_headless_handle: LinuxHeadlessHandle,
     closed: bool,
-    delay_response_instant: Instant,
+    send_test_delay_instant: Option<Instant>,
+    recv_test_delay_instant: Option<Instant>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     start_cm_ipc_para: Option<StartCmIpcPara>,
     auto_disconnect_timer: Option<(Instant, u64)>,
@@ -278,7 +279,7 @@ impl Subscriber for ConnInner {
     }
 }
 
-const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
+pub const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
 const SEC30: Duration = Duration::from_secs(30);
 const H1: Duration = Duration::from_secs(3600);
 const MILLI1: Duration = Duration::from_millis(1);
@@ -376,7 +377,8 @@ impl Connection {
             #[cfg(target_os = "linux")]
             linux_headless_handle,
             closed: false,
-            delay_response_instant: Instant::now(),
+            send_test_delay_instant: None,
+            recv_test_delay_instant: None,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             start_cm_ipc_para: Some(StartCmIpcPara {
                 rx_to_cm,
@@ -442,6 +444,8 @@ impl Connection {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         std::thread::spawn(move || Self::handle_input(_rx_input, tx_cloned));
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
+        let (mut last_rx_video_elapsed, mut last_set_min_fps_instant): (_, Option<Instant>) =
+            (None, None);
 
         loop {
             tokio::select! {
@@ -646,6 +650,12 @@ impl Connection {
                         conn.on_close(&err.to_string(), false).await;
                         break;
                     }
+                    let elapsed = instant.elapsed().as_millis();
+                    if elapsed > 200 && last_set_min_fps_instant.map(|x| x.elapsed().as_millis() > 500).unwrap_or(true) {
+                        last_set_min_fps_instant = Some(Instant::now());
+                        video_service::VIDEO_QOS.lock().unwrap().set_min_fps();
+                    }
+                    last_rx_video_elapsed = Some(elapsed);
                 },
                 Some((instant, value)) = rx.recv() => {
                     let latency = instant.elapsed().as_millis() as i64;
@@ -727,6 +737,7 @@ impl Connection {
                         conn.on_close("Timeout", true).await;
                         break;
                     }
+                    video_service::VIDEO_QOS.lock().unwrap().user_test_delay(conn.inner.id(), conn.send_test_delay_instant.clone(), conn.recv_test_delay_instant.clone(), last_rx_video_elapsed);
                     // The control end will jump out of the loop after receiving LoginResponse and will not reply to the TestDelay
                     if conn.last_test_delay.is_none() && !(conn.port_forward_socket.is_some() && conn.authorized) {
                         conn.last_test_delay = Some(Instant::now());
@@ -737,8 +748,8 @@ impl Connection {
                             ..Default::default()
                         });
                         conn.send(msg_out.into()).await;
+                        conn.send_test_delay_instant = Some(Instant::now());
                     }
-                    video_service::VIDEO_QOS.lock().unwrap().user_delay_response_elapsed(conn.inner.id(), conn.delay_response_instant.elapsed().as_millis());
                 }
             }
         }
@@ -1868,13 +1879,9 @@ impl Connection {
                 if let Some(tm) = self.last_test_delay {
                     self.last_test_delay = None;
                     let new_delay = tm.elapsed().as_millis() as u32;
-                    video_service::VIDEO_QOS
-                        .lock()
-                        .unwrap()
-                        .user_network_delay(self.inner.id(), new_delay);
                     self.network_delay = new_delay;
                 }
-                self.delay_response_instant = Instant::now();
+                self.recv_test_delay_instant = Some(Instant::now());
             }
         } else if let Some(message::Union::SwitchSidesResponse(_s)) = msg.union {
             #[cfg(feature = "flutter")]
@@ -3773,6 +3780,8 @@ mod raii {
     // ALIVE_CONNS: all connections, including unauthorized connections
     // AUTHED_CONNS: all authorized connections
 
+    use video_service::VIDEO_QOS;
+
     use super::*;
     pub struct ConnectionID(i32);
 
@@ -3808,6 +3817,9 @@ mod raii {
             _ONCE.call_once(|| {
                 shutdown_hooks::add_shutdown_hook(connection_shutdown_hook);
             });
+            if conn_type == AuthConnType::Remote {
+                VIDEO_QOS.lock().unwrap().on_connection_open(conn_id);
+            }
             Self(conn_id, conn_type)
         }
 
