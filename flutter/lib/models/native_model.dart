@@ -209,9 +209,20 @@ class PlatformFFI {
       await _ffiBind.mainDeviceId(id: id);
       await _ffiBind.mainDeviceName(name: name);
       await _ffiBind.mainSetHomeDir(home: _homeDir);
+      var config = {
+        'app-name': 'dev-test',
+        'override-settings': {
+          // 'approve-mode': 'password',
+          'verification-method': 'use-temporary-password',
+        },
+        'default-settings': {
+          'approve-mode': 'click',
+          'verification-method': 'use-temporary-password',
+        }
+      };
       await _ffiBind.mainInit(
         appDir: _dir,
-        customClientConfig: '',
+        customClientConfig: json.encode(config),
       );
     } catch (e) {
       debugPrintStack(label: 'initialize failed: $e');
