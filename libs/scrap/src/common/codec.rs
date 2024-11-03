@@ -884,6 +884,7 @@ pub enum Quality {
     Balanced,
     Low,
     Custom(u32),
+    Bitrate(u32),
 }
 
 impl Default for Quality {
@@ -899,6 +900,11 @@ impl Quality {
             _ => false,
         }
     }
+}
+
+pub enum GoogleQuality {
+    Factor(u32, u32, u32),
+    Bitrate(u32),
 }
 
 pub fn base_bitrate(width: u32, height: u32) -> u32 {

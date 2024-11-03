@@ -6,6 +6,7 @@
 
 include!(concat!(env!("OUT_DIR"), "/aom_ffi.rs"));
 
+use super::codec::GoogleQuality;
 use crate::codec::{base_bitrate, codec_thread_num, Quality};
 use crate::{codec::EncoderApi, EncodeFrame, STRIDE_ALIGN};
 use crate::{common::GoogleImage, generate_call_macro, generate_call_ptr_macro, Error, Result};
@@ -18,6 +19,7 @@ use hbb_common::{
     ResultType,
 };
 use std::{ptr, slice};
+use webrtc::{DEFAULT_Q_MAX, DEFAULT_Q_MIN};
 
 generate_call_macro!(call_aom, false);
 generate_call_macro!(call_aom_allow_err, true);
@@ -116,20 +118,30 @@ mod webrtc {
         } else {
             c.kf_mode = aom_kf_mode::AOM_KF_DISABLED;
         }
-        let (q_min, q_max, b) = AomEncoder::convert_quality(cfg.quality);
-        if q_min > 0 && q_min < q_max && q_max < 64 {
-            c.rc_min_quantizer = q_min;
-            c.rc_max_quantizer = q_max;
-        } else {
-            c.rc_min_quantizer = DEFAULT_Q_MIN;
-            c.rc_max_quantizer = DEFAULT_Q_MAX;
-        }
-        let base_bitrate = base_bitrate(cfg.width as _, cfg.height as _);
-        let bitrate = base_bitrate * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
-        } else {
-            c.rc_target_bitrate = base_bitrate;
+        match AomEncoder::convert_quality(cfg.quality) {
+            GoogleQuality::Factor(q_min, q_max, b) => {
+                if q_min > 0 && q_min < q_max && q_max < 64 {
+                    c.rc_min_quantizer = q_min;
+                    c.rc_max_quantizer = q_max;
+                } else {
+                    c.rc_min_quantizer = DEFAULT_Q_MIN;
+                    c.rc_max_quantizer = DEFAULT_Q_MAX;
+                }
+                let base_bitrate = base_bitrate(cfg.width as _, cfg.height as _);
+                let bitrate = base_bitrate * b / 100;
+                if bitrate > 0 {
+                    c.rc_target_bitrate = bitrate;
+                } else {
+                    c.rc_target_bitrate = base_bitrate;
+                }
+            }
+            GoogleQuality::Bitrate(bitrate) => {
+                if bitrate > 0 {
+                    c.rc_target_bitrate = bitrate;
+                    c.rc_min_quantizer = DEFAULT_Q_MIN;
+                    c.rc_max_quantizer = DEFAULT_Q_MAX;
+                }
+            }
         }
         c.rc_undershoot_pct = 50;
         c.rc_overshoot_pct = 50;
@@ -275,15 +287,26 @@ impl EncoderApi for AomEncoder {
 
     fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
         let mut c = unsafe { *self.ctx.config.enc.to_owned() };
-        let (q_min, q_max, b) = Self::convert_quality(quality);
-        if q_min > 0 && q_min < q_max && q_max < 64 {
-            c.rc_min_quantizer = q_min;
-            c.rc_max_quantizer = q_max;
+        match Self::convert_quality(quality) {
+            GoogleQuality::Factor(q_min, q_max, b) => {
+                if q_min > 0 && q_min < q_max && q_max < 64 {
+                    c.rc_min_quantizer = q_min;
+                    c.rc_max_quantizer = q_max;
+                }
+                let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
+                if bitrate > 0 {
+                    c.rc_target_bitrate = bitrate;
+                }
+            }
+            GoogleQuality::Bitrate(bitrate) => {
+                if bitrate > 0 {
+                    c.rc_target_bitrate = bitrate;
+                    c.rc_min_quantizer = DEFAULT_Q_MIN;
+                    c.rc_max_quantizer = DEFAULT_Q_MAX
+                }
+            }
         }
-        let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
-        }
+
         call_aom!(aom_codec_enc_config_set(&mut self.ctx, &c));
         Ok(())
     }
@@ -369,16 +392,17 @@ impl AomEncoder {
         }
     }
 
-    pub fn convert_quality(quality: Quality) -> (u32, u32, u32) {
+    pub fn convert_quality(quality: Quality) -> GoogleQuality {
         // we can use lower bitrate for av1
         match quality {
-            Quality::Best => (12, 25, 100),
-            Quality::Balanced => (12, 35, 100 * 2 / 3),
-            Quality::Low => (18, 45, 50),
+            Quality::Best => GoogleQuality::Factor(12, 25, 100),
+            Quality::Balanced => GoogleQuality::Factor(12, 35, 100 * 2 / 3),
+            Quality::Low => GoogleQuality::Factor(18, 45, 50),
             Quality::Custom(b) => {
                 let (q_min, q_max) = Self::calc_q_values(b);
-                (q_min, q_max, b)
+                GoogleQuality::Factor(q_min, q_max, b)
             }
+            Quality::Bitrate(b) => GoogleQuality::Bitrate(b),
         }
     }
 

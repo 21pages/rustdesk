@@ -446,6 +446,7 @@ impl Connection {
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
         let (mut last_rx_video_elapsed, mut last_set_min_fps_instant): (_, Option<Instant>) =
             (None, None);
+        let mut video_size = 0;
 
         loop {
             tokio::select! {
@@ -656,6 +657,9 @@ impl Connection {
                         video_service::VIDEO_QOS.lock().unwrap().set_min_fps();
                     }
                     last_rx_video_elapsed = Some(elapsed);
+                    if video_size < usize::MAX / 2 {
+                        video_size += value.compute_size() as usize;
+                    }
                 },
                 Some((instant, value)) = rx.recv() => {
                     let latency = instant.elapsed().as_millis() as i64;
@@ -737,7 +741,8 @@ impl Connection {
                         conn.on_close("Timeout", true).await;
                         break;
                     }
-                    video_service::VIDEO_QOS.lock().unwrap().user_test_delay(conn.inner.id(), conn.send_test_delay_instant.clone(), conn.recv_test_delay_instant.clone(), last_rx_video_elapsed);
+                    video_service::VIDEO_QOS.lock().unwrap().user_test_delay(conn.inner.id(), conn.send_test_delay_instant.clone(), conn.recv_test_delay_instant.clone(), last_rx_video_elapsed, video_size);
+                    video_size = 0;
                     // The control end will jump out of the loop after receiving LoginResponse and will not reply to the TestDelay
                     if conn.last_test_delay.is_none() && !(conn.port_forward_socket.is_some() && conn.authorized) {
                         conn.last_test_delay = Some(Instant::now());

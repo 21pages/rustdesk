@@ -9,6 +9,7 @@ pub const MAX_FPS: u32 = 120;
 const MIN_AVG_DELAY: u128 = 100; // use average delay as base delay
 const USER_DELAY_HISTORY_LEN: usize = 30; // length of UserData.delay_history
 const USER_DELAYED_FPS_HISTORY_LEN: usize = 5; // length of UserData.delayed_fps_history
+const USER_VIDEO_SIZE_HISTORY_LEN: usize = 10; // length of UserData.delayed_video_size
 const QOS_HISTORY_FPS_LEN: usize = 10; // length of VideoQoS.history_fps
 const QOS_HISTORY_DELAY_LEN: usize = 10; // length of VideoQoS.history_fps
 
@@ -25,6 +26,7 @@ struct UserData {
     last_recv_instant: Option<Instant>, // instant receive TestDelay
     rx_video_elapsed: Option<u128>,     // last rx_video elapsed
     quality: Option<(i64, Quality)>,    // (time, quality)
+    delayed_video_size: Vec<usize>,     // delayed video size
     record: bool,                       // recording
 }
 
@@ -200,6 +202,30 @@ impl UserData {
             self.last_delay.unwrap_or(MIN_AVG_DELAY)
         }
     }
+
+    fn calc_video_delayed_bitrate(&self) -> Option<u32> {
+        if self.delayed_video_size.len() < USER_VIDEO_SIZE_HISTORY_LEN / 2 {
+            return None;
+        }
+        let mut video_size = 0;
+        for i in self.delayed_video_size.iter() {
+            video_size += i;
+        }
+        let video_size = video_size / self.delayed_video_size.len();
+        let video_size = video_size as u32;
+        let video_bandwidth = video_size * 8 / 1000 * 4 / 5; // 80%
+        return Some(video_bandwidth);
+        // println!("================== video_bandwidth: {}", video_bandwidth);
+        // let mut available = vec![64, 128, 256, 512, 1024, 2048, 4096, 8192]; // kbps
+        // available.sort();
+        // available.reverse();
+        // for i in available.iter() {
+        //     if video_bandwidth > *i {
+        //         return Some(*i);
+        //     }
+        // }
+        // return Some(64);
+    }
 }
 
 pub struct VideoQoS {
@@ -345,16 +371,26 @@ impl VideoQoS {
         // fps too low or delay too high
         // Whether to consider delay? It doesn't minus the base delay, high delay relay always get lower quality.
         let result = if avg_fps < 10 || avg_delay > 500 {
+            // let result = if true {
             // User quality will keep unchanged unless new connection, new disconnection or new image quality setting.
-            // Each user quality has a unique corresponding delayed quality.
-            let delayed_quality = match user_quality {
-                Quality::Best => Quality::Balanced,
-                Quality::Balanced => Quality::Low,
-                Quality::Low => Quality::Custom(20),
-                Quality::Custom(b) => Quality::Custom((b / 2).max(20)),
-            };
-            self.delayed_quality = Some(delayed_quality);
-            delayed_quality
+            let delayed_bitrate = self
+                .users
+                .iter()
+                .map(|u| u.1.calc_video_delayed_bitrate().unwrap_or_default())
+                .filter(|u| *u > 0)
+                .min_by(|a, b| a.cmp(&b));
+            if let Some(delayed_bitrate) = delayed_bitrate {
+                println!("================== delayed_bitrate: {}", delayed_bitrate);
+                if delayed_bitrate > 0 {
+                    let delayed_quality = Quality::Bitrate(delayed_bitrate);
+                    self.delayed_quality = Some(delayed_quality);
+                    delayed_quality
+                } else {
+                    user_quality
+                }
+            } else {
+                user_quality
+            }
         } else if let Some(delayed_quality) = self.delayed_quality {
             // keep delayed quality if fps < 20 or delay > 200
             if self.quality == delayed_quality && (avg_fps < 20 || avg_delay > 200) {
@@ -446,7 +482,12 @@ impl VideoQoS {
         send: Option<Instant>,
         recv: Option<Instant>,
         last_rx_video_elapsed: Option<u128>,
+        video_size: usize,
     ) {
+        println!(
+            "================= video_size: {}kb/s",
+            video_size * 8 / 1024
+        );
         let elapsed = match (send, recv) {
             (Some(send), Some(recv)) if recv > send => recv.duration_since(send),
             (Some(send), None) => send.elapsed(),
@@ -468,6 +509,13 @@ impl VideoQoS {
                 user.delay_history.pop();
             }
             user.delay_history.push(elapsed);
+            if elapsed > crate::server::TEST_DELAY_TIMEOUT.as_millis() + 100 {
+                if user.delayed_video_size.len() > USER_VIDEO_SIZE_HISTORY_LEN {
+                    user.delayed_video_size.remove(0);
+                }
+                user.delayed_video_size
+                    .push(video_size * 1000 / elapsed as usize);
+            }
             user.calc_fps();
         }
     }

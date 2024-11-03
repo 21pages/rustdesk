@@ -66,12 +66,11 @@ impl EncoderApi for HwRamEncoder {
         match cfg {
             EncoderCfg::HWRAM(config) => {
                 let rc = Self::rate_control(&config);
-                let b = Self::convert_quality(&config.name, config.quality);
-                let base_bitrate = base_bitrate(config.width as _, config.height as _);
-                let mut bitrate = base_bitrate * b / 100;
-                if base_bitrate <= 0 {
-                    bitrate = base_bitrate;
-                }
+                let mut bitrate = Self::convert_quality(
+                    &config.name,
+                    config.quality,
+                    base_bitrate(config.width as _, config.height as _),
+                );
                 bitrate = Self::check_bitrate_range(&config, bitrate);
                 let gop = config.keyframe_interval.unwrap_or(DEFAULT_GOP as _) as i32;
                 let ctx = EncodeContext {
@@ -176,8 +175,11 @@ impl EncoderApi for HwRamEncoder {
     }
 
     fn set_quality(&mut self, quality: crate::codec::Quality) -> ResultType<()> {
-        let b = Self::convert_quality(&self.config.name, quality);
-        let mut bitrate = base_bitrate(self.config.width as _, self.config.height as _) * b / 100;
+        let mut bitrate = Self::convert_quality(
+            &self.config.name,
+            quality,
+            base_bitrate(self.config.width as _, self.config.height as _),
+        );
         if bitrate > 0 {
             bitrate = Self::check_bitrate_range(&self.config, self.bitrate);
             self.encoder.set_bitrate(bitrate as _).ok();
@@ -257,21 +259,27 @@ impl HwRamEncoder {
         RC_CBR
     }
 
-    pub fn convert_quality(name: &str, quality: crate::codec::Quality) -> u32 {
+    pub fn convert_quality(name: &str, quality: crate::codec::Quality, base_bitrate: u32) -> u32 {
         use crate::codec::Quality;
-        let quality = match quality {
-            Quality::Best => 150,
-            Quality::Balanced => 100,
-            Quality::Low => 50,
-            Quality::Custom(b) => b,
-        };
-        let factor = if name.contains("mediacodec") {
-            // https://stackoverflow.com/questions/26110337/what-are-valid-bit-rates-to-set-for-mediacodec?rq=3
-            5
-        } else {
-            1
-        };
-        quality * factor
+        match quality {
+            Quality::Bitrate(bitrate) => bitrate,
+            _ => {
+                let quality = match quality {
+                    Quality::Best => 150,
+                    Quality::Balanced => 100,
+                    Quality::Low => 50,
+                    Quality::Custom(b) => b,
+                    Quality::Bitrate(_) => 100, // unreachable
+                };
+                let factor = if name.contains("mediacodec") {
+                    // https://stackoverflow.com/questions/26110337/what-are-valid-bit-rates-to-set-for-mediacodec?rq=3
+                    5
+                } else {
+                    1
+                };
+                quality * factor * base_bitrate / 100
+            }
+        }
     }
 
     pub fn check_bitrate_range(_config: &HwRamEncoderConfig, bitrate: u32) -> u32 {
