@@ -10,7 +10,6 @@ const MIN_AVG_DELAY: u128 = 100; // use average delay as base delay
 const USER_DELAY_HISTORY_LEN: usize = 30; // length of UserData.delay_history
 const USER_DELAYED_FPS_HISTORY_LEN: usize = 5; // length of UserData.delayed_fps_history
 const QOS_HISTORY_FPS_LEN: usize = 10; // length of VideoQoS.history_fps
-const QOS_HISTORY_DELAY_LEN: usize = 10; // length of VideoQoS.history_fps
 
 #[derive(Default, Debug, Clone)]
 struct UserData {
@@ -212,7 +211,6 @@ pub struct VideoQoS {
     bitrate_store: u32,
     support_abr: HashMap<usize, bool>,
     history_fps: Vec<u32>,
-    history_delay: Vec<u128>,
 }
 
 impl Default for VideoQoS {
@@ -225,7 +223,6 @@ impl Default for VideoQoS {
             bitrate_store: 0,
             support_abr: Default::default(),
             history_fps: Default::default(),
-            history_delay: Default::default(),
         }
     }
 }
@@ -320,41 +317,21 @@ impl VideoQoS {
         }
         let avg_fps = self.history_fps.iter().sum::<u32>() / self.history_fps.len() as u32;
 
-        // avg delay
-        let max_user_delay = self
-            .users
-            .iter()
-            .map(|u| u.1.get_avg_delay())
-            .max_by(|a, b| a.cmp(&b));
-        let Some(max_user_delay) = max_user_delay else {
-            return user_quality;
-        };
-        let max_history_delay_len = QOS_HISTORY_DELAY_LEN;
-        if self.history_delay.len() > max_history_delay_len {
-            self.history_delay.remove(0);
-        }
-        self.history_delay.push(max_user_delay);
-        if self.history_delay.len() < max_history_delay_len / 2 {
-            return user_quality;
-        }
-        let avg_delay = self.history_delay.iter().sum::<u128>() / self.history_delay.len() as u128;
-
-        // fps too low or delay too high
-        // Whether to consider delay? It doesn't minus the base delay, high delay relay always get lower quality.
-        let result = if avg_fps < 10 || avg_delay > 500 {
+        // fps too low
+        let result = if avg_fps < 10 {
             // User quality will keep unchanged unless new connection, new disconnection or new image quality setting.
             // Each user quality has a unique corresponding delayed quality.
             let delayed_quality = match user_quality {
                 Quality::Best => Quality::Balanced,
                 Quality::Balanced => Quality::Low,
-                Quality::Low => Quality::Custom(20),
+                Quality::Low => Quality::Low,
                 Quality::Custom(b) => Quality::Custom((b / 2).max(20)),
             };
             self.delayed_quality = Some(delayed_quality);
             delayed_quality
         } else if let Some(delayed_quality) = self.delayed_quality {
-            // keep delayed quality if fps < 25 or delay > 200
-            if self.quality == delayed_quality && (avg_fps < 25 || avg_delay > 200) {
+            // keep delayed quality if fps < 20
+            if self.quality == delayed_quality && avg_fps < 20 {
                 delayed_quality
             } else {
                 user_quality
@@ -365,10 +342,7 @@ impl VideoQoS {
         if Some(result) != self.delayed_quality {
             self.delayed_quality = None;
         }
-        println!(
-            "avg_fps: {}, avg_delay: {}, quality: {:?}",
-            avg_fps, avg_delay, result
-        );
+        println!("avg_fps: {},  quality: {:?}", avg_fps, result);
         result
     }
 
