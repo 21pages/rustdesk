@@ -106,6 +106,15 @@ class GroupModel {
             });
         final resp = await http.get(uri, headers: getHttpHeaders());
         _statusCode = resp.statusCode;
+        bind.mainLogToRust(msg: 'get users statusCode: ${resp.statusCode}');
+        bind.mainLogToRust(
+            msg: 'get users bodyBytes: ${jsonEncode(resp.bodyBytes)}');
+        bind.mainLogToRust(msg: 'get users body: ${resp.body}');
+        try {
+          utf8.decode(resp.bodyBytes);
+        } catch (e) {
+          bind.mainLogToRust(msg: 'get users utf8.decode error: $e');
+        }
         Map<String, dynamic> json =
             _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
@@ -141,6 +150,7 @@ class GroupModel {
       } while (current * pageSize < total);
       return true;
     } catch (err) {
+      bind.mainLogToRust(msg: '_getUsers: $err');
       debugPrint('get accessible users: $err');
       groupLoadError.value =
           '${translate('pull_group_failed_tip')}: ${translate(err.toString())}';
@@ -171,7 +181,15 @@ class GroupModel {
             queryParameters: queryParameters);
         final resp = await http.get(uri, headers: getHttpHeaders());
         _statusCode = resp.statusCode;
-
+        bind.mainLogToRust(msg: 'get peers statusCode: ${resp.statusCode}');
+        bind.mainLogToRust(
+            msg: 'get peers bodyBytes: ${jsonEncode(resp.bodyBytes)}');
+        bind.mainLogToRust(msg: 'get peers body: ${resp.body}');
+        try {
+          utf8.decode(resp.bodyBytes);
+        } catch (e) {
+          bind.mainLogToRust(msg: 'get peers utf8.decode error: $e');
+        }
         Map<String, dynamic> json =
             _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
@@ -201,6 +219,7 @@ class GroupModel {
       } while (current * pageSize < total);
       return true;
     } catch (err) {
+      bind.mainLogToRust(msg: '_getPeers: $err');
       debugPrint('get accessible peers: $err');
       groupLoadError.value =
           '${translate('pull_group_failed_tip')}: ${translate(err.toString())}';
@@ -213,6 +232,8 @@ class GroupModel {
       Map<String, dynamic> json = jsonDecode(body);
       return json;
     } catch (e) {
+      bind.mainLogToRust(msg: '_jsonDecodeResp body: $e');
+      bind.mainLogToRust(msg: '_jsonDecodeResp error: $e');
       final err = body.isNotEmpty && body.length < 128 ? body : e.toString();
       if (statusCode != 200) {
         throw 'HTTP $statusCode, $err';
