@@ -110,13 +110,13 @@ class GroupModel {
         bind.mainLogToRust(
             msg: 'get users bodyBytes: ${jsonEncode(resp.bodyBytes)}');
         bind.mainLogToRust(msg: 'get users body: ${resp.body}');
+        var body = resp.body;
         try {
-          utf8.decode(resp.bodyBytes);
+          body = utf8.decode(resp.bodyBytes);
         } catch (e) {
           bind.mainLogToRust(msg: 'get users utf8.decode error: $e');
         }
-        Map<String, dynamic> json =
-            _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
+        Map<String, dynamic> json = _jsonDecodeResp(body, resp.statusCode);
         if (json.containsKey('error')) {
           if (json['error'] == 'Admin required!' ||
               json['error']
@@ -185,13 +185,13 @@ class GroupModel {
         bind.mainLogToRust(
             msg: 'get peers bodyBytes: ${jsonEncode(resp.bodyBytes)}');
         bind.mainLogToRust(msg: 'get peers body: ${resp.body}');
+        var body = resp.body;
         try {
-          utf8.decode(resp.bodyBytes);
+          body = utf8.decode(resp.bodyBytes);
         } catch (e) {
           bind.mainLogToRust(msg: 'get peers utf8.decode error: $e');
         }
-        Map<String, dynamic> json =
-            _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
+        Map<String, dynamic> json = _jsonDecodeResp(body, resp.statusCode);
         if (json.containsKey('error')) {
           throw json['error'];
         }
