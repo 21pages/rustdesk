@@ -217,7 +217,7 @@ impl Default for VideoQoS {
     fn default() -> Self {
         VideoQoS {
             fps: FPS,
-            quality: Default::default(),
+            quality: Quality::Bitrate(crate::START_BITRATE),
             delayed_quality: Default::default(),
             users: Default::default(),
             bitrate_store: 0,
@@ -244,6 +244,12 @@ impl VideoQoS {
         } else {
             FPS
         }
+        // FPS
+    }
+
+    pub fn change_bitrate_directly(&mut self, bitrate: u32) {
+        self.bitrate_store = bitrate;
+        self.quality = Quality::Bitrate(bitrate);
     }
 
     pub fn store_bitrate(&mut self, bitrate: u32) {
@@ -283,6 +289,7 @@ impl VideoQoS {
             fps = MAX_FPS;
         }
         self.fps = fps;
+        return;
 
         // quality
         // latest image quality
@@ -300,7 +307,7 @@ impl VideoQoS {
         // network delay
         let abr_enabled = self.in_vbr_state();
         if abr_enabled && typ != Some(RefreshType::SetImageQuality) {
-            quality = self.delayed_quality(quality);
+            // quality = self.delayed_quality(quality);
         }
         self.quality = quality;
     }
@@ -326,6 +333,7 @@ impl VideoQoS {
                 Quality::Balanced => Quality::Low,
                 Quality::Low => Quality::Low,
                 Quality::Custom(b) => Quality::Custom((b / 2).max(20)),
+                Quality::Bitrate(b) => Quality::Bitrate(b / 2),
             };
             self.delayed_quality = Some(delayed_quality);
             delayed_quality
@@ -462,5 +470,66 @@ impl VideoQoS {
             *self = Default::default();
         }
         self.refresh(None);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SendRecord {
+    id: u32,
+    size: u64,
+    timestamp: u32,
+}
+
+struct RecvRecord {
+    id: u32,
+    rtt: u32,
+}
+
+pub struct VideoHistory {
+    send_history: Vec<SendRecord>,
+    recv_history: Vec<RecvRecord>,
+}
+
+impl VideoHistory {
+    pub fn new() -> Self {
+        VideoHistory {
+            send_history: Default::default(),
+            recv_history: Default::default(),
+        }
+    }
+
+    pub fn on_send(&mut self, id: u32, size: u64, timestamp: u32) {
+        self.send_history.push(SendRecord {
+            id,
+            size,
+            timestamp,
+        });
+    }
+
+    pub fn on_receive(&mut self, id: u32, current_timestamp: u32) -> Option<u32> {
+        let send = self.send_history.iter().find(|s| s.id == id).map(|s| *s);
+        log::info!(
+            "send: {:?}, id: {id}, current_timestamp: {current_timestamp}",
+            send
+        );
+        if id == 0 {
+            self.send_history.clear();
+        } else {
+            self.send_history.retain(|s| s.id > id);
+        }
+        if let Some(send) = send {
+            if current_timestamp > send.timestamp {
+                let rtt = current_timestamp - send.timestamp;
+                self.recv_history.push(RecvRecord { id, rtt });
+                if self.recv_history.len() > 10 {
+                    self.recv_history.remove(0);
+                }
+                Some(rtt)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }

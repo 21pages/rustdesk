@@ -74,6 +74,10 @@ pub struct Remote<T: InvokeUiSession> {
     decode_fps: Arc<RwLock<Option<usize>>>,
     chroma: Arc<RwLock<Option<Chroma>>>,
     peer_info: ParsedPeerInfo,
+    razor: razor_wrapper::Receiver,
+    ping_instant: std::time::Instant,
+    pong_received: bool,
+    feedback_rx: std::sync::mpsc::Receiver<Vec<u8>>,
 }
 
 #[derive(Default)]
@@ -103,6 +107,14 @@ impl<T: InvokeUiSession> Remote<T> {
         decode_fps: Arc<RwLock<Option<usize>>>,
         chroma: Arc<RwLock<Option<Chroma>>>,
     ) -> Self {
+        let (feedback_tx, feedback_rx) = std::sync::mpsc::channel();
+        let razor = razor_wrapper::Receiver::new(
+            razor_wrapper::gcc_congestion,
+            crate::MIN_BITRATE as _,
+            crate::MAX_BITRATE as _,
+            0,
+            feedback_tx,
+        );
         Self {
             handler,
             video_queue_map: video_queue,
@@ -129,6 +141,10 @@ impl<T: InvokeUiSession> Remote<T> {
             decode_fps,
             chroma,
             peer_info: Default::default(),
+            razor,
+            ping_instant: std::time::Instant::now(),
+            pong_received: true,
+            feedback_rx,
         }
     }
 
@@ -190,6 +206,8 @@ impl<T: InvokeUiSession> Remote<T> {
                 let mut fps_instant = Instant::now();
 
                 let _keep_it = client::hc_connection(feedback, rendezvous_server, token).await;
+                let mut heartbeat_timer =
+                    tokio::time::interval(std::time::Duration::from_millis(5));
 
                 loop {
                     tokio::select! {
@@ -282,6 +300,37 @@ impl<T: InvokeUiSession> Remote<T> {
                                 ..Default::default()
                             });
                         }
+                        _ = heartbeat_timer.tick() => {
+                            if self.first_frame {
+                                self.razor.heartbeat();
+                                if self.pong_received {
+                                    self.pong_received = false;
+                                    self.ping_instant = std::time::Instant::now();
+                                    let mut cc = CongestionControl::new();
+                                    cc.set_ping(Ping::new());
+                                    let mut msg = Message::new();
+                                    msg.set_congestion_control(cc);
+                                    allow_err!(peer.send(&msg).await);
+                                }
+                                if let Ok(feedback) = self.feedback_rx.try_recv() {
+                                    let mut cc = CongestionControl::new();
+                                    cc.set_feedback(feedback.into());
+                                    let mut msg = Message::new();
+                                    msg.set_congestion_control(cc);
+                                    allow_err!(peer.send(&msg).await);
+                                }
+                            }
+
+                        }
+                        // feedback = self.feedback_tokio_rx.recv() => {
+                        //     if let Some(feedback) = feedback {
+                        //         let mut cc = CongestionControl::new();
+                        //         cc.set_feedback(feedback.into());
+                        //         let mut msg = Message::new();
+                        //         msg.set_congestion_control(cc);
+                        //         allow_err!(peer.send(&msg).await);
+                        //     }
+                        // }
                     }
                 }
                 log::debug!("Exit io_loop of id={}", self.handler.get_id());
@@ -1109,10 +1158,24 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
+    async fn video_frame_ack(&self, peer: &mut Stream, vf: &VideoFrame) {
+        let ack = VideoFrameAck {
+            id: vf.id,
+            ..Default::default()
+        };
+        let mut cc = CongestionControl::new();
+        cc.set_video_frame_ack(ack);
+        let mut msg = Message::new();
+        msg.set_congestion_control(cc);
+        allow_err!(peer.send(&msg).await);
+    }
+
     async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
         if let Ok(msg_in) = Message::parse_from_bytes(&data) {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    self.video_frame_ack(peer, &vf).await;
+                    self.razor.on_received(vf.compute_size(), vf.elapsed);
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();
@@ -1659,6 +1722,21 @@ impl<T: InvokeUiSession> Remote<T> {
                     self.handler.set_displays(&pi.displays);
                     self.handler.set_platform_additions(&pi.platform_additions);
                 }
+                Some(message::Union::CongestionControl(cc)) => match cc.union {
+                    Some(congestion_control::Union::Ping(_)) => {
+                        let mut cc = CongestionControl::new();
+                        cc.set_pong(Pong::new());
+                        let mut msg = Message::new();
+                        msg.set_congestion_control(cc);
+                        allow_err!(peer.send(&msg).await);
+                    }
+                    Some(congestion_control::Union::Pong(_)) => {
+                        self.pong_received = true;
+                        self.razor
+                            .update_rtt(self.ping_instant.elapsed().as_millis() as _);
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }

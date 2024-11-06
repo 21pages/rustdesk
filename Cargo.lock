@@ -1683,7 +1683,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.8.4",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -5203,6 +5203,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "razor_wrapper"
+version = "0.1.0"
+source = "git+https://github.com/21pages/razor_wrapper#114b1305f37be07ecc61b7c78e03fbda4a244779"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "log",
+]
+
+[[package]]
 name = "rdev"
 version = "0.5.0-2"
 source = "git+https://github.com/rustdesk-org/rdev#961d25cc00c6b3ef80f444e6a7bed9872e2c35ea"
@@ -5537,6 +5547,7 @@ dependencies = [
  "parity-tokio-ipc",
  "percent-encoding",
  "qrcode-generator",
+ "razor_wrapper",
  "rdev",
  "repng",
  "reqwest",

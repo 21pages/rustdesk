@@ -17,7 +17,9 @@ use crate::{
     client::{
         new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
     },
-    display_service, ipc, privacy_mode, video_service, VERSION,
+    display_service, ipc, privacy_mode,
+    video_service::{self, VIDEO_QOS},
+    VERSION,
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
@@ -55,6 +57,7 @@ use std::{
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use system_shutdown;
+use video_qos::VideoHistory;
 
 #[cfg(windows)]
 use crate::virtual_display_manager;
@@ -243,6 +246,12 @@ pub struct Connection {
     follow_remote_cursor: bool,
     follow_remote_window: bool,
     multi_ui_session: bool,
+    video_id: u32,
+    video_elapsed: Option<Instant>,
+    razor: razor_wrapper::Sender,
+    pong_received: bool,
+    ping_instant: std::time::Instant,
+    video_history: VideoHistory,
 }
 
 impl ConnInner {
@@ -315,6 +324,10 @@ impl Connection {
         #[cfg(target_os = "linux")]
         let linux_headless_handle =
             LinuxHeadlessHandle::new(_rx_cm_stream_ready, _tx_desktop_ready);
+        let (bitrate_tx, bitrate_rx) = std_mpsc::channel();
+        let mut heartbeat_timer = tokio::time::interval(std::time::Duration::from_millis(5));
+        let razor = razor_wrapper::Sender::new(razor_wrapper::gcc_congestion, 0, bitrate_tx, 100);
+        razor.set_bitrates(crate::MIN_BITRATE, crate::START_BITRATE, crate::MAX_BITRATE);
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let tx_cloned = tx.clone();
@@ -394,6 +407,12 @@ impl Connection {
             delayed_read_dir: None,
             #[cfg(target_os = "macos")]
             retina: Retina::default(),
+            video_id: 0,
+            video_elapsed: None,
+            razor,
+            pong_received: true,
+            ping_instant: std::time::Instant::now(),
+            video_history: VideoHistory::new(),
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -645,6 +664,25 @@ impl Connection {
                     if !conn.video_ack_required {
                         video_service::notify_video_frame_fetched(id, Some(instant.into()));
                     }
+                    let mut value = (*value).clone();
+                    let compute_size = value.compute_size();
+                    match value.union {
+                        Some(message::Union::VideoFrame(ref mut frame)) => {
+                            frame.elapsed = conn.video_elapsed.map(|x| x.elapsed().as_millis() as u32).unwrap_or_default();
+                            if conn.video_elapsed.is_none() {
+                                conn.video_elapsed = Some(Instant::now());
+                            }
+                            frame.id = conn.video_id;
+                            conn.video_history.on_send(frame.id, compute_size, frame.elapsed);
+                            if conn.video_id == u32::MAX {
+                                conn.video_id = 0;
+                            } else {
+                                conn.video_id += 1;
+                            }
+                        },
+                        _ => {}
+                    }
+                    conn.razor.on_send(compute_size);
                     if let Err(err) = conn.stream.send(&value as &Message).await {
                         conn.on_close(&err.to_string(), false).await;
                         break;
@@ -744,6 +782,25 @@ impl Connection {
                         conn.send(msg_out.into()).await;
                         conn.send_test_delay_instant = Some(Instant::now());
                     }
+                }
+                _ = heartbeat_timer.tick() => {
+                    if conn.authorized {
+                        conn.razor.heartbeat();
+                        if conn.pong_received {
+                            conn.pong_received = false;
+                            conn.ping_instant = std::time::Instant::now();
+                            let mut cc = CongestionControl::new();
+                            cc.set_ping(Ping::default());
+                            let mut msg = Message::new();
+                            msg.set_congestion_control(cc);
+                            conn.send(msg).await;
+                        }
+                        if let Ok(bitrate) = bitrate_rx.try_recv() {
+                            log::info!("Received bitrate change: {:?}", bitrate);
+                            VIDEO_QOS.lock().unwrap().change_bitrate_directly(bitrate.bitrate / 1000);
+                        }
+                    }
+
                 }
             }
         }
@@ -2519,6 +2576,40 @@ impl Connection {
                 Some(message::Union::VoiceCallResponse(_response)) => {
                     // TODO: Maybe we can do a voice call from cm directly.
                 }
+                Some(message::Union::CongestionControl(cc)) => match cc.union {
+                    Some(congestion_control::Union::VideoFrameAck(ack)) => {
+                        if self.video_id >= ack.id {
+                            let inflight = self.video_id - ack.id;
+                            log::info!("Video frame ack: id={}, inflight={}", ack.id, inflight);
+                            if let Some(instant) = &self.video_elapsed {
+                                if let Some(rtt) = self
+                                    .video_history
+                                    .on_receive(ack.id, instant.elapsed().as_millis() as u32)
+                                {
+                                    log::info!("RTT: {}ms", rtt);
+                                    self.razor.update_rtt(rtt as _);
+                                }
+                            }
+                        }
+                    }
+                    Some(congestion_control::Union::Ping(_)) => {
+                        let mut cc = CongestionControl::new();
+                        cc.set_pong(Pong::default());
+                        let mut msg = Message::new();
+                        msg.set_congestion_control(cc);
+                        self.send(msg).await;
+                    }
+                    Some(congestion_control::Union::Pong(_)) => {
+                        self.pong_received = true;
+                        self.razor
+                            .update_rtt(self.ping_instant.elapsed().as_millis() as _);
+                    }
+                    Some(congestion_control::Union::Feedback(feedback)) => {
+                        // log::info!("Received feedback: {:?}", feedback);
+                        self.razor.on_feedback(&feedback);
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }

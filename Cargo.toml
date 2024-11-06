@@ -77,6 +77,8 @@ fon = "0.6"
 zip = "0.6"
 shutdown_hooks = "0.1"
 totp-rs = { version = "5.4", default-features = false, features = ["gen_secret", "otpauth"] }
+razor_wrapper = { git = "https://github.com/21pages/razor_wrapper" }
+# razor_wrapper = { path = "D:/rustdesk/razor_wapper" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "linux")))'.dependencies]
 cpal = "0.15"

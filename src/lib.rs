@@ -39,14 +39,14 @@ use common::*;
 mod auth_2fa;
 #[cfg(feature = "cli")]
 pub mod cli;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod clipboard;
 #[cfg(not(any(target_os = "android", target_os = "ios", feature = "cli")))]
 pub mod core_main;
 mod custom_server;
 mod lang;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod port_forward;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod clipboard;
 
 #[cfg(all(feature = "flutter", feature = "plugin_framework"))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -68,3 +68,7 @@ pub mod privacy_mode;
 
 #[cfg(windows)]
 pub mod virtual_display_manager;
+
+pub const MIN_BITRATE: u32 = 400_000;
+pub const START_BITRATE: u32 = 1000_000;
+pub const MAX_BITRATE: u32 = 16_000_000;

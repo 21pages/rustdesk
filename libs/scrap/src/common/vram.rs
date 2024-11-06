@@ -61,12 +61,11 @@ impl EncoderApi for VRamEncoder {
     {
         match cfg {
             EncoderCfg::VRAM(config) => {
-                let b = Self::convert_quality(config.quality, &config.feature);
-                let base_bitrate = base_bitrate(config.width as _, config.height as _);
-                let mut bitrate = base_bitrate * b / 100;
-                if bitrate <= 0 {
-                    bitrate = base_bitrate;
-                }
+                let bitrate = Self::convert_quality(
+                    config.quality,
+                    &config.feature,
+                    base_bitrate(config.width as _, config.height as _),
+                );
                 let gop = config.keyframe_interval.unwrap_or(MAX_GOP as _) as i32;
                 let ctx = EncodeContext {
                     f: config.feature.clone(),
@@ -173,8 +172,11 @@ impl EncoderApi for VRamEncoder {
     }
 
     fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
-        let b = Self::convert_quality(quality, &self.ctx.f);
-        let bitrate = base_bitrate(self.ctx.d.width as _, self.ctx.d.height as _) * b / 100;
+        let bitrate = Self::convert_quality(
+            quality,
+            &self.ctx.f,
+            base_bitrate(self.ctx.d.width as _, self.ctx.d.height as _),
+        );
         if bitrate > 0 {
             if self.encoder.set_bitrate((bitrate) as _).is_ok() {
                 self.bitrate = bitrate;
@@ -285,30 +287,37 @@ impl VRamEncoder {
         }
     }
 
-    pub fn convert_quality(quality: Quality, f: &FeatureContext) -> u32 {
+    pub fn convert_quality(quality: Quality, f: &FeatureContext, base_bitrate: u32) -> u32 {
         match quality {
-            Quality::Best => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    200
-                } else {
-                    150
-                }
+            Quality::Bitrate(bitrate) => bitrate,
+            _ => {
+                let quality = match quality {
+                    Quality::Best => {
+                        if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
+                            200
+                        } else {
+                            150
+                        }
+                    }
+                    Quality::Balanced => {
+                        if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
+                            150
+                        } else {
+                            100
+                        }
+                    }
+                    Quality::Low => {
+                        if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
+                            75
+                        } else {
+                            50
+                        }
+                    }
+                    Quality::Custom(b) => b,
+                    Quality::Bitrate(_) => 100, // unreachable
+                };
+                quality * base_bitrate / 100
             }
-            Quality::Balanced => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    150
-                } else {
-                    100
-                }
-            }
-            Quality::Low => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    75
-                } else {
-                    50
-                }
-            }
-            Quality::Custom(b) => b,
         }
     }
 

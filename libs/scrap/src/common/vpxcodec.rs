@@ -10,6 +10,7 @@ use hbb_common::ResultType;
 use crate::codec::{base_bitrate, codec_thread_num, EncoderApi, Quality};
 use crate::{EncodeInput, EncodeYuvFormat, GoogleImage, Pixfmt, STRIDE_ALIGN};
 
+use super::codec::GoogleQuality;
 use super::vpx::{vp8e_enc_control_id::*, vpx_codec_err_t::*, *};
 use crate::{generate_call_macro, generate_call_ptr_macro, Error, Result};
 use hbb_common::bytes::Bytes;
@@ -85,20 +86,28 @@ impl EncoderApi for VpxEncoder {
                     c.kf_mode = vpx_kf_mode::VPX_KF_DISABLED; // reduce bandwidth a lot
                 }
 
-                let (q_min, q_max, b) = Self::convert_quality(config.quality);
-                if q_min > 0 && q_min < q_max && q_max < 64 {
-                    c.rc_min_quantizer = q_min;
-                    c.rc_max_quantizer = q_max;
-                } else {
-                    c.rc_min_quantizer = DEFAULT_QP_MIN;
-                    c.rc_max_quantizer = DEFAULT_QP_MAX;
-                }
-                let base_bitrate = base_bitrate(config.width as _, config.height as _);
-                let bitrate = base_bitrate * b / 100;
-                if bitrate > 0 {
-                    c.rc_target_bitrate = bitrate;
-                } else {
-                    c.rc_target_bitrate = base_bitrate;
+                match Self::convert_quality(config.quality) {
+                    GoogleQuality::Factor(q_min, q_max, b) => {
+                        if q_min > 0 && q_min < q_max && q_max < 64 {
+                            c.rc_min_quantizer = q_min;
+                            c.rc_max_quantizer = q_max;
+                        } else {
+                            c.rc_min_quantizer = DEFAULT_QP_MIN;
+                            c.rc_max_quantizer = DEFAULT_QP_MAX;
+                        }
+                        let base_bitrate = base_bitrate(config.width as _, config.height as _);
+                        let bitrate = base_bitrate * b / 100;
+                        if bitrate > 0 {
+                            c.rc_target_bitrate = bitrate;
+                        } else {
+                            c.rc_target_bitrate = base_bitrate;
+                        }
+                    }
+                    GoogleQuality::Bitrate(bitrate) => {
+                        c.rc_target_bitrate = bitrate;
+                        c.rc_min_quantizer = DEFAULT_QP_MIN;
+                        c.rc_max_quantizer = DEFAULT_QP_MAX;
+                    }
                 }
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
@@ -214,14 +223,22 @@ impl EncoderApi for VpxEncoder {
 
     fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
         let mut c = unsafe { *self.ctx.config.enc.to_owned() };
-        let (q_min, q_max, b) = Self::convert_quality(quality);
-        if q_min > 0 && q_min < q_max && q_max < 64 {
-            c.rc_min_quantizer = q_min;
-            c.rc_max_quantizer = q_max;
-        }
-        let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
+        match Self::convert_quality(quality) {
+            GoogleQuality::Factor(q_min, q_max, b) => {
+                if q_min > 0 && q_min < q_max && q_max < 64 {
+                    c.rc_min_quantizer = q_min;
+                    c.rc_max_quantizer = q_max;
+                }
+                let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
+                if bitrate > 0 {
+                    c.rc_target_bitrate = bitrate;
+                }
+            }
+            GoogleQuality::Bitrate(bitrate) => {
+                c.rc_target_bitrate = bitrate;
+                c.rc_min_quantizer = DEFAULT_QP_MIN;
+                c.rc_max_quantizer = DEFAULT_QP_MAX;
+            }
         }
         call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &c));
         Ok(())
@@ -331,15 +348,16 @@ impl VpxEncoder {
         }
     }
 
-    fn convert_quality(quality: Quality) -> (u32, u32, u32) {
+    fn convert_quality(quality: Quality) -> GoogleQuality {
         match quality {
-            Quality::Best => (6, 45, 150),
-            Quality::Balanced => (12, 56, 100 * 2 / 3),
-            Quality::Low => (18, 56, 50),
+            Quality::Best => GoogleQuality::Factor(6, 45, 150),
+            Quality::Balanced => GoogleQuality::Factor(12, 56, 100 * 2 / 3),
+            Quality::Low => GoogleQuality::Factor(18, 56, 50),
             Quality::Custom(b) => {
                 let (q_min, q_max) = Self::calc_q_values(b);
-                (q_min, q_max, b)
+                GoogleQuality::Factor(q_min, q_max, b)
             }
+            Quality::Bitrate(bitrate) => GoogleQuality::Bitrate(bitrate),
         }
     }
 
