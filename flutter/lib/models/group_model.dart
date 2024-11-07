@@ -112,7 +112,7 @@ class GroupModel {
         bind.mainLogToRust(msg: 'get users body: ${resp.body}');
         var body = resp.body;
         try {
-          body = utf8.decode(resp.bodyBytes);
+          body = utf8.decode(resp.bodyBytes, allowMalformed: true);
         } catch (e) {
           bind.mainLogToRust(msg: 'get users utf8.decode error: $e');
         }
@@ -187,7 +187,7 @@ class GroupModel {
         bind.mainLogToRust(msg: 'get peers body: ${resp.body}');
         var body = resp.body;
         try {
-          body = utf8.decode(resp.bodyBytes);
+          body = utf8.decode(resp.bodyBytes, allowMalformed: true);
         } catch (e) {
           bind.mainLogToRust(msg: 'get peers utf8.decode error: $e');
         }
