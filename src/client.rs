@@ -904,47 +904,58 @@ pub struct AudioHandler {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
-struct AudioBuffer(
-    pub Arc<std::sync::Mutex<ringbuf::HeapRb<f32>>>,
-    usize,
-    [usize; 30],
-);
+struct AudioBuffer {
+    size_1s: usize,
+    counters: [usize; 30],
+    producer: ringbuf::Producer<f32, Arc<ringbuf::HeapRb<f32>>>,
+    consumer: Option<ringbuf::Consumer<f32, Arc<ringbuf::HeapRb<f32>>>>,
+}
 
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
 impl Default for AudioBuffer {
     fn default() -> Self {
-        Self(
-            Arc::new(std::sync::Mutex::new(
-                ringbuf::HeapRb::<f32>::new(48000 * 2 * AUDIO_BUFFER_MS / 1000), // 48000hz, 2 channel
-            )),
-            48000 * 2,
-            [0; 30],
-        )
+        Self::new(48000, 2)
     }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
 impl AudioBuffer {
-    pub fn resize(&mut self, sample_rate: usize, channels: usize) {
-        let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
-        let old_capacity = self.0.lock().unwrap().capacity();
-        if capacity != old_capacity {
-            *self.0.lock().unwrap() = ringbuf::HeapRb::<f32>::new(capacity);
-            self.1 = sample_rate * channels;
-            log::info!("Audio buffer resized from {old_capacity} to {capacity}");
+    pub fn new(sample_rate: usize, channels: usize) -> Self {
+        let size_1s = sample_rate * channels;
+        let rb = ringbuf::HeapRb::<f32>::new(size_1s * AUDIO_BUFFER_MS / 1000);
+        let (producer, consumer) = rb.split();
+        Self {
+            size_1s,
+            counters: [0; 30],
+            producer,
+            consumer: Some(consumer),
         }
     }
 
-    fn try_shrink(&mut self, having: usize) {
+    pub fn resize(&mut self, sample_rate: usize, channels: usize) {
+        let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
+        let old_capacity = self.producer.capacity();
+        if capacity != old_capacity {
+            log::info!("Audio buffer resized from {old_capacity} to {capacity}");
+            Self::new(sample_rate, channels);
+        }
+    }
+
+    fn try_shrink(
+        &mut self,
+        having: usize,
+        consumer: &mut ringbuf::Consumer<f32, Arc<ringbuf::HeapRb<f32>>>,
+    ) {
         extern crate chrono;
         use chrono::prelude::*;
 
-        let mut i = (having * 10) / self.1;
+        let mut i = (having * 10) / self.size_1s;
         if i > 29 {
             i = 29;
         }
-        self.2[i] += 1;
+        self.counters[i] += 1;
 
+        #[allow(non_upper_case_globals)]
         static mut tms: i64 = 0;
         let dt = Local::now().timestamp_millis();
         unsafe {
@@ -962,15 +973,15 @@ impl AudioBuffer {
         // the water mark taking most of time
         let mut max = 0;
         for i in 0..30 {
-            if self.2[i] == 0 && zero == i {
+            if self.counters[i] == 0 && zero == i {
                 zero += 1;
             }
 
-            if self.2[i] > self.2[max] {
-                self.2[max] = 0;
+            if self.counters[i] > self.counters[max] {
+                self.counters[max] = 0;
                 max = i;
             } else {
-                self.2[i] = 0;
+                self.counters[i] = 0;
             }
         }
         zero = zero * 2 / 3;
@@ -979,19 +990,18 @@ impl AudioBuffer {
         // 1. will not drop if buffered data is less than 600ms
         // 2. choose based on min(zero, max)
         const N: usize = 4;
-        self.2[max] = 0;
+        self.counters[max] = 0;
         if max < 6 {
             return;
         } else if max > zero * N {
             max = zero * N;
         }
 
-        let mut lock = self.0.lock().unwrap();
-        let cap = lock.capacity();
-        let having = lock.occupied_len();
+        let cap = self.producer.capacity();
+        let having = self.producer.len();
         let skip = (cap * max / (30 * N) + 1) & (!1);
         if (having > skip * 3) && (skip > 0) {
-            lock.skip(skip);
+            consumer.skip(skip);
             log::info!("skip {skip}, based {max} {zero}");
         }
     }
@@ -999,28 +1009,35 @@ impl AudioBuffer {
     /// append pcm to audio buffer, if buffered data
     /// exceeds AUDIO_BUFFER_MS,  only AUDIO_BUFFER_MS
     /// will be kept.
-    fn append_pcm2(&self, buffer: &[f32]) -> usize {
-        let mut lock = self.0.lock().unwrap();
-        let cap = lock.capacity();
+    fn append_pcm2(
+        &mut self,
+        buffer: &[f32],
+        consumer: &mut ringbuf::Consumer<f32, Arc<ringbuf::HeapRb<f32>>>,
+    ) -> usize {
+        let cap = self.producer.capacity();
         if buffer.len() > cap {
-            lock.push_slice_overwrite(buffer);
+            self.producer.push_slice(buffer);
             return cap;
         }
 
-        let having = lock.occupied_len() + buffer.len();
+        let having = self.producer.len() + buffer.len();
         if having > cap {
-            lock.skip(having - cap);
+            consumer.skip(having - cap);
         }
-        lock.push_slice_overwrite(buffer);
-        lock.occupied_len()
+        self.producer.push_slice(buffer);
+        consumer.len()
     }
 
     /// append pcm to audio buffer, trying to drop data
     /// when data is too much (per 12 seconds) based
     /// statistics.
-    pub fn append_pcm(&mut self, buffer: &[f32]) {
-        let having = self.append_pcm2(buffer);
-        self.try_shrink(having);
+    pub fn append_pcm(
+        &mut self,
+        buffer: &[f32],
+        consumer: &mut ringbuf::Consumer<f32, Arc<ringbuf::HeapRb<f32>>>,
+    ) {
+        let having = self.append_pcm2(buffer, consumer);
+        self.try_shrink(having, consumer);
     }
 }
 
@@ -1169,7 +1186,7 @@ impl AudioHandler {
                             self.device_channel,
                         );
                     }
-                    self.audio_buffer.append_pcm(&buffer);
+                    // self.audio_buffer.append_pcm(&buffer, &mut consumer);
                 }
                 #[cfg(target_os = "android")]
                 {
@@ -1199,9 +1216,13 @@ impl AudioHandler {
         };
         self.audio_buffer
             .resize(config.sample_rate.0 as _, config.channels as _);
-        let audio_buffer = self.audio_buffer.0.clone();
+        // let consumer = self.audio_buffer.consumer.clone();
         let ready = self.ready.clone();
         let timeout = None;
+        let consumer = self.audio_buffer.consumer;
+        let Some(consumer) = consumer else {
+            bail!("Failed to get audio buffer consumer");
+        };
         let stream = device.build_output_stream(
             config,
             move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
@@ -1210,8 +1231,7 @@ impl AudioHandler {
                 }
 
                 let mut n = data.len();
-                let mut lock = audio_buffer.lock().unwrap();
-                let mut having = lock.occupied_len();
+                let mut having = consumer.len();
                 if having < n {
                     let tms = info.timestamp();
                     let how_long = tms
@@ -1221,10 +1241,8 @@ impl AudioHandler {
 
                     // must long enough to fight back scheuler delay
                     if how_long > Duration::from_millis(6) {
-                        drop(lock);
                         std::thread::sleep(how_long.div_f32(1.2));
-                        lock = audio_buffer.lock().unwrap();
-                        having = lock.occupied_len();
+                        having = consumer.len();
                     }
 
                     if having < n {
@@ -1234,9 +1252,8 @@ impl AudioHandler {
 
                 let mut elems = vec![0.0f32; n];
                 if n > 0 {
-                    lock.pop_slice(&mut elems);
+                    consumer.pop_slice(&mut elems);
                 }
-                drop(lock);
 
                 let mut input = elems.into_iter();
                 for sample in data.iter_mut() {
