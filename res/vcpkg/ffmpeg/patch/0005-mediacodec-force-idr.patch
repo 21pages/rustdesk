@@ -1,0 +1,26 @@
+From 620c0e9c4952fd2d82a2ffe45eca8bb917a34ffb Mon Sep 17 00:00:00 2001
+From: 21pages <sunboeasy@gmail.com>
+Date: Mon, 18 Nov 2024 18:48:39 +0800
+Subject: [PATCH 2/2] mediacodec force idr
+
+Signed-off-by: 21pages <sunboeasy@gmail.com>
+---
+ libavcodec/mediacodecenc.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/libavcodec/mediacodecenc.c b/libavcodec/mediacodecenc.c
+index d3bf27cb7f..826cc6b7a4 100644
+--- a/libavcodec/mediacodecenc.c
++++ b/libavcodec/mediacodecenc.c
+@@ -506,6 +506,8 @@ static int mediacodec_send(AVCodecContext *avctx,
+         copy_frame_to_buffer(avctx, frame, input_buf, input_size);
+ 
+         pts = av_rescale_q(frame->pts, avctx->time_base, AV_TIME_BASE_Q);
++        if (frame->pict_type == AV_PICTURE_TYPE_I)
++            flags |= ff_AMediaCodec_getBufferFlagKeyFrame(codec);
+     } else {
+         flags |= ff_AMediaCodec_getBufferFlagEndOfStream(codec);
+         s->eof_sent = 1;
+-- 
+2.43.0.windows.1
+
