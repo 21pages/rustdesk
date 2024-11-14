@@ -2,14 +2,14 @@ use async_trait::async_trait;
 use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use clipboard_master::{CallbackResult, ClipboardHandler};
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(not(target_os = "android"))]
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Device, Host, StreamConfig,
 };
 use crossbeam_queue::ArrayQueue;
 use magnum_opus::{Channels::*, Decoder as AudioDecoder};
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(not(target_os = "android"))]
 use ringbuf::{ring_buffer::RbBase, Rb};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -117,7 +117,7 @@ pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str =
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
 
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(not(target_os = "android"))]
 pub const AUDIO_BUFFER_MS: usize = 3000;
 
 #[cfg(feature = "flutter")]
@@ -140,7 +140,7 @@ struct TextClipboardState {
     running: bool,
 }
 
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(not(target_os = "android"))]
 lazy_static::lazy_static! {
     static ref AUDIO_HOST: Host = cpal::default_host();
 }
@@ -889,28 +889,26 @@ pub struct AudioHandler {
     audio_decoder: Option<(AudioDecoder, Vec<f32>)>,
     #[cfg(target_os = "android")]
     oboe: Option<OboePlayer>,
-    #[cfg(target_os = "linux")]
-    simple: Option<psimple::Simple>,
-    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+    #[cfg(not(target_os = "android"))]
     audio_buffer: AudioBuffer,
     sample_rate: (u32, u32),
-    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+    #[cfg(not(target_os = "android"))]
     audio_stream: Option<Box<dyn StreamTrait>>,
     channels: u16,
-    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+    #[cfg(not(target_os = "android"))]
     device_channel: u16,
-    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+    #[cfg(not(target_os = "android"))]
     ready: Arc<std::sync::Mutex<bool>>,
 }
 
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(not(target_os = "android"))]
 struct AudioBuffer(
     pub Arc<std::sync::Mutex<ringbuf::HeapRb<f32>>>,
     usize,
     [usize; 30],
 );
 
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(not(target_os = "android"))]
 impl Default for AudioBuffer {
     fn default() -> Self {
         Self(
@@ -923,7 +921,7 @@ impl Default for AudioBuffer {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(not(target_os = "android"))]
 impl AudioBuffer {
     pub fn resize(&mut self, sample_rate: usize, channels: usize) {
         let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
@@ -1026,36 +1024,6 @@ impl AudioBuffer {
 
 impl AudioHandler {
     /// Start the audio playback.
-    #[cfg(target_os = "linux")]
-    fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
-        use psimple::Simple;
-        use pulse::sample::{Format, Spec};
-        use pulse::stream::Direction;
-
-        let spec = Spec {
-            format: Format::F32le,
-            channels: format0.channels as _,
-            rate: format0.sample_rate as _,
-        };
-        if !spec.is_valid() {
-            bail!("Invalid audio format");
-        }
-
-        self.simple = Some(Simple::new(
-            None,                   // Use the default server
-            &crate::get_app_name(), // Our application’s name
-            Direction::Playback,    // We want a playback stream
-            None,                   // Use the default device
-            "playback",             // Description of our stream
-            &spec,                  // Our sample format
-            None,                   // Use default channel map
-            None,                   // Use default buffering attributes
-        )?);
-        self.sample_rate = (format0.sample_rate, format0.sample_rate);
-        Ok(())
-    }
-
-    /// Start the audio playback.
     #[cfg(target_os = "android")]
     fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
         self.oboe = Some(OboePlayer::new(
@@ -1067,7 +1035,7 @@ impl AudioHandler {
     }
 
     /// Start the audio playback.
-    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+    #[cfg(not(target_os = "android"))]
     fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
         let device = AUDIO_HOST
             .default_output_device()
@@ -1130,13 +1098,8 @@ impl AudioHandler {
     /// Handle audio frame and play it.
     #[inline]
     pub fn handle_frame(&mut self, frame: AudioFrame) {
-        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        #[cfg(not(target_os = "android"))]
         if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
-            return;
-        }
-        #[cfg(target_os = "linux")]
-        if self.simple.is_none() {
-            log::debug!("PulseAudio simple binding does not exists");
             return;
         }
         #[cfg(target_os = "android")]
@@ -1147,7 +1110,7 @@ impl AudioHandler {
             if let Ok(n) = d.decode_float(&frame.data, buffer, false) {
                 let channels = self.channels;
                 let n = n * (channels as usize);
-                #[cfg(not(any(target_os = "android", target_os = "linux")))]
+                #[cfg(not(target_os = "android"))]
                 {
                     let sample_rate0 = self.sample_rate.0;
                     let sample_rate = self.sample_rate.1;
@@ -1175,18 +1138,12 @@ impl AudioHandler {
                 {
                     self.oboe.as_mut().map(|x| x.push(&buffer[0..n]));
                 }
-                #[cfg(target_os = "linux")]
-                {
-                    let data_u8 =
-                        unsafe { std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4) };
-                    self.simple.as_mut().map(|x| x.write(data_u8));
-                }
             }
         });
     }
 
     /// Build audio output stream for current device.
-    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+    #[cfg(not(target_os = "android"))]
     fn build_output_stream<T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>>(
         &mut self,
         config: &StreamConfig,
