@@ -102,11 +102,11 @@ impl EncoderApi for VpxEncoder {
                 }
                 // // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
                 // // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
-                c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
-                    1
-                } else {
-                    0
-                };
+                // c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
+                //     1
+                // } else {
+                //     0
+                // };
 
                 /*
                 The VPX encoder supports two-pass encoding for rate control purposes.
