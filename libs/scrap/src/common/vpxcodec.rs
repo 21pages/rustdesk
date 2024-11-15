@@ -153,17 +153,17 @@ impl EncoderApi for VpxEncoder {
                     rows). The total number of active threads will then be equal to
                     $tile_rows * $tile_columns
                     */
-                    // call_vpx!(vpx_codec_control_(
-                    //     &mut ctx,
-                    //     VP9E_SET_ROW_MT as _,
-                    //     1 as c_int
-                    // ));
+                    call_vpx!(vpx_codec_control_(
+                        &mut ctx,
+                        VP9E_SET_ROW_MT as _,
+                        1 as c_int
+                    ));
 
-                    // call_vpx!(vpx_codec_control_(
-                    //     &mut ctx,
-                    //     VP9E_SET_TILE_COLUMNS as _,
-                    //     4 as c_int
-                    // ));
+                    call_vpx!(vpx_codec_control_(
+                        &mut ctx,
+                        VP9E_SET_TILE_COLUMNS as _,
+                        4 as c_int
+                    ));
                 } else if config.codec == VpxVideoCodecId::VP8 {
                     // https://github.com/webmproject/libvpx/blob/972149cafeb71d6f08df89e91a0130d6a38c4b15/vpx/vp8cx.h#L172
                     // https://groups.google.com/a/webmproject.org/g/webm-discuss/c/DJhSrmfQ61M
