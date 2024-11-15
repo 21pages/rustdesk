@@ -93,13 +93,13 @@ impl EncoderApi for VpxEncoder {
                     c.rc_min_quantizer = DEFAULT_QP_MIN;
                     c.rc_max_quantizer = DEFAULT_QP_MAX;
                 }
-                let base_bitrate = base_bitrate(config.width as _, config.height as _);
-                let bitrate = base_bitrate * b / 100;
-                if bitrate > 0 {
-                    c.rc_target_bitrate = bitrate;
-                } else {
-                    c.rc_target_bitrate = base_bitrate;
-                }
+                // let base_bitrate = base_bitrate(config.width as _, config.height as _);
+                // let bitrate = base_bitrate * b / 100;
+                // if bitrate > 0 {
+                //     c.rc_target_bitrate = bitrate;
+                // } else {
+                //     c.rc_target_bitrate = base_bitrate;
+                // }
                 // // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
                 // // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
                 c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
@@ -219,10 +219,10 @@ impl EncoderApi for VpxEncoder {
             c.rc_min_quantizer = q_min;
             c.rc_max_quantizer = q_max;
         }
-        let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
-        }
+        // let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
+        // if bitrate > 0 {
+        //     c.rc_target_bitrate = bitrate;
+        // }
         call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &c));
         Ok(())
     }
