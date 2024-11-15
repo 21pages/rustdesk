@@ -67,46 +67,46 @@ impl EncoderApi for VpxEncoder {
 
                 c.g_w = config.width;
                 c.g_h = config.height;
-                c.g_timebase.num = 1;
-                c.g_timebase.den = 1000; // Output timestamp precision
-                c.rc_undershoot_pct = 95;
+                // c.g_timebase.num = 1;
+                // c.g_timebase.den = 1000; // Output timestamp precision
+                // c.rc_undershoot_pct = 95;
                 // When the data buffer falls below this percentage of fullness, a dropped frame is indicated. Set the threshold to zero (0) to disable this feature.
                 // In dynamic scenes, low bitrate gets low fps while high bitrate gets high fps.
-                c.rc_dropframe_thresh = 25;
-                c.g_threads = codec_thread_num(64) as _;
-                c.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT;
+                // c.rc_dropframe_thresh = 25;
+                // c.g_threads = codec_thread_num(64) as _;
+                // c.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT;
                 // https://developers.google.com/media/vp9/bitrate-modes/
                 // Constant Bitrate mode (CBR) is recommended for live streaming with VP9.
-                c.rc_end_usage = vpx_rc_mode::VPX_CBR;
-                if let Some(keyframe_interval) = config.keyframe_interval {
-                    c.kf_min_dist = 0;
-                    c.kf_max_dist = keyframe_interval as _;
-                } else {
-                    c.kf_mode = vpx_kf_mode::VPX_KF_DISABLED; // reduce bandwidth a lot
-                }
+                // c.rc_end_usage = vpx_rc_mode::VPX_CBR;
+                // if let Some(keyframe_interval) = config.keyframe_interval {
+                //     c.kf_min_dist = 0;
+                //     c.kf_max_dist = keyframe_interval as _;
+                // } else {
+                //     c.kf_mode = vpx_kf_mode::VPX_KF_DISABLED; // reduce bandwidth a lot
+                // }
 
-                let (q_min, q_max, b) = Self::convert_quality(config.quality);
-                if q_min > 0 && q_min < q_max && q_max < 64 {
-                    c.rc_min_quantizer = q_min;
-                    c.rc_max_quantizer = q_max;
-                } else {
-                    c.rc_min_quantizer = DEFAULT_QP_MIN;
-                    c.rc_max_quantizer = DEFAULT_QP_MAX;
-                }
-                let base_bitrate = base_bitrate(config.width as _, config.height as _);
-                let bitrate = base_bitrate * b / 100;
-                if bitrate > 0 {
-                    c.rc_target_bitrate = bitrate;
-                } else {
-                    c.rc_target_bitrate = base_bitrate;
-                }
-                // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
-                // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
-                c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
-                    1
-                } else {
-                    0
-                };
+                // let (q_min, q_max, b) = Self::convert_quality(config.quality);
+                // if q_min > 0 && q_min < q_max && q_max < 64 {
+                //     c.rc_min_quantizer = q_min;
+                //     c.rc_max_quantizer = q_max;
+                // } else {
+                //     c.rc_min_quantizer = DEFAULT_QP_MIN;
+                //     c.rc_max_quantizer = DEFAULT_QP_MAX;
+                // }
+                // let base_bitrate = base_bitrate(config.width as _, config.height as _);
+                // let bitrate = base_bitrate * b / 100;
+                // if bitrate > 0 {
+                //     c.rc_target_bitrate = bitrate;
+                // } else {
+                //     c.rc_target_bitrate = base_bitrate;
+                // }
+                // // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
+                // // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
+                // c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
+                //     1
+                // } else {
+                //     0
+                // };
 
                 /*
                 The VPX encoder supports two-pass encoding for rate control purposes.
@@ -141,7 +141,7 @@ impl EncoderApi for VpxEncoder {
                     Higher numbers (7 or 8) will be lower quality but more manageable for lower latency
                     use cases and also for lower CPU power devices such as mobile.
                     */
-                    call_vpx!(vpx_codec_control_(&mut ctx, VP8E_SET_CPUUSED as _, 7,));
+                    // call_vpx!(vpx_codec_control_(&mut ctx, VP8E_SET_CPUUSED as _, 7,));
                     // set row level multi-threading
                     /*
                     as some people in comments and below have already commented,
@@ -153,17 +153,17 @@ impl EncoderApi for VpxEncoder {
                     rows). The total number of active threads will then be equal to
                     $tile_rows * $tile_columns
                     */
-                    call_vpx!(vpx_codec_control_(
-                        &mut ctx,
-                        VP9E_SET_ROW_MT as _,
-                        1 as c_int
-                    ));
+                    // call_vpx!(vpx_codec_control_(
+                    //     &mut ctx,
+                    //     VP9E_SET_ROW_MT as _,
+                    //     1 as c_int
+                    // ));
 
-                    call_vpx!(vpx_codec_control_(
-                        &mut ctx,
-                        VP9E_SET_TILE_COLUMNS as _,
-                        4 as c_int
-                    ));
+                    // call_vpx!(vpx_codec_control_(
+                    //     &mut ctx,
+                    //     VP9E_SET_TILE_COLUMNS as _,
+                    //     4 as c_int
+                    // ));
                 } else if config.codec == VpxVideoCodecId::VP8 {
                     // https://github.com/webmproject/libvpx/blob/972149cafeb71d6f08df89e91a0130d6a38c4b15/vpx/vp8cx.h#L172
                     // https://groups.google.com/a/webmproject.org/g/webm-discuss/c/DJhSrmfQ61M
@@ -213,17 +213,17 @@ impl EncoderApi for VpxEncoder {
     }
 
     fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
-        let mut c = unsafe { *self.ctx.config.enc.to_owned() };
-        let (q_min, q_max, b) = Self::convert_quality(quality);
-        if q_min > 0 && q_min < q_max && q_max < 64 {
-            c.rc_min_quantizer = q_min;
-            c.rc_max_quantizer = q_max;
-        }
-        let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
-        }
-        call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &c));
+        // let mut c = unsafe { *self.ctx.config.enc.to_owned() };
+        // let (q_min, q_max, b) = Self::convert_quality(quality);
+        // if q_min > 0 && q_min < q_max && q_max < 64 {
+        //     c.rc_min_quantizer = q_min;
+        //     c.rc_max_quantizer = q_max;
+        // }
+        // let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
+        // if bitrate > 0 {
+        //     c.rc_target_bitrate = bitrate;
+        // }
+        // call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &c));
         Ok(())
     }
 
