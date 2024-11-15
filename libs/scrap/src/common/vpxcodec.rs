@@ -86,13 +86,13 @@ impl EncoderApi for VpxEncoder {
                 }
 
                 let (q_min, q_max, b) = Self::convert_quality(config.quality);
-                if q_min > 0 && q_min < q_max && q_max < 64 {
-                    c.rc_min_quantizer = q_min;
-                    c.rc_max_quantizer = q_max;
-                } else {
-                    c.rc_min_quantizer = DEFAULT_QP_MIN;
-                    c.rc_max_quantizer = DEFAULT_QP_MAX;
-                }
+                // if q_min > 0 && q_min < q_max && q_max < 64 {
+                //     c.rc_min_quantizer = q_min;
+                //     c.rc_max_quantizer = q_max;
+                // } else {
+                //     c.rc_min_quantizer = DEFAULT_QP_MIN;
+                //     c.rc_max_quantizer = DEFAULT_QP_MAX;
+                // }
                 let base_bitrate = base_bitrate(config.width as _, config.height as _);
                 let bitrate = base_bitrate * b / 100;
                 if bitrate > 0 {
@@ -215,10 +215,10 @@ impl EncoderApi for VpxEncoder {
     fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
         let mut c = unsafe { *self.ctx.config.enc.to_owned() };
         let (q_min, q_max, b) = Self::convert_quality(quality);
-        if q_min > 0 && q_min < q_max && q_max < 64 {
-            c.rc_min_quantizer = q_min;
-            c.rc_max_quantizer = q_max;
-        }
+        // if q_min > 0 && q_min < q_max && q_max < 64 {
+        //     c.rc_min_quantizer = q_min;
+        //     c.rc_max_quantizer = q_max;
+        // }
         let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
         if bitrate > 0 {
             c.rc_target_bitrate = bitrate;
