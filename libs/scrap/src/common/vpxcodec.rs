@@ -69,12 +69,12 @@ impl EncoderApi for VpxEncoder {
                 c.g_h = config.height;
                 c.g_timebase.num = 1;
                 c.g_timebase.den = 1000; // Output timestamp precision
-                                         // c.rc_undershoot_pct = 95;
-                                         // When the data buffer falls below this percentage of fullness, a dropped frame is indicated. Set the threshold to zero (0) to disable this feature.
-                                         // In dynamic scenes, low bitrate gets low fps while high bitrate gets high fps.
-                                         // c.rc_dropframe_thresh = 25;
+                c.rc_undershoot_pct = 95;
+                // When the data buffer falls below this percentage of fullness, a dropped frame is indicated. Set the threshold to zero (0) to disable this feature.
+                // In dynamic scenes, low bitrate gets low fps while high bitrate gets high fps.
+                c.rc_dropframe_thresh = 25;
                 c.g_threads = codec_thread_num(64) as _;
-                // c.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT;
+                c.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT;
                 // https://developers.google.com/media/vp9/bitrate-modes/
                 // Constant Bitrate mode (CBR) is recommended for live streaming with VP9.
                 c.rc_end_usage = vpx_rc_mode::VPX_CBR;
