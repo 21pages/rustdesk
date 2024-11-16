@@ -1,0 +1,55 @@
+From c407899300b580c7e354c9689251677099a78c55 Mon Sep 17 00:00:00 2001
+From: 21pages <sunboeasy@gmail.com>
+Date: Sat, 16 Nov 2024 16:19:20 +0800
+Subject: [PATCH] flutter 3.24.4 dropdown menu enableFilter
+
+Signed-off-by: 21pages <sunboeasy@gmail.com>
+---
+ packages/flutter/lib/src/material/dropdown_menu.dart | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/packages/flutter/lib/src/material/dropdown_menu.dart b/packages/flutter/lib/src/material/dropdown_menu.dart
+index 7e634cd2aa..c1e9acc295 100644
+--- a/packages/flutter/lib/src/material/dropdown_menu.dart
++++ b/packages/flutter/lib/src/material/dropdown_menu.dart
+@@ -475,7 +475,7 @@ class _DropdownMenuState<T> extends State<DropdownMenu<T>> {
+   final GlobalKey _leadingKey = GlobalKey();
+   late List<GlobalKey> buttonItemKeys;
+   final MenuController _controller = MenuController();
+-  late bool _enableFilter;
++  bool _enableFilter = false;
+   late List<DropdownMenuEntry<T>> filteredEntries;
+   List<Widget>? _initialMenu;
+   int? currentHighlight;
+@@ -524,6 +524,11 @@ class _DropdownMenuState<T> extends State<DropdownMenu<T>> {
+       }
+       _localTextEditingController = widget.controller ?? TextEditingController();
+     }
++    if (oldWidget.enableFilter != widget.enableFilter) {
++      if (!widget.enableFilter) {
++        _enableFilter = false;
++      }
++    }
+     if (oldWidget.enableSearch != widget.enableSearch) {
+       if (!widget.enableSearch) {
+         currentHighlight = null;
+@@ -663,6 +668,7 @@ class _DropdownMenuState<T> extends State<DropdownMenu<T>> {
+               );
+               currentHighlight = widget.enableSearch ? i : null;
+               widget.onSelected?.call(entry.value);
++              _enableFilter = false;
+             }
+           : null,
+         requestFocusOnHover: false,
+@@ -735,6 +741,8 @@ class _DropdownMenuState<T> extends State<DropdownMenu<T>> {
+     if (_enableFilter) {
+       filteredEntries = widget.filterCallback?.call(filteredEntries, _localTextEditingController!.text)
+         ?? filter(widget.dropdownMenuEntries, _localTextEditingController!);
++    } else {
++      filteredEntries = widget.dropdownMenuEntries;
+     }
+ 
+     if (widget.enableSearch) {
+-- 
+2.43.0.windows.1
+
