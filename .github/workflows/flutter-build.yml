@@ -114,14 +114,23 @@ jobs:
           Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
           mv -Force windows-x64-release/*  C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
 
+      - name: Upload dst patch file
+        if: env.UPLOAD_ARTIFACT == 'true'
+        uses: actions/upload-artifact@master
+        with:
+          name: dropdown_menu.dart
+          path: C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/packages/flutter/lib/src/material/dropdown_menu.dart
+      
       - name: Patch flutter
         shell: bash
         run: |
           cd $(dirname $(dirname $(which flutter)))
+          echo "flutter path: $(pwd)"
           # https://github.com/flutter/flutter/commit/b5847d364a26d727af58ab885a6123e0e5304b2b#diff-634a338bd9ed19b66a27beba35a8acf4defffd8beff256113e6811771a0c4821R543
           PATCH_PATH="${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
           PATCH_PATH=$(echo "$PATCH_PATH" | sed 's/\\/\//g')
-          [[ "3.24.4" == ${{env.FLUTTER_VERSION}} ]] && git apply "$PATCH_PATH"
+          # [[ "3.24.4" == ${{env.FLUTTER_VERSION}} ]] && git apply "$PATCH_PATH"
+          git log -1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
