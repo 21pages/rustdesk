@@ -470,6 +470,9 @@ pub fn core_main() -> Option<Vec<String>> {
             #[cfg(feature = "hwcodec")]
             crate::ipc::hwcodec_process();
             return None;
+        } else if args[0] == "--test-av1" {
+            crate::ipc::test_av1_process();
+            return None;
         } else if args[0] == "--cm" {
             // call connection manager to establish connections
             // meanwhile, return true to call flutter window to show control panel

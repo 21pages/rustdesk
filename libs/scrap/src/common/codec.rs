@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    ffi::c_void,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
@@ -264,15 +263,20 @@ impl Encoder {
             .unwrap_or((PreferCodec::Auto.into(), 0));
         let preference = most_frequent.enum_value_or(PreferCodec::Auto);
 
-        // auto: h265 > h264 > vp9/vp8
-        let mut auto_codec = CodecFormat::VP9;
+        // auto: h265 > h264 > av1 > vp9/vp8
+        let av1_test = Config::get_option(hbb_common::config::keys::OPTION_AV1_TEST) != "N";
+        let mut auto_codec = if av1_useable && av1_test {
+            CodecFormat::AV1
+        } else {
+            CodecFormat::VP9
+        };
         if h264_useable {
             auto_codec = CodecFormat::H264;
         }
         if h265_useable {
             auto_codec = CodecFormat::H265;
         }
-        if auto_codec == CodecFormat::VP9 {
+        if auto_codec == CodecFormat::VP9 || auto_codec == CodecFormat::AV1 {
             let mut system = System::new();
             system.refresh_memory();
             if vp8_useable && system.total_memory() <= 4 * 1024 * 1024 * 1024 {
@@ -981,4 +985,120 @@ fn disable_av1() -> bool {
     // aom is very slow for x86 sciter version on windows x64
     // disable it for all 32 bit platforms
     std::mem::size_of::<usize>() == 4
+}
+
+#[cfg(not(target_os = "ios"))]
+pub fn check_test_av1() {
+    use hbb_common::config::keys::OPTION_AV1_TEST;
+    if disable_av1() || !Config::get_option(OPTION_AV1_TEST).is_empty() {
+        log::info!("skip test av1");
+        return;
+    }
+    #[cfg(target_os = "android")]
+    {
+        let v = test_av1();
+        Config::set_option(
+            OPTION_AV1_TEST.to_string(),
+            if v { "Y" } else { "N" }.to_string(),
+        );
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        use hbb_common::allow_err;
+        use std::sync::Once;
+        let f = || {
+            if let Ok(exe) = std::env::current_exe() {
+                if let Some(_) = exe.file_name().to_owned() {
+                    let arg = "--test-av1";
+                    if let Ok(mut child) = std::process::Command::new(exe).arg(arg).spawn() {
+                        // wait up to 30 seconds, it maybe slow on windows startup for poorly performing machines
+                        for _ in 0..30 {
+                            std::thread::sleep(std::time::Duration::from_secs(1));
+                            if let Ok(Some(_)) = child.try_wait() {
+                                break;
+                            }
+                        }
+                        allow_err!(child.kill());
+                        std::thread::sleep(std::time::Duration::from_millis(30));
+                        match child.try_wait() {
+                            Ok(Some(status)) => {
+                                log::info!("Test av1, exit with: {status}")
+                            }
+                            Ok(None) => {
+                                log::info!("Test av1, status not ready yet, let's really wait");
+                                let res = child.wait();
+                                log::info!("Test av1, wait result: {res:?}");
+                            }
+                            Err(e) => {
+                                log::error!("Test av1, error attempting to wait: {e}")
+                            }
+                        }
+                    }
+                }
+            };
+        };
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            std::thread::spawn(f);
+        });
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+pub fn test_av1() -> bool {
+    let (width, height, quality, keyframe_interval, i444) =
+        (1920, 1080, Quality::Balanced, None, false);
+    let Ok(mut av1) = AomEncoder::new(
+        EncoderCfg::AOM(AomEncoderConfig {
+            width,
+            height,
+            quality,
+            keyframe_interval,
+        }),
+        i444,
+    ) else {
+        return false;
+    };
+    let Ok(mut vp9) = VpxEncoder::new(
+        EncoderCfg::VPX(VpxEncoderConfig {
+            codec: VpxVideoCodecId::VP9,
+            width,
+            height,
+            quality,
+            keyframe_interval,
+        }),
+        i444,
+    ) else {
+        return true;
+    };
+    let frame_count = 10;
+    let mut yuv = vec![0u8; (width * height * 3 / 2) as usize];
+    let start = Instant::now();
+    for i in 0..frame_count {
+        for w in 0..width {
+            yuv[w as usize] = i as u8;
+        }
+        if av1.encode(0, &yuv, super::STRIDE_ALIGN).is_err() {
+            println!("av1 encode failed");
+            return false;
+        }
+    }
+    let av1_time = start.elapsed();
+    log::info!("av1 time: {:?}", av1_time);
+    if av1_time < std::time::Duration::from_millis(400) {
+        return true;
+    }
+    let start = Instant::now();
+    for i in 0..frame_count {
+        for w in 0..width {
+            yuv[w as usize] = i as u8;
+        }
+        if vp9.encode(0, &yuv, super::STRIDE_ALIGN).is_err() {
+            println!("vp9 encode failed");
+            return true;
+        }
+    }
+    let vp9_time = start.elapsed();
+    log::info!("vp9 time: {:?}", vp9_time);
+    av1_time * 2 / 3 < vp9_time
 }

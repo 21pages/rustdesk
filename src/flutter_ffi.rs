@@ -2331,6 +2331,7 @@ pub mod server_side {
                 crate::read_custom_client(&custom_client_config);
             }
         }
+        std::thread::spawn(move || scrap::codec::check_test_av1());
         std::thread::spawn(move || start_server(true));
     }
 

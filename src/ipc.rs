@@ -270,6 +270,7 @@ pub enum Data {
     HwCodecConfig(Option<String>),
     RemoveTrustedDevices(Vec<Bytes>),
     ClearTrustedDevices,
+    Av1Test(bool),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -614,6 +615,12 @@ async fn handle(data: Data, stream: &mut Connection) {
                     scrap::hwcodec::HwCodecConfig::set(v);
                 }
             }
+        }
+        Data::Av1Test(v) => {
+            Config::set_option(
+                hbb_common::config::keys::OPTION_AV1_TEST.to_string(),
+                if v { "Y" } else { "N" }.to_string(),
+            );
         }
         Data::WaylandScreencastRestoreToken((key, value)) => {
             let v = if value == "get" {
@@ -1235,6 +1242,29 @@ pub async fn hwcodec_process() {
                     }
                 }
             }
+            Err(e) => {
+                log::error!("connect failed: {e:?}");
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+#[tokio::main(flavor = "current_thread")]
+pub async fn test_av1_process() {
+    let av1_good = scrap::codec::test_av1();
+    for _ in 0..5 {
+        match crate::ipc::connect(1000, "").await {
+            Ok(mut conn) => match conn.send(&crate::ipc::Data::Av1Test(av1_good)).await {
+                Ok(()) => {
+                    log::info!("send ok");
+                    break;
+                }
+                Err(e) => {
+                    log::error!("send failed: {e:?}");
+                }
+            },
             Err(e) => {
                 log::error!("connect failed: {e:?}");
             }
