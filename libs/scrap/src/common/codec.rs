@@ -1004,15 +1004,15 @@ pub fn test_av1() {
             let (width, height, quality, keyframe_interval, i444) =
                 (1920, 1080, Quality::Balanced, None, false);
             let frame_count = 10;
-            let block_size = 200;
+            let block_size = 300;
             let generate_fake_data =
                 |frame_index: u32, dst_fmt: EncodeYuvFormat| -> ResultType<Vec<u8>> {
                     let mut rng = hbb_common::rand::thread_rng();
                     let mut bgra = vec![0u8; (width * height * 4) as usize];
                     let gradient = frame_index as f32 / frame_count as f32;
                     // floating block
-                    let x0 = (frame_index * 5) % (width - block_size);
-                    let y0 = (frame_index * 5) % (height - block_size);
+                    let x0 = (frame_index * 50) % (width - block_size);
+                    let y0 = (frame_index * 50) % (height - block_size);
                     // Fill the block with random colors
                     for y in 0..block_size {
                         for x in 0..block_size {

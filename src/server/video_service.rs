@@ -566,6 +566,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
         let res = match c.frame(spf) {
             Ok(frame) => {
+                log::info!("captured frame latency: {:?}", now.elapsed());
                 repeat_encode_counter = 0;
                 if frame.valid() {
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
@@ -935,8 +936,10 @@ fn handle_one_frame(
     let mut send_conn_ids: HashSet<i32> = Default::default();
     let first = *first_frame;
     *first_frame = false;
+    let start = time::Instant::now();
     match encoder.encode_to_message(frame, ms) {
         Ok(mut vf) => {
+            log::info!("encode_to_message latency: {:?}", start.elapsed());
             *encode_fail_counter = 0;
             vf.display = display as _;
             let mut msg = Message::new();

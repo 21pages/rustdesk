@@ -55,6 +55,8 @@ pub struct AomEncoder {
     height: usize,
     i444: bool,
     yuvfmt: EncodeYuvFormat,
+    duration: std::time::Duration,
+    count: usize,
 }
 
 // https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/codecs/av1/libaom_av1_encoder.cc
@@ -243,6 +245,8 @@ impl EncoderApi for AomEncoder {
                     height: config.height as _,
                     i444,
                     yuvfmt: Self::get_yuvfmt(config.width, config.height, i444),
+                    duration: Default::default(),
+                    count: 0,
                 })
             }
             _ => Err(anyhow!("encoder type mismatch")),
@@ -251,12 +255,20 @@ impl EncoderApi for AomEncoder {
 
     fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
         let mut frames = Vec::new();
+        self.count += 1;
+        let start = std::time::Instant::now();
         for ref frame in self
             .encode(ms, input.yuv()?, STRIDE_ALIGN)
             .with_context(|| "Failed to encode")?
         {
             frames.push(Self::create_frame(frame));
         }
+        self.duration += start.elapsed();
+        log::info!(
+            "encode frame {} duration: {:?}",
+            self.count,
+            self.duration / self.count as u32
+        );
         if frames.len() > 0 {
             Ok(Self::create_video_frame(frames))
         } else {
