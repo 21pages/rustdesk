@@ -993,10 +993,10 @@ pub fn test_av1() {
     use hbb_common::rand::Rng;
     use std::{sync::Once, time::Duration};
 
-    if disable_av1() || !Config::get_option(OPTION_AV1_TEST).is_empty() {
-        log::info!("skip test av1");
-        return;
-    }
+    // if disable_av1() || !Config::get_option(OPTION_AV1_TEST).is_empty() {
+    //     log::info!("skip test av1");
+    //     return;
+    // }
 
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
