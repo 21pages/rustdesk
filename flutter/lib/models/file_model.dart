@@ -470,7 +470,8 @@ class FileController {
   }
 
   /// sendFiles from current side (FileController.isLocal) to other side (SelectedItems).
-  void sendFiles(SelectedItems items, DirectoryData otherSideData) {
+  Future<void> sendFiles(
+      SelectedItems items, DirectoryData otherSideData) async {
     /// ignore wrong items side status
     if (items.isLocal != isLocal) {
       return;
@@ -496,6 +497,24 @@ class FileController {
       debugPrint(
           "path: ${from.path}, toPath: $toPath, to: ${PathUtil.join(toPath, from.name, isWindows)}");
     }
+
+    final List<String> emptyDirPaths = [];
+
+    for (var from in items.items) {
+      if (from.isDirectory && from.size == 0) {
+        emptyDirPaths.add(from.path);
+      } else {
+        final dirs =
+            await fileFetcher.readEmptyDirs(from.path, isLocal, showHidden);
+
+        final List<String> subEmptyDirPaths =
+            dirs.map((dir) => dir.path).toList();
+
+        emptyDirPaths.addAll(subEmptyDirPaths);
+      }
+    }
+
+    debugPrint("emptyDirPaths: $emptyDirPaths");
   }
 
   bool _removeCheckboxRemember = false;
@@ -1124,6 +1143,27 @@ class FileFetcher {
       }
     } catch (e) {
       debugPrint("tryCompleteJob err: $e");
+    }
+  }
+
+  Future<List<FileDirectory>> readEmptyDirs(
+      String path, bool isLocal, bool showHidden) async {
+    try {
+      if (isLocal) {
+        final res = await bind.sessionReadLocalEmptyDirsRecursiveSync(
+            sessionId: sessionId, path: path, showHidden: showHidden);
+
+        final List<dynamic> fdJsons = jsonDecode(res);
+
+        final List<FileDirectory> fds = fdJsons
+            .map((fdJson) => FileDirectory.fromJson(jsonDecode(fdJson)))
+            .toList();
+        return fds;
+      } else {
+        return [];
+      }
+    } catch (e) {
+      return Future.error(e);
     }
   }
 
