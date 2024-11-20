@@ -1,6 +1,6 @@
 use crate::{
     client::file_trait::FileManager,
-    common::make_fd_to_json,
+    common::{make_fd_to_json, make_vec_fd_to_json},
     flutter::{
         self, session_add, session_add_existed, session_start_, sessions, try_sync_peer_option,
     },
@@ -687,7 +687,7 @@ pub fn session_read_local_empty_dirs_recursive_sync(
     path: String,
     show_hidden: bool,
 ) -> String {
-    if let Ok(fds) = fs::read_empty_dirs_recursive(&fs::get_path(&path), show_hidden) {
+    if let Ok(fds) = fs::get_empty_dirs_recursive(&path, show_hidden) {
         return make_vec_fd_to_json(&fds);
     }
     "".to_string()

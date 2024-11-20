@@ -497,24 +497,6 @@ class FileController {
       debugPrint(
           "path: ${from.path}, toPath: $toPath, to: ${PathUtil.join(toPath, from.name, isWindows)}");
     }
-
-    final List<String> emptyDirPaths = [];
-
-    for (var from in items.items) {
-      if (from.isDirectory && from.size == 0) {
-        emptyDirPaths.add(from.path);
-      } else {
-        final dirs =
-            await fileFetcher.readEmptyDirs(from.path, isLocal, showHidden);
-
-        final List<String> subEmptyDirPaths =
-            dirs.map((dir) => dir.path).toList();
-
-        emptyDirPaths.addAll(subEmptyDirPaths);
-      }
-    }
-
-    debugPrint("emptyDirPaths: $emptyDirPaths");
   }
 
   bool _removeCheckboxRemember = false;
@@ -1155,9 +1137,8 @@ class FileFetcher {
 
         final List<dynamic> fdJsons = jsonDecode(res);
 
-        final List<FileDirectory> fds = fdJsons
-            .map((fdJson) => FileDirectory.fromJson(jsonDecode(fdJson)))
-            .toList();
+        final List<FileDirectory> fds =
+            fdJsons.map((fdJson) => FileDirectory.fromJson(fdJson)).toList();
         return fds;
       } else {
         return [];
