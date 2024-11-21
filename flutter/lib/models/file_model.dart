@@ -497,6 +497,31 @@ class FileController {
       debugPrint(
           "path: ${from.path}, toPath: $toPath, to: ${PathUtil.join(toPath, from.name, isWindows)}");
     }
+
+    final List<Entry> entrys = items.items.toList();
+    final List<String> paths = [];
+
+    await Future.forEach(entrys, (Entry item) async {
+      final emptyDirs =
+          await fileFetcher.readEmptyDirs(item.path, isLocal, showHidden);
+
+      if (emptyDirs.isEmpty) {
+        paths.add(item.path);
+      } else {
+        for (var dir in emptyDirs) {
+          paths.add(dir.path);
+        }
+      }
+    });
+
+    final dirs = paths.map((path) {
+      return PathUtil.getOtherSidePath(directory.value.path, path,
+          options.value.isWindows, toPath, isWindows);
+    });
+
+    for (var dir in dirs) {
+      createDir(dir);
+    }
   }
 
   bool _removeCheckboxRemember = false;
@@ -1393,6 +1418,15 @@ class _PathStat {
 class PathUtil {
   static final windowsContext = path.Context(style: path.Style.windows);
   static final posixContext = path.Context(style: path.Style.posix);
+
+  static String getOtherSidePath(String mainRootPath, String mainPath,
+      bool isMainWindows, String otherRootPath, bool isOtherWindows) {
+    final mainPathUtil = isMainWindows ? windowsContext : posixContext;
+    final name = mainPathUtil.relative(mainPath, from: mainRootPath);
+
+    final otherPathUtil = isOtherWindows ? windowsContext : posixContext;
+    return otherPathUtil.join(otherRootPath, name);
+  }
 
   static String join(String path1, String path2, bool isWindows) {
     final pathUtil = isWindows ? windowsContext : posixContext;
