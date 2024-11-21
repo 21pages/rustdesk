@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "update_vcpkg_build"
+      upload-tag: "vcpkg"
