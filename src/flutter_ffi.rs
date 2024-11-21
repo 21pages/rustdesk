@@ -685,12 +685,24 @@ pub fn session_read_local_dir_sync(
 pub fn session_read_local_empty_dirs_recursive_sync(
     _session_id: SessionID,
     path: String,
-    show_hidden: bool,
+    include_hidden: bool,
 ) -> String {
-    if let Ok(fds) = fs::get_empty_dirs_recursive(&path, show_hidden) {
+    if let Ok(fds) = fs::get_empty_dirs_recursive(&path, include_hidden) {
         return make_vec_fd_to_json(&fds);
     }
     "".to_string()
+}
+
+pub fn session_read_remote_empty_dirs_recursive_sync(
+    session_id: SessionID,
+    path: String,
+    include_hidden: bool,
+) {
+    log::debug!("read_empty_dirs path: {}", path);
+
+    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.read_empty_dirs(path, include_hidden);
+    }
 }
 
 pub fn session_get_platform(session_id: SessionID, is_remote: bool) -> String {

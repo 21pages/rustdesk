@@ -5,7 +5,7 @@ use std::{
     task::Poll,
 };
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 use hbb_common::{
     allow_err,
@@ -1083,6 +1083,21 @@ pub fn make_vec_fd_to_json(fds: &[FileDirectory]) -> String {
     }
 
     serde_json::to_string(&fd_jsons).unwrap_or("".into())
+}
+
+pub fn make_empty_dirs_response_to_json(res: &ReadEmptyDirsResponse) -> String {
+    let mut map: Map<String, Value> = serde_json::Map::new();
+    map.insert("path".into(), json!(res.path));
+
+    let mut fd_jsons = vec![];
+
+    for fd in res.empty_dirs.iter() {
+        let fd_json = _make_fd_to_json(fd.id, fd.path.clone(), &fd.entries);
+        fd_jsons.push(fd_json);
+    }
+    map.insert("empty_dirs".into(), fd_jsons.into());
+
+    serde_json::to_string(&map).unwrap_or("".into())
 }
 
 /// The function to handle the url scheme sent by the system.
