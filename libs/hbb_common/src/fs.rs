@@ -602,7 +602,7 @@ impl TransferJob {
     }
 
     pub fn set_file_confirmed(&mut self, file_confirmed: bool) {
-        log::info!("id: {}, file_confirmed: {}", self.id, file_confirmed);
+        // log::info!("id: {}, file_confirmed: {}", self.id, file_confirmed);
         self.file_confirmed = file_confirmed;
         self.file_skipped = false;
     }

@@ -510,12 +510,8 @@ class FileController {
       final emptyDirs =
           await fileFetcher.readEmptyDirs(item.path, isLocal, showHidden);
 
-      if (emptyDirs.isEmpty) {
-        paths.add(item.path);
-      } else {
-        for (var dir in emptyDirs) {
-          paths.add(dir.path);
-        }
+      for (var dir in emptyDirs) {
+        paths.add(dir.path);
       }
 
       final dirs = paths.map((path) {
@@ -1123,7 +1119,7 @@ class FileFetcher {
     Timer(Duration(seconds: 2), () {
       tasks.remove(path);
       if (c.isCompleted) return;
-      c.completeError("Failed to read dir, timeout");
+      c.completeError("Failed to read empty dir, timeout");
     });
     return c.future;
   }

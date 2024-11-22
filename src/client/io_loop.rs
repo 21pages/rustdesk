@@ -1291,7 +1291,7 @@ impl<T: InvokeUiSession> Remote<T> {
                             self.handler
                                 .update_folder_files(fd.id, &entries, fd.path, false, false);
                             if let Some(job) = fs::get_job(fd.id, &mut self.write_jobs) {
-                                log::info!("job set_files: {:?}", entries);
+                                // log::info!("job set_files: {:?}", entries);
                                 job.set_files(entries);
                             } else if let Some(job) = self.remove_jobs.get_mut(&fd.id) {
                                 job.files = entries;
