@@ -767,6 +767,7 @@ jobs:
 
       - name: Build rustdesk
         run: |
+          cargo --config net.git-fetch-with-cli=true
           ./build.py --flutter --hwcodec ${{ matrix.job.extra-build-args }}
 
       - name: create unsigned dmg
