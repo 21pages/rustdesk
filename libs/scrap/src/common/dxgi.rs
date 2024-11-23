@@ -66,6 +66,11 @@ impl TraitCapturer for Capturer {
     fn set_output_texture(&mut self, texture: bool) {
         self.inner.set_output_texture(texture);
     }
+
+    #[cfg(feature = "vram")]
+    fn last_texture(&self) -> *mut std::ffi::c_void {
+        self.inner.last_texture()
+    }
 }
 
 pub struct PixelBuffer<'a> {
@@ -254,4 +259,9 @@ impl TraitCapturer for CapturerMag {
 
     #[cfg(feature = "vram")]
     fn set_output_texture(&mut self, _texture: bool) {}
+
+    #[cfg(feature = "vram")]
+    fn last_texture(&self) -> *mut std::ffi::c_void {
+        std::ptr::null_mut()
+    }
 }

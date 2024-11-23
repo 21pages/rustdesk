@@ -756,6 +756,11 @@ pub mod client {
 
         #[cfg(feature = "vram")]
         fn set_output_texture(&mut self, _texture: bool) {}
+
+        #[cfg(feature = "vram")]
+        fn last_texture(&self) -> *mut std::ffi::c_void {
+            std::ptr::null_mut()
+        }
     }
 
     pub(super) fn start_ipc_server() -> mpsc::UnboundedSender<Data> {

@@ -59,6 +59,7 @@ pub struct Capturer {
     output_texture: bool,
     adapter_desc1: DXGI_ADAPTER_DESC1,
     rotate: Rotate,
+    last_texture: (ComPtr<ID3D11Texture2D>, bool),
 }
 
 impl Capturer {
@@ -172,6 +173,7 @@ impl Capturer {
             output_texture: false,
             adapter_desc1,
             rotate,
+            last_texture: (ComPtr(ptr::null_mut()), false),
         })
     }
 
@@ -568,6 +570,34 @@ impl Capturer {
                     }
                 }
             }
+
+            if !final_texture.is_null() && rotation == 0 {
+                // copy final_texture to dup_texture
+                let mut desc: D3D11_TEXTURE2D_DESC = mem::zeroed();
+                let current = final_texture as *mut ID3D11Texture2D;
+                (*current).GetDesc(&mut desc);
+                desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+                if !self.last_texture.0.is_null() {
+                    let mut last_desc: D3D11_TEXTURE2D_DESC = mem::zeroed();
+                    (*self.last_texture.0 .0).GetDesc(&mut last_desc);
+                    if last_desc.Width != desc.Width || last_desc.Height != desc.Height {
+                        self.last_texture.0 = ComPtr(ptr::null_mut());
+                    }
+                }
+                if !self.last_texture.1 && self.last_texture.0.is_null() {
+                    self.last_texture.1 = true;
+                    let mut dup_texture: *mut ID3D11Texture2D = ptr::null_mut();
+                    if S_OK
+                        == (*self.device.0).CreateTexture2D(&desc, ptr::null(), &mut dup_texture)
+                    {
+                        self.last_texture.0 = ComPtr(dup_texture);
+                    }
+                }
+                if !self.last_texture.0.is_null() {
+                    (*self.context.0)
+                        .CopyResource(self.last_texture.0 .0 as *mut _, current as *mut _);
+                }
+            }
             Ok((final_texture, rotation))
         }
     }
@@ -592,6 +622,11 @@ impl Capturer {
             luid: ((self.adapter_desc1.AdapterLuid.HighPart as i64) << 32)
                 | self.adapter_desc1.AdapterLuid.LowPart as i64,
         }
+    }
+
+    #[cfg(feature = "vram")]
+    pub fn last_texture(&self) -> *mut c_void {
+        self.last_texture.0 .0 as *mut c_void
     }
 }
 

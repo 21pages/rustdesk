@@ -138,6 +138,9 @@ pub trait TraitCapturer {
 
     #[cfg(feature = "vram")]
     fn set_output_texture(&mut self, texture: bool);
+
+    #[cfg(feature = "vram")]
+    fn last_texture(&self) -> *mut std::ffi::c_void;
 }
 
 #[derive(Debug, Clone, Copy)]

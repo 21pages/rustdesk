@@ -483,8 +483,9 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut would_block_count = 0u32;
     let mut yuv = Vec::new();
     let mut mid_data = Vec::new();
+    let mut last_frame_instant = Instant::now();
     let mut repeat_encode_counter = 0;
-    let repeat_encode_max = 10;
+    let repeat_encode_max = 3;
     let mut encode_fail_counter = 0;
     let mut first_frame = true;
     let capture_width = c.width;
@@ -566,6 +567,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
         let res = match c.frame(spf) {
             Ok(frame) => {
+                last_frame_instant = Instant::now();
                 repeat_encode_counter = 0;
                 if frame.valid() {
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
@@ -623,14 +625,26 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
                 }
-                if !encoder.latency_free() && yuv.len() > 0 {
-                    // yun.len() > 0 means the frame is not texture.
-                    if repeat_encode_counter < repeat_encode_max {
+                let try_repeat_encode = encoder.latency_free()
+                    && repeat_encode_counter < repeat_encode_max
+                    || last_frame_instant.elapsed().as_millis() > 100;
+                if try_repeat_encode {
+                    #[allow(unused_mut)]
+                    let (mut last_frame, mut last_frame_valid) =
+                        (EncodeInput::YUV(&yuv), yuv.len() > 0);
+                    #[cfg(feature = "vram")]
+                    if encoder.input_texture() {
+                        let last_texture = c.last_texture();
+                        last_frame = EncodeInput::Texture((last_texture, 0));
+                        last_frame_valid = !last_texture.is_null();
+                    }
+                    if last_frame_valid {
+                        last_frame_instant = Instant::now();
                         repeat_encode_counter += 1;
                         let send_conn_ids = handle_one_frame(
                             display_idx,
                             &sp,
-                            EncodeInput::YUV(&yuv),
+                            last_frame,
                             ms,
                             &mut encoder,
                             recorder.clone(),
