@@ -159,6 +159,21 @@ jobs:
           fi
         shell: bash
 
+      - name: Create vcpkg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: 'zip'
+          filename: x64-windows-static.zip
+          path: C:\vcpkg\installed\x64-windows-static
+      
+      - name: Upload vcpkg Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            x64-windows-static.zip
+
       - name: Build rustdesk
         run: |
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
@@ -634,12 +649,6 @@ jobs:
       matrix:
         job:
           - {
-              target: x86_64-apple-darwin,
-              os: macos-13, #macos-latest or macos-14 use M1 now, https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners/about-github-hosted-runners#:~:text=14%20GB-,macos%2Dlatest%20or%20macos%2D14,-The%20macos%2Dlatestlabel
-              extra-build-args: "",
-              arch: x86_64,
-            }
-          - {
               target: aarch64-apple-darwin,
               os: macos-latest,
               # extra-build-args: "--disable-flutter-texture-render", # disable this for mac, because we see a lot of users reporting flickering both on arm and x64, and we can not confirm if texture rendering has better performance if htere is no vram, https://github.com/rustdesk/rustdesk/issues/6296
@@ -744,6 +753,7 @@ jobs:
 
       - name: Install vcpkg dependencies
         run: |
+          echo "VCPKG_ROOT: $VCPKG_ROOT"
           if ! $VCPKG_ROOT/vcpkg \
             install \
             --x-install-root="$VCPKG_ROOT/installed"; then
@@ -756,6 +766,21 @@ jobs:
             done
             exit 1
           fi
+
+      - name: Create vcpkg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: 'zip'
+          filename: arm64-osx.zip
+          path: /Users/runner/work/rustdesk/rustdesk/vcpkg/installed/arm64-osx
+      
+      - name: Upload vcpkg Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            arm64-osx.zip
 
       - name: Show version information (Rust, cargo, Clang)
         shell: bash
@@ -878,20 +903,6 @@ jobs:
               reltype: release,
               suffix: "",
             }
-          - {
-              arch: armv7,
-              target: armv7-linux-androideabi,
-              os: ubuntu-20.04,
-              reltype: release,
-              suffix: "",
-            }
-          - {
-              arch: x86_64,
-              target: x86_64-linux-android,
-              os: ubuntu-20.04,
-              reltype: release,
-              suffix: "",
-            }
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -999,6 +1010,21 @@ jobs:
             exit 1
           fi
         shell: bash
+
+      - name: Create vcpkg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: 'zip'
+          filename: arm64-android.zip
+          path: /opt/artifacts/vcpkg/installed/arm64-android
+
+      - name: Upload vcpkg Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            arm64-android.zip
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
@@ -1366,14 +1392,6 @@ jobs:
               deb_arch: amd64,
               vcpkg-triplet: x64-linux,
             }
-          - {
-              arch: aarch64,
-              target: aarch64-unknown-linux-gnu,
-              distro: ubuntu18.04,
-              on: [self-hosted, Linux, ARM64],
-              deb_arch: arm64,
-              vcpkg-triplet: arm64-linux,
-            }
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
@@ -1441,6 +1459,7 @@ jobs:
       - name: Install vcpkg dependencies
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
         run: |
+          sudo apt install -y libva-dev libvdpau-dev
           if ! $VCPKG_ROOT/vcpkg \
             install \
             --triplet ${{ matrix.job.vcpkg-triplet }} \
@@ -1455,6 +1474,21 @@ jobs:
             exit 1
           fi
         shell: bash
+
+      - name: Create vcpkg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: 'zip'
+          filename: x64-linux.zip
+          path: /opt/artifacts/vcpkg/installed/x64-linux
+
+      - name: Upload vcpkg Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            x64-linux.zip
 
       - name: Restore bridge files
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
