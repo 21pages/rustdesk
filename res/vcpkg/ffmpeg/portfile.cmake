@@ -13,6 +13,10 @@ vcpkg_from_github(
     patch/0001-avcodec-amfenc-add-query_timeout-option-for-h264-hev.patch
     patch/0002-libavcodec-amfenc-reconfig-when-bitrate-change.patch
     patch/0003-amf-colorspace.patch
+    patch/0004-videotoolbox-changing-bitrate.patch
+    patch/0005-mediacodec-changing-bitrate.patch
+    patch/0006-amf-request-idr.patch
+    patch/0007-mediacodec-request-idr.patch
 )
 
 if(SOURCE_PATH MATCHES " ")

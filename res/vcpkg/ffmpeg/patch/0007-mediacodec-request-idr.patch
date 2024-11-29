@@ -1,0 +1,112 @@
+From 206ecdb0381821af56da12c11ecc9795e255b2d7 Mon Sep 17 00:00:00 2001
+From: 21pages <sunboeasy@gmail.com>
+Date: Fri, 29 Nov 2024 15:02:56 +0800
+Subject: [PATCH 2/2] mediacodec request idr
+
+Signed-off-by: 21pages <sunboeasy@gmail.com>
+---
+ libavcodec/mediacodec_wrapper.c | 14 ++++++++++++++
+ libavcodec/mediacodec_wrapper.h |  7 +++++++
+ libavcodec/mediacodecenc.c      |  8 ++++++++
+ 3 files changed, 29 insertions(+)
+
+diff --git a/libavcodec/mediacodec_wrapper.c b/libavcodec/mediacodec_wrapper.c
+index 44fdd71869..bb36f7d93e 100644
+--- a/libavcodec/mediacodec_wrapper.c
++++ b/libavcodec/mediacodec_wrapper.c
+@@ -36,6 +36,7 @@
+ #include "mediacodec_wrapper.h"
+ 
+ #define PARAMETER_KEY_VIDEO_BITRATE "video-bitrate"
++#define PARAMETER_KEY_REQUEST_SYNC_FRAME "request-sync"
+ 
+ struct JNIAMediaCodecListFields {
+ 
+@@ -1843,6 +1844,11 @@ static int mediacodec_jni_setDynamicBitrate(FFAMediaCodec *ctx, int bitrate)
+     return mediacodec_jni_setParameter(ctx, PARAMETER_KEY_VIDEO_BITRATE, bitrate);
+ }
+ 
++static int mediacodec_jni_requestKeyFrame(FFAMediaCodec *ctx)
++{
++    return mediacodec_jni_setParameter(ctx, PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
++}
++
+ static const FFAMediaFormat media_format_jni = {
+     .class = &amediaformat_class,
+ 
+@@ -1904,6 +1910,7 @@ static const FFAMediaCodec media_codec_jni = {
+     .signalEndOfInputStream = mediacodec_jni_signalEndOfInputStream,
+ 
+     .setDynamicBitrate = mediacodec_jni_setDynamicBitrate,
++    .requestKeyFrame = mediacodec_jni_requestKeyFrame,
+ };
+ 
+ typedef struct FFAMediaFormatNdk {
+@@ -2522,6 +2529,12 @@ static int mediacodec_ndk_setDynamicBitrate(FFAMediaCodec *ctx, int bitrate)
+     return -1;
+ }
+ 
++static int mediacodec_ndk_requestKeyFrame(FFAMediaCodec *ctx)
++{
++    av_log(ctx, AV_LOG_ERROR, "ndk requestKeyFrame unavailable\n");
++    return -1;
++}
++
+ static const FFAMediaFormat media_format_ndk = {
+     .class = &amediaformat_ndk_class,
+ 
+@@ -2585,6 +2598,7 @@ static const FFAMediaCodec media_codec_ndk = {
+     .signalEndOfInputStream = mediacodec_ndk_signalEndOfInputStream,
+ 
+     .setDynamicBitrate = mediacodec_ndk_setDynamicBitrate,
++    .requestKeyFrame = mediacodec_ndk_requestKeyFrame,
+ };
+ 
+ FFAMediaFormat *ff_AMediaFormat_new(int ndk)
+diff --git a/libavcodec/mediacodec_wrapper.h b/libavcodec/mediacodec_wrapper.h
+index 86c64556ad..82348e9f6f 100644
+--- a/libavcodec/mediacodec_wrapper.h
++++ b/libavcodec/mediacodec_wrapper.h
+@@ -221,6 +221,8 @@ struct FFAMediaCodec {
+     int (*signalEndOfInputStream)(FFAMediaCodec *);
+ 
+     int (*setDynamicBitrate)(FFAMediaCodec *codec, int bitrate);
++
++    int (*requestKeyFrame)(FFAMediaCodec *codec);
+ };
+ 
+ static inline char *ff_AMediaCodec_getName(FFAMediaCodec *codec)
+@@ -350,6 +352,11 @@ static inline int ff_AMediaCodec_setDynamicBitrate(FFAMediaCodec *codec, int bit
+     return codec->setDynamicBitrate(codec, bitrate);
+ }
+ 
++static inline int ff_AMediaCodec_requestKeyFrame(FFAMediaCodec *codec)
++{
++    return codec->requestKeyFrame(codec);
++}
++
+ int ff_Build_SDK_INT(AVCodecContext *avctx);
+ 
+ enum FFAMediaFormatColorRange {
+diff --git a/libavcodec/mediacodecenc.c b/libavcodec/mediacodecenc.c
+index 621529d686..fbe1081020 100644
+--- a/libavcodec/mediacodecenc.c
++++ b/libavcodec/mediacodecenc.c
+@@ -570,6 +570,14 @@ static int mediacodec_encode(AVCodecContext *avctx, AVPacket *pkt)
+                 return ret;
+         }
+ 
++        if (s->frame->pict_type == AV_PICTURE_TYPE_I) {
++            if (0 != ff_AMediaCodec_requestKeyFrame(s->codec)) {
++                av_log(avctx, AV_LOG_ERROR, "Failed to request key frame\n");
++            } else {
++                av_log(avctx, AV_LOG_DEBUG, "Requested key frame\n");
++            }
++        }
++
+         ret = mediacodec_send(avctx, s->frame->buf[0] ? s->frame : NULL);
+         if (!ret)
+             av_frame_unref(s->frame);
+-- 
+2.43.0.windows.1
+
