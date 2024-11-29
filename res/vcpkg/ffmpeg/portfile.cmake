@@ -17,6 +17,7 @@ vcpkg_from_github(
     patch/0005-mediacodec-changing-bitrate.patch
     patch/0006-amf-request-idr.patch
     patch/0007-mediacodec-request-idr.patch
+    patch/0008-debug-log.patch
 )
 
 if(SOURCE_PATH MATCHES " ")

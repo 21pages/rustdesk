@@ -62,7 +62,7 @@ jobs:
 
   build-for-windows-flutter:
     name: ${{ matrix.job.target }}
-    needs: [build-RustDeskTempTopMostWindow, generate-bridge]
+    # needs: [build-RustDeskTempTopMostWindow, generate-bridge]
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
@@ -88,50 +88,50 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Restore bridge files
-        uses: actions/download-artifact@master
-        with:
-          name: bridge-artifact
-          path: ./
+      # - name: Restore bridge files
+      #   uses: actions/download-artifact@master
+      #   with:
+      #     name: bridge-artifact
+      #     path: ./
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
         with:
           version: ${{ env.LLVM_VERSION }}
 
-      - name: Install flutter
-        uses: subosito/flutter-action@v2.12.0 #https://github.com/subosito/flutter-action/issues/277
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+      # - name: Install flutter
+      #   uses: subosito/flutter-action@v2.12.0 #https://github.com/subosito/flutter-action/issues/277
+      #   with:
+      #     channel: "stable"
+      #     flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      # https://github.com/flutter/flutter/issues/155685
-      - name: Replace engine with rustdesk custom flutter engine
-        if: false
-        run: |
-          flutter doctor -v
-          flutter precache --windows
-          Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
-          Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
-          mv -Force windows-x64-release/*  C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
+      # # https://github.com/flutter/flutter/issues/155685
+      # - name: Replace engine with rustdesk custom flutter engine
+      #   if: false
+      #   run: |
+      #     flutter doctor -v
+      #     flutter precache --windows
+      #     Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
+      #     Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
+      #     mv -Force windows-x64-release/*  C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
 
-      - name: Patch flutter
-        shell: bash
-        run: |
-          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+      # - name: Patch flutter
+      #   shell: bash
+      #   run: |
+      #     cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
+      #     cd $(dirname $(dirname $(which flutter)))
+      #     [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: ${{ env.SCITER_RUST_VERSION }}
-          targets: ${{ matrix.job.target }}
-          components: "rustfmt"
+      # - name: Install Rust toolchain
+      #   uses: dtolnay/rust-toolchain@v1
+      #   with:
+      #     toolchain: ${{ env.SCITER_RUST_VERSION }}
+      #     targets: ${{ matrix.job.target }}
+      #     components: "rustfmt"
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: ${{ matrix.job.os }}
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     prefix-key: ${{ matrix.job.os }}
 
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
