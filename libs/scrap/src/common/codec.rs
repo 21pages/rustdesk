@@ -1063,7 +1063,7 @@ pub fn test_av1() {
                 EncoderCfg::AOM(AomEncoderConfig {
                     width,
                     height,
-                    quality,
+                    quality: 50.0,
                     keyframe_interval,
                 }),
                 i444,

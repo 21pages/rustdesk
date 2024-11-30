@@ -287,6 +287,7 @@ impl VpxEncoder {
             conf.rc_max_quantizer = DEFAULT_QP_MAX;
         }
         conf.rc_target_bitrate = Self::bitrate(self.width as _, self.height as _, quality);
+        println!("quality: {quality}, q_min: {q_min}, q_max: {q_max}, rc_target_bitrate: {}", conf.rc_target_bitrate)
     }
 
     pub fn encode(&mut self, pts: i64, data: &[u8], stride_align: usize) -> Result<EncodeFrames> {

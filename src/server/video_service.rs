@@ -350,11 +350,11 @@ fn track(nb: u64) {
 
     unsafe {
         if NR != 0 && now != tick {
-            println!(
-                "frames {frames}, {} kbps, codec output: {} kbps",
-                (bytes * 8) as f32 / ((now - tick) as f32 * 1000.0),
-                (NB * 8 * 30) / (1000 * NR)
-            );
+            // println!(
+            //     "frames {frames}, {} kbps, codec output: {} kbps",
+            //     (bytes * 8) as f32 / ((now - tick) as f32 * 1000.0),
+            //     (NB * 8 * 30) / (1000 * NR)
+            // );
             frames = 0;
             bytes = 0;
             tick = now;

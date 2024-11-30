@@ -1,5 +1,4 @@
 use super::*;
-use nix::libc::SYS_userfaultfd;
 use scrap::codec::Quality;
 use std::time::{Duration, Instant};
 pub const FPS: u32 = 30;
@@ -67,24 +66,24 @@ impl UserData {
         let minfps = 3000.0 / (2.0 * delay as f32);
 
         let fps = if delay >= DELAY_LEVEL.2 || fps < minfps {
-            log::info!(
-                "3 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
-            );
+            // log::info!(
+            //     "3 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
+            // );
             minfps
         } else if delay > DELAY_LEVEL.1 {
-            log::info!(
-                "2 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
-            );
+            // log::info!(
+            //     "2 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
+            // );
             minfps + (fps - minfps) * (DELAY_LEVEL.2 - delay) as f32 / DELAY_LEVEL.2 as f32
         } else if delay > DELAY_LEVEL.0 {
-            log::info!(
-                "1 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
-            );
+            // log::info!(
+            //     "1 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
+            // );
             fps
         } else {
-            log::info!(
-                "0 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
-            );
+            // log::info!(
+            //     "0 ----------------------------------delay {delay}, fps: {fps}, long {avg_long}, short {avg_short}"
+            // );
             fps + minfps
         };
         fps.min(MAX_FPS as f32).max(MIN_FPS as f32)
@@ -345,7 +344,7 @@ impl VideoQoS {
     }
 
     pub fn user_network_delay(&mut self, id: i32, delay: u32, complete: bool) {
-        log::info!("g:::::::::::::::::::::::::::::::::::::::::::::::::::: complete {complete} get delay {delay}");
+        // log::info!("g:::::::::::::::::::::::::::::::::::::::::::::::::::: complete {complete} get delay {delay}");
         let delay = delay.max(1);
 
         if let Some(user) = self.users.get_mut(&id) {
