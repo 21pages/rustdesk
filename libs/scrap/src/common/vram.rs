@@ -286,30 +286,8 @@ impl VRamEncoder {
     }
 
     pub fn convert_quality(quality: Quality, f: &FeatureContext) -> u32 {
-        match quality {
-            Quality::Best => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    200
-                } else {
-                    150
-                }
-            }
-            Quality::Balanced => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    150
-                } else {
-                    100
-                }
-            }
-            Quality::Low => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    75
-                } else {
-                    50
-                }
-            }
-            Quality::Custom(b) => b,
-        }
+        let h264 = f.data_format == DataFormat::H264;
+        crate::hwcodec::HwRamEncoder::quality_to_bitrate(quality, h264)
     }
 
     pub fn set_not_use(display: usize, not_use: bool) {

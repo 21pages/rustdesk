@@ -193,7 +193,7 @@ impl EncoderApi for HwRamEncoder {
     }
 
     fn support_abr(&self) -> bool {
-        ["qsv", "vaapi"].iter().all(|&x| !self.config.name.contains(x))
+        ["vaapi"].iter().all(|&x| !self.config.name.contains(x))
     }
 
     fn support_changing_quality(&self) -> bool {
@@ -254,14 +254,38 @@ impl HwRamEncoder {
         RC_CBR
     }
 
-    pub fn convert_quality(name: &str, quality: crate::codec::Quality) -> u32 {
+    pub fn quality_to_bitrate(quality: crate::codec::Quality, h264: bool) -> u32 {
         use crate::codec::Quality;
-        let quality = match quality {
-            Quality::Best => 150,
-            Quality::Balanced => 100,
-            Quality::Low => 50,
+        // https://www.digitalsamba.com/blog/unravelling-video-bitrate-how-to-boost-video-quality-and-streaming-performance
+        match quality {
+            Quality::Best => {
+                if h264 {
+                    200
+                } else {
+                    150
+                }
+            }
+            Quality::Balanced => {
+                if h264 {
+                    150
+                } else {
+                    100
+                }
+            }
+            Quality::Low => {
+                if h264 {
+                    75
+                } else {
+                    50
+                }
+            }
             Quality::Custom(b) => b,
-        };
+        }
+    }
+
+    pub fn convert_quality(name: &str, quality: crate::codec::Quality) -> u32 {
+        let h264 = name.contains("h264");
+        let quality = Self::quality_to_bitrate(quality, h264);
         let factor = if name.contains("mediacodec") {
             // https://stackoverflow.com/questions/26110337/what-are-valid-bit-rates-to-set-for-mediacodec?rq=3
             5
