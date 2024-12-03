@@ -15,8 +15,7 @@ vcpkg_from_github(
     patch/0003-amf-colorspace.patch
     patch/0004-videotoolbox-changing-bitrate.patch
     patch/0005-mediacodec-changing-bitrate.patch
-    patch/0006-vaapi-dynamic-load-vaSyncBuffer.patch
-    patch/0007-log.patch
+    patch/0006-disable-vaSyncBuffer.patch
 )
 
 if(SOURCE_PATH MATCHES " ")
