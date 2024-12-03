@@ -1,0 +1,125 @@
+From 5bb484ee04eef24b7e00525e4da9e9f49880dcfc Mon Sep 17 00:00:00 2001
+From: 21pages <sunboeasy@gmail.com>
+Date: Tue, 3 Dec 2024 09:27:58 +0800
+Subject: [PATCH] log
+
+Signed-off-by: 21pages <sunboeasy@gmail.com>
+---
+ libavcodec/vaapi_encode.c | 22 +++++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/libavcodec/vaapi_encode.c b/libavcodec/vaapi_encode.c
+index 5bf4a062d5..90c5db9e5f 100644
+--- a/libavcodec/vaapi_encode.c
++++ b/libavcodec/vaapi_encode.c
+@@ -142,6 +142,9 @@ static int vaapi_encode_wait(AVCodecContext *avctx,
+     VAAPIEncodeContext *ctx = avctx->priv_data;
+     VAStatus vas;
+ 
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_wait\n");
++
++
+     av_assert0(pic->encode_issued);
+ 
+     if (pic->encode_complete) {
+@@ -158,6 +161,7 @@ static int vaapi_encode_wait(AVCodecContext *avctx,
+         vas = ctx->vaapi_sync_buffer(ctx->hwctx->display,
+                            pic->output_buffer,
+                            VA_TIMEOUT_INFINITE);
++        av_log(avctx, AV_LOG_ERROR, "vaapi_sync_buffer: %p, vas: %d\n", ctx->vaapi_sync_buffer, vas);
+         if (vas != VA_STATUS_SUCCESS) {
+             av_log(avctx, AV_LOG_ERROR, "Failed to sync to output buffer completion: "
+                    "%d (%s).\n", vas, vaErrorStr(vas));
+@@ -166,6 +170,7 @@ static int vaapi_encode_wait(AVCodecContext *avctx,
+     } else
+ #endif
+     { // If vaSyncBuffer is not implemented, try old version API.
++        av_log(avctx, AV_LOG_ERROR, "vaapi_encode_wait vaSyncSurface\n");
+         vas = vaSyncSurface(ctx->hwctx->display, pic->input_surface);
+         if (vas != VA_STATUS_SUCCESS) {
+             av_log(avctx, AV_LOG_ERROR, "Failed to sync to picture completion: "
+@@ -2776,6 +2781,7 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+     AVVAAPIFramesContext *recon_hwctx = NULL;
+     VAStatus vas;
+     int err;
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 1\n");
+ 
+     ctx->va_config  = VA_INVALID_ID;
+     ctx->va_context = VA_INVALID_ID;
+@@ -2793,6 +2799,8 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+         return AVERROR(EINVAL);
+     }
+ 
++        av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 2\n");
++
+     ctx->input_frames_ref = av_buffer_ref(avctx->hw_frames_ctx);
+     if (!ctx->input_frames_ref) {
+         err = AVERROR(ENOMEM);
+@@ -2808,6 +2816,8 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+     ctx->device = (AVHWDeviceContext*)ctx->device_ref->data;
+     ctx->hwctx = ctx->device->hwctx;
+ 
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 3\n");
++
+     ctx->tail_pkt = av_packet_alloc();
+     if (!ctx->tail_pkt) {
+         err = AVERROR(ENOMEM);
+@@ -2832,6 +2842,8 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+         }
+     }
+ 
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 4\n");
++
+     err = vaapi_encode_init_rate_control(avctx);
+     if (err < 0)
+         goto fail;
+@@ -2875,6 +2887,8 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+         goto fail;
+     }
+ 
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 5\n");
++
+     err = vaapi_encode_create_recon_frames(avctx);
+     if (err < 0)
+         goto fail;
+@@ -2893,6 +2907,8 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+         goto fail;
+     }
+ 
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 6\n");
++
+     ctx->output_buffer_pool =
+         ff_refstruct_pool_alloc_ext(sizeof(VABufferID), 0, avctx,
+                                     &vaapi_encode_alloc_output_buffer, NULL,
+@@ -2937,6 +2953,8 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+         }
+     }
+ 
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 7\n");
++
+     if (ctx->va_packed_headers & VA_ENC_PACKED_HEADER_SEQUENCE &&
+         ctx->codec->write_sequence_header &&
+         avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
+@@ -2959,8 +2977,10 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+             memcpy(avctx->extradata, data, avctx->extradata_size);
+         }
+     }
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 8\n");
+ 
+ #if VA_CHECK_VERSION(1, 9, 0)
++    av_log(avctx, AV_LOG_ERROR, "vaapi_encode_init 9, 1.9.0\n");
+     // check vaSyncBuffer function
+     if (ctx->hwctx && ctx->hwctx->display) {
+         ctx->vaapi_sync_buffer = (typeof(ctx->vaapi_sync_buffer))
+@@ -2968,7 +2988,7 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+         if (ctx->vaapi_sync_buffer) {
+                 vas = ctx->vaapi_sync_buffer(ctx->hwctx->display, VA_INVALID_ID, 0);
+         }
+-        av_log(avctx, AV_LOG_INFO, "vaSyncBuffer: %p, vas: %d\n", ctx->vaapi_sync_buffer, vas);
++        av_log(avctx, AV_LOG_ERROR, "vaSyncBuffer: %p, vas: %d\n", ctx->vaapi_sync_buffer, vas);
+     }
+     if (vas != VA_STATUS_ERROR_UNIMPLEMENTED) {
+         ctx->has_sync_buffer_func = 1;
+-- 
+2.34.1
+
