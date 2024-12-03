@@ -9,10 +9,10 @@
     "shared-modules/libappindicator/libappindicator-gtk3-12.10.json",
     "xdotool.json",
     {
-      "name": "pam",    
+      "name": "pam",
       "buildsystem": "simple",
       "build-commands": [
-          "./configure --disable-selinux --prefix=/app && make -j4 install"
+        "./configure --disable-selinux --prefix=/app && make -j4 install"
       ],
       "sources": [
         {
@@ -20,6 +20,27 @@
           "url": "https://github.com/linux-pam/linux-pam/releases/download/v1.3.1/Linux-PAM-1.3.1.tar.xz",
           "sha256": "eff47a4ecd833fbf18de9686632a70ee8d0794b79aecb217ebd0ce11db4cd0db"
         }
+      ]
+    },
+    {
+      "name": "libva",
+      "buildsystem": "autotools",
+      "config-opts": [
+        "--prefix=/usr",
+        "--libdir=/usr/lib/x86_64-linux-gnu"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/intel/libva/releases/download/2.20.0/libva-2.20.0.tar.bz2",
+          "sha256": "436b658602c9c2c886a0a89e6a42a24bd2f61d3c0b0c7d4edbf3f59b0f5c6e8f"
+        }
+      ],
+      "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "*.la",
+        "*.a"
       ]
     },
     {
@@ -36,7 +57,11 @@
         "mv /app/share/icons/hicolor/scalable/apps/rustdesk.svg /app/share/icons/hicolor/scalable/apps/com.rustdesk.RustDesk.svg",
         "for size in 16 24 32 48 64 128 256 512; do\n rsvg-convert -w $size -h $size -f png -o $size.png scalable.svg\n install -Dm644 $size.png /app/share/icons/hicolor/${size}x${size}/apps/com.rustdesk.RustDesk.png\n done"
       ],
-      "cleanup": ["/include", "/lib/pkgconfig", "/share/gtk-doc"],
+      "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "/share/gtk-doc"
+      ],
       "sources": [
         {
           "type": "file",
