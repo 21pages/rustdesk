@@ -1444,7 +1444,18 @@ jobs:
       - name: Install vcpkg dependencies
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
         run: |
-          sudo apt install -y libva-dev && apt show libva-dev
+          # sudo apt install -y libva-dev && apt show libva-dev
+          sudo apt-get update
+          sudo apt-get install -y git automake libtool libdrm-dev xorg-dev libx11-dev
+          pushd /tmp
+          git clone https://github.com/intel/libva.git
+          pushd libva
+          ./autogen.sh --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu
+          ./configure
+          make
+          sudo make install && sudo ldconfig
+          popd
+          popd
           if ! $VCPKG_ROOT/vcpkg \
             install \
             --triplet ${{ matrix.job.vcpkg-triplet }} \
@@ -1460,7 +1471,6 @@ jobs:
           fi
           head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
         shell: bash
-
       - name: Create vcpkg Archive
         uses: thedoctor0/zip-release@0.7.1
         with:
