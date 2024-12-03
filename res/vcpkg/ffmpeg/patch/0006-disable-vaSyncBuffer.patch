@@ -1,0 +1,43 @@
+From e1adb1bc666aeabd41a8939231293f17d9582abb Mon Sep 17 00:00:00 2001
+From: 21pages <sunboeasy@gmail.com>
+Date: Tue, 3 Dec 2024 18:37:59 +0800
+Subject: [PATCH] disable vaSyncBuffer
+
+Signed-off-by: 21pages <sunboeasy@gmail.com>
+---
+ libavcodec/vaapi_encode.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/libavcodec/vaapi_encode.c b/libavcodec/vaapi_encode.c
+index b8765a19c7..7d03a121d7 100644
+--- a/libavcodec/vaapi_encode.c
++++ b/libavcodec/vaapi_encode.c
+@@ -153,7 +153,7 @@ static int vaapi_encode_wait(AVCodecContext *avctx,
+            "(input surface %#x).\n", pic->display_order,
+            pic->encode_order, pic->input_surface);
+ 
+-#if VA_CHECK_VERSION(1, 9, 0)
++#if 0
+     if (ctx->has_sync_buffer_func) {
+         vas = vaSyncBuffer(ctx->hwctx->display,
+                            pic->output_buffer,
+@@ -2960,7 +2960,7 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+         }
+     }
+ 
+-#if VA_CHECK_VERSION(1, 9, 0)
++#if 0
+     // check vaSyncBuffer function
+     vas = vaSyncBuffer(ctx->hwctx->display, VA_INVALID_ID, 0);
+     if (vas != VA_STATUS_ERROR_UNIMPLEMENTED) {
+@@ -2972,6 +2972,7 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
+             return AVERROR(ENOMEM);
+     }
+ #endif
++    ctx->has_sync_buffer_func = 0;
+ 
+     return 0;
+ 
+-- 
+2.34.1
+
