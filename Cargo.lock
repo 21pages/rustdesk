@@ -3064,8 +3064,8 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hwcodec"
-version = "0.7.0"
-source = "git+https://github.com/rustdesk-org/hwcodec#da7dab48df19edb5a7138ff9e01bf9f148b523da"
+version = "0.7.1"
+source = "git+https://github.com/21pages/hwcodec?branch=remove_va_link#9621278fea66f15b8299d0a2047e345d5a4b4bd9"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
