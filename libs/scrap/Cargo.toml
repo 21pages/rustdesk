@@ -60,6 +60,6 @@ gstreamer-video = { version = "0.16", optional = true }
 
 [dependencies.hwcodec]
 git = "https://github.com/21pages/hwcodec"
-branch = "remove_va_link"
+branch = "remove_va_link_test"
 optional = true
 
