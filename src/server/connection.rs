@@ -51,7 +51,10 @@ use std::sync::atomic::Ordering;
 use std::{
     num::NonZeroI64,
     path::PathBuf,
-    sync::{atomic::AtomicI64, mpsc as std_mpsc},
+    sync::{
+        atomic::{AtomicI64, AtomicU64},
+        mpsc as std_mpsc,
+    },
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use system_shutdown;
@@ -121,6 +124,9 @@ pub struct ConnInner {
     id: i32,
     tx: Option<Sender>,
     tx_video: Option<Sender>,
+
+    blockers: Option<SyncerForVideo>,
+    blocked: Arc<AtomicU64>,
 }
 
 enum MessageInput {
@@ -246,7 +252,30 @@ pub struct Connection {
 
 impl ConnInner {
     pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<Sender>) -> Self {
-        Self { id, tx, tx_video }
+        Self {
+            id,
+            tx,
+            tx_video,
+            blockers: None,
+            blocked: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    pub fn link_blockers(&mut self, blockers: SyncerForVideo) {
+        self.blockers = Some(blockers);
+    }
+
+    pub fn unblock(&mut self, nr: i32) {
+        let nr = if nr == -1 {
+            self.blocked.load(Ordering::Relaxed)
+        } else {
+            nr as u64
+        };
+
+        if nr != 0 {
+            self.blockers.as_ref().map(|x| x.unblock());
+            self.blocked.fetch_sub(nr, Ordering::Relaxed);
+        }
     }
 }
 
@@ -259,22 +288,34 @@ impl Subscriber for ConnInner {
     #[inline]
     fn send(&mut self, msg: Arc<Message>) {
         // Send SwitchDisplay on the same channel as VideoFrame to avoid send order problems.
+        let mut blocked = false;
         let tx_by_video = match &msg.union {
-            Some(message::Union::VideoFrame(_)) => true,
+            Some(message::Union::VideoFrame(_)) => {
+                self.blocked.fetch_add(1, Ordering::Relaxed);
+                self.blockers.as_ref().map(|x| x.block());
+                blocked = true;
+                true
+            }
+
             Some(message::Union::Misc(misc)) => match &misc.union {
                 Some(misc::Union::SwitchDisplay(_)) => true,
                 _ => false,
             },
+
             _ => false,
         };
+
         let tx = if tx_by_video {
             self.tx_video.as_mut()
         } else {
             self.tx.as_mut()
         };
-        tx.map(|tx| {
-            allow_err!(tx.send((Instant::now(), msg)));
-        });
+
+        if let Some(Err(_)) = tx.map(|tx| tx.send((Instant::now(), msg))) {
+            if blocked {
+                self.unblock(1);
+            }
+        }
     }
 }
 
@@ -318,11 +359,7 @@ impl Connection {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let tx_cloned = tx.clone();
         let mut conn = Self {
-            inner: ConnInner {
-                id,
-                tx: Some(tx),
-                tx_video: Some(tx_video),
-            },
+            inner: ConnInner::new(id, Some(tx), Some(tx_video)),
             require_2fa: crate::auth_2fa::get_2fa(None),
             display_idx: *display_service::PRIMARY_DISPLAY_IDX,
             stream,
@@ -393,6 +430,8 @@ impl Connection {
             #[cfg(target_os = "macos")]
             retina: Retina::default(),
         };
+        ALIVE_CONNS.lock().unwrap().push(id);
+
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
             conn.closed = true;
@@ -400,6 +439,7 @@ impl Connection {
             sleep(1.).await;
             return;
         }
+
         #[cfg(target_os = "android")]
         start_channel(rx_to_cm, tx_from_cm);
         #[cfg(target_os = "android")]
@@ -494,24 +534,22 @@ impl Connection {
                                 if let Some(s) = conn.server.upgrade() {
                                     s.write().unwrap().subscribe(
                                         NAME_CURSOR,
-                                        conn.inner.clone(), enabled || conn.show_remote_cursor);
+                                        &mut conn.inner, enabled || conn.show_remote_cursor);
                                 }
                             } else if &name == "clipboard" {
                                 conn.clipboard = enabled;
                                 conn.send_permission(Permission::Clipboard, enabled).await;
                                 if let Some(s) = conn.server.upgrade() {
-                                    s.write().unwrap().subscribe(
-                                        super::clipboard_service::NAME,
-                                        conn.inner.clone(), conn.clipboard_enabled() && conn.peer_keyboard_enabled());
+                                    let sub = conn.clipboard_enabled() && conn.peer_keyboard_enabled();
+                                    s.write().unwrap().subscribe(super::clipboard_service::NAME, &mut conn.inner, sub);
                                 }
                             } else if &name == "audio" {
                                 conn.audio = enabled;
                                 conn.send_permission(Permission::Audio, enabled).await;
                                 if conn.authorized {
                                     if let Some(s) = conn.server.upgrade() {
-                                        s.write().unwrap().subscribe(
-                                            super::audio_service::NAME,
-                                            conn.inner.clone(), conn.audio_enabled());
+                                        let sub = conn.audio_enabled();
+                                        s.write().unwrap().subscribe(super::audio_service::NAME, &mut conn.inner, sub);
                                     }
                                 }
                             } else if &name == "file" {
@@ -642,7 +680,12 @@ impl Connection {
                     if !conn.video_ack_required {
                         video_service::notify_video_frame_fetched(id, Some(instant.into()));
                     }
-                    if let Err(err) = conn.stream.send(&value as &Message).await {
+                    let mut msg = &value as &Message;
+                    if let Some(message::Union::VideoFrame(ref __)) = msg.union {
+                        conn.inner.unblock(1);
+                    }
+
+                    if let Err(err) = conn.stream.send(msg).await {
                         conn.on_close(&err.to_string(), false).await;
                         break;
                     }
@@ -755,6 +798,8 @@ impl Connection {
             conn.lr.my_id.clone(),
         );
         video_service::notify_video_frame_fetched(id, None);
+        conn.inner.unblock(-1);
+
         if conn.authorized {
             password::update_temporary_password();
         }
@@ -768,7 +813,7 @@ impl Connection {
         }));
         if let Some(s) = conn.server.upgrade() {
             let mut s = s.write().unwrap();
-            s.remove_connection(&conn.inner);
+            s.remove_connection(&mut conn.inner);
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             try_stop_record_cursor_pos();
         }
@@ -1385,7 +1430,7 @@ impl Connection {
                 let _h = try_start_record_cursor_pos();
                 self.auto_disconnect_timer = Self::get_auto_disconenct_timer();
                 s.try_add_primay_video_service();
-                s.add_connection(self.inner.clone(), &noperms);
+                s.add_connection(&mut self.inner, &noperms, self.network_delay);
             }
         }
     }
@@ -2641,9 +2686,9 @@ impl Connection {
         // For versions greater than 1.2.4, a `CaptureDisplays` message will be sent immediately.
         // Unnecessary capturers will be removed then.
         if !crate::common::is_support_multi_ui_session(&self.lr.version) {
-            lock.subscribe(&old_service_name, self.inner.clone(), false);
+            lock.subscribe(&old_service_name, &mut self.inner, false);
         }
-        lock.subscribe(&new_service_name, self.inner.clone(), true);
+        lock.subscribe(&new_service_name, &mut self.inner, true);
         self.display_idx = display_idx;
     }
 
@@ -2685,19 +2730,15 @@ impl Connection {
                 }
             }
             if !add.is_empty() {
-                lock.capture_displays(self.inner.clone(), add, true, false);
+                lock.capture_displays(&mut self.inner, add, true, false);
             } else if !sub.is_empty() {
-                lock.capture_displays(self.inner.clone(), sub, false, true);
+                lock.capture_displays(&mut self.inner, sub, false, true);
             } else {
-                lock.capture_displays(self.inner.clone(), set, true, true);
+                lock.capture_displays(&mut self.inner, set, true, true);
             }
             self.multi_ui_session = lock.get_subbed_displays_count(self.inner.id()) > 1;
             if self.follow_remote_window {
-                lock.subscribe(
-                    NAME_WINDOW_FOCUS,
-                    self.inner.clone(),
-                    !self.multi_ui_session,
-                );
+                lock.subscribe(NAME_WINDOW_FOCUS, &mut self.inner, !self.multi_ui_session);
             }
             drop(lock);
         }
@@ -2861,14 +2902,13 @@ impl Connection {
             if q != BoolOption::NotSet {
                 self.show_remote_cursor = q == BoolOption::Yes;
                 if let Some(s) = self.server.upgrade() {
-                    s.write().unwrap().subscribe(
-                        NAME_CURSOR,
-                        self.inner.clone(),
-                        self.peer_keyboard_enabled() || self.show_remote_cursor,
-                    );
+                    let sub = self.peer_keyboard_enabled() || self.show_remote_cursor;
+                    s.write()
+                        .unwrap()
+                        .subscribe(NAME_CURSOR, &mut self.inner, sub);
                     s.write().unwrap().subscribe(
                         NAME_POS,
-                        self.inner.clone(),
+                        &mut self.inner,
                         self.show_remote_cursor,
                     );
                 }
@@ -2886,7 +2926,7 @@ impl Connection {
                 if let Some(s) = self.server.upgrade() {
                     s.write().unwrap().subscribe(
                         NAME_WINDOW_FOCUS,
-                        self.inner.clone(),
+                        &mut self.inner,
                         self.follow_remote_window,
                     );
                 }
@@ -2896,11 +2936,10 @@ impl Connection {
             if q != BoolOption::NotSet {
                 self.disable_audio = q == BoolOption::Yes;
                 if let Some(s) = self.server.upgrade() {
-                    s.write().unwrap().subscribe(
-                        super::audio_service::NAME,
-                        self.inner.clone(),
-                        self.audio_enabled(),
-                    );
+                    let sub = self.audio_enabled();
+                    s.write()
+                        .unwrap()
+                        .subscribe(super::audio_service::NAME, &mut self.inner, sub);
                 }
             }
         }
@@ -2917,10 +2956,11 @@ impl Connection {
             if q != BoolOption::NotSet {
                 self.disable_clipboard = q == BoolOption::Yes;
                 if let Some(s) = self.server.upgrade() {
+                    let sub = self.clipboard_enabled() && self.peer_keyboard_enabled();
                     s.write().unwrap().subscribe(
                         super::clipboard_service::NAME,
-                        self.inner.clone(),
-                        self.clipboard_enabled() && self.peer_keyboard_enabled(),
+                        &mut self.inner,
+                        sub,
                     );
                 }
             }
@@ -2929,16 +2969,17 @@ impl Connection {
             if q != BoolOption::NotSet {
                 self.disable_keyboard = q == BoolOption::Yes;
                 if let Some(s) = self.server.upgrade() {
+                    let sub = self.clipboard_enabled() && self.peer_keyboard_enabled();
                     s.write().unwrap().subscribe(
                         super::clipboard_service::NAME,
-                        self.inner.clone(),
-                        self.clipboard_enabled() && self.peer_keyboard_enabled(),
+                        &mut self.inner,
+                        sub,
                     );
-                    s.write().unwrap().subscribe(
-                        NAME_CURSOR,
-                        self.inner.clone(),
-                        self.peer_keyboard_enabled() || self.show_remote_cursor,
-                    );
+
+                    let sub = self.peer_keyboard_enabled() || self.show_remote_cursor;
+                    s.write()
+                        .unwrap()
+                        .subscribe(NAME_CURSOR, &mut self.inner, sub);
                 }
             }
         }
@@ -3790,6 +3831,7 @@ mod raii {
     // AUTHED_CONNS: all authorized connections
 
     use super::*;
+
     pub struct ConnectionID(i32);
 
     impl ConnectionID {

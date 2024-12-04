@@ -56,6 +56,7 @@ use scrap::{
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, Display, EncodeInput, TraitCapturer,
 };
+use std::sync::Arc;
 #[cfg(windows)]
 use std::sync::Once;
 use std::{
@@ -136,6 +137,7 @@ impl VideoFrameController {
 #[derive(Clone)]
 pub struct VideoService {
     sp: GenericService,
+    blockers: SyncerForVideo,
     idx: usize,
 }
 
@@ -157,9 +159,12 @@ pub fn get_service_name(idx: usize) -> String {
     format!("{}{}", NAME, idx)
 }
 
-pub fn new(idx: usize) -> GenericService {
+pub fn new(idx: usize) -> impl Service {
+    let name = get_service_name(idx);
+    let blocker = super::SyncerForVideo::static_syncer_for(&name);
     let vs = VideoService {
-        sp: GenericService::new(get_service_name(idx), true),
+        sp: GenericService::new(name, true),
+        blockers: blocker,
         idx,
     };
     GenericService::run(&vs, run);
@@ -664,6 +669,12 @@ fn run(vs: VideoService) -> ResultType<()> {
             }
         }
 
+        let start_wait = time::Instant::now();
+        while !vs.blockers.wait_for_unblock(Duration::from_millis(300)) {
+            check_privacy_mode_changed(&sp, display_idx, &c)?;
+        }
+        log::info!("elapsed: {}ms", start_wait.elapsed().as_millis());
+
         let mut fetched_conn_ids = HashSet::new();
         let timeout_millis = 3_000u64;
         let wait_begin = Instant::now();
@@ -935,6 +946,7 @@ fn handle_one_frame(
                 .unwrap()
                 .as_mut()
                 .map(|r| r.write_message(&msg, width, height));
+            log::info!("size: {}", msg.compute_size() / 1000);
             send_conn_ids = sp.send_video_frame(msg);
         }
         Err(e) => {
