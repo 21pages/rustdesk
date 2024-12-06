@@ -136,7 +136,14 @@ async fn accept_connection_(server: ServerPtr, socket: Stream, secure: bool) -> 
     if let Ok((stream, addr)) = timeout(CONNECT_TIMEOUT, listener.accept()).await? {
         stream.set_nodelay(true).ok();
         let stream_addr = stream.local_addr()?;
-        create_tcp_connection(server, Stream::from(stream, stream_addr), addr, secure).await?;
+        create_tcp_connection(
+            server,
+            Stream::from(stream, stream_addr),
+            addr,
+            secure,
+            Some(true),
+        )
+        .await?;
     }
     Ok(())
 }
@@ -146,6 +153,7 @@ pub async fn create_tcp_connection(
     stream: Stream,
     addr: SocketAddr,
     secure: bool,
+    direct: Option<bool>,
 ) -> ResultType<()> {
     let mut stream = stream;
     let id = server.write().unwrap().get_new_id();
@@ -211,7 +219,7 @@ pub async fn create_tcp_connection(
             .ok();
         log::info!("wake up macos");
     }
-    Connection::start(addr, stream, id, Arc::downgrade(&server)).await;
+    Connection::start(addr, stream, id, Arc::downgrade(&server), direct).await;
     Ok(())
 }
 
@@ -267,7 +275,7 @@ async fn create_relay_connection_(
         ..Default::default()
     });
     stream.send(&msg_out).await?;
-    create_tcp_connection(server, stream, peer_addr, secure).await?;
+    create_tcp_connection(server, stream, peer_addr, secure, Some(false)).await?;
     Ok(())
 }
 

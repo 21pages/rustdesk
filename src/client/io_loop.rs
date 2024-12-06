@@ -1166,10 +1166,22 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
+    async fn video_frame_ack(&self, peer: &mut Stream) {
+        let ack = VideoFrameAck {
+            ..Default::default()
+        };
+        let mut cc = CongestionControl::new();
+        cc.set_video_frame_ack(ack);
+        let mut msg = Message::new();
+        msg.set_congestion_control(cc);
+        allow_err!(peer.send(&msg).await);
+    }
+
     async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
         if let Ok(msg_in) = Message::parse_from_bytes(&data) {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    self.video_frame_ack(peer).await;
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();

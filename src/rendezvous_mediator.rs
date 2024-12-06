@@ -691,6 +691,7 @@ async fn direct_server(server: ServerPtr) {
                             hbb_common::Stream::from(stream, local_addr),
                             addr,
                             false,
+                            Some(true),
                         )
                         .await
                     );
