@@ -1,20 +1,54 @@
 use super::*;
-use scrap::codec::Quality;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+// Constants
 pub const FPS: u32 = 30;
 pub const MIN_FPS: u32 = 1;
 pub const MAX_FPS: u32 = 120;
-trait Percent {
-    fn as_percent(&self) -> u32;
+
+// Bitrate ratio constants for different quality levels
+const BR_MAX: f32 = 40.0;
+const BR_MIN: f32 = 0.2;
+const BR_BEST: f32 = 1.5;
+const BR_BALANCED: f32 = 1.0;
+const BR_SPEED: f32 = 0.67;
+
+const HISTORY_CAPTURE_TIMES_LEN: usize = 30;
+
+// Refresh type for QoS updates
+#[derive(Debug, PartialEq, Eq)]
+pub enum RefreshType {
+    SetImageQuality,
+    FPS,
+    All,
 }
 
-impl Percent for ImageQuality {
-    fn as_percent(&self) -> u32 {
+// Quality-related types and implementations
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Quality {
+    Best,
+    Balanced,
+    Low,
+    Custom(f32),
+}
+
+impl Default for Quality {
+    fn default() -> Self {
+        Self::Balanced
+    }
+}
+
+impl Quality {
+    pub fn is_custom(&self) -> bool {
+        matches!(self, Quality::Custom(_))
+    }
+
+    pub fn ratio(&self) -> f32 {
         match self {
-            ImageQuality::NotSet => 0,
-            ImageQuality::Low => 50,
-            ImageQuality::Balanced => 66,
-            ImageQuality::Best => 100,
+            Quality::Best => BR_BEST,
+            Quality::Balanced => BR_BALANCED,
+            Quality::Low => BR_SPEED,
+            Quality::Custom(v) => *v,
         }
     }
 }
@@ -28,7 +62,8 @@ struct Delay {
     slower_than_old_state: Option<bool>,
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+// User session data structure
+#[derive(Default, Debug, Clone)]
 struct UserData {
     auto_adjust_fps: Option<u32>, // reserve for compatibility
     custom_fps: Option<u32>,
@@ -36,14 +71,23 @@ struct UserData {
     delay: Option<Delay>,
     response_delayed: bool,
     record: bool,
+    support_video_ack: bool,
+    congested: bool,
 }
 
+// Main QoS controller structure
 pub struct VideoQoS {
     fps: u32,
-    quality: Quality,
+    ratio: f32,
     users: HashMap<i32, UserData>,
     bitrate_store: u32,
     support_abr: HashMap<usize, bool>,
+    start: Instant,
+    target_fps: u32,
+    congested_in_one_second: u32,
+    history_capture_times: Vec<u32>,
+    frame_count_since_adjust_ratio: usize,
+    is_hardware: bool,
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -78,24 +122,28 @@ impl Default for VideoQoS {
     fn default() -> Self {
         VideoQoS {
             fps: FPS,
-            quality: Default::default(),
+            ratio: BR_BALANCED,
             users: Default::default(),
             bitrate_store: 0,
             support_abr: Default::default(),
+            start: Instant::now(),
+            congested_in_one_second: 0,
+            history_capture_times: Vec::new(),
+            target_fps: FPS,
+            frame_count_since_adjust_ratio: 0,
+            is_hardware: false,
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum RefreshType {
-    SetImageQuality,
-}
-
+// VideoQoS implementation - Basic functionality
 impl VideoQoS {
+    // Calculate seconds per frame based on current FPS
     pub fn spf(&self) -> Duration {
         Duration::from_secs_f32(1. / (self.fps() as f32))
     }
 
+    // Get current FPS within valid range
     pub fn fps(&self) -> u32 {
         if self.fps >= MIN_FPS && self.fps <= MAX_FPS {
             self.fps
@@ -104,18 +152,25 @@ impl VideoQoS {
         }
     }
 
+    // Store bitrate for later use
     pub fn store_bitrate(&mut self, bitrate: u32) {
         self.bitrate_store = bitrate;
     }
 
+    // Get stored bitrate
     pub fn bitrate(&self) -> u32 {
         self.bitrate_store
     }
 
-    pub fn quality(&self) -> Quality {
-        self.quality
+    // Get current bitrate ratio with bounds checking
+    pub fn ratio(&mut self) -> f32 {
+        if self.ratio < BR_MIN || self.ratio > BR_MAX {
+            self.ratio = BR_BALANCED;
+        }
+        self.ratio
     }
 
+    // Check if any user is in recording mode
     pub fn record(&self) -> bool {
         self.users.iter().any(|u| u.1.record)
     }
@@ -124,16 +179,18 @@ impl VideoQoS {
         self.support_abr.insert(display_idx, support);
     }
 
+    // Check if variable bitrate encoding is supported and enabled
     pub fn in_vbr_state(&self) -> bool {
         Config::get_option("enable-abr") != "N" && self.support_abr.iter().all(|e| *e.1)
     }
+}
 
-    pub fn refresh(&mut self, typ: Option<RefreshType>) {
-        // fps
+// VideoQoS implementation - User session management
+impl VideoQoS {
+    #[inline]
+    fn highest_fps(&self) -> u32 {
         let user_fps = |u: &UserData| {
-            // custom_fps
             let mut fps = u.custom_fps.unwrap_or(FPS);
-            // auto adjust fps
             if let Some(auto_adjust_fps) = u.auto_adjust_fps {
                 if fps == 0 || auto_adjust_fps < fps {
                     fps = auto_adjust_fps;
@@ -154,96 +211,119 @@ impl VideoQoS {
                     fps = MIN_FPS + 2;
                 }
             }
-            return fps;
+            fps
         };
-        let mut fps = self
+
+        let fps = self
             .users
             .iter()
             .map(|(_, u)| user_fps(u))
             .filter(|u| *u >= MIN_FPS)
             .min()
             .unwrap_or(FPS);
-        if fps > MAX_FPS {
-            fps = MAX_FPS;
-        }
-        self.fps = fps;
 
-        // quality
-        // latest image quality
-        let latest_quality = self
-            .users
+        fps.clamp(MIN_FPS, MAX_FPS)
+    }
+
+    // Get latest quality settings from all users
+    #[inline]
+    fn lastest_quality(&self) -> Quality {
+        self.users
             .iter()
             .map(|(_, u)| u.quality)
             .filter(|q| *q != None)
             .max_by(|a, b| a.unwrap_or_default().0.cmp(&b.unwrap_or_default().0))
-            .unwrap_or_default()
-            .unwrap_or_default()
-            .1;
-        let mut quality = latest_quality;
+            .flatten()
+            .unwrap_or((0, Quality::Balanced))
+            .1
+    }
 
-        // network delay
-        let abr_enabled = self.in_vbr_state();
-        if abr_enabled && typ != Some(RefreshType::SetImageQuality) {
-            // max delay
-            let delay = self
-                .users
-                .iter()
-                .map(|u| u.1.delay)
-                .filter(|d| d.is_some())
-                .max_by(|a, b| {
-                    (a.unwrap_or_default().state as u32).cmp(&(b.unwrap_or_default().state as u32))
-                });
-            let delay = delay.unwrap_or_default().unwrap_or_default().state;
-            if delay != DelayState::Normal {
-                match self.quality {
-                    Quality::Best => {
-                        quality = if delay == DelayState::Broken {
-                            Quality::Low
-                        } else {
-                            Quality::Balanced
-                        };
-                    }
-                    Quality::Balanced => {
-                        quality = Quality::Low;
-                    }
-                    Quality::Low => {
-                        quality = Quality::Low;
-                    }
-                    Quality::Custom(b) => match delay {
-                        DelayState::LowDelay => {
-                            quality =
-                                Quality::Custom(if b >= 150 { 100 } else { std::cmp::min(50, b) });
-                        }
-                        DelayState::HighDelay => {
-                            quality =
-                                Quality::Custom(if b >= 100 { 50 } else { std::cmp::min(25, b) });
-                        }
-                        DelayState::Broken => {
-                            quality =
-                                Quality::Custom(if b >= 50 { 25 } else { std::cmp::min(10, b) });
-                        }
-                        DelayState::Normal => {}
-                    },
+    pub fn refresh(&mut self, typ: RefreshType) {
+        log::info!("refresh: {:?}", typ);
+        // Update fps
+        if typ == RefreshType::All || typ == RefreshType::FPS {
+            self.target_fps = self.highest_fps();
+            if self.fps > self.target_fps {
+                self.fps = self.target_fps;
+            }
+        }
+        if typ == RefreshType::All || typ == RefreshType::SetImageQuality {
+            // Update quality
+            let mut quality = self.lastest_quality().ratio();
+            if quality < BR_MIN || quality > BR_MAX {
+                quality = BR_BALANCED;
+            }
+
+            // Handle ABR if enabled
+            let abr_enabled = self.in_vbr_state();
+            if abr_enabled && typ != RefreshType::SetImageQuality {}
+            // self.ratio = quality;
+        }
+    }
+
+    fn adjust_ratio_based_on_delay(&mut self) {
+        // max delay
+        let delay = self
+            .users
+            .iter()
+            .map(|u| u.1.delay)
+            .filter(|d| d.is_some())
+            .max_by(|a, b| {
+                (a.unwrap_or_default().state as u32).cmp(&(b.unwrap_or_default().state as u32))
+            });
+        let delay = delay.unwrap_or_default().unwrap_or_default().state;
+        let mut v = self.ratio;
+        let max_ratio = self.lastest_quality().ratio();
+        match delay {
+            DelayState::Normal => {
+                if v < BR_SPEED {
+                    v = BR_SPEED;
+                } else if v < BR_BALANCED {
+                    v = BR_BALANCED;
+                } else if v < BR_BEST {
+                    v = BR_BEST;
+                } else if v < max_ratio {
+                    v = max_ratio;
                 }
-            } else {
-                match self.quality {
-                    Quality::Low => {
-                        if latest_quality == Quality::Best {
-                            quality = Quality::Balanced;
-                        }
+            }
+            _ => {
+                if v > BR_BEST {
+                    v = BR_BEST;
+                } else if v > BR_BALANCED {
+                    v = BR_BALANCED;
+                } else if v > BR_SPEED {
+                    v = BR_SPEED;
+                } else {
+                    if delay == DelayState::HighDelay {
+                        v = v * 0.9;
+                    } else if delay == DelayState::Broken {
+                        v = v * 0.8;
                     }
-                    Quality::Custom(current_b) => {
-                        if let Quality::Custom(latest_b) = latest_quality {
-                            if current_b < latest_b / 2 {
-                                quality = Quality::Custom(latest_b / 2);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
             }
         }
-        self.quality = quality;
+        self.ratio = v.clamp(BR_MIN, max_ratio);
+    }
+
+    // Initialize new user session
+    pub fn on_connection_open(&mut self, id: i32, support_video_ack: bool) {
+        self.users.insert(
+            id,
+            UserData {
+                support_video_ack,
+                ..Default::default()
+            },
+        );
+        self.refresh(RefreshType::All);
+    }
+
+    // Clean up user session
+    pub fn on_connection_close(&mut self, id: i32) {
+        self.users.remove(&id);
+        if self.users.is_empty() {
+            *self = Default::default();
+        }
+        self.refresh(RefreshType::All);
     }
 
     pub fn user_custom_fps(&mut self, id: i32, fps: u32) {
@@ -252,36 +332,19 @@ impl VideoQoS {
         }
         if let Some(user) = self.users.get_mut(&id) {
             user.custom_fps = Some(fps);
-        } else {
-            self.users.insert(
-                id,
-                UserData {
-                    custom_fps: Some(fps),
-                    ..Default::default()
-                },
-            );
+            self.refresh(RefreshType::FPS);
         }
-        self.refresh(None);
     }
 
     pub fn user_auto_adjust_fps(&mut self, id: i32, fps: u32) {
         if let Some(user) = self.users.get_mut(&id) {
             user.auto_adjust_fps = Some(fps);
-        } else {
-            self.users.insert(
-                id,
-                UserData {
-                    auto_adjust_fps: Some(fps),
-                    ..Default::default()
-                },
-            );
+            self.refresh(RefreshType::FPS);
         }
-        self.refresh(None);
     }
 
     pub fn user_image_quality(&mut self, id: i32, image_quality: i32) {
-        // https://github.com/rustdesk/rustdesk/blob/d716e2b40c38737f1aa3f16de0dec67394a6ac68/src/server/video_service.rs#L493
-        let convert_quality = |q: i32| {
+        let convert_quality = |q: i32| -> Quality {
             if q == ImageQuality::Balanced.value() {
                 Quality::Balanced
             } else if q == ImageQuality::Low.value() {
@@ -289,26 +352,17 @@ impl VideoQoS {
             } else if q == ImageQuality::Best.value() {
                 Quality::Best
             } else {
-                let mut b = (q >> 8 & 0xFFF) * 2;
-                b = std::cmp::max(b, 20);
-                b = std::cmp::min(b, 8000);
-                Quality::Custom(b as u32)
+                let b = ((q >> 8 & 0xFFF) * 2) as f32 / 100.0;
+                Quality::Custom(b.clamp(BR_MIN, BR_MAX))
             }
         };
 
         let quality = Some((hbb_common::get_time(), convert_quality(image_quality)));
         if let Some(user) = self.users.get_mut(&id) {
+            log::info!("user.quality: {:?}", user.quality);
             user.quality = quality;
-        } else {
-            self.users.insert(
-                id,
-                UserData {
-                    quality,
-                    ..Default::default()
-                },
-            );
+            self.refresh(RefreshType::SetImageQuality);
         }
-        self.refresh(Some(RefreshType::SetImageQuality));
     }
 
     pub fn user_network_delay(&mut self, id: i32, delay: u32) {
@@ -335,7 +389,7 @@ impl VideoQoS {
                         d.staging_state = new_state;
                     }
                     if d.counter % debounce == 0 {
-                        self.refresh(None);
+                        self.refresh(RefreshType::FPS);
                     }
                 } else {
                     d.counter = 0;
@@ -351,20 +405,6 @@ impl VideoQoS {
                     slower_than_old_state: None,
                 });
             }
-        } else {
-            self.users.insert(
-                id,
-                UserData {
-                    delay: Some(Delay {
-                        state: DelayState::Normal,
-                        staging_state: state,
-                        delay,
-                        counter: 0,
-                        slower_than_old_state: None,
-                    }),
-                    ..Default::default()
-                },
-            );
         }
     }
 
@@ -373,19 +413,367 @@ impl VideoQoS {
             let old = user.response_delayed;
             user.response_delayed = elapsed > 3000;
             if old != user.response_delayed {
-                self.refresh(None);
+                self.refresh(RefreshType::FPS);
             }
         }
     }
-
     pub fn user_record(&mut self, id: i32, v: bool) {
         if let Some(user) = self.users.get_mut(&id) {
             user.record = v;
         }
     }
 
-    pub fn on_connection_close(&mut self, id: i32) {
-        self.users.remove(&id);
-        self.refresh(None);
+    fn user_congested(&mut self, id: i32, congested: bool) {
+        if let Some(user) = self.users.get_mut(&id) {
+            user.congested = congested;
+        }
     }
+}
+
+// Adjust based on video ack
+impl VideoQoS {
+    fn all_support_video_ack(&self) -> bool {
+        self.users.iter().all(|u| u.1.support_video_ack)
+    }
+    // Initialize timing for congestion monitoring
+    pub fn start(&mut self, is_hardware: bool) {
+        self.start = Instant::now();
+        self.is_hardware = is_hardware;
+    }
+
+    // Main congestion control function
+    pub fn congested(&mut self, sent_frame_sizes: &mut Vec<u64>) -> bool {
+        if !self.all_support_video_ack() {
+            return false;
+        }
+        let congested = self.users.iter().any(|u| u.1.congested);
+        if congested {
+            self.congested_in_one_second += 1;
+        }
+
+        let sent_frame_one_second = sent_frame_sizes.len();
+        let dynamic_screen = sent_frame_one_second > 0; // TODO: check if screen is dynamic, maybe always congested
+        let elapsed = self.start.elapsed().as_millis();
+
+        // Process metrics every second
+        if elapsed > 1000 {
+            self.handle_one_second_elapsed(dynamic_screen, sent_frame_one_second, sent_frame_sizes);
+        }
+
+        // Adjust quality ratio if enough samples collected
+        self.process_history_capture_times(dynamic_screen);
+
+        congested
+    }
+
+    // Process metrics collected over one second
+    fn handle_one_second_elapsed(
+        &mut self,
+        dynamic_screen: bool,
+        sent_frame_one_second: usize,
+        sent_frame_sizes: &mut Vec<u64>,
+    ) {
+        log::info!(
+            "congested: {}, fps: {}, sent_frame_size: {:?}, payload: {:?}, ratio: {:.2}",
+            self.congested_in_one_second,
+            self.fps,
+            sent_frame_one_second,
+            sent_frame_sizes.iter().sum::<u64>(),
+            self.ratio,
+        );
+
+        if dynamic_screen {
+            self.fps = self.congested_fps();
+        }
+
+        self.start = Instant::now();
+        self.congested_in_one_second = 0;
+        self.frame_count_since_adjust_ratio += sent_frame_one_second;
+        sent_frame_sizes.clear();
+    }
+
+    // Process historical capture times and adjust ratio if needed
+    fn process_history_capture_times(&mut self, dynamic_screen: bool) {
+        if self.history_capture_times.len() >= 6 {
+            let avg = self.history_capture_times.iter().sum::<u32>() as f32
+                / self.history_capture_times.len() as f32;
+            self.history_capture_times.clear();
+
+            // Avoid too frequent adjustments to prevent image blur
+            if dynamic_screen && self.frame_count_since_adjust_ratio > 30 {
+                self.frame_count_since_adjust_ratio = 0;
+                self.adjust_ratio(avg);
+            }
+        }
+    }
+
+    // Calculate FPS based on congestion status
+    #[inline]
+    fn congested_fps(&mut self) -> u32 {
+        let capture_times = if self.fps > self.congested_in_one_second {
+            self.fps - self.congested_in_one_second
+        } else {
+            0
+        };
+        rm_first(
+            &mut self.history_capture_times,
+            capture_times,
+            HISTORY_CAPTURE_TIMES_LEN,
+        );
+        if capture_times < self.target_fps {
+            return std::cmp::min(self.target_fps, capture_times + 2);
+        }
+        self.fps
+    }
+
+    // Adjust quality ratio based on performance metrics
+    fn adjust_ratio(&mut self, avg_fps: f32) {
+        let abr_enabled = self.in_vbr_state();
+        if !abr_enabled {
+            return;
+        }
+
+        let target_quality = self.lastest_quality();
+        let target_ratio = target_quality.ratio();
+        let (min, max) = if self.all_support_video_ack() {
+            (BR_MIN, BR_MAX.min(target_ratio * 3.0))
+        } else {
+            (BR_MIN, BR_MAX)
+        };
+        let fps_ratio = avg_fps / self.target_fps as f32;
+        let current_ratio = self.ratio;
+        let mut v = self.ratio;
+
+        log::info!(
+            "adjust_ratio: target_quality: {:?}, target_ratio: {:?}, min: {:?}, max: {:?}, fps_ratio: {:?}, current_ratio: {:?}, avg_fps: {:.1}",
+            target_quality,
+            target_ratio,
+            min,
+            max,
+            fps_ratio,
+            current_ratio,
+            avg_fps
+        );
+
+        // Basic guarantees for any quality mode
+        if self.target_fps > 20 && avg_fps < 10.0 {
+            // When target_fps > 20, ensure fps not lower than 10
+            v = current_ratio * 0.7; // Aggressive quality reduction
+        } else {
+            match target_quality {
+                Quality::Best => {
+                    // Prioritize quality, allow slightly lower FPS
+                    if current_ratio > BR_BEST {
+                        if fps_ratio > 0.8 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.5 {
+                            v = current_ratio * 0.8;
+                        }
+                    } else {
+                        if fps_ratio > 0.7 {
+                            v = current_ratio * 1.2;
+                        } else if fps_ratio < 0.4 {
+                            v = current_ratio * 0.9;
+                        }
+                    }
+                }
+                Quality::Balanced => {
+                    // Balance between quality and FPS
+                    if current_ratio > BR_BEST {
+                        if fps_ratio > 0.9 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.7 {
+                            v = current_ratio * 0.8;
+                        }
+                    } else if current_ratio > BR_BALANCED {
+                        if fps_ratio > 0.85 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.6 {
+                            v = current_ratio * 0.9;
+                        }
+                    } else {
+                        if fps_ratio > 0.8 {
+                            v = current_ratio * 1.15;
+                        } else if fps_ratio < 0.5 {
+                            v = current_ratio * 0.85;
+                        }
+                    }
+                }
+                Quality::Low => {
+                    // Prioritize FPS, accept lower quality
+                    if current_ratio > BR_BEST {
+                        if fps_ratio > 0.95 {
+                            v = current_ratio * 1.05;
+                        } else if fps_ratio < 0.8 {
+                            v = current_ratio * 0.8;
+                        }
+                    } else if current_ratio > BR_BALANCED {
+                        if fps_ratio > 0.9 {
+                            v = current_ratio * 1.05;
+                        } else if fps_ratio < 0.7 {
+                            v = current_ratio * 0.85;
+                        }
+                    } else {
+                        if fps_ratio > 0.85 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.6 {
+                            v = current_ratio * 0.8;
+                        }
+                    }
+                }
+                Quality::Custom(_) => {}
+            }
+        }
+
+        // Apply minimum ratio guarantees based on FPS
+        if avg_fps > 15.0 {
+            v = v.max(BR_BALANCED);
+        } else if avg_fps > 10.0 {
+            v = v.max(BR_SPEED);
+        }
+
+        // Final clamp within allowed range
+        self.ratio = v.clamp(min, max);
+
+        log::info!(
+            "after adjust - ratio: {:.2}, fps_ratio: {:.2}, quality: {:?}, avg_fps: {:.1}",
+            self.ratio,
+            fps_ratio,
+            target_quality,
+            avg_fps
+        );
+    }
+}
+
+// Frame sending record for bandwidth and congestion tracking
+#[derive(Debug, Clone, Copy)]
+struct SendRecord {
+    size: usize,
+    timestamp: u128,
+}
+
+// Video streaming history for bandwidth estimation and congestion control
+#[derive(Debug, Clone)]
+pub struct VideoHistory {
+    conn_id: i32,
+    send_history: Vec<SendRecord>,
+    inflight_frames: Vec<SendRecord>,
+    first_frame_instant: Option<Instant>,
+    rtt: Option<u128>,
+    delay: Vec<u128>,
+    congested: bool,
+    bandwidth_history: Vec<f32>, // bytes per second
+    log_timer: Instant,
+}
+
+// Public functionality
+impl VideoHistory {
+    pub fn new(conn_id: i32) -> Self {
+        Self {
+            conn_id,
+            send_history: Vec::new(),
+            inflight_frames: Vec::new(),
+            first_frame_instant: None,
+            rtt: None,
+            delay: Vec::new(),
+            congested: false,
+            bandwidth_history: Vec::new(),
+            log_timer: Instant::now(),
+        }
+    }
+
+    pub fn on_send(&mut self, size: usize) {
+        if size > 50 * 1024 {
+            log::info!("on_send: size={}", size);
+        }
+
+        let timestamp = self.get_or_init_timestamp();
+        let record = SendRecord { size, timestamp };
+
+        self.inflight_frames.push(record);
+        rm_first(&mut self.send_history, record, 30);
+        self.check_congested();
+    }
+
+    pub fn on_receive(&mut self) {
+        if self.inflight_frames.is_empty() {
+            return;
+        }
+
+        let first = self.inflight_frames.remove(0);
+        self.update_rtt_and_delay(first);
+        self.check_congested();
+    }
+
+    fn congested(&mut self) -> bool {
+        let inflight = self.inflight_frames.len();
+        if self.send_history.len() < 10 {
+            return inflight > 1;
+        }
+
+        let Some(rtt) = self.rtt else {
+            return inflight > 1;
+        };
+        let rtt = rtt.max(10);
+
+        let ms_per_frame = video_service::VIDEO_QOS.lock().unwrap().spf().as_millis() as f64;
+        let base_allowance = (rtt as f64 / ms_per_frame).ceil() as usize;
+        let min_allowance = base_allowance + 2;
+        if self.log_timer.elapsed().as_secs() >= 1 {
+            log::info!("inflight: {:?}, rtt: {:?}, ms_per_frame: {:?}, base_allowance: {:?}, min_allowance: {:?}", inflight, rtt, ms_per_frame, base_allowance, min_allowance);
+            self.log_timer = Instant::now();
+        }
+        inflight > min_allowance
+    }
+}
+
+// Private functions
+impl VideoHistory {
+    #[inline]
+    fn check_congested(&mut self) {
+        let old_congested = self.congested;
+        self.congested = self.congested();
+
+        if old_congested != self.congested {
+            let mut qos = video_service::VIDEO_QOS.lock().unwrap();
+            qos.user_congested(self.conn_id, self.congested);
+        }
+    }
+
+    #[inline]
+    fn get_or_init_timestamp(&mut self) -> u128 {
+        match self.first_frame_instant {
+            Some(instant) => instant.elapsed().as_millis(),
+            None => {
+                self.first_frame_instant = Some(Instant::now());
+                0
+            }
+        }
+    }
+
+    #[inline]
+    fn update_rtt_and_delay(&mut self, frame: SendRecord) {
+        let rtt = self.timestamp() as u128 - frame.timestamp;
+        self.rtt = match self.rtt {
+            Some(old) => Some(std::cmp::min(old, rtt)),
+            None => Some(rtt),
+        };
+        self.delay.push(rtt);
+        rm_first(&mut self.delay, rtt, 30);
+    }
+
+    fn timestamp(&self) -> i64 {
+        // i64 as ms: 2924712086 years
+        self.first_frame_instant
+            .map(|instant| instant.elapsed().as_millis())
+            .unwrap_or(0) as _
+    }
+}
+
+#[inline]
+fn rm_first<T>(v: &mut Vec<T>, push: T, max_len: usize) {
+    if v.len() > max_len {
+        v.remove(0);
+    }
+    v.push(push);
 }

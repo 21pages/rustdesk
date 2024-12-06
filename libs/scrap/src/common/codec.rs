@@ -62,7 +62,7 @@ pub trait EncoderApi {
     #[cfg(feature = "vram")]
     fn input_texture(&self) -> bool;
 
-    fn set_quality(&mut self, quality: Quality) -> ResultType<()>;
+    fn set_quality(&mut self, ratio: f32) -> ResultType<()>;
 
     fn bitrate(&self) -> u32;
 
@@ -882,29 +882,6 @@ pub fn enable_directx_capture() -> bool {
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Quality {
-    Best,
-    Balanced,
-    Low,
-    Custom(u32),
-}
-
-impl Default for Quality {
-    fn default() -> Self {
-        Self::Balanced
-    }
-}
-
-impl Quality {
-    pub fn is_custom(&self) -> bool {
-        match self {
-            Quality::Custom(_) => true,
-            _ => false,
-        }
-    }
-}
-
 pub fn base_bitrate(width: u32, height: u32) -> u32 {
     #[allow(unused_mut)]
     let mut base_bitrate = ((width * height) / 1000) as u32; // same as 1.1.9
@@ -1001,8 +978,7 @@ pub fn test_av1() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         let f = || {
-            let (width, height, quality, keyframe_interval, i444) =
-                (1920, 1080, Quality::Balanced, None, false);
+            let (width, height, ratio, keyframe_interval, i444) = (1920, 1080, 1.0, None, false);
             let frame_count = 10;
             let block_size = 300;
             let move_step = 50;
@@ -1057,7 +1033,7 @@ pub fn test_av1() {
                 EncoderCfg::AOM(AomEncoderConfig {
                     width,
                     height,
-                    quality,
+                    ratio,
                     keyframe_interval,
                 }),
                 i444,
