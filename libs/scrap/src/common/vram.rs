@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    codec::{base_bitrate, enable_vram_option, EncoderApi, EncoderCfg, Quality},
+    codec::{base_bitrate, enable_vram_option, EncoderApi, EncoderCfg},
     hwcodec::HwCodecConfig,
     AdapterDevice, CodecFormat, EncodeInput, EncodeYuvFormat, Pixfmt,
 };
@@ -39,7 +39,7 @@ pub struct VRamEncoderConfig {
     pub device: AdapterDevice,
     pub width: usize,
     pub height: usize,
-    pub quality: Quality,
+    pub ratio: f32,
     pub feature: FeatureContext,
     pub keyframe_interval: Option<usize>,
 }
@@ -61,12 +61,12 @@ impl EncoderApi for VRamEncoder {
     {
         match cfg {
             EncoderCfg::VRAM(config) => {
-                let b = Self::convert_quality(config.quality, &config.feature);
-                let base_bitrate = base_bitrate(config.width as _, config.height as _);
-                let mut bitrate = base_bitrate * b / 100;
-                if bitrate <= 0 {
-                    bitrate = base_bitrate;
-                }
+                let bitrate = Self::bitrate(
+                    config.feature.data_format,
+                    config.width,
+                    config.height,
+                    config.ratio,
+                );
                 let gop = config.keyframe_interval.unwrap_or(MAX_GOP as _) as i32;
                 let ctx = EncodeContext {
                     f: config.feature.clone(),
@@ -172,9 +172,13 @@ impl EncoderApi for VRamEncoder {
         true
     }
 
-    fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
-        let b = Self::convert_quality(quality, &self.ctx.f);
-        let bitrate = base_bitrate(self.ctx.d.width as _, self.ctx.d.height as _) * b / 100;
+    fn set_quality(&mut self, ratio: f32) -> ResultType<()> {
+        let bitrate = Self::bitrate(
+            self.ctx.f.data_format,
+            self.ctx.d.width as _,
+            self.ctx.d.height as _,
+            ratio,
+        );
         if bitrate > 0 {
             if self.encoder.set_bitrate((bitrate) as _).is_ok() {
                 self.bitrate = bitrate;
@@ -285,31 +289,9 @@ impl VRamEncoder {
         }
     }
 
-    pub fn convert_quality(quality: Quality, f: &FeatureContext) -> u32 {
-        match quality {
-            Quality::Best => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    200
-                } else {
-                    150
-                }
-            }
-            Quality::Balanced => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    150
-                } else {
-                    100
-                }
-            }
-            Quality::Low => {
-                if f.driver == Driver::MFX && f.data_format == DataFormat::H264 {
-                    75
-                } else {
-                    50
-                }
-            }
-            Quality::Custom(b) => b,
-        }
+    pub fn bitrate(fmt: DataFormat, width: usize, height: usize, ratio: f32) -> u32 {
+        let factor = if fmt == DataFormat::H264 { 1.5 } else { 1.0 };
+        (base_bitrate(width as _, height as _) as f32 * factor as f32 * ratio) as u32
     }
 
     pub fn set_not_use(display: usize, not_use: bool) {
