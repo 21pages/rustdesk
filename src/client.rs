@@ -2284,6 +2284,11 @@ impl LoginConfigHandler {
             })
             .into(),
             hwid,
+            client_support: Some(ClientSupport {
+                congestion_control_video_ack: true,
+                ..Default::default()
+            })
+            .into(),
             ..Default::default()
         };
         match self.conn_type {

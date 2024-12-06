@@ -55,6 +55,7 @@ use std::{
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use system_shutdown;
+use video_qos::VideoHistory;
 
 #[cfg(windows)]
 use crate::virtual_display_manager;
@@ -242,6 +243,7 @@ pub struct Connection {
     follow_remote_cursor: bool,
     follow_remote_window: bool,
     multi_ui_session: bool,
+    video_history: Option<VideoHistory>,
 }
 
 impl ConnInner {
@@ -392,6 +394,7 @@ impl Connection {
             delayed_read_dir: None,
             #[cfg(target_os = "macos")]
             retina: Retina::default(),
+            video_history: None,
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -640,6 +643,7 @@ impl Connection {
                     if !conn.video_ack_required {
                         video_service::notify_video_frame_fetched(id, Some(instant.into()));
                     }
+                    conn.video_history.as_mut().map(|v| v.on_send(&value));
                     if let Err(err) = conn.stream.send(&value as &Message).await {
                         conn.on_close(&err.to_string(), false).await;
                         break;
@@ -1137,6 +1141,7 @@ impl Connection {
             self.inner.id(),
             auth_conn_type,
             self.session_key(),
+            self.use_congestion_control_video_ack(),
         ));
         self.session_last_recv_time = SESSIONS
             .lock()
@@ -1270,6 +1275,7 @@ impl Connection {
         pi.sas_enabled = sas_enabled;
         pi.features = Some(Features {
             privacy_mode: privacy_mode::is_privacy_mode_supported(),
+            congestion_control_video_ack: self.use_congestion_control_video_ack(),
             ..Default::default()
         })
         .into();
@@ -1412,8 +1418,11 @@ impl Connection {
         }
     }
 
-    fn on_remote_authorized(&self) {
+    fn on_remote_authorized(&mut self) {
         self.update_codec_on_login();
+        if self.use_congestion_control_video_ack() {
+            self.video_history = Some(VideoHistory::new(self.inner.id()));
+        }
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         if config::option2bool(
             "allow-remove-wallpaper",
@@ -2532,6 +2541,12 @@ impl Connection {
                 Some(message::Union::VoiceCallResponse(_response)) => {
                     // TODO: Maybe we can do a voice call from cm directly.
                 }
+                Some(message::Union::CongestionControl(cc)) => match cc.union {
+                    Some(congestion_control::Union::VideoFrameAck(_)) => {
+                        self.video_history.as_mut().map(|v| v.on_receive());
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -3322,6 +3337,12 @@ impl Connection {
             session_id: self.lr.session_id,
         }
     }
+
+    #[inline]
+    fn use_congestion_control_video_ack(&self) -> bool {
+        crate::server::video_qos::USE_VIDEO_ACK
+            && self.lr.client_support.congestion_control_video_ack
+    }
 }
 
 pub fn insert_switch_sides_uuid(id: String, uuid: uuid::Uuid) {
@@ -3809,17 +3830,18 @@ mod raii {
         fn drop(&mut self) {
             let mut active_conns_lock = ALIVE_CONNS.lock().unwrap();
             active_conns_lock.retain(|&c| c != self.0);
-            video_service::VIDEO_QOS
-                .lock()
-                .unwrap()
-                .on_connection_close(self.0);
         }
     }
 
     pub struct AuthedConnID(i32, AuthConnType);
 
     impl AuthedConnID {
-        pub fn new(conn_id: i32, conn_type: AuthConnType, session_key: SessionKey) -> Self {
+        pub fn new(
+            conn_id: i32,
+            conn_type: AuthConnType,
+            session_key: SessionKey,
+            video_ack: bool,
+        ) -> Self {
             AUTHED_CONNS
                 .lock()
                 .unwrap()
@@ -3830,6 +3852,12 @@ mod raii {
             _ONCE.call_once(|| {
                 shutdown_hooks::add_shutdown_hook(connection_shutdown_hook);
             });
+            if conn_type == AuthConnType::Remote {
+                video_service::VIDEO_QOS
+                    .lock()
+                    .unwrap()
+                    .on_connection_open(conn_id, video_ack);
+            }
             Self(conn_id, conn_type)
         }
 
@@ -3933,6 +3961,10 @@ mod raii {
         fn drop(&mut self) {
             if self.1 == AuthConnType::Remote {
                 scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::Remove(self.0));
+                video_service::VIDEO_QOS
+                    .lock()
+                    .unwrap()
+                    .on_connection_close(self.0);
             }
             AUTHED_CONNS.lock().unwrap().retain(|c| c.0 != self.0);
             let remote_count = AUTHED_CONNS

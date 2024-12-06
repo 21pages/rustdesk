@@ -6,7 +6,7 @@
 
 include!(concat!(env!("OUT_DIR"), "/aom_ffi.rs"));
 
-use crate::codec::{base_bitrate, codec_thread_num, Quality};
+use crate::codec::{base_bitrate, codec_thread_num};
 use crate::{codec::EncoderApi, EncodeFrame, STRIDE_ALIGN};
 use crate::{common::GoogleImage, generate_call_macro, generate_call_ptr_macro, Error, Result};
 use crate::{EncodeInput, EncodeYuvFormat, Pixfmt};
@@ -22,6 +22,10 @@ use std::{ptr, slice};
 generate_call_macro!(call_aom, false);
 generate_call_macro!(call_aom_allow_err, true);
 generate_call_ptr_macro!(call_aom_ptr);
+
+const BR_BEST: f32 = 1.5;
+const BR_BALANCED: f32 = 0.67;
+const BR_SPEED: f32 = 0.5;
 
 impl Default for aom_codec_enc_cfg_t {
     fn default() -> Self {
@@ -45,7 +49,7 @@ impl Default for aom_image_t {
 pub struct AomEncoderConfig {
     pub width: u32,
     pub height: u32,
-    pub quality: Quality,
+    pub quality: f32,
     pub keyframe_interval: Option<usize>,
 }
 
@@ -116,7 +120,7 @@ mod webrtc {
         } else {
             c.kf_mode = aom_kf_mode::AOM_KF_DISABLED;
         }
-        let (q_min, q_max, b) = AomEncoder::convert_quality(cfg.quality);
+        let (q_min, q_max) = AomEncoder::calc_q_values(cfg.quality);
         if q_min > 0 && q_min < q_max && q_max < 64 {
             c.rc_min_quantizer = q_min;
             c.rc_max_quantizer = q_max;
@@ -124,13 +128,7 @@ mod webrtc {
             c.rc_min_quantizer = DEFAULT_Q_MIN;
             c.rc_max_quantizer = DEFAULT_Q_MAX;
         }
-        let base_bitrate = base_bitrate(cfg.width as _, cfg.height as _);
-        let bitrate = base_bitrate * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
-        } else {
-            c.rc_target_bitrate = base_bitrate;
-        }
+        c.rc_target_bitrate = AomEncoder::bitrate(cfg.width as _, cfg.height as _, cfg.quality);
         c.rc_undershoot_pct = 50;
         c.rc_overshoot_pct = 50;
         c.rc_buf_initial_sz = 600;
@@ -273,17 +271,14 @@ impl EncoderApi for AomEncoder {
         false
     }
 
-    fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
+    fn set_quality(&mut self, ratio: f32) -> ResultType<()> {
         let mut c = unsafe { *self.ctx.config.enc.to_owned() };
-        let (q_min, q_max, b) = Self::convert_quality(quality);
+        let (q_min, q_max) = Self::calc_q_values(ratio);
         if q_min > 0 && q_min < q_max && q_max < 64 {
             c.rc_min_quantizer = q_min;
             c.rc_max_quantizer = q_max;
         }
-        let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
-        }
+        c.rc_target_bitrate = Self::bitrate(self.width as _, self.height as _, ratio);
         call_aom!(aom_codec_enc_config_set(&mut self.ctx, &c));
         Ok(())
     }
@@ -310,6 +305,10 @@ impl EncoderApi for AomEncoder {
     }
 
     fn disable(&self) {}
+
+    fn quality_ratio(&self) -> (f32, f32, f32) {
+        (BR_BEST, BR_BALANCED, BR_SPEED)
+    }
 }
 
 impl AomEncoder {
@@ -370,21 +369,14 @@ impl AomEncoder {
         }
     }
 
-    pub fn convert_quality(quality: Quality) -> (u32, u32, u32) {
-        // we can use lower bitrate for av1
-        match quality {
-            Quality::Best => (12, 25, 100),
-            Quality::Balanced => (12, 35, 100 * 2 / 3),
-            Quality::Low => (18, 45, 50),
-            Quality::Custom(b) => {
-                let (q_min, q_max) = Self::calc_q_values(b);
-                (q_min, q_max, b)
-            }
-        }
+    fn bitrate(width: u32, height: u32, ratio: f32) -> u32 {
+        let bitrate = base_bitrate(width, height) as f32;
+        (bitrate * ratio) as u32
     }
 
     #[inline]
-    fn calc_q_values(b: u32) -> (u32, u32) {
+    fn calc_q_values(ratio: f32) -> (u32, u32) {
+        let b = (ratio * 100.0) as u32;
         let b = std::cmp::min(b, 200);
         let q_min1: i32 = 24;
         let q_min2 = 5;
