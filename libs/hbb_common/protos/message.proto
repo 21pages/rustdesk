@@ -33,6 +33,17 @@ message VideoFrame {
     EncodedVideoFrames av1s = 13;
   }
   int32 display = 14;
+  uint32 id = 15;
+}
+
+message VideoFrameAck {
+  uint32 id = 15;
+}
+
+message CongestionControl {
+  oneof union {
+    VideoFrameAck video_frame_ack = 1;
+  }
 }
 
 message IdPk {
@@ -67,6 +78,10 @@ message OSLogin {
   string password = 2;
 }
 
+message ClientSupport {
+  bool congestion_control_video_ack = 1;
+}
+
 message LoginRequest {
   string username = 1;
   bytes password = 2;
@@ -83,6 +98,7 @@ message LoginRequest {
   OSLogin os_login = 12;
   string my_platform = 13;
   bytes hwid = 14;
+  ClientSupport client_support = 15;
 }
 
 message Auth2FA {
@@ -94,6 +110,7 @@ message ChatMessage { string text = 1; }
 
 message Features {
   bool privacy_mode = 1;
+  bool congestion_control_video_ack = 2;
 }
 
 message CodecAbility {
@@ -857,5 +874,6 @@ message Message {
     PointerDeviceEvent pointer_device_event = 26;
     Auth2FA auth_2fa = 27;
     MultiClipboards multi_clipboards = 28;
+    CongestionControl congestion_control = 29;
   }
 }

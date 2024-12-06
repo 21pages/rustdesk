@@ -51,7 +51,7 @@ use scrap::vram::{VRamEncoder, VRamEncoderConfig};
 use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
-    codec::{Encoder, EncoderCfg, Quality},
+    codec::{Encoder, EncoderCfg},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, Display, EncodeInput, TraitCapturer,
@@ -413,9 +413,8 @@ fn run(vs: VideoService) -> ResultType<()> {
         c.set_gdi();
     }
     let mut video_qos = VIDEO_QOS.lock().unwrap();
-    video_qos.refresh(None);
-    let mut spf;
-    let mut quality = video_qos.quality();
+    let mut spf = video_qos.spf();
+    let mut ratio = video_qos.ratio();
     let record_incoming = config::option2bool(
         "allow-auto-record-incoming",
         &Config::get_option("allow-auto-record-incoming"),
@@ -425,7 +424,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let (mut encoder, encoder_cfg, codec_format, use_i444, recorder) = match setup_encoder(
         &c,
         display_idx,
-        quality,
+        ratio,
         client_record,
         record_incoming,
         last_portable_service_running,
@@ -436,14 +435,14 @@ fn run(vs: VideoService) -> ResultType<()> {
             Encoder::set_fallback(&EncoderCfg::VPX(VpxEncoderConfig {
                 width: c.width as _,
                 height: c.height as _,
-                quality,
+                ratio,
                 codec: VpxVideoCodecId::VP9,
                 keyframe_interval: None,
             }));
             setup_encoder(
                 &c,
                 display_idx,
-                quality,
+                ratio,
                 client_record,
                 record_incoming,
                 last_portable_service_running,
@@ -462,7 +461,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         .lock()
         .unwrap()
         .set_support_abr(display_idx, encoder.support_abr());
-    log::info!("initial quality: {quality:?}");
+    log::info!("initial quality: {ratio:?}");
 
     if sp.is_option_true(OPTION_REFRESH) {
         sp.set_option_bool(OPTION_REFRESH, false);
@@ -489,32 +488,11 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut first_frame = true;
     let capture_width = c.width;
     let capture_height = c.height;
-
+    let (mut fps_counter, mut fps_instant, mut send_counter) = (0, Instant::now(), 0);
     while sp.ok() {
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
-
-        let mut video_qos = VIDEO_QOS.lock().unwrap();
-        spf = video_qos.spf();
-        if quality != video_qos.quality() {
-            log::debug!("quality: {:?} -> {:?}", quality, video_qos.quality());
-            quality = video_qos.quality();
-            if encoder.support_changing_quality() {
-                allow_err!(encoder.set_quality(quality));
-                video_qos.store_bitrate(encoder.bitrate());
-            } else {
-                if !video_qos.in_vbr_state() && !quality.is_custom() {
-                    log::info!("switch to change quality");
-                    bail!("SWITCH");
-                }
-            }
-        }
-        if client_record != video_qos.record() {
-            log::info!("switch due to record changed");
-            bail!("SWITCH");
-        }
-        drop(video_qos);
-
+        check_qos(&mut encoder, &mut ratio, &mut spf, client_record)?;
         if sp.is_option_true(OPTION_REFRESH) {
             let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
             log::info!("switch to refresh");
@@ -561,6 +539,15 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
 
         frame_controller.reset();
+        if check_congestion(
+            display_idx,
+            spf,
+            &mut fps_counter,
+            &mut fps_instant,
+            &mut send_counter,
+        ) {
+            continue;
+        }
 
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
@@ -582,6 +569,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_height,
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
+                    send_counter += 1;
                 }
                 #[cfg(windows)]
                 {
@@ -640,6 +628,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                             capture_height,
                         )?;
                         frame_controller.set_send(now, send_conn_ids);
+                        send_counter += 1;
                     }
                 }
             }
@@ -702,13 +691,14 @@ impl Drop for Raii {
         #[cfg(feature = "vram")]
         Encoder::update(scrap::codec::EncodingUpdate::Check);
         VIDEO_QOS.lock().unwrap().set_support_abr(self.0, true);
+        VIDEO_QOS.lock().unwrap().remove_display(self.0);
     }
 }
 
 fn setup_encoder(
     c: &CapturerInfo,
     display_idx: usize,
-    quality: Quality,
+    ratio: f32,
     client_record: bool,
     record_incoming: bool,
     last_portable_service_running: bool,
@@ -722,7 +712,7 @@ fn setup_encoder(
     let encoder_cfg = get_encoder_config(
         &c,
         display_idx,
-        quality,
+        ratio,
         client_record || record_incoming,
         last_portable_service_running,
     );
@@ -737,7 +727,7 @@ fn setup_encoder(
 fn get_encoder_config(
     c: &CapturerInfo,
     _display_idx: usize,
-    quality: Quality,
+    ratio: f32,
     record: bool,
     _portable_service: bool,
 ) -> EncoderCfg {
@@ -759,7 +749,7 @@ fn get_encoder_config(
                     device: c.device(),
                     width: c.width,
                     height: c.height,
-                    quality,
+                    ratio,
                     feature,
                     keyframe_interval,
                 });
@@ -771,14 +761,14 @@ fn get_encoder_config(
                     mc_name: hw.mc_name,
                     width: c.width,
                     height: c.height,
-                    quality,
+                    ratio,
                     keyframe_interval,
                 });
             }
             EncoderCfg::VPX(VpxEncoderConfig {
                 width: c.width as _,
                 height: c.height as _,
-                quality,
+                ratio,
                 codec: VpxVideoCodecId::VP9,
                 keyframe_interval,
             })
@@ -786,7 +776,7 @@ fn get_encoder_config(
         format @ (CodecFormat::VP8 | CodecFormat::VP9) => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
             height: c.height as _,
-            quality,
+            ratio,
             codec: if format == CodecFormat::VP8 {
                 VpxVideoCodecId::VP8
             } else {
@@ -797,13 +787,13 @@ fn get_encoder_config(
         CodecFormat::AV1 => EncoderCfg::AOM(AomEncoderConfig {
             width: c.width as _,
             height: c.height as _,
-            quality,
+            ratio,
             keyframe_interval,
         }),
         _ => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
             height: c.height as _,
-            quality,
+            ratio,
             codec: VpxVideoCodecId::VP9,
             keyframe_interval,
         }),
@@ -1060,4 +1050,59 @@ pub fn make_display_changed_msg(
     let mut msg_out = Message::new();
     msg_out.set_misc(misc);
     Some(msg_out)
+}
+
+fn check_qos(
+    encoder: &mut Encoder,
+    ratio: &mut f32,
+    spf: &mut Duration,
+    client_record: bool,
+) -> ResultType<()> {
+    let mut video_qos = VIDEO_QOS.lock().unwrap();
+    *spf = video_qos.spf();
+    if *ratio != video_qos.ratio() {
+        log::debug!("quality: {:?} -> {:?}", ratio, video_qos.ratio());
+        *ratio = video_qos.ratio();
+        if encoder.support_changing_quality() {
+            allow_err!(encoder.set_quality(*ratio));
+            video_qos.store_bitrate(encoder.bitrate());
+        } else {
+            if !video_qos.in_vbr_state() {
+                log::info!("switch to change quality");
+                bail!("SWITCH");
+            }
+        }
+    }
+    if client_record != video_qos.record() {
+        log::info!("switch due to record changed");
+        bail!("SWITCH");
+    }
+    drop(video_qos);
+    Ok(())
+}
+
+#[inline]
+fn check_congestion(
+    display_idx: usize,
+    spf: Duration,
+    fps_counter: &mut u32,
+    fps_instant: &mut Instant,
+    send_counter: &mut usize,
+) -> bool {
+    let congested = VIDEO_QOS.lock().unwrap().congested();
+    if congested {
+        std::thread::sleep(spf);
+    } else {
+        *fps_counter += 1;
+    }
+    if fps_instant.elapsed() > Duration::from_secs(1) {
+        *fps_instant = Instant::now();
+        VIDEO_QOS
+            .lock()
+            .unwrap()
+            .update_display_fps(display_idx, *fps_counter, *send_counter);
+        *fps_counter = 0;
+        *send_counter = 0;
+    }
+    congested
 }
