@@ -1,13 +1,14 @@
 // https://github.com/astraw/vpx-encode
 // https://github.com/astraw/env-libvpx-sys
 // https://github.com/rust-av/vpx-rs/blob/master/src/decoder.rs
+// https://github.com/chromium/chromium/blob/e7b24573bc2e06fed4749dd6b6abfce67f29052f/media/video/vpx_video_encoder.cc#L522
 
 use hbb_common::anyhow::{anyhow, Context};
 use hbb_common::log;
 use hbb_common::message_proto::{Chroma, EncodedVideoFrame, EncodedVideoFrames, VideoFrame};
 use hbb_common::ResultType;
 
-use crate::codec::{base_bitrate, codec_thread_num, EncoderApi, Quality};
+use crate::codec::{base_bitrate, codec_thread_num, EncoderApi};
 use crate::{EncodeInput, EncodeYuvFormat, GoogleImage, Pixfmt, STRIDE_ALIGN};
 
 use super::vpx::{vp8e_enc_control_id::*, vpx_codec_err_t::*, *};
@@ -17,6 +18,7 @@ use std::os::raw::{c_int, c_uint};
 use std::{ptr, slice};
 
 generate_call_macro!(call_vpx, false);
+generate_call_macro!(call_vpx_allow_err, true);
 generate_call_ptr_macro!(call_vpx_ptr);
 
 const DEFAULT_QP_MAX: u32 = 56; // no more than 63
@@ -69,10 +71,15 @@ impl EncoderApi for VpxEncoder {
                 c.g_h = config.height;
                 c.g_timebase.num = 1;
                 c.g_timebase.den = 1000; // Output timestamp precision
-                c.rc_undershoot_pct = 95;
+                c.g_lag_in_frames = 0;
+                c.rc_overshoot_pct = 50;
+                c.rc_undershoot_pct = 50;
+                c.rc_buf_sz = 1000;
+                c.rc_buf_initial_sz = 600;
+                c.rc_buf_optimal_sz = 600;
                 // When the data buffer falls below this percentage of fullness, a dropped frame is indicated. Set the threshold to zero (0) to disable this feature.
                 // In dynamic scenes, low bitrate gets low fps while high bitrate gets high fps.
-                c.rc_dropframe_thresh = 25;
+                c.rc_dropframe_thresh = 0;
                 c.g_threads = codec_thread_num(64) as _;
                 c.g_error_resilient = VPX_ERROR_RESILIENT_DEFAULT;
                 // https://developers.google.com/media/vp9/bitrate-modes/
@@ -85,7 +92,8 @@ impl EncoderApi for VpxEncoder {
                     c.kf_mode = vpx_kf_mode::VPX_KF_DISABLED; // reduce bandwidth a lot
                 }
 
-                let (q_min, q_max, b) = Self::convert_quality(config.quality);
+                let (q_min, q_max) = Self::calc_q_values(config.ratio);
+                log::info!("====DEBUG==== q_min: {:?}, q_max: {:?}", q_min, q_max);
                 if q_min > 0 && q_min < q_max && q_max < 64 {
                     c.rc_min_quantizer = q_min;
                     c.rc_max_quantizer = q_max;
@@ -93,13 +101,8 @@ impl EncoderApi for VpxEncoder {
                     c.rc_min_quantizer = DEFAULT_QP_MIN;
                     c.rc_max_quantizer = DEFAULT_QP_MAX;
                 }
-                let base_bitrate = base_bitrate(config.width as _, config.height as _);
-                let bitrate = base_bitrate * b / 100;
-                if bitrate > 0 {
-                    c.rc_target_bitrate = bitrate;
-                } else {
-                    c.rc_target_bitrate = base_bitrate;
-                }
+                c.rc_target_bitrate =
+                    Self::bitrate(config.width as _, config.height as _, config.ratio);
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
                 c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
@@ -164,11 +167,47 @@ impl EncoderApi for VpxEncoder {
                         VP9E_SET_TILE_COLUMNS as _,
                         4 as c_int
                     ));
+                    call_vpx_allow_err!(vpx_codec_control_(
+                        &mut ctx,
+                        VP9E_SET_TUNE_CONTENT as _,
+                        vp9e_tune_content::VP9E_CONTENT_SCREEN as c_int
+                    ));
+                    call_vpx_allow_err!(vpx_codec_control_(
+                        &mut ctx,
+                        vp8e_enc_control_id::VP8E_SET_STATIC_THRESHOLD as i32,
+                        1,
+                    ));
+                    if c.rc_end_usage == vpx_rc_mode::VPX_CBR {
+                        call_vpx_allow_err!(vpx_codec_control_(&mut ctx, VP9E_SET_AQ_MODE as _, 3));
+                    }
                 } else if config.codec == VpxVideoCodecId::VP8 {
                     // https://github.com/webmproject/libvpx/blob/972149cafeb71d6f08df89e91a0130d6a38c4b15/vpx/vp8cx.h#L172
                     // https://groups.google.com/a/webmproject.org/g/webm-discuss/c/DJhSrmfQ61M
                     call_vpx!(vpx_codec_control_(&mut ctx, VP8E_SET_CPUUSED as _, 12,));
+                    // https://github.com/chromium/chromium/blob/e7b24573bc2e06fed4749dd6b6abfce67f29052f/media/video/vpx_video_encoder.cc#L534
+                    let content_mode = if c.rc_dropframe_thresh > 0 { 2 } else { 1 };
+                    call_vpx_allow_err!(vpx_codec_control_(
+                        &mut ctx,
+                        VP8E_SET_SCREEN_CONTENT_MODE as _,
+                        content_mode
+                    ));
+                    call_vpx_allow_err!(vpx_codec_control_(
+                        &mut ctx,
+                        vp8e_enc_control_id::VP8E_SET_STATIC_THRESHOLD as i32,
+                        100,
+                    ));
                 }
+
+                call_vpx_allow_err!(vpx_codec_control_(
+                    &mut ctx,
+                    vp8e_enc_control_id::VP8E_SET_NOISE_SENSITIVITY as i32,
+                    0,
+                ));
+                call_vpx_allow_err!(vpx_codec_control_(
+                    &mut ctx,
+                    VP8E_SET_MAX_INTRA_BITRATE_PCT as i32,
+                    300
+                ));
 
                 Ok(Self {
                     ctx,
@@ -212,17 +251,15 @@ impl EncoderApi for VpxEncoder {
         false
     }
 
-    fn set_quality(&mut self, quality: Quality) -> ResultType<()> {
+    fn set_quality(&mut self, ratio: f32) -> ResultType<()> {
         let mut c = unsafe { *self.ctx.config.enc.to_owned() };
-        let (q_min, q_max, b) = Self::convert_quality(quality);
+        let (q_min, q_max) = Self::calc_q_values(ratio);
+        log::info!("====DEBUG==== q_min: {:?}, q_max: {:?}", q_min, q_max);
         if q_min > 0 && q_min < q_max && q_max < 64 {
             c.rc_min_quantizer = q_min;
             c.rc_max_quantizer = q_max;
         }
-        let bitrate = base_bitrate(self.width as _, self.height as _) * b / 100;
-        if bitrate > 0 {
-            c.rc_target_bitrate = bitrate;
-        }
+        c.rc_target_bitrate = Self::bitrate(self.width as _, self.height as _, ratio);
         call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &c));
         Ok(())
     }
@@ -251,7 +288,7 @@ impl EncoderApi for VpxEncoder {
 }
 
 impl VpxEncoder {
-    pub fn encode(&mut self, pts: i64, data: &[u8], stride_align: usize) -> Result<EncodeFrames> {
+    pub fn encode(&mut self, ms: i64, data: &[u8], stride_align: usize) -> Result<EncodeFrames> {
         let bpp = if self.i444 { 24 } else { 12 };
         if data.len() < self.width * self.height * bpp / 8 {
             return Err(Error::FailedCall("len not enough".to_string()));
@@ -275,7 +312,7 @@ impl VpxEncoder {
         call_vpx!(vpx_codec_encode(
             &mut self.ctx,
             &image,
-            pts as _,
+            ms as _,
             1, // Duration
             0, // Flags
             VPX_DL_REALTIME as _,
@@ -323,6 +360,7 @@ impl VpxEncoder {
 
     #[inline]
     fn create_frame(frame: &EncodeFrame) -> EncodedVideoFrame {
+        // log::info!("====DEBUG==== create frame: {:?}", frame.pts);
         EncodedVideoFrame {
             data: Bytes::from(frame.data.to_vec()),
             key: frame.key,
@@ -331,32 +369,44 @@ impl VpxEncoder {
         }
     }
 
-    fn convert_quality(quality: Quality) -> (u32, u32, u32) {
-        match quality {
-            Quality::Best => (6, 45, 150),
-            Quality::Balanced => (12, 56, 100 * 2 / 3),
-            Quality::Low => (18, 56, 50),
-            Quality::Custom(b) => {
-                let (q_min, q_max) = Self::calc_q_values(b);
-                (q_min, q_max, b)
-            }
-        }
+    fn bitrate(width: u32, height: u32, ratio: f32) -> u32 {
+        let bps = base_bitrate(width, height) as f32;
+        (bps * ratio) as u32
     }
 
     #[inline]
-    fn calc_q_values(b: u32) -> (u32, u32) {
-        let b = std::cmp::min(b, 200);
-        let q_min1: i32 = 36;
-        let q_min2 = 0;
-        let q_max1 = 56;
-        let q_max2 = 37;
-
-        let t = b as f32 / 200.0;
-
-        let q_min: u32 = ((1.0 - t) * q_min1 as f32 + t * q_min2 as f32).round() as u32;
-        let q_max = ((1.0 - t) * q_max1 as f32 + t * q_max2 as f32).round() as u32;
-
-        (q_min, q_max)
+    fn calc_q_values(ratio: f32) -> (u32, u32) {
+        let ratio = ratio.clamp(0.2, 2.0);
+        match ratio as f32 {
+            r if r <= 0.67 => {
+                // 0.2 ~ 0.67
+                let progress = (r - 0.2) / (0.67 - 0.2);
+                let min = 30 - (progress * (30 - 25) as f32) as u32; // 30->25
+                let max = 50 - (progress * (50 - 40) as f32) as u32; // 50->40
+                (min, max)
+            }
+            r if r <= 1.0 => {
+                // 0.67 ~ 1.0
+                let progress = (r - 0.67) / (1.0 - 0.67);
+                let min = 25 - (progress * (25 - 20) as f32) as u32; // 25->20
+                let max = 45 - (progress * (45 - 38) as f32) as u32; // 45->38
+                (min, max)
+            }
+            r if r <= 1.5 => {
+                // 1.0 ~ 1.5
+                let progress = (r - 1.0) / (1.5 - 1.0);
+                let min = 20 - (progress * (20 - 15) as f32) as u32; // 20->15
+                let max = 38 - (progress * (38 - 31) as f32) as u32; // 38->31
+                (min, max)
+            }
+            r => {
+                // 1.5 ~ 2.0
+                let progress = (r - 1.5) / (2.0 - 1.5);
+                let min = 15 - (progress * (15 - 10) as f32) as u32; // 15->10
+                let max = 31 - (progress * (31 - 25) as f32) as u32; // 31->25
+                (min, max)
+            }
+        }
     }
 
     fn get_yuvfmt(width: u32, height: u32, i444: bool) -> EncodeYuvFormat {
@@ -415,8 +465,8 @@ pub struct VpxEncoderConfig {
     pub width: c_uint,
     /// The height (in pixels).
     pub height: c_uint,
-    /// The image quality
-    pub quality: Quality,
+    /// The bitrate ratio
+    pub ratio: f32,
     /// The codec
     pub codec: VpxVideoCodecId,
     /// keyframe interval
