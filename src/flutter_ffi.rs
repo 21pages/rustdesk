@@ -1711,6 +1711,10 @@ pub fn main_get_mouse_time() -> f64 {
     }
 }
 
+pub fn main_get_video_conn_count() -> usize {
+    get_video_conn_count()
+}
+
 pub fn main_wol(id: String) {
     // TODO: move send_wol outside.
     #[cfg(not(any(target_os = "ios")))]
