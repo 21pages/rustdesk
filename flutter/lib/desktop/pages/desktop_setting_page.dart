@@ -706,8 +706,8 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               locked = false;
               setState(() => {});
             }),
-            AbsorbPointer(
-              absorbing: locked,
+            ExcludeFocus(
+              excluding: locked,
               child: Column(children: [
                 permissions(context),
                 password(context),
@@ -1374,8 +1374,8 @@ class _NetworkState extends State<_Network> with AutomaticKeepAliveClientMixin {
         locked = false;
         setState(() => {});
       }),
-      AbsorbPointer(
-        absorbing: locked,
+      ExcludeFocus(
+        excluding: locked,
         child: Column(children: [
           network(context),
         ]),

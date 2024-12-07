@@ -356,6 +356,25 @@ class _DesktopTabState extends State<DesktopTab>
         });
       }
     });
+
+    if (blockTab != null) {
+      Timer.periodic(Duration(milliseconds: 1000), (timer) async {
+        blockOption() async {
+          var access_mode = await bind.mainGetOption(key: kOptionAccessMode);
+          var option = option2bool(
+              kOptionAllowRemoteConfigModification,
+              await bind.mainGetOption(
+                  key: kOptionAllowRemoteConfigModification));
+          return access_mode == 'view' || (access_mode.isEmpty && !option);
+        }
+
+        final shouldBlock =
+            await blockOption() && await bind.mainGetVideoConnCount() > 0;
+        if (blockTab!.value != shouldBlock) {
+          blockTab!.value = shouldBlock;
+        }
+      });
+    }
   }
 
   @override
@@ -535,11 +554,14 @@ class _DesktopTabState extends State<DesktopTab>
 
   Widget _buildBlock({required Widget child}) {
     if (blockTab != null) {
-      return buildRemoteBlock(
-          child: child,
-          block: blockTab!,
-          use: canBeBlocked,
-          mask: tabType == DesktopTabType.main);
+      return Obx(() => Stack(children: [
+            ExcludeFocus(child: child, excluding: blockTab!.value),
+            Offstage(
+                offstage: !blockTab!.value,
+                child: Container(
+                  color: Colors.black.withOpacity(0.5),
+                )),
+          ]));
     } else {
       return child;
     }

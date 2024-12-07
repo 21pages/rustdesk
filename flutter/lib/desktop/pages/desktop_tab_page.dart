@@ -73,7 +73,6 @@ class _DesktopTabPageState extends State<DesktopTabPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      shouldBeBlocked(_block, canBeBlocked);
     } else if (state == AppLifecycleState.inactive) {}
   }
 

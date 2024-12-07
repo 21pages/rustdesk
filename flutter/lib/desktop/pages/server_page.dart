@@ -137,11 +137,7 @@ class ConnectionManagerState extends State<ConnectionManager>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      if (!allowRemoteCMModification()) {
-        shouldBeBlocked(_block, null);
-      }
-    }
+    if (state == AppLifecycleState.resumed) {}
   }
 
   @override
@@ -149,6 +145,13 @@ class ConnectionManagerState extends State<ConnectionManager>
     gFFI.serverModel.updateClientState();
     WidgetsBinding.instance.addObserver(this);
     super.initState();
+    final allow = allowRemoteCMModification();
+    Timer.periodic(Duration(microseconds: 100), (_) async {
+      final v = !allow && await bind.mainGetVideoConnCount() > 0;
+      if (v != _block.value) {
+        _block.value = v;
+      }
+    });
   }
 
   @override
@@ -192,7 +195,7 @@ class ConnectionManagerState extends State<ConnectionManager>
               selectedBorderColor: MyTheme.accent,
               maxLabelWidth: 100,
               tail: null, //buildScrollJumper(),
-              blockTab: allowRemoteCMModification() ? null : _block,
+              blockTab: null,
               tabBuilder: (key, icon, label, themeConf) {
                 final client = serverModel.clients
                     .firstWhereOrNull((client) => client.id.toString() == key);
@@ -232,14 +235,8 @@ class ConnectionManagerState extends State<ConnectionManager>
                         kConnectionManagerWindowSizeClosedChat.width)
                       Consumer<ChatModel>(
                           builder: (_, model, child) => SizedBox(
-                                width: realChatPageWidth,
-                                child: allowRemoteCMModification()
-                                    ? buildSidePage()
-                                    : buildRemoteBlock(
-                                        child: buildSidePage(),
-                                        block: _block,
-                                        mask: true),
-                              )),
+                              width: realChatPageWidth,
+                              child: buildSidePage())),
                     SizedBox(
                         width: realClosedWidth,
                         child:
