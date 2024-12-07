@@ -3854,6 +3854,15 @@ mod raii {
                 .count()
         }
 
+        pub fn remote_conn_count() -> usize {
+            AUTHED_CONNS
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.1 == AuthConnType::Remote)
+                .count()
+        }
+
         pub fn check_remove_session(conn_id: i32, key: SessionKey) {
             let mut lock = SESSIONS.lock().unwrap();
             let contains = lock.contains_key(&key);
