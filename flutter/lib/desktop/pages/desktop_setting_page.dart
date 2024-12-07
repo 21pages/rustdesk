@@ -107,12 +107,18 @@ class DesktopSettingPage extends StatefulWidget {
 }
 
 class _DesktopSettingPageState extends State<DesktopSettingPage>
-    with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+    with
+        TickerProviderStateMixin,
+        AutomaticKeepAliveClientMixin,
+        WidgetsBindingObserver {
   late PageController controller;
   late Rx<SettingsTabKey> selectedTab;
 
   @override
   bool get wantKeepAlive => true;
+
+  final RxBool _videoConnblock = false.obs;
+  final RxBool _mouseMoveblock = false.obs;
 
   _DesktopSettingPageState(SettingsTabKey initialTabkey) {
     var initialIndex = DesktopSettingPage.tabKeys.indexOf(initialTabkey);
@@ -131,6 +137,27 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
         }
       }
     });
+    periodic_immediate(Duration(milliseconds: 300), () async {
+      final shouldBlock =
+          await canBeBlocked() && await bind.mainGetVideoConnCount() > 0;
+      if (_videoConnblock.value != shouldBlock) {
+        _videoConnblock.value = shouldBlock;
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      shouldBeBlocked(_mouseMoveblock, canBeBlocked);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -138,6 +165,7 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
     super.dispose();
     Get.delete<PageController>(tag: _kSettingPageControllerTag);
     Get.delete<RxInt>(tag: _kSettingPageTabKeyTag);
+    WidgetsBinding.instance.removeObserver(this);
   }
 
   List<_TabInfo> _settingTabs() {
@@ -207,12 +235,29 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
     return children;
   }
 
+  Widget _buildBlock({required List<Widget> children}) {
+    return Obx(() => Stack(children: [
+          buildRemoteBlock(
+            block: _mouseMoveblock,
+            mask: false,
+            use: canBeBlocked,
+            child: ExcludeFocus(
+                child: Row(children: children),
+                excluding: _videoConnblock.value),
+          ),
+          if (_videoConnblock.value)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+            )
+        ]));
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
-      body: Row(
+      body: _buildBlock(
         children: <Widget>[
           SizedBox(
             width: _kTabWidth,
@@ -706,8 +751,8 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               locked = false;
               setState(() => {});
             }),
-            AbsorbPointer(
-              absorbing: locked,
+            ExcludeFocus(
+              excluding: locked,
               child: Column(children: [
                 permissions(context),
                 password(context),
@@ -1374,8 +1419,8 @@ class _NetworkState extends State<_Network> with AutomaticKeepAliveClientMixin {
         locked = false;
         setState(() => {});
       }),
-      AbsorbPointer(
-        absorbing: locked,
+      ExcludeFocus(
+        excluding: locked,
         child: Column(children: [
           network(context),
         ]),

@@ -551,6 +551,11 @@ pub fn check_mouse_time() {
 }
 
 #[inline]
+pub fn get_video_conn_count() -> usize {
+    VIDEO_CONN_COUNT.load(Ordering::Relaxed)
+}
+
+#[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_connect_status() -> UiStatus {
     UI_STATUS.lock().unwrap().clone()
