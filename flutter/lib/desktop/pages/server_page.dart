@@ -242,8 +242,10 @@ class ConnectionManagerState extends State<ConnectionManager>
                               )),
                     SizedBox(
                         width: realClosedWidth,
-                        child:
-                            SizedBox(width: realClosedWidth, child: pageView)),
+                        child: SizedBox(
+                          width: realClosedWidth,
+                          child: blockKeyEventBuilder(pageView),
+                        )),
                   ]);
                   return Container(
                     color: Theme.of(context).scaffoldBackgroundColor,
@@ -266,6 +268,15 @@ class ConnectionManagerState extends State<ConnectionManager>
     } else {
       return ChatPage(type: ChatPageType.desktopCM);
     }
+  }
+
+  Widget blockKeyEventBuilder(Widget child) {
+    return Focus(
+        child: child,
+        onKeyEvent: (node, event) {
+          // both side block all key events on main cm page
+          return KeyEventResult.handled;
+        });
   }
 
   Widget buildTitleBar() {

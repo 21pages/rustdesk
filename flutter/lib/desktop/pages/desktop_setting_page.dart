@@ -114,6 +114,8 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
   @override
   bool get wantKeepAlive => true;
 
+  final RxBool _videoConnblock = false.obs;
+
   _DesktopSettingPageState(SettingsTabKey initialTabkey) {
     var initialIndex = DesktopSettingPage.tabKeys.indexOf(initialTabkey);
     if (initialIndex == -1) {
@@ -129,6 +131,13 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
         if (page < DesktopSettingPage.tabKeys.length) {
           selectedTab.value = DesktopSettingPage.tabKeys[page];
         }
+      }
+    });
+    periodic_immediate(Duration(milliseconds: 300), () async {
+      final shouldBlock =
+          await canBeBlocked() && await bind.mainGetVideoConnCount() > 0;
+      if (_videoConnblock.value != shouldBlock) {
+        _videoConnblock.value = shouldBlock;
       }
     });
   }
@@ -207,12 +216,26 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
     return children;
   }
 
+  Widget _buildBlock({required List<Widget> children}) {
+    return Obx(() => Stack(
+          children: [
+            ExcludeFocus(
+                child: Row(children: children),
+                excluding: _videoConnblock.value),
+            if (_videoConnblock.value)
+              Container(
+                color: Colors.black.withOpacity(0.5),
+              )
+          ],
+        ));
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
-      body: Row(
+      body: _buildBlock(
         children: <Widget>[
           SizedBox(
             width: _kTabWidth,
@@ -706,8 +729,8 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               locked = false;
               setState(() => {});
             }),
-            AbsorbPointer(
-              absorbing: locked,
+            ExcludeFocus(
+              excluding: locked,
               child: Column(children: [
                 permissions(context),
                 password(context),
@@ -1374,8 +1397,8 @@ class _NetworkState extends State<_Network> with AutomaticKeepAliveClientMixin {
         locked = false;
         setState(() => {});
       }),
-      AbsorbPointer(
-        absorbing: locked,
+      ExcludeFocus(
+        excluding: locked,
         child: Column(children: [
           network(context),
         ]),

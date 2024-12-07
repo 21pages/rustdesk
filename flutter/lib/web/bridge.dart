@@ -1337,6 +1337,10 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetMouseTime");
   }
 
+  Future<int> mainGetVideoConnCount({dynamic hint}) {
+    throw UnimplementedError("mainGetVideoConnCount");
+  }
+
   Future<void> mainWol({required String id, dynamic hint}) {
     throw UnimplementedError("mainWol");
   }
