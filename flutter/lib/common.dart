@@ -2797,7 +2797,7 @@ Future<void> shouldBeBlocked(RxBool block, WhetherUseRemoteBlock? use) async {
 }
 
 typedef WhetherUseRemoteBlock = Future<bool> Function();
-Widget buildRemoteBlock(
+Widget buildRemoteBlockWithMouseMove(
     {required Widget child,
     required RxBool block,
     required bool mask,
@@ -2808,9 +2808,7 @@ Widget buildRemoteBlock(
         },
         onExit: (event) => block.value = false,
         child: Stack(children: [
-          // scope block tab
           FocusScope(child: child, canRequestFocus: !block.value),
-          // mask block click, cm not block click and still use check_click_time to avoid block local click
           if (mask)
             Offstage(
                 offstage: !block.value,
