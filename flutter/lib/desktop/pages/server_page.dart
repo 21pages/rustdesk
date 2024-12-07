@@ -108,10 +108,7 @@ class ConnectionManager extends StatefulWidget {
   State<StatefulWidget> createState() => ConnectionManagerState();
 }
 
-class ConnectionManagerState extends State<ConnectionManager>
-    with WidgetsBindingObserver {
-  final RxBool _block = false.obs;
-
+class ConnectionManagerState extends State<ConnectionManager> {
   ConnectionManagerState() {
     gFFI.serverModel.tabController.onSelected = (client_id_str) {
       final client_id = int.tryParse(client_id_str);
@@ -135,26 +132,9 @@ class ConnectionManagerState extends State<ConnectionManager>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      if (!allowRemoteCMModification()) {
-        shouldBeBlocked(_block, null);
-      }
-    }
-  }
-
-  @override
   void initState() {
     gFFI.serverModel.updateClientState();
-    WidgetsBinding.instance.addObserver(this);
     super.initState();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
   }
 
   @override
@@ -192,7 +172,6 @@ class ConnectionManagerState extends State<ConnectionManager>
               selectedBorderColor: MyTheme.accent,
               maxLabelWidth: 100,
               tail: null, //buildScrollJumper(),
-              blockTab: allowRemoteCMModification() ? null : _block,
               tabBuilder: (key, icon, label, themeConf) {
                 final client = serverModel.clients
                     .firstWhereOrNull((client) => client.id.toString() == key);
@@ -232,18 +211,13 @@ class ConnectionManagerState extends State<ConnectionManager>
                         kConnectionManagerWindowSizeClosedChat.width)
                       Consumer<ChatModel>(
                           builder: (_, model, child) => SizedBox(
-                                width: realChatPageWidth,
-                                child: allowRemoteCMModification()
-                                    ? buildSidePage()
-                                    : buildRemoteBlock(
-                                        child: buildSidePage(),
-                                        block: _block,
-                                        mask: true),
-                              )),
+                              width: realChatPageWidth,
+                              child: buildSidePage())),
                     SizedBox(
                         width: realClosedWidth,
-                        child:
-                            SizedBox(width: realClosedWidth, child: pageView)),
+                        child: SizedBox(
+                            width: realClosedWidth,
+                            child: _buildMainBlock(pageView))),
                   ]);
                   return Container(
                     color: Theme.of(context).scaffoldBackgroundColor,
@@ -266,6 +240,15 @@ class ConnectionManagerState extends State<ConnectionManager>
     } else {
       return ChatPage(type: ChatPageType.desktopCM);
     }
+  }
+
+  Widget _buildMainBlock(Widget child) {
+    return Focus(
+        child: child,
+        onKeyEvent: (node, event) {
+          // both side block all key events on main cm page
+          return KeyEventResult.handled;
+        });
   }
 
   Widget buildTitleBar() {

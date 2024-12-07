@@ -2772,55 +2772,6 @@ Future<void> start_service(bool is_start) async {
   }
 }
 
-Future<bool> canBeBlocked() async {
-  var access_mode = await bind.mainGetOption(key: kOptionAccessMode);
-  var option = option2bool(kOptionAllowRemoteConfigModification,
-      await bind.mainGetOption(key: kOptionAllowRemoteConfigModification));
-  return access_mode == 'view' || (access_mode.isEmpty && !option);
-}
-
-Future<void> shouldBeBlocked(RxBool block, WhetherUseRemoteBlock? use) async {
-  if (use != null && !await use()) {
-    block.value = false;
-    return;
-  }
-  var time0 = DateTime.now().millisecondsSinceEpoch;
-  await bind.mainCheckMouseTime();
-  Timer(const Duration(milliseconds: 120), () async {
-    var d = time0 - await bind.mainGetMouseTime();
-    if (d < 120) {
-      block.value = true;
-    } else {
-      block.value = false;
-    }
-  });
-}
-
-typedef WhetherUseRemoteBlock = Future<bool> Function();
-Widget buildRemoteBlock(
-    {required Widget child,
-    required RxBool block,
-    required bool mask,
-    WhetherUseRemoteBlock? use}) {
-  return Obx(() => MouseRegion(
-        onEnter: (_) async {
-          await shouldBeBlocked(block, use);
-        },
-        onExit: (event) => block.value = false,
-        child: Stack(children: [
-          // scope block tab
-          FocusScope(child: child, canRequestFocus: !block.value),
-          // mask block click, cm not block click and still use check_click_time to avoid block local click
-          if (mask)
-            Offstage(
-                offstage: !block.value,
-                child: Container(
-                  color: Colors.black.withOpacity(0.5),
-                )),
-        ]),
-      ));
-}
-
 Widget unreadMessageCountBuilder(RxInt? count,
     {double? size, double? fontSize}) {
   return Obx(() => Offstage(

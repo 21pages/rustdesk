@@ -302,6 +302,8 @@ const kRemoteImageQualityCustom = 'custom';
 
 const kIgnoreDpi = true;
 
+const kCheckBlockModificationInterval = Duration(milliseconds: 300);
+
 // ================================ mobile ================================
 
 // Magic numbers, maybe need to avoid it or use a better way to get them.
