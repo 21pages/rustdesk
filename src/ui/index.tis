@@ -1218,7 +1218,8 @@ function check_if_overlay() {
         self.timer(120ms, function() {
             if (!enter) return;
             var d = time0 - handler.get_mouse_time();
-            if (d < 120) $(#overlay).style#display = 'block';
+            // Set to 1000ms to make block remote more aggressive
+            if (d < 1000) $(#overlay).style#display = 'block';
         });
     }
 }

@@ -2788,7 +2788,8 @@ Future<void> shouldBeBlocked(RxBool block, WhetherUseRemoteBlock? use) async {
   await bind.mainCheckMouseTime();
   Timer(const Duration(milliseconds: 120), () async {
     var d = time0 - await bind.mainGetMouseTime();
-    if (d < 120) {
+    // Set to 1000ms to make block remote more aggressive
+    if (d < 1000) {
       block.value = true;
     } else {
       block.value = false;
@@ -2809,7 +2810,7 @@ Widget buildRemoteBlock(
         onExit: (event) => block.value = false,
         child: Stack(children: [
           // scope block tab
-          FocusScope(child: child, canRequestFocus: !block.value),
+          preventMouseKeyBuilder(child: child, block: block.value),
           // mask block click, cm not block click and still use check_click_time to avoid block local click
           if (mask)
             Offstage(
@@ -2819,6 +2820,11 @@ Widget buildRemoteBlock(
                 )),
         ]),
       ));
+}
+
+Widget preventMouseKeyBuilder({required Widget child, required bool block}) {
+  return ExcludeFocus(
+      excluding: block, child: AbsorbPointer(child: child, absorbing: block));
 }
 
 Widget unreadMessageCountBuilder(RxInt? count,
