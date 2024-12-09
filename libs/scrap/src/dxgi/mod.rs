@@ -3,6 +3,7 @@ pub mod gdi;
 pub use gdi::CapturerGDI;
 pub mod mag;
 
+use hbb_common::log;
 use winapi::{
     shared::{
         dxgi::*,
@@ -338,6 +339,7 @@ impl Capturer {
         let frame = ComPtr(frame);
 
         if *info.LastPresentTime.QuadPart() == 0 {
+            log::error!("====DEBUG==== load_frame would block, info is 0",);
             return Err(std::io::ErrorKind::WouldBlock.into());
         }
 
@@ -345,10 +347,14 @@ impl Capturer {
         let mut rect = mem::MaybeUninit::uninit().assume_init();
         if self.fastlane {
             wrap_hresult((*self.duplication.0).MapDesktopSurface(&mut rect))?;
+            log::info!("====DEBUG==== fastlane map desktop surface ok");
         } else {
             self.surface = ComPtr(self.ohgodwhat(frame.0)?);
+            log::info!("====DEBUG==== ohgodwhat ok");
             wrap_hresult((*self.surface.0).Map(&mut rect, DXGI_MAP_READ))?;
+            log::info!("====DEBUG==== map ok");
         }
+        log::info!("====DEBUG==== load_frame ok, rect: {:?}", rect.Pitch);
         Ok((rect.pBits, rect.Pitch))
     }
 
@@ -391,6 +397,10 @@ impl Capturer {
     }
 
     pub fn frame<'a>(&'a mut self, timeout: UINT) -> io::Result<Frame<'a>> {
+        log::info!(
+            "====DEBUG==== frame, output_texture: {}",
+            self.output_texture
+        );
         if self.output_texture {
             Ok(Frame::Texture(self.get_texture(timeout)?))
         } else {
@@ -432,6 +442,7 @@ impl Capturer {
                         DXGI_MODE_ROTATION_ROTATE180 => kRotate180,
                         DXGI_MODE_ROTATION_ROTATE270 => kRotate270,
                         _ => {
+                            log::error!("====DEBUG==== Unknown rotation");
                             return Err(io::Error::new(
                                 io::ErrorKind::Other,
                                 "Unknown rotation".to_string(),
@@ -470,6 +481,7 @@ impl Capturer {
     fn get_texture(&mut self, timeout: UINT) -> io::Result<(*mut c_void, usize)> {
         unsafe {
             if self.duplication.0.is_null() {
+                log::error!("====DEBUG==== duplication is null");
                 return Err(std::io::ErrorKind::AddrNotAvailable.into());
             }
             (*self.duplication.0).ReleaseFrame();
@@ -481,6 +493,11 @@ impl Capturer {
             let frame = ComPtr(frame);
 
             if info.AccumulatedFrames == 0 || *info.LastPresentTime.QuadPart() == 0 {
+                log::error!(
+                    "====DEBUG==== would block, info: {:?}, {:?}",
+                    info.AccumulatedFrames,
+                    *info.LastMouseUpdateTime.QuadPart()
+                );
                 return Err(std::io::ErrorKind::WouldBlock.into());
             }
 
@@ -506,6 +523,7 @@ impl Capturer {
                 && !self.rotate.video_processor_enum.is_null()
                 && !self.rotate.video_processor.is_null()
             {
+                log::info!("====DEBUG==== rotation: {}", rotation);
                 let mut desc: D3D11_TEXTURE2D_DESC = mem::zeroed();
                 (*self.texture.0).GetDesc(&mut desc);
                 if rotation == 90 || rotation == 270 {
@@ -570,6 +588,11 @@ impl Capturer {
                     }
                 }
             }
+            log::info!(
+                "====DEBUG==== final_texture: {:?}, rotation: {}",
+                final_texture,
+                rotation
+            );
             Ok((final_texture, rotation))
         }
     }

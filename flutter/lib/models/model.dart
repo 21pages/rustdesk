@@ -674,6 +674,7 @@ class FfiModel with ChangeNotifier {
     parent.target?.imageModel.setUseTextureRender(evt['v'] == 'Y');
     waitForFirstImage.value = true;
     isRefreshing = true;
+    bind.logToRust(msg: '_handleUseTextureRender');
     showConnectedWaitingForImage(parent.target!.dialogManager, sessionId,
         'success', 'Successful', kMsgboxTextWaitingForImage);
   }
@@ -860,6 +861,7 @@ class FfiModel with ChangeNotifier {
     } else if (type == 'relay-hint' || type == 'relay-hint2') {
       showRelayHintDialog(sessionId, type, title, text, dialogManager, peerId);
     } else if (text == kMsgboxTextWaitingForImage) {
+      bind.logToRust(msg: 'kMsgboxTextWaitingForImage');
       showConnectedWaitingForImage(dialogManager, sessionId, type, title, text);
     } else if (title == 'Privacy mode') {
       final hasRetry = evt['hasRetry'] == 'true';
@@ -972,6 +974,10 @@ class FfiModel with ChangeNotifier {
       closeConnection();
     }
 
+    bind.logToRust(
+        msg:
+            'showConnectedWaitingForImage, waitForFirstImage.value: ${waitForFirstImage.value}');
+
     if (waitForFirstImage.isFalse) return;
     dialogManager.show(
       (setState, close, context) => CustomAlertDialog(
@@ -984,6 +990,7 @@ class FfiModel with ChangeNotifier {
       tag: '$sessionId-waiting-for-image',
     );
     waitForImageDialogShow.value = true;
+    bind.logToRust(msg: 'set waitForImageDialogShow to true');
     waitForImageTimer = Timer(Duration(milliseconds: 1500), () {
       if (waitForFirstImage.isTrue && !isRefreshing) {
         bind.sessionInputOsPassword(sessionId: sessionId, value: '');
@@ -3098,6 +3105,7 @@ class FFI {
           }
         } else if (message is EventToUI_Rgba) {
           final display = message.field0;
+          bind.logToRust(msg: 'EventToUI_Rgba display:$display');
           // Fetch the image buffer from rust codes.
           final sz = platformFFI.getRgbaSize(sessionId, display);
           if (sz == 0) {
@@ -3114,10 +3122,14 @@ class FFI {
         } else if (message is EventToUI_Texture) {
           final display = message.field0;
           final gpuTexture = message.field1;
+          bind.logToRust(
+              msg:
+                  'EventToUI_Texture display:$display, gpuTexture:$gpuTexture');
           debugPrint(
               "EventToUI_Texture display:$display, gpuTexture:$gpuTexture");
           if (gpuTexture && !hasGpuTextureRender) {
             debugPrint('the gpuTexture is not supported.');
+            bind.logToRust(msg: 'the gpuTexture is not supported.');
             return;
           }
           textureModel.setTextureType(display: display, gpuTexture: gpuTexture);
@@ -3130,10 +3142,14 @@ class FFI {
   }
 
   void onEvent2UIRgba() async {
+    bind.logToRust(
+        msg:
+            'onEvent2UIRgba  ffiModel.waitForImageDialogShow.isTrue: ${ffiModel.waitForImageDialogShow.isTrue}, ffiModel.waitForFirstImage.value: ${ffiModel.waitForFirstImage.value}');
     if (ffiModel.waitForImageDialogShow.isTrue) {
       ffiModel.waitForImageDialogShow.value = false;
       ffiModel.waitForImageTimer?.cancel();
       clearWaitingForImage(dialogManager, sessionId);
+      bind.logToRust(msg: 'clearWaitingForImage');
     }
     if (ffiModel.waitForFirstImage.value == true) {
       ffiModel.waitForFirstImage.value = false;
