@@ -121,6 +121,7 @@ impl EncoderApi for HwRamEncoder {
             .encode(input.yuv()?, ms)
             .with_context(|| "Failed to encode")?
         {
+            log::info!("frame: key={}, pts={}", frame.key, frame.pts);
             frames.push(EncodedVideoFrame {
                 data: Bytes::from(frame.data),
                 pts: frame.pts,
@@ -193,7 +194,9 @@ impl EncoderApi for HwRamEncoder {
     }
 
     fn support_abr(&self) -> bool {
-        ["qsv", "vaapi"].iter().all(|&x| !self.config.name.contains(x))
+        ["qsv", "vaapi"]
+            .iter()
+            .all(|&x| !self.config.name.contains(x))
     }
 
     fn support_changing_quality(&self) -> bool {

@@ -189,9 +189,11 @@ impl EncoderApi for VpxEncoder {
             .encode(ms, input.yuv()?, STRIDE_ALIGN)
             .with_context(|| "Failed to encode")?
         {
+            log::info!("frame: key={}, pts={}", frame.key, frame.pts);
             frames.push(VpxEncoder::create_frame(frame));
         }
         for ref frame in self.flush().with_context(|| "Failed to flush")? {
+            log::info!("frame: key={}, pts={}", frame.key, frame.pts);
             frames.push(VpxEncoder::create_frame(frame));
         }
 

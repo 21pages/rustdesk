@@ -362,6 +362,7 @@ impl AomEncoder {
 
     #[inline]
     fn create_frame(frame: &EncodeFrame) -> EncodedVideoFrame {
+        log::info!("frame: key={}, pts={}", frame.key, frame.pts);
         EncodedVideoFrame {
             data: Bytes::from(frame.data.to_vec()),
             key: frame.key,
