@@ -547,14 +547,6 @@ jobs:
           rustup target add ${{ matrix.job.target }}
           cargo build --features flutter,hwcodec --release --target aarch64-apple-ios --lib
 
-      # - name: Build rustdesk
-      #   shell: bash
-      #   run: |
-      #     pushd flutter
-      #     # flutter build ipa --release --obfuscate --split-debug-info=./split-debug-info --no-codesign
-      #     # for easy debugging
-      #     flutter build ipa --release --no-codesign
-
       - name: Upload Artifacts
         # if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@master
@@ -562,14 +554,22 @@ jobs:
           name: liblibrustdesk.a
           path: target/aarch64-apple-ios/release/liblibrustdesk.a
 
-      # - name: Publish ipa package
-      #   # if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     prerelease: true
-      #     tag_name: ${{ env.TAG_NAME }}
-      #     files: |
-      #       flutter/build/ios/ipa/*.ipa
+      - name: Build rustdesk
+        shell: bash
+        run: |
+          pushd flutter
+          # flutter build ipa --release --obfuscate --split-debug-info=./split-debug-info --no-codesign
+          # for easy debugging
+          flutter build ipa --release --no-codesign
+
+      - name: Publish ipa package
+        # if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            flutter/build/ios/ipa/*.ipa
 
   build-rustdesk-ios-selfhost:
     #if: ${{ inputs.upload-artifact }}
