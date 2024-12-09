@@ -2324,6 +2324,10 @@ pub fn session_request_new_display_init_msgs(session_id: SessionID, display: usi
     }
 }
 
+pub fn log_to_rust(msg: String) {
+    log::info!("=====FLUTTER==== {}", msg);
+}
+
 pub fn main_audio_support_loopback() -> SyncReturn<bool> {
     #[cfg(target_os = "windows")]
     let is_surpport = true;

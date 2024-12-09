@@ -640,10 +640,14 @@ impl Connection {
                     if !conn.video_ack_required {
                         video_service::notify_video_frame_fetched(id, Some(instant.into()));
                     }
+                    log::info!("====DEBUG=== try send video frame to client");
+                    let start = Instant::now();
                     if let Err(err) = conn.stream.send(&value as &Message).await {
+                        log::error!("Failed to send video frame to client: {}", err);
                         conn.on_close(&err.to_string(), false).await;
                         break;
                     }
+                    log::info!("====DEBUG=== send video frame to client success, cost: {:?}", start.elapsed());
                 },
                 Some((instant, value)) = rx.recv() => {
                     let latency = instant.elapsed().as_millis() as i64;
