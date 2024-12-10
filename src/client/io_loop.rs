@@ -1148,6 +1148,7 @@ impl<T: InvokeUiSession> Remote<T> {
         if let Ok(msg_in) = Message::parse_from_bytes(&data) {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    log::info!("====DEBUG==== VideoFrame");
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();
@@ -1162,14 +1163,20 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.new_video_thread(display);
                     }
                     let Some(thread) = self.video_threads.get_mut(&display) else {
+                        log::error!(
+                            "====DEBUG==== Received video frame for unknown display {}",
+                            display
+                        );
                         return true;
                     };
                     if Self::contains_key_frame(&vf) {
+                        log::info!("====DEBUG==== Key frame");
                         thread
                             .video_sender
                             .send(MediaData::VideoFrame(Box::new(vf)))
                             .ok();
                     } else {
+                        log::info!("====DEBUG==== Non-key frame");
                         let video_queue = thread.video_queue.read().unwrap();
                         if video_queue.force_push(vf).is_some() {
                             drop(video_queue);
