@@ -493,11 +493,13 @@ impl<T: InvokeUiSession> Remote<T> {
                 match &msg.union {
                     Some(message::Union::Misc(misc)) => match misc.union {
                         Some(misc::Union::RefreshVideo(_)) => {
+                            log::info!("=====DEBUG==== Refresh Video");
                             self.video_threads.iter().for_each(|(_, v)| {
                                 *v.discard_queue.write().unwrap() = true;
                             });
                         }
                         Some(misc::Union::RefreshVideoDisplay(display)) => {
+                            log::info!("=====DEBUG==== Refresh Video Display");
                             if let Some(v) = self.video_threads.get_mut(&(display as usize)) {
                                 *v.discard_queue.write().unwrap() = true;
                             }
@@ -1162,8 +1164,11 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.new_video_thread(display);
                     }
                     let Some(thread) = self.video_threads.get_mut(&display) else {
+                        log::error!("=====DEBUG==== Video Thread Not Found");
                         return true;
                     };
+                    let key = Self::contains_key_frame(&vf);
+                    log::info!("=====DEBUG==== Video Key Frame: {}", key);
                     if Self::contains_key_frame(&vf) {
                         thread
                             .video_sender
