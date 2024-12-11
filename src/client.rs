@@ -2331,12 +2331,14 @@ pub fn start_video_thread<F, T>(
                     MediaData::VideoFrame(_) | MediaData::VideoQueue => {
                         let vf = match data {
                             MediaData::VideoFrame(vf) => {
+                                log::info!("=====DEBUG==== Video Key Frame");
                                 *discard_queue.write().unwrap() = false;
                                 *vf
                             }
                             MediaData::VideoQueue => {
                                 if let Some(vf) = video_queue.read().unwrap().pop() {
                                     if discard_queue.read().unwrap().clone() {
+                                        log::error!("=====DEBUG==== Video Queue Discard");
                                         continue;
                                     }
                                     vf

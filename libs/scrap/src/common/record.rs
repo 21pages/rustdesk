@@ -60,6 +60,7 @@ impl RecorderContext2 {
             .join(file)
             .to_string_lossy()
             .to_string();
+        log::info!("=====DEBUG==== Recording filename: {}", self.filename);
         Ok(())
     }
 }
@@ -106,6 +107,7 @@ impl DerefMut for Recorder {
 
 impl Recorder {
     pub fn new(ctx: RecorderContext) -> ResultType<Self> {
+        log::info!("=====DEBUG==== Recorder new");
         Ok(Self {
             inner: None,
             ctx,
@@ -143,6 +145,7 @@ impl Recorder {
             }
         }
         let Some(ctx2) = &self.ctx2 else {
+            log::error!("=====DEBUG==== ctx2 is None");
             bail!("ctx2 is None");
         };
         if self.inner.is_none() {
@@ -180,16 +183,18 @@ impl Recorder {
         h: usize,
     ) -> ResultType<()> {
         if self.check_failed {
+            log::error!("=====DEBUG==== check failed");
             bail!("check failed");
         }
         let format = CodecFormat::from(frame);
         if format == CodecFormat::Unknown {
+            log::error!("=====DEBUG==== unsupported frame type");
             bail!("unsupported frame type");
         }
         let res = self.check(w, h, format);
         if res.is_err() {
             self.check_failed = true;
-            log::error!("check failed: {:?}", res);
+            log::error!("=====DEBUG==== check failed: {:?}", res);
             res?;
         }
         match frame {
@@ -241,18 +246,23 @@ impl Recorder {
     ) -> ResultType<()> {
         // https://stackoverflow.com/questions/76379101/how-to-create-one-playable-webm-file-from-two-different-video-tracks-with-same-c
         if self.pts.is_none() && !key {
+            log::error!("=====DEBUG==== first frame is not key frame");
             bail!("first frame is not key frame");
         }
         let old_pts = self.pts;
         self.pts = Some(pts);
         if old_pts.clone().unwrap_or_default() > pts {
-            log::info!("pts {:?} -> {}, change record filename", old_pts, pts);
+            log::info!(
+                "=====DEBUG==== pts {:?} -> {}, change record filename",
+                old_pts,
+                pts
+            );
             self.inner = None;
             self.ctx2 = None;
             let res = self.check(w, h, format);
             if res.is_err() {
                 self.check_failed = true;
-                log::error!("check failed: {:?}", res);
+                log::error!("=====DEBUG==== check failed: {:?}", res);
                 res?;
             }
             self.pts = Some(pts);
@@ -277,6 +287,11 @@ struct WebmRecorder {
 
 impl RecorderApi for WebmRecorder {
     fn new(ctx: RecorderContext, ctx2: RecorderContext2) -> ResultType<Self> {
+        log::info!(
+            "=====DEBUG==== WebmRecorder new, ctx:{:?}, ctx2:{:?}",
+            ctx,
+            ctx2
+        );
         let out = match {
             OpenOptions::new()
                 .write(true)
@@ -289,7 +304,10 @@ impl RecorderApi for WebmRecorder {
         };
         let mut webm = match mux::Segment::new(mux::Writer::new(out)) {
             Some(v) => v,
-            None => bail!("Failed to create webm mux"),
+            None => {
+                log::error!("=====DEBUG==== Failed to create webm mux");
+                bail!("Failed to create webm mux");
+            }
         };
         let vt = webm.add_video_track(
             ctx2.width as _,
@@ -307,6 +325,7 @@ impl RecorderApi for WebmRecorder {
             // [129, 8, 12, 0] in 3.6.0, but zero works
             let codec_private = vec![0, 0, 0, 0];
             if !webm.set_codec_private(vt.track_number(), &codec_private) {
+                log::error!("=====DEBUG==== Failed to set codec private");
                 bail!("Failed to set codec private");
             }
         }
@@ -330,10 +349,18 @@ impl RecorderApi for WebmRecorder {
                 .vt
                 .add_frame(&frame.data, frame.pts as u64 * 1_000_000, frame.key);
             if ok {
+                log::info!(
+                    "=====DEBUG==== frame added, pts:{:?}, key:{:?}",
+                    frame.pts,
+                    frame.key
+                );
                 self.written = true;
+            } else {
+                log::error!("=====DEBUG==== Failed to add frame");
             }
             ok
         } else {
+            log::error!("=====DEBUG==== have not received key frame");
             false
         }
     }
@@ -344,8 +371,11 @@ impl Drop for WebmRecorder {
         let _ = std::mem::replace(&mut self.webm, None).map_or(false, |webm| webm.finalize(None));
         let mut state = RecordState::WriteTail;
         if !self.written || self.start.elapsed().as_secs() < MIN_SECS {
+            log::error!("=====DEBUG==== remove file, {:?}", self.ctx2.filename);
             std::fs::remove_file(&self.ctx2.filename).ok();
             state = RecordState::RemoveFile;
+        } else {
+            log::info!("=====DEBUG==== file saved, {:?}", self.ctx2.filename);
         }
         self.ctx.tx.as_ref().map(|tx| tx.send(state));
     }
@@ -364,6 +394,11 @@ struct HwRecorder {
 #[cfg(feature = "hwcodec")]
 impl RecorderApi for HwRecorder {
     fn new(ctx: RecorderContext, ctx2: RecorderContext2) -> ResultType<Self> {
+        log::info!(
+            "=====DEBUG==== HwRecorder new, ctx:{:?}, ctx2:{:?}",
+            ctx,
+            ctx2
+        );
         let muxer = Muxer::new(MuxContext {
             filename: ctx2.filename.clone(),
             width: ctx2.width,
@@ -371,7 +406,10 @@ impl RecorderApi for HwRecorder {
             is265: ctx2.format == CodecFormat::H265,
             framerate: crate::hwcodec::DEFAULT_FPS as _,
         })
-        .map_err(|_| anyhow!("Failed to create hardware muxer"))?;
+        .map_err(|_| {
+            log::error!("=====DEBUG==== Failed to create hardware muxer");
+            anyhow!("Failed to create hardware muxer")
+        })?;
         Ok(HwRecorder {
             muxer: Some(muxer),
             ctx,
@@ -393,10 +431,18 @@ impl RecorderApi for HwRecorder {
                 .map(|m| m.write_video(&frame.data, frame.key).is_ok())
                 .unwrap_or_default();
             if ok {
+                log::info!(
+                    "=====DEBUG==== frame added, pts:{:?}, key:{:?}",
+                    frame.pts,
+                    frame.key
+                );
                 self.written = true;
+            } else {
+                log::error!("=====DEBUG==== Failed to write video");
             }
             ok
         } else {
+            log::error!("=====DEBUG==== have not received key frame");
             false
         }
     }
@@ -408,10 +454,13 @@ impl Drop for HwRecorder {
         self.muxer.as_mut().map(|m| m.write_tail().ok());
         let mut state = RecordState::WriteTail;
         if !self.written || self.start.elapsed().as_secs() < MIN_SECS {
+            log::error!("=====DEBUG==== remove file, {:?}", self.ctx2.filename);
             // The process cannot access the file because it is being used by another process
             self.muxer = None;
             std::fs::remove_file(&self.ctx2.filename).ok();
             state = RecordState::RemoveFile;
+        } else {
+            log::info!("=====DEBUG==== file saved, {:?}", self.ctx2.filename);
         }
         self.ctx.tx.as_ref().map(|tx| tx.send(state));
     }
