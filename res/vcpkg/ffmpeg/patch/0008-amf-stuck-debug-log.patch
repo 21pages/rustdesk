@@ -1,0 +1,243 @@
+From 2c723b6e649c3caea06ee563a367f2531db0f128 Mon Sep 17 00:00:00 2001
+From: 21pages <sunboeasy@gmail.com>
+Date: Sat, 14 Dec 2024 11:03:15 +0800
+Subject: [PATCH] amf stuck debug log
+
+Signed-off-by: 21pages <sunboeasy@gmail.com>
+---
+ libavcodec/amfenc.c | 50 +++++++++++++++++++++++++++++++++++++++++++--
+ libavcodec/encode.c |  8 +++++++-
+ 2 files changed, 55 insertions(+), 3 deletions(-)
+
+diff --git a/libavcodec/amfenc.c b/libavcodec/amfenc.c
+index f70f0109f6..304b4efd22 100644
+--- a/libavcodec/amfenc.c
++++ b/libavcodec/amfenc.c
+@@ -670,6 +670,7 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+     int         block_and_wait;
+     int         query_output_data_flag = 0;
+     AMF_RESULT  res_resubmit;
++    av_log(avctx, AV_LOG_ERROR, "ff_amf_receive_packet\n");
+ 
+     reconfig_encoder(avctx);
+ 
+@@ -678,6 +679,7 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+ 
+     if (!frame->buf[0]) {
+         ret = ff_encode_get_frame(avctx, frame);
++        av_log(avctx, AV_LOG_ERROR, "ff_encode_get_frame\n");
+         if (ret < 0 && ret != AVERROR_EOF)
+             return ret;
+     }
+@@ -715,6 +717,7 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+ 
+                 texture->lpVtbl->SetPrivateData(texture, &AMFTextureArrayIndexGUID, sizeof(index), &index);
+ 
++                av_log(avctx, AV_LOG_ERROR, "CreateSurfaceFromDX11Native\n");
+                 res = ctx->context->pVtbl->CreateSurfaceFromDX11Native(ctx->context, texture, &surface, NULL); // wrap to AMF surface
+                 AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR(ENOMEM), "CreateSurfaceFromDX11Native() failed  with error %d\n", res);
+ 
+@@ -736,9 +739,13 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+ #endif
+         default:
+             {
++                av_log(avctx, AV_LOG_ERROR, "before AllocSurface host\n");
+                 res = ctx->context->pVtbl->AllocSurface(ctx->context, AMF_MEMORY_HOST, ctx->format, avctx->width, avctx->height, &surface);
++                av_log(avctx, AV_LOG_ERROR, "after AllocSurface host\n");
+                 AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR(ENOMEM), "AllocSurface() failed  with error %d\n", res);
++                av_log(avctx, AV_LOG_ERROR, "before amf_copy_surface\n");
+                 amf_copy_surface(avctx, frame, surface);
++                av_log(avctx, AV_LOG_ERROR, "after amf_copy_surface\n");
+             }
+             break;
+         }
+@@ -748,8 +755,9 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+ 
+             // input HW surfaces can be vertically aligned by 16; tell AMF the real size
+             surface->pVtbl->SetCrop(surface, 0, 0, frame->width, frame->height);
+-
++            av_log(avctx, AV_LOG_ERROR, "before create_buffer_with_frame_ref\n");
+             frame_ref_storage_buffer = amf_create_buffer_with_frame_ref(frame, ctx->context);
++            av_log(avctx, AV_LOG_ERROR, "after create_buffer_with_frame_ref\n");
+             AMF_RETURN_IF_FALSE(ctx, frame_ref_storage_buffer != NULL, AVERROR(ENOMEM), "create_buffer_with_frame_ref() returned NULL\n");
+ 
+             res = amf_set_property_buffer(surface, L"av_frame_ref", frame_ref_storage_buffer);
+@@ -796,17 +804,25 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+         }
+ 
+         // submit surface
++        av_log(avctx, AV_LOG_ERROR, "before SubmitInput\n");
+         res = ctx->encoder->pVtbl->SubmitInput(ctx->encoder, (AMFData*)surface);
++        av_log(avctx, AV_LOG_ERROR, "after SubmitInput\n");
+         if (res == AMF_INPUT_FULL) { // handle full queue
++            av_log(avctx, AV_LOG_ERROR, "before delayed_surface\n");
+             //store surface for later submission
+             ctx->delayed_surface = surface;
++            av_log(avctx, AV_LOG_ERROR, "after delayed_surface\n");
+         } else {
++            av_log(avctx, AV_LOG_ERROR, "res not AMF_INPUT_FULL\n");
+             int64_t pts = frame->pts;
+             surface->pVtbl->Release(surface);
++            av_log(avctx, AV_LOG_ERROR, "after surface->pVtbl->Release(surface)\n");
+             AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_UNKNOWN, "SubmitInput() failed with error %d\n", res);
+ 
+             av_frame_unref(frame);
++            av_log(avctx, AV_LOG_ERROR, "after av_frame_unref(frame)\n");
+             ret = av_fifo_write(ctx->timestamp_list, &pts, 1);
++            av_log(avctx, AV_LOG_ERROR, "after av_fifo_write(ctx->timestamp_list, &pts, 1)\n");
+             if (ret < 0)
+                 return ret;
+         }
+@@ -815,34 +831,45 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+ 
+     do {
+         block_and_wait = 0;
++        av_log(avctx, AV_LOG_ERROR, "do while block_and_wait: %d\n", block_and_wait);
+         // poll data
+         if (!avpkt->data && !avpkt->buf) {
++            av_log(avctx, AV_LOG_ERROR, "before QueryOutput\n");
+             res_query = ctx->encoder->pVtbl->QueryOutput(ctx->encoder, &data);
++            av_log(avctx, AV_LOG_ERROR, "after QueryOutput, data: %p\n", data);
+             if (data) {
+                 // copy data to packet
+                 AMFBuffer *buffer;
+                 AMFGuid guid = IID_AMFBuffer();
+                 query_output_data_flag = 1;
++                av_log(avctx, AV_LOG_ERROR, "before QueryInterface\n");
+                 data->pVtbl->QueryInterface(data, &guid, (void**)&buffer); // query for buffer interface
++                av_log(avctx, AV_LOG_ERROR, "after QueryInterface\n");
+                 ret = amf_copy_buffer(avctx, avpkt, buffer);
++                av_log(avctx, AV_LOG_ERROR, "after amf_copy_buffer\n");
+ 
+                 buffer->pVtbl->Release(buffer);
++                av_log(avctx, AV_LOG_ERROR, "after buffer->pVtbl->Release(buffer)\n");
+ 
+                 if (data->pVtbl->HasProperty(data, L"av_frame_ref")) {
+                     AMFBuffer* frame_ref_storage_buffer;
++                    av_log(avctx, AV_LOG_ERROR, "before amf_get_property_buffer\n");
+                     res = amf_get_property_buffer(data, L"av_frame_ref", &frame_ref_storage_buffer);
++                    av_log(avctx, AV_LOG_ERROR, "after amf_get_property_buffer\n");
+                     AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_UNKNOWN, "GetProperty failed for \"av_frame_ref\" with error %d\n", res);
+                     amf_release_buffer_with_frame_ref(frame_ref_storage_buffer);
+                     ctx->hwsurfaces_in_queue--;
+                 }
+ 
+                 data->pVtbl->Release(data);
++                av_log(avctx, AV_LOG_ERROR, "after data->pVtbl->Release(data)\n");
+ 
+                 AMF_RETURN_IF_FALSE(ctx, ret >= 0, ret, "amf_copy_buffer() failed with error %d\n", ret);
+             }
+         }
+         res_resubmit = AMF_OK;
+         if (ctx->delayed_surface != NULL) { // try to resubmit frame
++            av_log(avctx, AV_LOG_ERROR, "ctx->delayed_surface != NULL\n");
+             if (ctx->delayed_surface->pVtbl->HasProperty(ctx->delayed_surface, L"av_frame_hdrmeta")) {
+                 AMFBuffer * hdrmeta_buffer = NULL;
+                 res = amf_get_property_buffer((AMFData *)ctx->delayed_surface, L"av_frame_hdrmeta", &hdrmeta_buffer);
+@@ -857,20 +884,30 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+                 }
+                 hdrmeta_buffer->pVtbl->Release(hdrmeta_buffer);
+             }
++            av_log(avctx, AV_LOG_ERROR, "before ctx->encoder->pVtbl->SubmitInput(ctx->encoder, (AMFData*)ctx->delayed_surface)\n");
+             res_resubmit = ctx->encoder->pVtbl->SubmitInput(ctx->encoder, (AMFData*)ctx->delayed_surface);
++            av_log(avctx, AV_LOG_ERROR, "after ctx->encoder->pVtbl->SubmitInput(ctx->encoder, (AMFData*)ctx->delayed_surface)\n");
+             if (res_resubmit != AMF_INPUT_FULL) {
+                 int64_t pts = ctx->delayed_surface->pVtbl->GetPts(ctx->delayed_surface);
++                av_log(avctx, AV_LOG_ERROR, "before ctx->delayed_surface->pVtbl->Release(ctx->delayed_surface)\n");
+                 ctx->delayed_surface->pVtbl->Release(ctx->delayed_surface);
++                av_log(avctx, AV_LOG_ERROR, "after ctx->delayed_surface->pVtbl->Release(ctx->delayed_surface)\n");
+                 ctx->delayed_surface = NULL;
++                av_log(avctx, AV_LOG_ERROR, "before av_frame_unref(ctx->delayed_frame)\n");
+                 av_frame_unref(ctx->delayed_frame);
++                av_log(avctx, AV_LOG_ERROR, "after av_frame_unref(ctx->delayed_frame)\n");
+                 AMF_RETURN_IF_FALSE(ctx, res_resubmit == AMF_OK, AVERROR_UNKNOWN, "Repeated SubmitInput() failed with error %d\n", res_resubmit);
+ 
++                av_log(avctx, AV_LOG_ERROR, "before ret = av_fifo_write(ctx->timestamp_list, &pts, 1)\n");
+                 ret = av_fifo_write(ctx->timestamp_list, &pts, 1);
++                av_log(avctx, AV_LOG_ERROR, "after ret = av_fifo_write(ctx->timestamp_list, &pts, 1)\n");
+                 if (ret < 0)
+                     return ret;
+             }
+         } else if (ctx->delayed_drain) { // try to resubmit drain
++            av_log(avctx, AV_LOG_ERROR, "before ctx->encoder->pVtbl->Drain(ctx->encoder)\n");
+             res = ctx->encoder->pVtbl->Drain(ctx->encoder);
++            av_log(avctx, AV_LOG_ERROR, "after ctx->encoder->pVtbl->Drain(ctx->encoder)\n");
+             if (res != AMF_INPUT_FULL) {
+                 ctx->delayed_drain = 0;
+                 ctx->eof = 1; // drain started
+@@ -880,13 +917,22 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+             }
+         }
+ 
++        av_log(avctx, AV_LOG_ERROR, "query_output_data_flag: %d\n", query_output_data_flag);
++        av_log(avctx, AV_LOG_ERROR, "res_resubmit: %d, res_resubmit == AMF_INPUT_FULL: %d\n", res_resubmit, res_resubmit == AMF_INPUT_FULL);
++        av_log(avctx, AV_LOG_ERROR, "ctx->delayed_drain: %d\n", ctx->delayed_drain);
++        av_log(avctx, AV_LOG_ERROR, "ctx->eof: %d\n", ctx->eof);
++        av_log(avctx, AV_LOG_ERROR, "res_query: %d, res_query != AMF_EOF: %d\n", res_query, res_query != AMF_EOF);
++        av_log(avctx, AV_LOG_ERROR, "ctx->hwsurfaces_in_queue: %d\n", ctx->hwsurfaces_in_queue);
++        av_log(avctx, AV_LOG_ERROR, "ctx->hwsurfaces_in_queue_max: %d\n", ctx->hwsurfaces_in_queue_max);
+         if (query_output_data_flag == 0) {
+             if (res_resubmit == AMF_INPUT_FULL || ctx->delayed_drain || (ctx->eof && res_query != AMF_EOF) || (ctx->hwsurfaces_in_queue >= ctx->hwsurfaces_in_queue_max)) {
+                 block_and_wait = 1;
++                av_log(avctx, AV_LOG_ERROR, "after block_and_wait = 1\n");
+                 av_usleep(1000);
+             }
++            av_log(avctx, AV_LOG_ERROR, "after if (res_resubmit == AMF_INPUT_FULL || ctx->delayed_drain || (ctx->eof && res_query != AMF_EOF) || (ctx->hwsurfaces_in_queue >= ctx->hwsurfaces_in_queue_max))\n");
+         }
+-    } while (block_and_wait);
++    } while (false/*block_and_wait*/);
+ 
+     if (res_query == AMF_EOF) {
+         ret = AVERROR_EOF;
+diff --git a/libavcodec/encode.c b/libavcodec/encode.c
+index 3baf5b8103..40dd7ea001 100644
+--- a/libavcodec/encode.c
++++ b/libavcodec/encode.c
+@@ -349,8 +349,9 @@ static int encode_simple_internal(AVCodecContext *avctx, AVPacket *avpkt)
+ static int encode_simple_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
+ {
+     int ret;
+-
++    av_log(avctx, AV_LOG_ERROR, "encode_simple_receive_packet\n");
+     while (!avpkt->data && !avpkt->side_data) {
++        av_log(avctx, AV_LOG_ERROR, "encode_simple_internal\n");
+         ret = encode_simple_internal(avctx, avpkt);
+         if (ret < 0)
+             return ret;
+@@ -448,6 +449,7 @@ static int encode_send_frame_internal(AVCodecContext *avctx, const AVFrame *src)
+     EncodeContext     *ec = encode_ctx(avci);
+     AVFrame *dst = avci->buffer_frame;
+     int ret;
++    av_log(avctx, AV_LOG_ERROR, "encode_send_frame_internal\n");
+ 
+     if (avctx->codec->type == AVMEDIA_TYPE_AUDIO) {
+         /* extract audio service type metadata */
+@@ -510,6 +512,7 @@ int attribute_align_arg avcodec_send_frame(AVCodecContext *avctx, const AVFrame
+     AVCodecInternal *avci = avctx->internal;
+     int ret;
+ 
++    av_log(avctx, AV_LOG_ERROR, "avcodec_send_frame\n");
+     if (!avcodec_is_open(avctx) || !av_codec_is_encoder(avctx->codec))
+         return AVERROR(EINVAL);
+ 
+@@ -520,14 +523,17 @@ int attribute_align_arg avcodec_send_frame(AVCodecContext *avctx, const AVFrame
+         return AVERROR(EAGAIN);
+ 
+     if (!frame) {
++        av_log(avctx, AV_LOG_ERROR, "frame is null\n");
+         avci->draining = 1;
+     } else {
++        av_log(avctx, AV_LOG_ERROR, "frame is not null\n");
+         ret = encode_send_frame_internal(avctx, frame);
+         if (ret < 0)
+             return ret;
+     }
+ 
+     if (!avci->buffer_pkt->data && !avci->buffer_pkt->side_data) {
++        av_log(avctx, AV_LOG_ERROR, "buffer_pkt is null\n");
+         ret = encode_receive_packet_internal(avctx, avci->buffer_pkt);
+         if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
+             return ret;
+-- 
+2.43.0.windows.1
+
