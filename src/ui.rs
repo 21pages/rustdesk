@@ -106,9 +106,6 @@ pub fn start(args: &mut [String]) {
         frame.event_handler(UI {});
         frame.sciter_handler(UIHostHandler {});
         page = "index.html";
-        // Start pulse audio local server.
-        #[cfg(target_os = "linux")]
-        std::thread::spawn(crate::ipc::start_pa);
     } else if args[0] == "--install" {
         frame.event_handler(UI {});
         frame.sciter_handler(UIHostHandler {});
@@ -748,7 +745,6 @@ impl sciter::host::HostHandler for UIHostHandler {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
 fn get_sound_inputs() -> Vec<String> {
     let mut out = Vec::new();
     use cpal::traits::{DeviceTrait, HostTrait};
@@ -764,14 +760,6 @@ fn get_sound_inputs() -> Vec<String> {
         }
     }
     out
-}
-
-#[cfg(target_os = "linux")]
-fn get_sound_inputs() -> Vec<String> {
-    crate::platform::linux::get_pa_sources()
-        .drain(..)
-        .map(|x| x.1)
-        .collect()
 }
 
 // sacrifice some memory

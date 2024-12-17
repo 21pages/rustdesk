@@ -1,5 +1,3 @@
-#[cfg(target_os = "linux")]
-use crate::ipc::start_pa;
 use crate::ui_cm_interface::{start_ipc, ConnectionManager, InvokeUiCM};
 
 use hbb_common::{allow_err, log};
@@ -88,8 +86,6 @@ impl Deref for SciterConnectionManager {
 
 impl SciterConnectionManager {
     pub fn new() -> Self {
-        #[cfg(target_os = "linux")]
-        std::thread::spawn(start_pa);
         let cm = ConnectionManager {
             ui_handler: SciterHandler::default(),
         };

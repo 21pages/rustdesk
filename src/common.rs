@@ -177,7 +177,6 @@ pub fn set_sound_input(device: String) {
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_default_sound_input() -> Option<String> {
-    #[cfg(not(target_os = "linux"))]
     {
         use cpal::traits::{DeviceTrait, HostTrait};
         let host = cpal::default_host();
@@ -187,15 +186,6 @@ pub fn get_default_sound_input() -> Option<String> {
                 Ok(name) => Some(name),
                 Err(_) => None,
             }
-        } else {
-            None
-        };
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let input = crate::platform::linux::get_default_pa_source();
-        return if let Some(input) = input {
-            Some(input.1)
         } else {
             None
         };

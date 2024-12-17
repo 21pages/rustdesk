@@ -1410,9 +1410,6 @@ pub mod connection_manager {
     fn start_listen_ipc(new_thread: bool) {
         use crate::ui_cm_interface::{start_ipc, ConnectionManager};
 
-        #[cfg(target_os = "linux")]
-        std::thread::spawn(crate::ipc::start_pa);
-
         let cm = ConnectionManager {
             ui_handler: FlutterHandler {},
         };

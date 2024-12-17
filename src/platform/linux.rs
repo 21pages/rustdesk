@@ -664,63 +664,6 @@ where
     Ok(Some(task))
 }
 
-pub fn get_pa_monitor() -> String {
-    get_pa_sources()
-        .drain(..)
-        .map(|x| x.0)
-        .filter(|x| x.contains("monitor"))
-        .next()
-        .unwrap_or("".to_owned())
-}
-
-pub fn get_pa_source_name(desc: &str) -> String {
-    get_pa_sources()
-        .drain(..)
-        .filter(|x| x.1 == desc)
-        .map(|x| x.0)
-        .next()
-        .unwrap_or("".to_owned())
-}
-
-pub fn get_pa_sources() -> Vec<(String, String)> {
-    use pulsectl::controllers::*;
-    let mut out = Vec::new();
-    match SourceController::create() {
-        Ok(mut handler) => {
-            if let Ok(devices) = handler.list_devices() {
-                for dev in devices.clone() {
-                    out.push((
-                        dev.name.unwrap_or("".to_owned()),
-                        dev.description.unwrap_or("".to_owned()),
-                    ));
-                }
-            }
-        }
-        Err(err) => {
-            log::error!("Failed to get_pa_sources: {:?}", err);
-        }
-    }
-    out
-}
-
-pub fn get_default_pa_source() -> Option<(String, String)> {
-    use pulsectl::controllers::*;
-    match SourceController::create() {
-        Ok(mut handler) => {
-            if let Ok(dev) = handler.get_default_device() {
-                return Some((
-                    dev.name.unwrap_or("".to_owned()),
-                    dev.description.unwrap_or("".to_owned()),
-                ));
-            }
-        }
-        Err(err) => {
-            log::error!("Failed to get_pa_source: {:?}", err);
-        }
-    }
-    None
-}
-
 pub fn lock_screen() {
     Command::new("xdg-screensaver").arg("lock").spawn().ok();
 }

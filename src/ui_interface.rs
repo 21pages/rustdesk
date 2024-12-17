@@ -333,7 +333,6 @@ pub fn test_if_valid_server(host: String, test_with_proxy: bool) -> String {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_sound_inputs() -> Vec<String> {
     let mut a = Vec::new();
-    #[cfg(not(target_os = "linux"))]
     {
         fn get_sound_inputs_() -> Vec<String> {
             let mut out = Vec::new();
@@ -361,17 +360,6 @@ pub fn get_sound_inputs() -> Vec<String> {
             .join()
             .ok();
         for name in inputs.lock().unwrap().drain(..) {
-            a.push(name);
-        }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let inputs: Vec<String> = crate::platform::linux::get_pa_sources()
-            .drain(..)
-            .map(|x| x.1)
-            .collect();
-
-        for name in inputs {
             a.push(name);
         }
     }

@@ -13,7 +13,7 @@
 // https://github.com/krruzic/pulsectl
 
 use super::*;
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(not(target_os = "android"))]
 use hbb_common::anyhow::anyhow;
 use magnum_opus::{Application::*, Channels::*, Encoder};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,14 +26,14 @@ lazy_static::lazy_static! {
     static ref VOICE_CALL_INPUT_DEVICE: Arc::<Mutex::<Option<String>>> = Default::default();
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(not(target_os = "android"))]
 pub fn new() -> GenericService {
     let svc = EmptyExtraFieldService::new(NAME.to_owned(), true);
     GenericService::repeat::<cpal_impl::State, _, _>(&svc.clone(), 33, cpal_impl::run);
     svc.sp
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(target_os = "android")]
 pub fn new() -> GenericService {
     let svc = EmptyExtraFieldService::new(NAME.to_owned(), true);
     GenericService::run(&svc.clone(), pa_impl::run);
@@ -75,7 +75,7 @@ pub fn restart() {
     RESTARTING.store(true, Ordering::SeqCst);
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(target_os = "android")]
 mod pa_impl {
     use super::*;
 
@@ -95,24 +95,10 @@ mod pa_impl {
     pub async fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
         hbb_common::sleep(0.1).await; // one moment to wait for _pa ipc
         RESTARTING.store(false, Ordering::SeqCst);
-        #[cfg(target_os = "linux")]
-        let mut stream = crate::ipc::connect(1000, "_pa").await?;
         unsafe {
             AUDIO_ZERO_COUNT = 0;
         }
         let mut encoder = Encoder::new(crate::platform::PA_SAMPLE_RATE, Stereo, LowDelay)?;
-        #[cfg(target_os = "linux")]
-        allow_err!(
-            stream
-                .send(&crate::ipc::Data::Config((
-                    "audio-input".to_owned(),
-                    Some(super::get_audio_input())
-                )))
-                .await
-        );
-        #[cfg(target_os = "linux")]
-        let zero_audio_frame: Vec<f32> = vec![0.; AUDIO_DATA_SIZE_U8 / 4];
-        #[cfg(target_os = "android")]
         let mut android_data = vec![];
         while sp.ok() && !RESTARTING.load(Ordering::SeqCst) {
             sp.snapshot(|sps| {
@@ -120,25 +106,6 @@ mod pa_impl {
                 Ok(())
             })?;
 
-            #[cfg(target_os = "linux")]
-            if let Ok(data) = stream.next_raw().await {
-                if data.len() == 0 {
-                    send_f32(&zero_audio_frame, &mut encoder, &sp);
-                    continue;
-                }
-
-                if data.len() != AUDIO_DATA_SIZE_U8 {
-                    continue;
-                }
-
-                let data = unsafe { align_to_32(data.into()) };
-                let data = unsafe {
-                    std::slice::from_raw_parts::<f32>(data.as_ptr() as _, data.len() / 4)
-                };
-                send_f32(data, &mut encoder, &sp);
-            }
-
-            #[cfg(target_os = "android")]
             if scrap::android::ffi::get_audio_raw(&mut android_data, &mut vec![]).is_some() {
                 let data = unsafe {
                     android_data = align_to_32(android_data);
@@ -164,7 +131,7 @@ pub fn is_screen_capture_kit_available() -> bool {
         .any(|host| *host == cpal::HostId::ScreenCaptureKit)
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(not(target_os = "android"))]
 mod cpal_impl {
     use self::service::{Reset, ServiceSwap};
     use super::*;
