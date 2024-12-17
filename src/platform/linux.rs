@@ -665,57 +665,55 @@ where
 }
 
 pub fn get_pa_monitor() -> String {
-    get_pa_sources()
-        .drain(..)
-        .map(|x| x.0)
-        .filter(|x| x.contains("monitor"))
-        .next()
-        .unwrap_or("".to_owned())
-}
+    use cpal::traits::{DeviceTrait, HostTrait};
 
-pub fn get_pa_source_name(desc: &str) -> String {
-    get_pa_sources()
-        .drain(..)
-        .filter(|x| x.1 == desc)
-        .map(|x| x.0)
-        .next()
-        .unwrap_or("".to_owned())
-}
-
-pub fn get_pa_sources() -> Vec<(String, String)> {
-    use pulsectl::controllers::*;
-    let mut out = Vec::new();
-    match SourceController::create() {
-        Ok(mut handler) => {
-            if let Ok(devices) = handler.list_devices() {
-                for dev in devices.clone() {
-                    out.push((
-                        dev.name.unwrap_or("".to_owned()),
-                        dev.description.unwrap_or("".to_owned()),
-                    ));
+    // Get the default host
+    let host = cpal::default_host();
+    // Get input devices
+    if let Ok(devices) = host.input_devices() {
+        // Look for a monitor device
+        for device in devices {
+            if let Ok(name) = device.name() {
+                if name.to_lowercase().contains("monitor") {
+                    return name;
                 }
             }
         }
-        Err(err) => {
-            log::error!("Failed to get_pa_sources: {:?}", err);
+    }
+    "".to_owned()
+}
+
+pub fn get_pa_sources() -> Vec<(String, String)> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+
+    let mut out = Vec::new();
+
+    // Get the default host
+    let host = cpal::default_host();
+    // Get input devices
+    if let Ok(devices) = host.input_devices() {
+        for device in devices {
+            if let Ok(name) = device.name() {
+                // For Linux/PulseAudio, the name is usually descriptive enough
+                // We'll use the same string for both name and description
+                out.push((name.clone(), name));
+            }
         }
     }
+
     out
 }
 
 pub fn get_default_pa_source() -> Option<(String, String)> {
-    use pulsectl::controllers::*;
-    match SourceController::create() {
-        Ok(mut handler) => {
-            if let Ok(dev) = handler.get_default_device() {
-                return Some((
-                    dev.name.unwrap_or("".to_owned()),
-                    dev.description.unwrap_or("".to_owned()),
-                ));
-            }
-        }
-        Err(err) => {
-            log::error!("Failed to get_pa_source: {:?}", err);
+    use cpal::traits::{DeviceTrait, HostTrait};
+    // Get the default host
+    let host = cpal::default_host();
+    // Get default input device
+    if let Some(input) = host.default_input_device() {
+        // Get device name
+        if let Ok(name) = input.name() {
+            // For Linux/PulseAudio, use the same string for both name and description
+            return Some((name.clone(), name));
         }
     }
     None

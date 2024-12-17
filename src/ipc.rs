@@ -25,9 +25,7 @@ use hbb_common::{
     config::{self, Config, Config2},
     futures::StreamExt as _,
     futures_util::sink::SinkExt,
-    log, password_security as password,
-    sodiumoxide::base64,
-    timeout,
+    log, password_security as password, timeout,
     tokio::{
         self,
         io::{AsyncRead, AsyncWrite},
@@ -675,6 +673,7 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
 #[tokio::main(flavor = "current_thread")]
 pub async fn start_pa() {
     use crate::audio_service::AUDIO_DATA_SIZE_U8;
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
     match new_listener("_pa").await {
         Ok(mut incoming) => {
@@ -683,57 +682,84 @@ pub async fn start_pa() {
                     match result {
                         Ok(stream) => {
                             let mut stream = Connection::new(stream);
-                            let mut device: String = "".to_owned();
+                            let mut name: String = "".to_owned();
                             if let Some(Ok(Some(Data::Config((_, Some(x)))))) =
                                 stream.next_timeout2(1000).await
                             {
-                                device = x;
+                                name = x;
                             }
-                            if !device.is_empty() {
-                                device = crate::platform::linux::get_pa_source_name(&device);
-                            }
-                            if device.is_empty() {
-                                device = crate::platform::linux::get_pa_monitor();
-                            }
-                            if device.is_empty() {
-                                continue;
-                            }
-                            let spec = pulse::sample::Spec {
-                                format: pulse::sample::Format::F32le,
-                                channels: 2,
-                                rate: crate::platform::PA_SAMPLE_RATE,
+                            log::info!("================ name: {}", name);
+                            // Get input device
+                            let host = cpal::default_host();
+                            let device = if !name.is_empty() {
+                                // Try to find device with matching name
+                                host.input_devices()
+                                    .ok()
+                                    .and_then(|mut devices| {
+                                        devices
+                                            .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+                                    })
+                                    .or_else(|| {
+                                        log::warn!(
+                                            "Named device '{}' not found, falling back to default",
+                                            name
+                                        );
+                                        host.default_input_device()
+                                    })
+                            } else {
+                                host.default_input_device()
                             };
-                            log::info!("pa monitor: {:?}", device);
-                            // systemctl --user status pulseaudio.service
-                            let mut buf: Vec<u8> = vec![0; AUDIO_DATA_SIZE_U8];
-                            match psimple::Simple::new(
-                                None,                             // Use the default server
-                                &crate::get_app_name(),           // Our application’s name
-                                pulse::stream::Direction::Record, // We want a record stream
-                                Some(&device),                    // Use the default device
-                                "record",                         // Description of our stream
-                                &spec,                            // Our sample format
-                                None,                             // Use default channel map
-                                None, // Use default buffering attributes
-                            ) {
-                                Ok(s) => loop {
-                                    if let Ok(_) = s.read(&mut buf) {
-                                        let out =
-                                            if buf.iter().filter(|x| **x != 0).next().is_none() {
-                                                vec![]
-                                            } else {
-                                                buf.clone()
-                                            };
-                                        if let Err(err) = stream.send_raw(out.into()).await {
-                                            log::error!("Failed to send audio data:{}", err);
-                                            break;
-                                        }
-                                    }
-                                },
-                                Err(err) => {
-                                    log::error!("Could not create simple pulse: {}", err);
+
+                            let device = match device {
+                                Some(device) => device,
+                                None => {
+                                    log::error!("No input device available");
+                                    continue;
                                 }
-                            }
+                            };
+                            log::info!(
+                                "================ device: {}",
+                                device.name().unwrap_or("".to_owned())
+                            );
+                            // Get supported config
+                            let config = match device.default_input_config() {
+                                Ok(config) => config,
+                                Err(err) => {
+                                    log::error!("Failed to get default input config: {}", err);
+                                    continue;
+                                }
+                            };
+
+                            log::info!("================ config: {:?}", config);
+
+                            let err_fn = |err| log::error!("An error occurred on stream: {}", err);
+
+                            // Create and run the input stream
+                            let input_stream = match device.build_input_stream(
+                                &config.into(),
+                                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                                    // Convert f32 samples to bytes
+                                    let mut bytes = Vec::with_capacity(data.len() * 4);
+                                    for &sample in data {
+                                        bytes.extend_from_slice(&sample.to_le_bytes());
+                                    }
+                                    log::info!("================ bytes: {:?}", bytes.len());
+                                },
+                                err_fn,
+                                None,
+                            ) {
+                                Ok(stream) => stream,
+                                Err(err) => {
+                                    log::error!("Failed to build input stream: {}", err);
+                                    continue;
+                                }
+                            };
+
+                            log::info!("================ input_stream before play");
+                            input_stream.play().unwrap_or_else(|err| {
+                                log::error!("Failed to start input stream: {}", err);
+                            });
+                            log::info!("================ input_stream after play");
                         }
                         Err(err) => {
                             log::error!("Couldn't get pa client: {:?}", err);

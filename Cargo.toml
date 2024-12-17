@@ -23,7 +23,7 @@ use_samplerate = ["samplerate"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge"]
-default = ["use_dasp"]
+default = ["use_dasp", "hwcodec"]
 hwcodec = ["scrap/hwcodec"]
 vram = ["scrap/vram"]
 mediacodec = ["scrap/mediacodec"]
@@ -147,9 +147,9 @@ reqwest = { git = "https://github.com/rustdesk-org/reqwest", features = ["blocki
 reqwest = { git = "https://github.com/rustdesk-org/reqwest", features = ["blocking", "socks", "json", "rustls-tls", "rustls-tls-native-roots", "gzip"], default-features=false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-psimple = { package = "libpulse-simple-binding", version = "2.27" }
-pulse = { package = "libpulse-binding", version = "2.27" }
-rust-pulsectl = { git = "https://github.com/open-trade/pulsectl" }
+# psimple = { package = "libpulse-simple-binding", version = "2.27" }
+# pulse = { package = "libpulse-binding", version = "2.27" }
+# rust-pulsectl = { git = "https://github.com/open-trade/pulsectl" }
 async-process = "1.7"
 evdev = { git="https://github.com/rustdesk-org/evdev" }
 dbus = "0.9"

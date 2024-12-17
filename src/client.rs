@@ -29,6 +29,7 @@ pub use file_trait::FileManager;
 #[cfg(not(feature = "flutter"))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::tokio::sync::mpsc::UnboundedSender;
+use hbb_common::tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
@@ -51,10 +52,6 @@ use hbb_common::{
         time::{interval, Duration, Instant},
     },
     AddrMangle, ResultType, Stream,
-};
-use hbb_common::{
-    config::keys::OPTION_ALLOW_AUTO_RECORD_OUTGOING,
-    tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver},
 };
 pub use helper::*;
 use scrap::{
