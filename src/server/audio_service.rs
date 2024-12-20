@@ -36,6 +36,11 @@ pub fn new() -> GenericService {
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn new() -> GenericService {
     let svc = EmptyExtraFieldService::new(NAME.to_owned(), true);
+    #[cfg(target_os = "linux")]
+    if !crate::platform::linux::init_pulse() {
+        log::error!("Skip audio service because of pulseaudio init failed");
+        return svc.sp;
+    }
     GenericService::run(&svc.clone(), pa_impl::run);
     svc.sp
 }

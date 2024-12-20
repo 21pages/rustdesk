@@ -3519,7 +3519,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e310b3a6b5907f99202fcdb4960ff45b93735d7c7d96b760fcff8db2dc0e103d"
 dependencies = [
  "cfg-if 1.0.0",
- "windows-targets 0.52.5",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3530,9 +3530,8 @@ checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
 name = "libpulse-binding"
-version = "2.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed3557a2dfc380c8f061189a01c6ae7348354e0c9886038dc6c171219c08eaff"
+version = "2.28.2"
+source = "git+https://github.com/21pages/pulse-binding-rust?branch=dynamic_load#9b9e6318b19cdd306eefa84d5a91e1956151cd1a"
 dependencies = [
  "bitflags 1.3.2",
  "libc",
@@ -3545,8 +3544,7 @@ dependencies = [
 [[package]]
 name = "libpulse-simple-binding"
 version = "2.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05fd6b68f33f6a251265e6ed1212dc3107caad7c5c6fdcd847b2e65ef58c308d"
+source = "git+https://github.com/21pages/pulse-binding-rust?branch=dynamic_load#9b9e6318b19cdd306eefa84d5a91e1956151cd1a"
 dependencies = [
  "libpulse-binding",
  "libpulse-simple-sys",
@@ -3556,22 +3554,24 @@ dependencies = [
 [[package]]
 name = "libpulse-simple-sys"
 version = "1.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea6613b4199d8b9f0edcfb623e020cb17bbd0bee8dd21f3c7cc938de561c4152"
+source = "git+https://github.com/21pages/pulse-binding-rust?branch=dynamic_load#9b9e6318b19cdd306eefa84d5a91e1956151cd1a"
 dependencies = [
+ "libloading 0.8.4",
  "libpulse-sys",
+ "once_cell",
  "pkg-config",
 ]
 
 [[package]]
 name = "libpulse-sys"
 version = "1.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc19e110fbf42c17260d30f6d3dc545f58491c7830d38ecb9aaca96e26067a9b"
+source = "git+https://github.com/21pages/pulse-binding-rust?branch=dynamic_load#9b9e6318b19cdd306eefa84d5a91e1956151cd1a"
 dependencies = [
  "libc",
+ "libloading 0.8.4",
  "num-derive 0.3.3",
  "num-traits 0.2.19",
+ "once_cell",
  "pkg-config",
  "winapi 0.3.9",
 ]
@@ -5466,7 +5466,7 @@ dependencies = [
 [[package]]
 name = "rust-pulsectl"
 version = "0.2.12"
-source = "git+https://github.com/open-trade/pulsectl#5e68f4c2b7c644fa321984688602d71e8ad0bba3"
+source = "git+https://github.com/21pages/pulsectl#8087c42b2fefadaa7da36b52d38659e316977440"
 dependencies = [
  "libpulse-binding",
 ]

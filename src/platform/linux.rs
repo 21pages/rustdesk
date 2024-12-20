@@ -664,6 +664,19 @@ where
     Ok(Some(task))
 }
 
+// Make sure all dynamically loaded functions are not null and can safely call it multiple times
+pub fn init_pulse() -> bool {
+    if let Err(e) = pulse::init_sys() {
+        log::error!("Failed to init pulse: {}", e);
+        return false;
+    }
+    if let Err(e) = psimple::init_sys() {
+        log::error!("Failed to init psimple: {}", e);
+        return false;
+    }
+    true
+}
+
 pub fn get_pa_monitor() -> String {
     get_pa_sources()
         .drain(..)
@@ -684,6 +697,9 @@ pub fn get_pa_source_name(desc: &str) -> String {
 
 pub fn get_pa_sources() -> Vec<(String, String)> {
     use pulsectl::controllers::*;
+    if !init_pulse() {
+        return vec![];
+    }
     let mut out = Vec::new();
     match SourceController::create() {
         Ok(mut handler) => {
@@ -705,6 +721,9 @@ pub fn get_pa_sources() -> Vec<(String, String)> {
 
 pub fn get_default_pa_source() -> Option<(String, String)> {
     use pulsectl::controllers::*;
+    if !init_pulse() {
+        return None;
+    }
     match SourceController::create() {
         Ok(mut handler) => {
             if let Ok(dev) = handler.get_default_device() {

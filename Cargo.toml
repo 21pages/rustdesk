@@ -150,8 +150,8 @@ reqwest = { git = "https://github.com/rustdesk-org/reqwest", features = ["blocki
 reqwest = { git = "https://github.com/rustdesk-org/reqwest", features = ["blocking", "socks", "json", "rustls-tls", "rustls-tls-native-roots", "gzip"], default-features=false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-psimple = { package = "libpulse-simple-binding", version = "2.27" }
-pulse = { package = "libpulse-binding", version = "2.27" }
+psimple = { git = "https://github.com/rustdesk-org/pulse-binding-rust", package = "libpulse-simple-binding",  branch = "dynamic_load" }
+pulse = { git = "https://github.com/rustdesk-org//pulse-binding-rust", package = "libpulse-binding", branch = "dynamic_load" }
 rust-pulsectl = { git = "https://github.com/open-trade/pulsectl" }
 async-process = "1.7"
 evdev = { git="https://github.com/rustdesk-org/evdev" }

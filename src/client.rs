@@ -1008,6 +1008,9 @@ impl AudioHandler {
         use pulse::sample::{Format, Spec};
         use pulse::stream::Direction;
 
+        if !crate::platform::init_pulse() {
+            bail!("Failed to initialize PulseAudio");
+        }
         let spec = Spec {
             format: Format::F32le,
             channels: format0.channels as _,
@@ -1106,7 +1109,6 @@ impl AudioHandler {
         }
         #[cfg(target_os = "linux")]
         if self.simple.is_none() {
-            log::debug!("PulseAudio simple binding does not exists");
             return;
         }
         self.audio_decoder.as_mut().map(|(d, buffer)| {
