@@ -672,6 +672,13 @@ jobs:
       matrix:
         job:
           - {
+              target: x86_64-apple-darwin,
+              os: macos-13, #macos-latest or macos-14 use M1 now, https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners/about-github-hosted-runners#:~:text=14%20GB-,macos%2Dlatest%20or%20macos%2D14,-The%20macos%2Dlatestlabel
+              extra-build-args: "",
+              arch: x86_64,
+              vcpkg-triplet: x64-osx,
+            }
+          - {
               target: aarch64-apple-darwin,
               os: macos-latest,
               # extra-build-args: "--disable-flutter-texture-render", # disable this for mac, because we see a lot of users reporting flickering both on arm and x64, and we can not confirm if texture rendering has better performance if htere is no vram, https://github.com/rustdesk/rustdesk/issues/6296
@@ -796,8 +803,8 @@ jobs:
         uses: thedoctor0/zip-release@0.7.1
         with:
           type: 'zip'
-          filename: arm64-osx.zip
-          path: /Users/runner/work/rustdesk/rustdesk/vcpkg/installed/arm64-osx
+          filename: ${{ matrix.job.vcpkg-triplet }}.zip
+          path: /Users/runner/work/rustdesk/rustdesk/vcpkg/installed/${{ matrix.job.vcpkg-triplet }}
       
       - name: Upload vcpkg Archive
         uses: softprops/action-gh-release@v1
@@ -805,7 +812,7 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: | 
-            arm64-osx.zip
+            ${{ matrix.job.vcpkg-triplet }}.zip
 
 
       - name: Show version information (Rust, cargo, Clang)
