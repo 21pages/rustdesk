@@ -180,6 +180,7 @@ impl Client {
     ) -> ResultType<((Stream, bool, Option<Vec<u8>>), (i32, String))> {
         debug_assert!(peer == interface.get_id());
         interface.update_direct(None);
+        log::info!("====DEBUG==== start, update direct to None");
         interface.update_received(false);
         match Self::_start(peer, key, token, conn_type, interface).await {
             Err(err) => {
@@ -454,6 +455,7 @@ impl Client {
         let mut conn = connect_tcp_local(peer, Some(local_addr), connect_timeout).await;
         let mut direct = !conn.is_err();
         interface.update_direct(Some(direct));
+        log::info!("====DEBUG==== connect1, update direct to {:?}", direct);
         if interface.is_force_relay() || conn.is_err() {
             if !relay_server.is_empty() {
                 conn = Self::request_relay(
@@ -467,6 +469,7 @@ impl Client {
                 )
                 .await;
                 interface.update_direct(Some(false));
+                log::info!("====DEBUG==== connect2, update direct to {:?}", direct);
                 if let Err(e) = conn {
                     bail!("Failed to connect via relay server: {}", e);
                 }
@@ -3205,7 +3208,13 @@ pub trait Interface: Send + Clone + 'static + Sized {
         let mut relay_hint_type = "relay-hint";
         // force relay
         let errno = errno::errno().0;
-        log::error!("Connection closed: {err}({errno})");
+        log::info!(
+            "====DEBUG==== direct: {:?}, received: {:?}, err: {:?}, errno: {:?}",
+            direct,
+            received,
+            err,
+            errno
+        );
         if direct == Some(true)
             && ((cfg!(windows) && (errno == 10054 || err.contains("10054")))
                 || (!cfg!(windows) && (errno == 104 || err.contains("104")))

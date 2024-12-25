@@ -147,6 +147,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     .set_connected();
                 self.handler.set_connection_type(peer.is_secured(), direct); // flutter -> connection_ready
                 self.handler.update_direct(Some(direct));
+                log::info!("====DEBUG==== io_loop, update direct to {:?}", direct);
                 if conn_type == ConnType::DEFAULT_CONN {
                     self.handler
                         .set_fingerprint(crate::common::pk_to_fingerprint(pk.unwrap_or_default()));
