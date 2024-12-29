@@ -16,10 +16,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <queries>
-        <intent>
-            <!-- https://developer.android.com/training/package-visibility/use-cases#open-urls-custom-tabs -->
-            <action android:name="android.support.customtabs.action.CustomTabsService" />
-        </intent>
+        <!-- https://developer.android.com/training/package-visibility/use-cases#open-urls-custom-tabs -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
