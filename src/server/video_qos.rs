@@ -118,7 +118,6 @@ struct UserData {
     record: bool,
     congested: bool,
     bandwidth: f32,
-    hw_ratio_range: (Option<f32>, Option<f32>),
     delay: Option<Delay>,
     response_delayed: bool,
 }
@@ -265,19 +264,15 @@ impl VideoQoS {
 
     // Process historical capture times and adjust ratio if needed
     fn process_history_capture_times(&mut self, dynamic_screen: bool) {
-        if self.is_hardware {
-            self.hardware_adjust_ratio();
-        } else {
-            if self.history_capture_times.len() >= 6 {
-                let avg = self.history_capture_times.iter().sum::<u32>() as f32
-                    / self.history_capture_times.len() as f32;
-                self.history_capture_times.clear();
+        if self.history_capture_times.len() >= 6 {
+            let avg = self.history_capture_times.iter().sum::<u32>() as f32
+                / self.history_capture_times.len() as f32;
+            self.history_capture_times.clear();
 
-                // Avoid too frequent adjustments to prevent image blur
-                if dynamic_screen && self.frame_count_since_adjust_ratio > 30 {
-                    self.frame_count_since_adjust_ratio = 0;
-                    self.software_adjust_ratio(avg);
-                }
+            // Avoid too frequent adjustments to prevent image blur
+            if dynamic_screen && self.frame_count_since_adjust_ratio > 30 {
+                self.frame_count_since_adjust_ratio = 0;
+                self.adjust_ratio(avg);
             }
         }
     }
@@ -304,57 +299,8 @@ impl VideoQoS {
 
 // VideoQoS implementation - Quality adjustment
 impl VideoQoS {
-    fn hardware_adjust_ratio(&mut self) {
-        if self.history_capture_times.len() < HISTORY_CAPTURE_TIMES_LEN {
-            return;
-        }
-        let avg = self.history_capture_times.iter().sum::<u32>() as f32
-            / self.history_capture_times.len() as f32;
-
-        let last_quality = self.lastest_quality();
-        let quality_ratio = last_quality.ratio();
-        let target_ratio = self.lastest_quality().ratio();
-        let (min, max) = (BR_MIN, BR_MAX.min(quality_ratio * 2.0));
-
-        if avg < 10.0 && self.target_fps > 20 {
-            // fps too low, reduce quality
-            let to_ratio = self.ratio * 0.67;
-            if to_ratio > min {
-                for user in self.users.values_mut() {
-                    user.hw_ratio_range.1 = Some(self.ratio);
-                }
-                self.ratio = to_ratio;
-                self.history_capture_times.clear();
-                log::info!(
-                    "Hardware encoder reducing quality: avg_fps={:.1}, ratio={:.2}->{:.2}",
-                    avg,
-                    self.ratio,
-                    to_ratio
-                );
-            }
-        }
-        if avg > self.target_fps as f32 * 0.9 {
-            // fps is high, increase quality
-            let to_ratio = self.ratio * 1.2;
-            if to_ratio < max {
-                for user in self.users.values_mut() {
-                    user.hw_ratio_range.0 = Some(self.ratio);
-                }
-                self.ratio = to_ratio;
-                self.history_capture_times.clear();
-                log::info!(
-                    "Hardware encoder increasing quality: avg_fps={:.1}, ratio={:.2}->{:.2}",
-                    avg,
-                    self.ratio,
-                    to_ratio
-                );
-            }
-        }
-        self.ratio = self.ratio.clamp(min, max);
-    }
-
     // Adjust quality ratio based on performance metrics
-    fn software_adjust_ratio(&mut self, avg: f32) {
+    fn adjust_ratio(&mut self, avg: f32) {
         let last_quality = self.lastest_quality();
         let quality_ratio = last_quality.ratio();
         let min_fps = last_quality.min_fps() as f32;
@@ -363,16 +309,16 @@ impl VideoQoS {
         let fps_ratio = avg / min_fps;
 
         if self.ratio < quality_ratio {
-            self.software_adjust_ratio_below_target(fps_ratio, quality_ratio, min);
+            self.adjust_ratio_below_target(fps_ratio, quality_ratio, min);
         } else {
-            self.software_adjust_ratio_above_target(fps_ratio, quality_ratio, max);
+            self.adjust_ratio_above_target(fps_ratio, quality_ratio, max);
         }
 
         self.ratio = self.ratio.clamp(min, max);
     }
 
     // Adjust ratio when below target quality
-    fn software_adjust_ratio_below_target(&mut self, fps_ratio: f32, quality_ratio: f32, min: f32) {
+    fn adjust_ratio_below_target(&mut self, fps_ratio: f32, quality_ratio: f32, min: f32) {
         let step_num = 4.0;
         if fps_ratio >= 1.1 {
             // FPS is sufficient, increase quality
@@ -393,7 +339,7 @@ impl VideoQoS {
     }
 
     // Adjust ratio when above target quality
-    fn software_adjust_ratio_above_target(&mut self, fps_ratio: f32, quality_ratio: f32, max: f32) {
+    fn adjust_ratio_above_target(&mut self, fps_ratio: f32, quality_ratio: f32, max: f32) {
         let step_num = 4.0;
         if fps_ratio >= 1.2 {
             // FPS is very sufficient, try to increase quality further
