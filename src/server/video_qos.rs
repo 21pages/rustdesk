@@ -24,12 +24,12 @@ pub enum RefreshType {
 }
 
 // Quality-related types and implementations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Quality {
     Best,
     Balanced,
     Low,
-    Custom(u32),
+    Custom(f32),
 }
 
 impl Default for Quality {
@@ -48,12 +48,21 @@ impl Quality {
             Quality::Best => BR_BEST,
             Quality::Balanced => BR_BALANCED,
             Quality::Low => BR_SPEED,
-            Quality::Custom(v) => *v as f32,
+            Quality::Custom(v) => *v,
         }
     }
 
     // Minimum FPS requirements for different quality levels
     fn min_fps(&self) -> u32 {
+        match self {
+            Quality::Best => 10,      // Higher quality tolerates lower FPS
+            Quality::Balanced => 15,  // Standard FPS for balanced mode
+            Quality::Low => 18,       // Low quality prioritizes smoothness
+            Quality::Custom(_) => 15, // Default target for custom quality
+        }
+    }
+
+    fn proper_fps(&self) -> u32 {
         match self {
             Quality::Best => 15,      // Higher quality tolerates lower FPS
             Quality::Balanced => 20,  // Standard FPS for balanced mode
@@ -100,14 +109,6 @@ struct Delay {
     slower_than_old_state: Option<bool>,
 }
 
-// #[derive(Debug, Clone, Copy)]
-// struct RatioAdjustRecord {
-//     target_fps: u32,
-//     target_ratio: f32,
-//     from_ratio: f32,
-//     to_ratio: f32,
-// }
-
 // User session data structure
 #[derive(Default, Debug, Clone)]
 struct UserData {
@@ -122,8 +123,6 @@ struct UserData {
     response_delayed: bool,
 }
 
-impl UserData {}
-
 // Main QoS controller structure
 pub struct VideoQoS {
     fps: u32,
@@ -133,7 +132,7 @@ pub struct VideoQoS {
     support_abr: HashMap<usize, bool>,
     start: Instant,
     target_fps: u32,
-    congested_one_second: u32,
+    congested_in_one_second: u32,
     history_capture_times: Vec<u32>,
     frame_count_since_adjust_ratio: usize,
     is_hardware: bool,
@@ -148,7 +147,7 @@ impl Default for VideoQoS {
             bitrate_store: 0,
             support_abr: Default::default(),
             start: Instant::now(),
-            congested_one_second: 0,
+            congested_in_one_second: 0,
             history_capture_times: Vec::new(),
             target_fps: FPS,
             frame_count_since_adjust_ratio: 0,
@@ -218,11 +217,11 @@ impl VideoQoS {
     pub fn congested(&mut self, sent_frame_sizes: &mut Vec<u64>) -> bool {
         let congested = self.users.iter().any(|u| u.1.congested);
         if congested {
-            self.congested_one_second += 1;
+            self.congested_in_one_second += 1;
         }
 
         let sent_frame_one_second = sent_frame_sizes.len();
-        let dynamic_screen = sent_frame_one_second > 0;
+        let dynamic_screen = sent_frame_one_second > 0; // TODO: check if screen is dynamic, maybe always congested
         let elapsed = self.start.elapsed().as_millis();
 
         // Process metrics every second
@@ -245,7 +244,7 @@ impl VideoQoS {
     ) {
         log::info!(
             "congested: {}, fps: {}, sent_frame_size: {:?}, payload: {:?}, ratio: {:.2}",
-            self.congested_one_second,
+            self.congested_in_one_second,
             self.fps,
             sent_frame_one_second,
             sent_frame_sizes.iter().sum::<u64>(),
@@ -257,7 +256,7 @@ impl VideoQoS {
         }
 
         self.start = Instant::now();
-        self.congested_one_second = 0;
+        self.congested_in_one_second = 0;
         self.frame_count_since_adjust_ratio += sent_frame_one_second;
         sent_frame_sizes.clear();
     }
@@ -280,8 +279,8 @@ impl VideoQoS {
     // Calculate FPS based on congestion status
     #[inline]
     fn congested_fps(&mut self) -> u32 {
-        let capture_times = if self.fps > self.congested_one_second {
-            self.fps - self.congested_one_second
+        let capture_times = if self.fps > self.congested_in_one_second {
+            self.fps - self.congested_in_one_second
         } else {
             0
         };
@@ -300,21 +299,112 @@ impl VideoQoS {
 // VideoQoS implementation - Quality adjustment
 impl VideoQoS {
     // Adjust quality ratio based on performance metrics
-    fn adjust_ratio(&mut self, avg: f32) {
-        let last_quality = self.lastest_quality();
-        let quality_ratio = last_quality.ratio();
-        let min_fps = last_quality.min_fps() as f32;
-        let (min, max) = (BR_MIN, BR_MAX.min(quality_ratio * 3.0));
+    fn adjust_ratio(&mut self, avg_fps: f32) {
+        let target_quality = self.lastest_quality();
+        let target_ratio = target_quality.ratio();
+        let (min, max) = (BR_MIN, BR_MAX.min(target_ratio * 3.0));
+        let fps_ratio = avg_fps / self.target_fps as f32;
+        let current_ratio = self.ratio;
+        let mut v = self.ratio;
 
-        let fps_ratio = avg / min_fps;
+        log::info!(
+            "adjust_ratio: target_quality: {:?}, target_ratio: {:?}, min: {:?}, max: {:?}, fps_ratio: {:?}, current_ratio: {:?}, avg_fps: {:.1}",
+            target_quality,
+            target_ratio,
+            min,
+            max,
+            fps_ratio,
+            current_ratio,
+            avg_fps
+        );
 
-        if self.ratio < quality_ratio {
-            self.adjust_ratio_below_target(fps_ratio, quality_ratio, min);
+        // Basic guarantees for any quality mode
+        if self.target_fps > 20 && avg_fps < 10.0 {
+            // When target_fps > 20, ensure fps not lower than 10
+            v = current_ratio * 0.7; // Aggressive quality reduction
         } else {
-            self.adjust_ratio_above_target(fps_ratio, quality_ratio, max);
+            match target_quality {
+                Quality::Best => {
+                    // Prioritize quality, allow slightly lower FPS
+                    if current_ratio > BR_BEST {
+                        if fps_ratio > 0.8 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.5 {
+                            v = current_ratio * 0.8;
+                        }
+                    } else {
+                        if fps_ratio > 0.7 {
+                            v = current_ratio * 1.2;
+                        } else if fps_ratio < 0.4 {
+                            v = current_ratio * 0.9;
+                        }
+                    }
+                }
+                Quality::Balanced => {
+                    // Balance between quality and FPS
+                    if current_ratio > BR_BEST {
+                        if fps_ratio > 0.9 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.7 {
+                            v = current_ratio * 0.8;
+                        }
+                    } else if current_ratio > BR_BALANCED {
+                        if fps_ratio > 0.85 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.6 {
+                            v = current_ratio * 0.9;
+                        }
+                    } else {
+                        if fps_ratio > 0.8 {
+                            v = current_ratio * 1.15;
+                        } else if fps_ratio < 0.5 {
+                            v = current_ratio * 0.85;
+                        }
+                    }
+                }
+                Quality::Low => {
+                    // Prioritize FPS, accept lower quality
+                    if current_ratio > BR_BEST {
+                        if fps_ratio > 0.95 {
+                            v = current_ratio * 1.05;
+                        } else if fps_ratio < 0.8 {
+                            v = current_ratio * 0.8;
+                        }
+                    } else if current_ratio > BR_BALANCED {
+                        if fps_ratio > 0.9 {
+                            v = current_ratio * 1.05;
+                        } else if fps_ratio < 0.7 {
+                            v = current_ratio * 0.85;
+                        }
+                    } else {
+                        if fps_ratio > 0.85 {
+                            v = current_ratio * 1.1;
+                        } else if fps_ratio < 0.6 {
+                            v = current_ratio * 0.8;
+                        }
+                    }
+                }
+                Quality::Custom(_) => {}
+            }
         }
 
-        self.ratio = self.ratio.clamp(min, max);
+        // Apply minimum ratio guarantees based on FPS
+        if avg_fps > 15.0 {
+            v = v.max(BR_BALANCED);
+        } else if avg_fps > 10.0 {
+            v = v.max(BR_SPEED);
+        }
+
+        // Final clamp within allowed range
+        self.ratio = v.clamp(min, max);
+
+        log::info!(
+            "after adjust - ratio: {:.2}, fps_ratio: {:.2}, quality: {:?}, avg_fps: {:.1}",
+            self.ratio,
+            fps_ratio,
+            target_quality,
+            avg_fps
+        );
     }
 
     // Adjust ratio when below target quality
@@ -500,10 +590,8 @@ impl VideoQoS {
         } else if q == ImageQuality::Best.value() {
             Quality::Best
         } else {
-            let mut b = (q >> 8 & 0xFFF) * 2;
-            b = std::cmp::max(b, 20);
-            b = std::cmp::min(b, 8000);
-            Quality::Custom(b as u32)
+            let b = ((q >> 8 & 0xFFF) * 2) as f32 / 100.0;
+            Quality::Custom(b.clamp(BR_MIN, BR_MAX))
         }
     }
 
@@ -526,7 +614,7 @@ impl VideoQoS {
             // Handle ABR if enabled
             let abr_enabled = self.in_vbr_state();
             if abr_enabled && typ != RefreshType::SetImageQuality {}
-            self.ratio = quality;
+            // self.ratio = quality;
         }
     }
 
