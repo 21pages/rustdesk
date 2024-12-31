@@ -51,25 +51,6 @@ impl Quality {
             Quality::Custom(v) => *v,
         }
     }
-
-    // Minimum FPS requirements for different quality levels
-    fn min_fps(&self) -> u32 {
-        match self {
-            Quality::Best => 10,      // Higher quality tolerates lower FPS
-            Quality::Balanced => 15,  // Standard FPS for balanced mode
-            Quality::Low => 18,       // Low quality prioritizes smoothness
-            Quality::Custom(_) => 15, // Default target for custom quality
-        }
-    }
-
-    fn proper_fps(&self) -> u32 {
-        match self {
-            Quality::Best => 15,      // Higher quality tolerates lower FPS
-            Quality::Balanced => 20,  // Standard FPS for balanced mode
-            Quality::Low => 22,       // Low quality prioritizes smoothness
-            Quality::Custom(_) => 20, // Default target for custom quality
-        }
-    }
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -213,6 +194,10 @@ impl VideoQoS {
         self.is_hardware = is_hardware;
     }
 
+    fn all_support_video_ack(&self) -> bool {
+        self.users.iter().all(|u| u.1.support_video_ack)
+    }
+
     // Main congestion control function
     pub fn congested(&mut self, sent_frame_sizes: &mut Vec<u64>) -> bool {
         let congested = self.users.iter().any(|u| u.1.congested);
@@ -251,7 +236,7 @@ impl VideoQoS {
             self.ratio,
         );
 
-        if dynamic_screen {
+        if dynamic_screen && self.all_support_video_ack() {
             self.fps = self.congested_fps();
         }
 
@@ -302,7 +287,11 @@ impl VideoQoS {
     fn adjust_ratio(&mut self, avg_fps: f32) {
         let target_quality = self.lastest_quality();
         let target_ratio = target_quality.ratio();
-        let (min, max) = (BR_MIN, BR_MAX.min(target_ratio * 3.0));
+        let (min, max) = if self.all_support_video_ack() {
+            (BR_MIN, BR_MAX.min(target_ratio * 3.0))
+        } else {
+            (BR_MIN, BR_MAX)
+        };
         let fps_ratio = avg_fps / self.target_fps as f32;
         let current_ratio = self.ratio;
         let mut v = self.ratio;
@@ -405,48 +394,6 @@ impl VideoQoS {
             target_quality,
             avg_fps
         );
-    }
-
-    // Adjust ratio when below target quality
-    fn adjust_ratio_below_target(&mut self, fps_ratio: f32, quality_ratio: f32, min: f32) {
-        let step_num = 4.0;
-        if fps_ratio >= 1.1 {
-            // FPS is sufficient, increase quality
-            let mut advance = (quality_ratio - self.ratio) / step_num;
-            if advance < 0.15 {
-                advance = 0.15;
-            }
-            self.ratio += advance;
-        } else if fps_ratio < 0.9 {
-            // FPS is insufficient, decrease quality
-            let mut advance = (self.ratio - min) / step_num;
-            if advance < 0.15 {
-                advance = 0.15;
-            }
-            self.ratio -= advance;
-        }
-        // Keep current ratio if fps_ratio is between 0.9 and 1.1
-    }
-
-    // Adjust ratio when above target quality
-    fn adjust_ratio_above_target(&mut self, fps_ratio: f32, quality_ratio: f32, max: f32) {
-        let step_num = 4.0;
-        if fps_ratio >= 1.2 {
-            // FPS is very sufficient, try to increase quality further
-            let mut advance = (max - self.ratio) / (step_num * 2.0); // More conservative step
-            if advance < 0.1 {
-                advance = 0.1;
-            }
-            self.ratio += advance;
-        } else if fps_ratio < 0.95 {
-            // FPS is slightly insufficient, decrease quality
-            let mut advance = (self.ratio - quality_ratio) / step_num;
-            if advance < 0.15 {
-                advance = 0.15;
-            }
-            self.ratio -= advance;
-        }
-        // Keep current ratio if fps_ratio is between 0.95 and 1.2
     }
 
     // Get latest quality settings from all users
@@ -626,20 +573,20 @@ impl VideoQoS {
                 if fps == 0 || auto_adjust_fps < fps {
                     fps = auto_adjust_fps;
                 }
-                // delay
-                if let Some(delay) = u.delay {
-                    fps = match delay.state {
-                        DelayState::Normal => fps,
-                        DelayState::LowDelay => fps * 3 / 4,
-                        DelayState::HighDelay => fps / 2,
-                        DelayState::Broken => fps / 4,
-                    }
+            }
+            // delay
+            if let Some(delay) = u.delay {
+                fps = match delay.state {
+                    DelayState::Normal => fps,
+                    DelayState::LowDelay => fps * 3 / 4,
+                    DelayState::HighDelay => fps / 2,
+                    DelayState::Broken => fps / 4,
                 }
-                // delay response
-                if u.response_delayed {
-                    if fps > MIN_FPS + 2 {
-                        fps = MIN_FPS + 2;
-                    }
+            }
+            // delay response
+            if u.response_delayed {
+                if fps > MIN_FPS + 2 {
+                    fps = MIN_FPS + 2;
                 }
             }
             fps
