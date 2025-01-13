@@ -1,19 +1,21 @@
 use std::{
     collections::HashMap,
     future::Future,
+    net::SocketAddr,
     sync::{Arc, Mutex, RwLock},
     task::Poll,
 };
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
     bail, base64,
-    bytes::Bytes,
+    bytes::{Bytes, BytesMut},
     config::{self, Config, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT},
-    futures::future::join_all,
+    futures::{future::join_all, SinkExt, StreamExt},
     futures_util::future::poll_fn,
     get_version_number, log,
     message_proto::*,
@@ -25,8 +27,10 @@ use hbb_common::{
     timeout,
     tokio::{
         self,
+        io::AsyncReadExt,
         time::{Duration, Instant, Interval},
     },
+    tokio_kcp::{KcpConfig, KcpStream},
     ResultType,
 };
 
@@ -814,19 +818,80 @@ pub fn check_software_update() {
     std::thread::spawn(move || allow_err!(check_software_update_()));
 }
 
+async fn fetch_update_url(tcp: bool) -> ResultType<String> {
+    use hbb_common::sysinfo::System;
+
+    let server_addr = "127.0.0.1:12345".parse::<SocketAddr>()?;
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let mac = "".to_string();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let mac = mac_address::get_mac_address()
+        .ok()
+        .flatten()
+        .map(|x| x.to_string())
+        .unwrap_or_default();
+    let system = System::new();
+    let request = VersionCheckRequest {
+        version: crate::VERSION.to_string(),
+        os_type: std::env::consts::OS.to_string(),
+        os_version: system.os_version().unwrap_or_default(),
+        arch: std::env::consts::ARCH.to_string(),
+        mac,
+        ..Default::default()
+    };
+    let mut version_check = VersionCheck::new();
+    version_check.set_request(request);
+    let mut misc = Misc::new();
+    misc.set_version_check(version_check);
+    let mut msg = Message::new();
+    msg.set_misc(misc);
+    let bytes = if tcp {
+        let mut stream =
+            hbb_common::tcp::FramedStream::new(server_addr, None, CONNECT_TIMEOUT).await?;
+        stream.send(&msg).await?;
+        stream
+            .next_timeout(READ_TIMEOUT)
+            .await
+            .ok_or(anyhow!("timeout"))??
+    } else {
+        let mut stream =
+            hbb_common::kcp::FramedStream::new(server_addr, None, CONNECT_TIMEOUT).await?;
+        stream.send(&msg).await?;
+        // TODO: kcp new and send doesn't report error if the server is not ready
+        // TODO: tokio-tcp too many error log
+        stream
+            .next_timeout(READ_TIMEOUT)
+            .await
+            .ok_or(anyhow!("timeout"))??
+    };
+    let msg = Message::parse_from_bytes(&bytes)?;
+    if let Some(message::Union::Misc(misc)) = msg.union {
+        if let Some(misc::Union::VersionCheck(version_check)) = misc.union {
+            match version_check.union {
+                Some(version_check::Union::Response(version_check)) => {
+                    return Ok(version_check.url.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    Err(anyhow!("Failed to get latest version"))
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn check_software_update_() -> hbb_common::ResultType<()> {
-    let url = "https://github.com/rustdesk/rustdesk/releases/latest";
-    let latest_release_response = create_http_client_async().get(url).send().await?;
-    let latest_release_version = latest_release_response
-        .url()
-        .path()
-        .rsplit('/')
-        .next()
-        .unwrap_or_default();
-
-    let response_url = latest_release_response.url().to_string();
-
+    let response_url = match fetch_update_url(false).await {
+        Ok(s) => s,
+        Err(_e) => match fetch_update_url(true).await {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to get latest version: {}", e);
+                return Err(e);
+            }
+        },
+    };
+    let latest_release_version = response_url.rsplit('/').next().unwrap_or_default();
+    log::info!("latest_release_version: {}", latest_release_version);
     if get_version_number(&latest_release_version) > get_version_number(crate::VERSION) {
         #[cfg(feature = "flutter")]
         {
