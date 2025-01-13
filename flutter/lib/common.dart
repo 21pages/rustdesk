@@ -3624,6 +3624,11 @@ void checkUpdate() {
       });
     }
   }
+  if (isIOS) {
+    Timer(const Duration(seconds: 1), () async {
+      bind.mainGetSoftwareUpdateUrl();
+    });
+  }
 }
 
 // https://github.com/flutter/flutter/issues/153560#issuecomment-2497160535
