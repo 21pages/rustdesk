@@ -816,16 +816,39 @@ pub fn check_software_update() {
 
 #[tokio::main(flavor = "current_thread")]
 async fn check_software_update_() -> hbb_common::ResultType<()> {
-    let url = "https://github.com/rustdesk/rustdesk/releases/latest";
-    let latest_release_response = create_http_client_async().get(url).send().await?;
-    let latest_release_version = latest_release_response
-        .url()
-        .path()
-        .rsplit('/')
-        .next()
+    use hbb_common::sysinfo::System;
+    let system = System::new();
+    let os = system.distribution_id();
+    let os_version = system.os_version().unwrap_or_default();
+    let arch = std::env::consts::ARCH.to_string();
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let mac = "".to_string();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let mac = mac_address::get_mac_address()
+        .ok()
+        .flatten()
+        .map(|x| x.to_string())
         .unwrap_or_default();
 
-    let response_url = latest_release_response.url().to_string();
+    let version_check_request = hbb_common::VersionCheckRequest {
+        version: crate::VERSION.to_string(),
+        os,
+        os_version,
+        arch,
+        mac,
+    };
+    let url = "http://127.0.0.1:12345/client";
+    let latest_release_response = create_http_client_async()
+        .post(url)
+        .json(&version_check_request)
+        .send()
+        .await?;
+
+    let bytes = latest_release_response.bytes().await?;
+    let resp: hbb_common::VersionCheckResponse = serde_json::from_slice(&bytes)?;
+    let response_url = resp.url;
+    let latest_release_version = response_url.rsplit('/').next().unwrap_or_default();
+    log::info!("latest_release_version: {}", latest_release_version);
 
     if get_version_number(&latest_release_version) > get_version_number(crate::VERSION) {
         #[cfg(feature = "flutter")]
