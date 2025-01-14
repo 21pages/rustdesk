@@ -584,6 +584,10 @@ pub fn permanent_password() -> String {
 
 #[inline]
 pub fn set_permanent_password(password: String) {
+    log::info!(
+        "====DEBUG==== set_permanent_password password: {:?}",
+        password
+    );
     #[cfg(any(target_os = "android", target_os = "ios"))]
     Config::set_permanent_password(&password);
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

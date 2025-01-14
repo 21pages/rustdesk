@@ -1425,7 +1425,9 @@ pub fn main_get_temporary_password() -> String {
 }
 
 pub fn main_get_permanent_password() -> String {
-    ui_interface::permanent_password()
+    let res = ui_interface::permanent_password();
+    log::info!("====DEBUG==== main_get_permanent_password: {:?}", res);
+    res
 }
 
 pub fn main_get_fingerprint() -> String {

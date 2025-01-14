@@ -299,6 +299,11 @@ impl Connection {
             challenge: Config::get_auto_password(6),
             ..Default::default()
         };
+        log::info!(
+            "====DEBUG==== connection start hash salt: {:?}, challenge: {:?}",
+            hash.salt,
+            hash.challenge
+        );
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
         // holding tx_from_cm_holder to avoid cpu burning of rx_from_cm.recv when all sender closed
         let tx_from_cm = tx_from_cm_holder.clone();
@@ -1540,6 +1545,12 @@ impl Connection {
     }
 
     fn validate_one_password(&self, password: String) -> bool {
+        log::info!(
+            "====DEBUG==== validate_one_password password: {:?}, salt: {:?}, challenge: {:?}",
+            password,
+            self.hash.salt,
+            self.hash.challenge
+        );
         if password.len() == 0 {
             return false;
         }
@@ -1553,6 +1564,11 @@ impl Connection {
     }
 
     fn validate_password(&mut self) -> bool {
+        log::info!(
+            "====DEBUG==== permanent enabled: {:?}, temporary_enabled: {:?}",
+            password::permanent_enabled(),
+            password::temporary_enabled()
+        );
         if password::temporary_enabled() {
             let password = password::temporary_password();
             if self.validate_one_password(password.clone()) {
@@ -1565,6 +1581,10 @@ impl Connection {
             }
         }
         if password::permanent_enabled() {
+            log::info!(
+                "====DEBUG==== permanent_password: {:?}",
+                Config::get_permanent_password()
+            );
             if self.validate_one_password(Config::get_permanent_password()) {
                 return true;
             }

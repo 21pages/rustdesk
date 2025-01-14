@@ -543,6 +543,7 @@ impl Config {
         let mut config = Config::load_::<Config>("");
         let mut store = false;
         let (password, _, store1) = decrypt_str_or_original(&config.password, PASSWORD_ENC_VERSION);
+        log::info!("====DEBUG==== load password: {:?}", config.password);
         config.password = password;
         store |= store1;
         let mut id_valid = false;
@@ -586,6 +587,7 @@ impl Config {
         let mut config = self.clone();
         config.password =
             encrypt_str_or_original(&config.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        log::info!("====DEBUG==== store password: {:?}", config.password);
         config.enc_id = encrypt_str_or_original(&config.id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         config.id = "".to_owned();
         Config::store_(&config, "");
@@ -1001,10 +1003,18 @@ impl Config {
             .get("password")
             .map_or(false, |v| v == password)
         {
+            log::info!(
+                "====DEBUG==== set_permanent_password HARD_SETTINGS password: {:?}",
+                password
+            );
             return;
         }
         let mut config = CONFIG.write().unwrap();
         if password == config.password {
+            log::info!(
+                "====DEBUG==== set_permanent_password CONFIG password equal: {:?}",
+                password
+            );
             return;
         }
         config.password = password.into();
