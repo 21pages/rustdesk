@@ -1540,6 +1540,10 @@ impl Connection {
     }
 
     fn validate_one_password(&self, password: String) -> bool {
+        log::info!(
+            "====DEBUG==== validate_one_password password: {:?}",
+            password
+        );
         if password.len() == 0 {
             return false;
         }
@@ -1553,6 +1557,11 @@ impl Connection {
     }
 
     fn validate_password(&mut self) -> bool {
+        log::info!(
+            "====DEBUG==== permanent enabled: {:?}, temporary_enabled: {:?}",
+            password::permanent_enabled(),
+            password::temporary_enabled()
+        );
         if password::temporary_enabled() {
             let password = password::temporary_password();
             if self.validate_one_password(password.clone()) {
@@ -1565,6 +1574,10 @@ impl Connection {
             }
         }
         if password::permanent_enabled() {
+            log::info!(
+                "====DEBUG==== permanent_password: {:?}",
+                Config::get_permanent_password()
+            );
             if self.validate_one_password(Config::get_permanent_password()) {
                 return true;
             }

@@ -2957,11 +2957,13 @@ pub async fn handle_hash(
     peer: &mut Stream,
 ) {
     lc.write().unwrap().hash = hash.clone();
+    log::info!("====DEBUG==== handle_hash hash salt: {:?}", hash.salt);
     // Take care of password application order
 
     // switch_uuid
     let uuid = lc.write().unwrap().switch_uuid.take();
     if let Some(uuid) = uuid {
+        log::info!("====DEBUG==== handle_hash switch uuid");
         if let Ok(uuid) = uuid::Uuid::from_str(&uuid) {
             send_switch_login_request(lc.clone(), peer, uuid).await;
             lc.write().unwrap().password_source = Default::default();
@@ -2970,9 +2972,14 @@ pub async fn handle_hash(
     }
     // last password
     let mut password = lc.read().unwrap().password.clone();
+    log::info!("====DEBUG==== handle_hash last password: {:?}", password);
     // preset password
     if password.is_empty() {
         if !password_preset.is_empty() {
+            log::info!(
+                "====DEBUG==== handle_hash password_preset: {:?}",
+                password_preset
+            );
             let mut hasher = Sha256::new();
             hasher.update(password_preset);
             hasher.update(&hash.salt);
@@ -2986,6 +2993,10 @@ pub async fn handle_hash(
     let shared_password = lc.write().unwrap().shared_password.take();
     if let Some(shared_password) = shared_password {
         if !shared_password.is_empty() {
+            log::info!(
+                "====DEBUG==== handle_hash shared_password: {:?}",
+                shared_password
+            );
             let mut hasher = Sha256::new();
             hasher.update(shared_password.clone());
             hasher.update(&hash.salt);
@@ -2997,6 +3008,10 @@ pub async fn handle_hash(
     // peer config password
     if password.is_empty() {
         password = lc.read().unwrap().config.password.clone();
+        log::info!(
+            "====DEBUG==== handle_hash peer config password: {:?}",
+            password
+        );
         if !password.is_empty() {
             lc.write().unwrap().password_source = Default::default();
         }
@@ -3010,6 +3025,10 @@ pub async fn handle_hash(
         let p =
             crate::ui_interface::get_builtin_option(config::keys::OPTION_DEFAULT_CONNECT_PASSWORD);
         if !p.is_empty() {
+            log::info!(
+                "====DEBUG==== handle_hash default connect password: {:?}",
+                p
+            );
             let mut hasher = Sha256::new();
             hasher.update(p.clone());
             hasher.update(&hash.salt);
@@ -3053,6 +3072,10 @@ fn try_get_password_from_personal_ab(lc: Arc<RwLock<LoginConfigHandler>>, passwo
                 if let Ok(hash_password) = base64::decode(p.hash.clone(), base64::Variant::Original)
                 {
                     if !hash_password.is_empty() {
+                        log::info!(
+                            "====DEBUG==== try_get_password_from_personal_ab: {:?}",
+                            hash_password
+                        );
                         *password = hash_password.clone();
                         lc.write().unwrap().password_source =
                             PasswordSource::PersonalAb(hash_password);
@@ -3079,6 +3102,12 @@ async fn send_login(
     password: Vec<u8>,
     peer: &mut Stream,
 ) {
+    log::info!(
+        "====DEBUG==== send_login password: {:?}, os_username: {:?}, os_password: {:?}",
+        password,
+        os_username,
+        os_password
+    );
     let msg_out = lc
         .read()
         .unwrap()
@@ -3104,11 +3133,23 @@ pub async fn handle_login_from_ui(
     remember: bool,
     peer: &mut Stream,
 ) {
+    log::info!(
+        "====DEBUG==== handle_login_from_ui password: {:?}",
+        password
+    );
     let mut hash_password = if password.is_empty() {
         let mut password2 = lc.read().unwrap().password.clone();
+        log::info!(
+            "====DEBUG==== handle_login_from_ui last password2: {:?}",
+            password2
+        );
         if password2.is_empty() {
             password2 = lc.read().unwrap().config.password.clone();
             if !password2.is_empty() {
+                log::info!(
+                    "====DEBUG==== handle_login_from_ui config password2: {:?}",
+                    password2
+                );
                 lc.write().unwrap().password_source = Default::default();
             }
         }
@@ -3118,6 +3159,10 @@ pub async fn handle_login_from_ui(
         let mut hasher = Sha256::new();
         hasher.update(password);
         hasher.update(&lc.read().unwrap().hash.salt);
+        log::info!(
+            "====DEBUG==== handle_login_from_ui hash salt: {:?}",
+            lc.read().unwrap().hash.salt
+        );
         let res = hasher.finalize();
         lc.write().unwrap().remember = remember;
         res[..].into()
