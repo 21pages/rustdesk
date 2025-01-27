@@ -28,7 +28,7 @@ use hbb_common::platform::linux::run_cmds;
 use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
     config::{self, keys, Config, TrustedDevice},
-    fs::{self, can_enable_overwrite_detection},
+    fs::{self, can_enable_overwrite_detection, PrinterJob},
     futures::{SinkExt, StreamExt},
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
@@ -66,7 +66,7 @@ lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: [Arc::<Mutex<HashMap<String, (i32, i32, i32)>>>; 2] = Default::default();
     static ref SESSIONS: Arc::<Mutex<HashMap<SessionKey, Session>>> = Default::default();
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
-    pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<(i32, AuthConnType, SessionKey)>>> = Default::default();
+    pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
     static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
 }
@@ -241,6 +241,10 @@ pub struct Connection {
     follow_remote_cursor: bool,
     follow_remote_window: bool,
     multi_ui_session: bool,
+    tx_from_authed: mpsc::UnboundedSender<ipc::Data>,
+    printer_file_id: i32,
+    printer_jobs: Vec<PrinterJob>,
+    printer_waiting_confirm: HashMap<i32, String>,
 }
 
 impl ConnInner {
@@ -305,6 +309,7 @@ impl Connection {
         let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_video, mut rx_video) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_input, _rx_input) = std_mpsc::channel();
+        let (tx_from_authed, mut rx_from_authed) = mpsc::unbounded_channel::<ipc::Data>();
         let mut hbbs_rx = crate::hbbs_http::sync::signal_receiver();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (tx_cm_stream_ready, _rx_cm_stream_ready) = mpsc::channel(1);
@@ -390,6 +395,10 @@ impl Connection {
             delayed_read_dir: None,
             #[cfg(target_os = "macos")]
             retina: Retina::default(),
+            tx_from_authed,
+            printer_file_id: 0,
+            printer_jobs: Vec::new(),
+            printer_waiting_confirm: HashMap::new(),
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -623,6 +632,12 @@ impl Connection {
                                 break;
                             }
                         }
+                    } else if !conn.printer_jobs.is_empty() {
+                        let mut remove = true;
+                        conn.printer_jobs[0].read(&mut conn.stream, &mut remove).await.ok();
+                        if remove {
+                            conn.printer_jobs.remove(0);
+                        }
                     } else {
                         conn.file_timer = crate::rustdesk_interval(time::interval_at(Instant::now() + SEC30, SEC30));
                     }
@@ -704,6 +719,14 @@ impl Connection {
                         break;
                     }
                 },
+                Some(data) = rx_from_authed.recv() => {
+                    match data {
+                        ipc::Data::PrinterFile(path) => {
+                            conn.send_printer_file(path).await;
+                        }
+                        _ => {}
+                    }
+                }
                 _ = second_timer.tick() => {
                     #[cfg(windows)]
                     conn.portable_check();
@@ -1139,6 +1162,8 @@ impl Connection {
             self.inner.id(),
             auth_conn_type,
             self.session_key(),
+            self.tx_from_authed.clone(),
+            self.lr.clone(),
         ));
         self.session_last_recv_time = SESSIONS
             .lock()
@@ -2533,6 +2558,23 @@ impl Connection {
                 Some(message::Union::VoiceCallResponse(_response)) => {
                     // TODO: Maybe we can do a voice call from cm directly.
                 }
+                Some(message::Union::Printer(p)) => match p.union {
+                    Some(printer::Union::PrinterResponse(pr)) => {
+                        if let Some(path) = self.printer_waiting_confirm.remove(&pr.id) {
+                            if pr.accepted {
+                                match PrinterJob::new_read(pr.id, path).await {
+                                    Ok(job) => {
+                                        self.printer_jobs.push(job);
+                                        self.file_timer =
+                                            crate::rustdesk_interval(time::interval(MILLI1));
+                                    }
+                                    Err(e) => log::error!("Failed to send printer file: {}", e),
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -3330,6 +3372,20 @@ impl Connection {
         }
         false
     }
+
+    async fn send_printer_file(&mut self, path: String) {
+        let id = self.printer_file_id;
+        self.printer_file_id += 1;
+        self.printer_waiting_confirm.insert(id, path);
+        let mut msg = Message::new();
+        let mut printer = Printer::new();
+        printer.set_printer_request(PrinterRequest {
+            id,
+            ..Default::default()
+        });
+        msg.set_printer(printer);
+        self.send(msg).await;
+    }
 }
 
 pub fn insert_switch_sides_uuid(id: String, uuid: uuid::Uuid) {
@@ -3665,6 +3721,21 @@ fn start_wakelock_thread() -> std::sync::mpsc::Sender<(usize, usize)> {
     tx
 }
 
+pub fn on_printer_file(file_path: String) {
+    if !std::path::Path::new(&file_path).exists() {
+        return;
+    }
+    crate::server::AUTHED_CONNS
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|c| c.conn_type == crate::server::AuthConnType::Remote && c.printer)
+        .next()
+        .map(|c| {
+            c.sender.send(Data::PrinterFile(file_path.clone())).ok();
+        });
+}
+
 #[cfg(windows)]
 pub struct PortableState {
     pub last_uac: bool,
@@ -3798,6 +3869,14 @@ impl Retina {
     }
 }
 
+pub struct AuthedConn {
+    pub conn_id: i32,
+    pub conn_type: AuthConnType,
+    pub session_key: SessionKey,
+    pub sender: mpsc::UnboundedSender<Data>,
+    pub printer: bool,
+}
+
 mod raii {
     // CONN_COUNT: remote connection count in fact
     // ALIVE_CONNS: all connections, including unauthorized connections
@@ -3823,11 +3902,20 @@ mod raii {
     pub struct AuthedConnID(i32, AuthConnType);
 
     impl AuthedConnID {
-        pub fn new(conn_id: i32, conn_type: AuthConnType, session_key: SessionKey) -> Self {
-            AUTHED_CONNS
-                .lock()
-                .unwrap()
-                .push((conn_id, conn_type, session_key));
+        pub fn new(
+            conn_id: i32,
+            conn_type: AuthConnType,
+            session_key: SessionKey,
+            sender: mpsc::UnboundedSender<Data>,
+            lr: LoginRequest,
+        ) -> Self {
+            AUTHED_CONNS.lock().unwrap().push(AuthedConn {
+                conn_id,
+                conn_type,
+                session_key,
+                sender,
+                printer: lr.client_feature.printer,
+            });
             Self::check_wake_lock();
             use std::sync::Once;
             static _ONCE: Once = Once::new();
@@ -3849,7 +3937,7 @@ mod raii {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|c| c.1 == AuthConnType::Remote)
+                .filter(|c| c.conn_type == AuthConnType::Remote)
                 .count();
             allow_err!(WAKELOCK_SENDER
                 .lock()
@@ -3862,7 +3950,9 @@ mod raii {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|c| c.1 == AuthConnType::Remote || c.1 == AuthConnType::FileTransfer)
+                .filter(|c| {
+                    c.conn_type == AuthConnType::Remote || c.conn_type == AuthConnType::FileTransfer
+                })
                 .count()
         }
 
@@ -3875,16 +3965,16 @@ mod raii {
                     .lock()
                     .unwrap()
                     .iter()
-                    .any(|c| c.0 == conn_id && c.1 == AuthConnType::Remote);
+                    .any(|c| c.conn_id == conn_id && c.conn_type == AuthConnType::Remote);
                 // If there are 2 connections with the same peer_id and session_id, a remote connection and a file transfer or port forward connection,
                 // If any of the connections is closed allowing retry, this will not be called;
                 // If the file transfer/port forward connection is closed with no retry, the session should be kept for remote control menu action;
                 // If the remote connection is closed with no retry, keep the session is not reasonable in case there is a retry button in the remote side, and ignore network fluctuations.
-                let another_remote = AUTHED_CONNS
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .any(|c| c.0 != conn_id && c.2 == key && c.1 == AuthConnType::Remote);
+                let another_remote = AUTHED_CONNS.lock().unwrap().iter().any(|c| {
+                    c.conn_id != conn_id
+                        && c.session_key == key
+                        && c.conn_type == AuthConnType::Remote
+                });
                 if is_remote || !another_remote {
                     lock.remove(&key);
                     log::info!("remove session");
@@ -3952,12 +4042,12 @@ mod raii {
                     .unwrap()
                     .on_connection_close(self.0);
             }
-            AUTHED_CONNS.lock().unwrap().retain(|c| c.0 != self.0);
+            AUTHED_CONNS.lock().unwrap().retain(|c| c.conn_id != self.0);
             let remote_count = AUTHED_CONNS
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|c| c.1 == AuthConnType::Remote)
+                .filter(|c| c.conn_type == AuthConnType::Remote)
                 .count();
             if remote_count == 0 {
                 #[cfg(any(target_os = "windows", target_os = "linux"))]

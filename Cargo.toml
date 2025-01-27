@@ -116,6 +116,7 @@ winapi = { version = "0.3", features = [
     "cguid",
     "cfgmgr32",
     "ioapiset",
+    "winspool",
 ] }
 winreg = "0.11"
 windows-service = "0.6"

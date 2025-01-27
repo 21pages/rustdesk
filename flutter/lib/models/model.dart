@@ -410,10 +410,130 @@ class FfiModel with ChangeNotifier {
         if (desktopType == DesktopType.remote || isMobile) {
           parent.target?.recordingModel.updateStatus(evt['start'] == 'true');
         }
+      } else if (name == "printer_request") {
+        _handlePrinterRequest(evt, sessionId, peerId);
       } else {
         debugPrint('Event is not handled in the fixed branch: $name');
       }
     };
+  }
+
+  _handlePrinterRequest(
+      Map<String, dynamic> evt, SessionID sessionId, String peerId) {
+    final id = evt['id'];
+    final dialogManager = parent.target!.dialogManager;
+    dialogManager.show((setState, close, context) {
+      final defaultOrSelectedGroupValue = ''.obs;
+      final selectedPrinterName =
+          bind.mainGetLocalOption(key: kKeySelectedPrinterName).obs;
+      final saveSettings = false.obs;
+      final dontShowAgain = false.obs;
+
+      onRatioChanged(String? value) {
+        defaultOrSelectedGroupValue.value = value ?? '';
+      }
+
+      onSubmit() {
+        final printerName = defaultOrSelectedGroupValue.isEmpty
+            ? ''
+            : selectedPrinterName.value;
+        bind.sessionPrinterResponse(
+            sessionId: sessionId,
+            id: id,
+            accepted: true,
+            printerName: printerName);
+        if (saveSettings.value) {
+          bind.mainSetLocalOption(
+              key: kKeySelectedPrinterName, value: selectedPrinterName.value);
+        }
+        if (dontShowAgain.value) {
+          bind.mainSetLocalOption(key: kKeyAllowAutoPrint, value: 'Y');
+        }
+        close();
+      }
+
+      onCancel() {
+        bind.sessionPrinterResponse(
+            sessionId: sessionId, id: id, accepted: false, printerName: '');
+        close();
+      }
+
+      var printerNames = <String>[];
+      final printerNamesJson = bind.mainGetPrinterNames();
+      try {
+        printerNames = jsonDecode(printerNamesJson);
+      } catch (_) {}
+
+      final content = Column(
+        children: [
+          Text(translate('print_incoming_job_confirm_tip')),
+          Row(
+            children: [
+              Radio<String>(
+                  value: '',
+                  groupValue: defaultOrSelectedGroupValue.value,
+                  onChanged: onRatioChanged),
+              Text(translate('Use the default printer')),
+            ],
+          ),
+          Row(
+            children: [
+              Radio<String>(
+                  value: 'selected',
+                  groupValue: defaultOrSelectedGroupValue.value,
+                  onChanged: onRatioChanged),
+              DropdownButton<String>(
+                value: selectedPrinterName.value,
+                onChanged: onRatioChanged,
+                items: printerNames
+                    .map((e) => DropdownMenuItem<String>(
+                          value: e,
+                          child: Text(e),
+                          onTap: () {
+                            selectedPrinterName.value = e;
+                          },
+                        ))
+                    .toList(),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Checkbox(
+                  value: saveSettings.value,
+                  onChanged: (value) {
+                    if (value != null) {
+                      saveSettings.value = value;
+                    }
+                  }),
+              Text(translate('Save Settings')),
+            ],
+          ),
+          Row(
+            children: [
+              Checkbox(
+                  value: dontShowAgain.value,
+                  onChanged: (value) {
+                    if (value != null) {
+                      dontShowAgain.value = value;
+                    }
+                  }),
+              Text(translate('Don\'t show this again')),
+            ],
+          ),
+        ],
+      );
+      return CustomAlertDialog(
+        title: Text(translate('Incoming Printer Job')),
+        content: Obx(() => content),
+        actions: [
+          dialogButton('OK', onPressed: onSubmit),
+          dialogButton('Cancel', onPressed: onCancel),
+        ],
+        onSubmit: onSubmit,
+        onCancel: onCancel,
+      );
+    });
   }
 
   _handleUseTextureRender(

@@ -55,6 +55,7 @@ enum SettingsTabKey {
   display,
   plugin,
   account,
+  printer,
   about,
 }
 
@@ -74,6 +75,7 @@ class DesktopSettingPage extends StatefulWidget {
     if (!isWeb && !bind.isIncomingOnly() && bind.pluginFeatureIsEnabled())
       SettingsTabKey.plugin,
     if (!bind.isDisableAccount()) SettingsTabKey.account,
+    SettingsTabKey.printer,
     SettingsTabKey.about,
   ];
 
@@ -198,6 +200,10 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
           settingTabs.add(
               _TabInfo(tab, 'Account', Icons.person_outline, Icons.person));
           break;
+        case SettingsTabKey.printer:
+          settingTabs
+              .add(_TabInfo(tab, 'Printer', Icons.print_outlined, Icons.print));
+          break;
         case SettingsTabKey.about:
           settingTabs
               .add(_TabInfo(tab, 'About', Icons.info_outline, Icons.info));
@@ -228,6 +234,9 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
           break;
         case SettingsTabKey.account:
           children.add(const _Account());
+          break;
+        case SettingsTabKey.printer:
+          children.add(const _Printer());
           break;
         case SettingsTabKey.about:
           children.add(const _About());
@@ -1866,6 +1875,111 @@ class _PluginState extends State<_Plugin> {
                   ? loginDialog()
                   : logOutConfirmDialog()
             }));
+  }
+}
+
+class _Printer extends StatefulWidget {
+  const _Printer({super.key});
+
+  @override
+  State<_Printer> createState() => __PrinterState();
+}
+
+class __PrinterState extends State<_Printer> {
+  @override
+  Widget build(BuildContext context) {
+    final scrollController = ScrollController();
+    return ListView(controller: scrollController, children: [
+      outgoing(context),
+      incomming(context),
+    ]).marginOnly(bottom: _kListViewBottomMargin);
+  }
+
+  Widget outgoing(BuildContext context) {
+    Widget client_not_installed() {
+      return Text('printer_requires_install_client_tip');
+    }
+
+    Widget client_installed_driver_not_installed() {
+      return Column(children: [
+        Text('printer_driver_not_installed_tip'),
+        _Button('Install RustDesk Printer', () {})
+      ]);
+    }
+
+    Widget client_installed_driver_installed() {
+      return Text('printer_driver_installed_tip');
+    }
+
+    final installed = bind.mainIsInstalled();
+    final driver_installed = false;
+
+    return _Card(title: 'Outgoing Print Jobs', children: [
+      if (!installed) client_not_installed(),
+      if (installed && !driver_installed)
+        client_installed_driver_not_installed(),
+      if (installed && driver_installed) client_installed_driver_installed()
+    ]);
+  }
+
+  Widget incomming(BuildContext context) {
+    const incommingPrintJobActionKey = 'incomming_print_job_action';
+    var incommingPrintJobActionGroupValue =
+        bind.mainGetOptionSync(key: incommingPrintJobActionKey);
+    if (!['dismiss', '', 'selected']
+        .contains(incommingPrintJobActionGroupValue)) {
+      incommingPrintJobActionGroupValue = '';
+    }
+    onRadioChanged(String value) async {
+      await bind.mainSetOption(key: incommingPrintJobActionKey, value: value);
+      setState(() {});
+    }
+
+    final printerNamesJson = bind.mainGetPrinterNames();
+    var printerNames = <String>[];
+    try {
+      List<dynamic> printerNamesList = jsonDecode(printerNamesJson);
+      printerNames = printerNamesList.map((e) => e.toString()).toList();
+    } catch (e) {
+      debugPrint('failed to parse printer names, err=$e');
+    }
+    final selectedPrinterName =
+        bind.mainGetLocalOption(key: kKeySelectedPrinterName);
+
+    return _Card(title: 'Incomming Print Jobs', children: [
+      _Radio(context,
+          value: 'dismiss',
+          groupValue: incommingPrintJobActionGroupValue,
+          label: 'Dismiss',
+          onChanged: onRadioChanged),
+      _Radio(context,
+          value: '',
+          groupValue: incommingPrintJobActionGroupValue,
+          label: 'Use the default printer',
+          onChanged: onRadioChanged),
+      _Radio(context,
+          value: 'selected',
+          groupValue: incommingPrintJobActionGroupValue,
+          label: 'Use the selected printer',
+          onChanged: onRadioChanged),
+      if (printerNames.isNotEmpty)
+        ComboBox(
+          initialKey: selectedPrinterName,
+          keys: printerNames,
+          values: printerNames,
+          onChanged: (value) async {
+            await bind.mainSetLocalOption(
+                key: kKeySelectedPrinterName, value: value);
+            setState(() {});
+          },
+        ).marginOnly(left: 10),
+      _OptionCheckBox(
+        context,
+        'auto_print_tip',
+        kKeyAllowAutoPrint,
+        isServer: false,
+      )
+    ]);
   }
 }
 

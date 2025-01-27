@@ -273,6 +273,7 @@ pub enum Data {
     HwCodecConfig(Option<String>),
     RemoveTrustedDevices(Vec<Bytes>),
     ClearTrustedDevices,
+    PrinterFile(String),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -462,7 +463,7 @@ async fn handle(data: Data, stream: &mut Connection) {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|x| x.1 == crate::server::AuthConnType::Remote)
+                .filter(|x| x.conn_type == crate::server::AuthConnType::Remote)
                 .count();
             allow_err!(stream.send(&Data::VideoConnCount(Some(n))).await);
         }
@@ -661,6 +662,11 @@ async fn handle(data: Data, stream: &mut Connection) {
         Data::ClearTrustedDevices => {
             Config::clear_trusted_devices();
         }
+        #[cfg(windows)]
+        Data::PrinterFile(v) => {
+            log::info!("PrinterDriver: {:?}", v);
+            crate::server::on_printer_file(v);
+        }
         _ => {}
     }
 }
@@ -842,7 +848,11 @@ where
                 if let Ok(s) = std::str::from_utf8(&bytes) {
                     if let Ok(data) = serde_json::from_str::<Data>(s) {
                         return Ok(Some(data));
+                    } else {
+                        log::error!("serde failed, ipc json bytes: {:?}", bytes);
                     }
+                } else {
+                    log::error!("from utf8 failed, ipc json bytes: {:?}", bytes);
                 }
                 return Ok(None);
             }

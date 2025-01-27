@@ -33,7 +33,8 @@ use winapi::{
     shared::{minwindef::*, ntdef::NULL, windef::*, winerror::*},
     um::{
         errhandlingapi::GetLastError,
-        handleapi::CloseHandle,
+        fileapi::{CreateFileW, ReadFile, OPEN_EXISTING},
+        handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
         libloaderapi::{
             GetProcAddress, LoadLibraryExA, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
             LOAD_LIBRARY_SEARCH_USER_DIRS,
@@ -50,10 +51,11 @@ use winapi::{
         wingdi::*,
         winnt::{
             TokenElevation, ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
-            ES_SYSTEM_REQUIRED, HANDLE, PROCESS_ALL_ACCESS, PROCESS_QUERY_LIMITED_INFORMATION,
-            TOKEN_ELEVATION, TOKEN_QUERY,
+            ES_SYSTEM_REQUIRED, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, GENERIC_READ, HANDLE,
+            PROCESS_ALL_ACCESS, PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY,
         },
         winreg::HKEY_CURRENT_USER,
+        winspool::*,
         winuser::*,
     },
 };
@@ -2727,4 +2729,196 @@ pub mod reg_display_settings {
             _ => RegType::REG_NONE,
         }
     }
+}
+
+pub fn get_printer_names() -> ResultType<Vec<String>> {
+    let mut needed_bytes = 0;
+    let mut returned_count = 0;
+
+    unsafe {
+        // First call to get required buffer size
+        EnumPrintersW(
+            PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
+            std::ptr::null_mut(),
+            1,
+            std::ptr::null_mut(),
+            0,
+            &mut needed_bytes,
+            &mut returned_count,
+        );
+
+        let mut buffer = vec![0u8; needed_bytes as usize];
+
+        if EnumPrintersW(
+            PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
+            std::ptr::null_mut(),
+            1,
+            buffer.as_mut_ptr() as *mut _,
+            needed_bytes,
+            &mut needed_bytes,
+            &mut returned_count,
+        ) == 0
+        {
+            return Err(anyhow!("Failed to enumerate printers"));
+        }
+
+        let ptr = buffer.as_ptr() as *const PRINTER_INFO_1W;
+        let printers = std::slice::from_raw_parts(ptr, returned_count as usize);
+
+        Ok(printers
+            .iter()
+            .filter_map(|p| {
+                let name = p.pName;
+                if !name.is_null() {
+                    let mut len = 0;
+                    while len < 500 {
+                        if name.add(len).is_null() || *name.add(len) == 0 {
+                            break;
+                        }
+                        len += 1;
+                    }
+                    if len > 0 {
+                        Some(String::from_utf16_lossy(std::slice::from_raw_parts(
+                            name, len,
+                        )))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect())
+    }
+}
+
+pub fn send_file_to_printer(printer_name: Option<String>, file_path: &str) -> ResultType<()> {
+    log::info!(
+        "=========== send file to printer: {:?}, {:?}",
+        printer_name,
+        file_path
+    );
+    let mut printer_name = printer_name.unwrap_or_default();
+    if printer_name.is_empty() {
+        // use GetDefaultPrinter to get the default printer name
+        let mut needed_bytes = 0;
+        unsafe {
+            GetDefaultPrinterW(std::ptr::null_mut(), &mut needed_bytes);
+        }
+        if needed_bytes > 0 {
+            let mut default_printer_name = vec![0u16; needed_bytes as usize];
+            unsafe {
+                GetDefaultPrinterW(
+                    default_printer_name.as_mut_ptr() as *mut _,
+                    &mut needed_bytes,
+                );
+            }
+            printer_name = String::from_utf16_lossy(&default_printer_name[..needed_bytes as usize]);
+        }
+    }
+    if printer_name.is_empty() {
+        log::error!("Failed to get printer name");
+        return Err(anyhow!("Failed to get printer name"));
+    }
+
+    let mut printer_handle = std::ptr::null_mut();
+
+    let printer_name = wide_string(&printer_name);
+
+    unsafe {
+        if OpenPrinterW(
+            printer_name.as_ptr() as *mut _,
+            &mut printer_handle,
+            std::ptr::null_mut(),
+        ) == 0
+        {
+            log::error!("Failed to open printer");
+            bail!(format!("Failed to open printer, errno: {}", GetLastError()));
+        }
+
+        let file_path_wide = wide_string(file_path);
+        let file_handle = CreateFileW(
+            file_path_wide.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            std::ptr::null_mut(),
+        );
+
+        if file_handle == INVALID_HANDLE_VALUE {
+            log::error!("Failed to open file");
+            ClosePrinter(printer_handle);
+            bail!(format!("Failed to open file, errno: {}", GetLastError()));
+        }
+
+        const BUFFER_SIZE: u32 = 4096;
+        let mut buffer = vec![0u8; BUFFER_SIZE as usize];
+
+        let mut doc_name = wide_string("RustDesk Print Job");
+        let mut data_type = wide_string("RAW");
+
+        let doc_info = DOC_INFO_1W {
+            pDocName: doc_name.as_mut_ptr(),
+            pOutputFile: std::ptr::null_mut(),
+            pDatatype: data_type.as_mut_ptr(),
+        };
+
+        if StartDocPrinterW(printer_handle, 1, &doc_info as *const _ as *mut _) > 0 {
+            if StartPagePrinter(printer_handle) != 0 {
+                let mut bytes_read = 0;
+                let mut bytes_written = 0;
+                let mut success = true;
+
+                loop {
+                    if ReadFile(
+                        file_handle,
+                        buffer.as_mut_ptr() as *mut _,
+                        BUFFER_SIZE,
+                        &mut bytes_read,
+                        std::ptr::null_mut(),
+                    ) == FALSE
+                    {
+                        success = false;
+                        log::error!("Failed to read file, errno: {}", GetLastError());
+                        break;
+                    }
+
+                    if bytes_read == 0 {
+                        break;
+                    }
+
+                    if WritePrinter(
+                        printer_handle,
+                        buffer.as_mut_ptr() as *mut _,
+                        bytes_read,
+                        &mut bytes_written,
+                    ) == FALSE
+                    {
+                        log::error!("Failed to write printer, errno: {}", GetLastError());
+                        success = false;
+                        break;
+                    }
+                }
+
+                EndPagePrinter(printer_handle);
+
+                if !success {
+                    log::error!("Failed to print");
+                    EndDocPrinter(printer_handle);
+                    CloseHandle(file_handle);
+                    ClosePrinter(printer_handle);
+                    bail!("Failed to print");
+                }
+            }
+            EndDocPrinter(printer_handle);
+        }
+
+        CloseHandle(file_handle);
+        ClosePrinter(printer_handle);
+        log::info!("Print success");
+    }
+
+    Ok(())
 }

@@ -1631,6 +1631,17 @@ pub fn session_toggle_virtual_display(session_id: SessionID, index: i32, on: boo
     }
 }
 
+pub fn session_printer_response(
+    session_id: SessionID,
+    id: i32,
+    accepted: bool,
+    printer_name: String,
+) {
+    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.printer_response(id, accepted, printer_name);
+    }
+}
+
 pub fn main_set_home_dir(_home: String) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
@@ -2329,6 +2340,16 @@ pub fn main_audio_support_loopback() -> SyncReturn<bool> {
     #[cfg(not(any(target_os = "windows", feature = "screencapturekit")))]
     let is_surpport = false;
     SyncReturn(is_surpport)
+}
+
+pub fn main_get_printer_names() -> SyncReturn<String> {
+    #[cfg(target_os = "windows")]
+    return SyncReturn(
+        serde_json::to_string(&crate::platform::windows::get_printer_names().unwrap_or_default())
+            .unwrap_or_default(),
+    );
+    #[cfg(not(target_os = "windows"))]
+    return SyncReturn("".to_owned());
 }
 
 #[cfg(target_os = "android")]
