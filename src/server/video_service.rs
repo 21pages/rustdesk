@@ -383,6 +383,11 @@ fn get_capturer(current: usize, portable_service_running: bool) -> ResultType<Ca
 }
 
 fn run(vs: VideoService) -> ResultType<()> {
+    let display_idx = vs.idx;
+    log::info!(
+        "====DEBUG==== video service run display_idx: {}",
+        display_idx
+    );
     let _raii = Raii::new(vs.idx);
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
@@ -549,6 +554,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             if crate::platform::windows::desktop_changed()
                 && !crate::portable_service::client::running()
             {
+                log::info!("====DEBUG==== desktop changed");
                 bail!("Desktop changed");
             }
         }
@@ -566,9 +572,11 @@ fn run(vs: VideoService) -> ResultType<()> {
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
         let res = match c.frame(spf) {
             Ok(frame) => {
+                log::info!("====DEBUG==== capture frame ok");
                 repeat_encode_counter = 0;
                 if frame.valid() {
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    log::info!("====DEBUG==== to yuv ok");
                     let send_conn_ids = handle_one_frame(
                         display_idx,
                         &sp,
@@ -581,7 +589,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_width,
                         capture_height,
                     )?;
+                    log::info!("====DEBUG==== handle one frame ok");
                     frame_controller.set_send(now, send_conn_ids);
+                } else {
+                    log::info!("====DEBUG==== frame not valid");
                 }
                 #[cfg(windows)]
                 {
@@ -598,6 +609,10 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         match res {
             Err(ref e) if e.kind() == WouldBlock => {
+                #[cfg(windows)]
+                {
+                    log::info!("====DEBUG==== would block, try_gdi: {}", try_gdi);
+                }
                 #[cfg(windows)]
                 if try_gdi > 0 && !c.is_gdi() {
                     if try_gdi > 3 {
@@ -624,6 +639,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                     }
                 }
                 if !encoder.latency_free() && yuv.len() > 0 {
+                    log::info!(
+                        "====DEBUG==== repeat encode counter: {}",
+                        repeat_encode_counter
+                    );
                     // yun.len() > 0 means the frame is not texture.
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
@@ -644,9 +663,11 @@ fn run(vs: VideoService) -> ResultType<()> {
                 }
             }
             Err(err) => {
+                log::error!("====DEBUG==== capture error: {:?}", err);
                 // This check may be redundant, but it is better to be safe.
                 // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
                 try_broadcast_display_changed(&sp, display_idx, &c, true)?;
+                log::info!("====DEBUG==== try broadcast display changed ok");
 
                 #[cfg(windows)]
                 if !c.is_gdi() {
@@ -726,6 +747,7 @@ fn setup_encoder(
         client_record || record_incoming,
         last_portable_service_running,
     );
+    log::info!("====DEBUG==== encoder_cfg: {:?}", encoder_cfg);
     Encoder::set_fallback(&encoder_cfg);
     let codec_format = Encoder::negotiated_codec();
     let recorder = get_recorder(
