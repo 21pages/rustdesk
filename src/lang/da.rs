@@ -657,5 +657,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Untagged", ""),
         ("new-version-of-{}-tip", ""),
         ("Accessible devices", ""),
+        ("View camera", "Se kamera"),
+        ("upgrade_remote_rustdesk_client_to_{}_tip", "Opgrader venligst RustDesk-klienten til version {} eller nyere på fjernsiden!"),
     ].iter().cloned().collect();
 }

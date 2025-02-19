@@ -203,6 +203,8 @@ class _ConnectionPageState extends State<ConnectionPage>
   final FocusNode _idFocusNode = FocusNode();
   final TextEditingController _idEditingController = TextEditingController();
 
+  String selectedConnectionType = 'Connect';
+
   bool isWindowMinimized = false;
 
   final AllPeersLoader _allPeersLoader = AllPeersLoader();
@@ -321,9 +323,9 @@ class _ConnectionPageState extends State<ConnectionPage>
 
   /// Callback for the connect button.
   /// Connects to the selected peer.
-  void onConnect({bool isFileTransfer = false}) {
+  void onConnect({bool isFileTransfer = false, bool isViewCamera = false}) {
     var id = _idController.id;
-    connect(context, id, isFileTransfer: isFileTransfer);
+    connect(context, id, isFileTransfer: isFileTransfer, isViewCamera: isViewCamera);
   }
 
   /// UI for the remote ID TextField.
@@ -504,18 +506,83 @@ class _ConnectionPageState extends State<ConnectionPage>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Button(
-                    isOutline: true,
-                    onTap: () => onConnect(isFileTransfer: true),
-                    text: "Transfer file",
+                  SizedBox(
+                    height: 28.0,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        if (selectedConnectionType == 'Transfer file') {
+                          onConnect(isFileTransfer: true);
+                        } else if (selectedConnectionType == 'View camera') {
+                          onConnect(isViewCamera: true);
+                        } else {
+                          onConnect();
+                        }
+                      },
+                      child: Text(translate(selectedConnectionType)), // Show current selection
+                    ),
                   ),
-                  const SizedBox(
-                    width: 17,
+                  const SizedBox(width: 3),
+                  Container(
+                    height: 28.0,
+                    width: 28.0,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: MenuAnchor(
+                        builder: (context, controller, builder) {
+                          return IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(),
+                            visualDensity: VisualDensity.compact,
+                            icon: controller.isOpen ? const Icon(Icons.keyboard_arrow_up) : const Icon(Icons.keyboard_arrow_down),
+                            onPressed: () {
+                              setState(() {
+                                if (controller.isOpen) {
+                                  controller.close();
+                                } else {
+                                  controller.open();
+                                }
+                              });
+                            },
+                          );
+                        },
+                        menuChildren: <Widget>[
+                          MenuItemButton(
+                            onPressed: () {
+                              setState(() {
+                                selectedConnectionType = 'Connect';
+                              });
+                              onConnect();
+                            },
+                            child: Text(translate('Connect')),
+                          ),
+                          MenuItemButton(
+                            onPressed: () {
+                              setState(() {
+                                selectedConnectionType = 'Transfer file';
+                              });
+                              onConnect(isFileTransfer: true);
+                            },
+                            child: Text(translate('Transfer file')),
+                          ),
+                          MenuItemButton(
+                            onPressed: () {
+                              setState(() {
+                                selectedConnectionType = 'View camera';
+                              });
+                              onConnect(isViewCamera: true);
+                            },
+                            child: Text(translate('View camera')),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  Button(onTap: onConnect, text: "Connect"),
-                ],
+                ]
               ),
-            )
+            ),
           ],
         ),
       ),

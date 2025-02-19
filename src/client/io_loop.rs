@@ -129,7 +129,7 @@ impl<T: InvokeUiSession> Remote<T> {
         #[cfg(target_os = "windows")]
         let _file_clip_context_holder = {
             // `is_port_forward()` will not reach here, but we still check it for clarity.
-            if !self.handler.is_file_transfer() && !self.handler.is_port_forward() {
+            if !self.handler.is_file_transfer() && !self.handler.is_port_forward() && !self.handler.is_view_camera() {
                 // It is ok to call this function multiple times.
                 ContextSend::enable(true);
                 Some(crate::SimpleCallOnReturn {
@@ -152,6 +152,8 @@ impl<T: InvokeUiSession> Remote<T> {
         let mut received = false;
         let conn_type = if self.handler.is_file_transfer() {
             ConnType::FILE_TRANSFER
+        } else if self.handler.is_view_camera() {
+            ConnType::VIEW_CAMERA
         } else {
             ConnType::default()
         };
@@ -173,7 +175,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     .set_connected();
                 self.handler.set_connection_type(peer.is_secured(), direct); // flutter -> connection_ready
                 self.handler.update_direct(Some(direct));
-                if conn_type == ConnType::DEFAULT_CONN {
+                if conn_type == ConnType::DEFAULT_CONN || conn_type == ConnType::VIEW_CAMERA {
                     self.handler
                         .set_fingerprint(crate::common::pk_to_fingerprint(pk.unwrap_or_default()));
                 }
@@ -190,7 +192,8 @@ impl<T: InvokeUiSession> Remote<T> {
                 {
                     let is_conn_not_default = self.handler.is_file_transfer()
                         || self.handler.is_port_forward()
-                        || self.handler.is_rdp();
+                        || self.handler.is_rdp()
+                        || self.handler.is_view_camera();
                     if !is_conn_not_default {
                         (self.client_conn_id, rx_clip_client_holder.0) =
                             clipboard::get_rx_cliprdr_client(&self.handler.get_id());
@@ -330,12 +333,12 @@ impl<T: InvokeUiSession> Remote<T> {
             .set_disconnected(round);
 
         #[cfg(not(target_os = "ios"))]
-        if _set_disconnected_ok {
+        if !self.handler.is_view_camera() && _set_disconnected_ok {
             Client::try_stop_clipboard();
         }
 
         #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-        if _set_disconnected_ok {
+        if !self.handler.is_view_camera() && _set_disconnected_ok {
             crate::clipboard::try_empty_clipboard_files(ClipboardSide::Client, self.client_conn_id);
         }
     }
@@ -1233,7 +1236,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.handler.handle_peer_info(pi);
                         #[cfg(all(target_os = "windows", not(feature = "flutter")))]
                         self.check_clipboard_file_context();
-                        if !(self.handler.is_file_transfer() || self.handler.is_port_forward()) {
+                        if !(self.handler.is_file_transfer()
+                            || self.handler.is_port_forward()
+                            || self.handler.is_view_camera()) {
                             #[cfg(feature = "flutter")]
                             #[cfg(not(target_os = "ios"))]
                             let rx = Client::try_start_clipboard(None);
@@ -1531,6 +1536,9 @@ impl<T: InvokeUiSession> Remote<T> {
                                         self.client_conn_id,
                                     );
                                 }
+                            }
+                            Ok(Permission::Camera) => {
+                                self.handler.set_permission("camera", p.enabled);
                             }
                             Ok(Permission::Restart) => {
                                 self.handler.set_permission("restart", p.enabled);
