@@ -554,7 +554,7 @@ Future<List<TToggleMenu>> toolbarDisplayToggle(
       },
       child: Text(translate('Show quality monitor'))));
   // mute
-  if (perms['audio'] != false) {
+  if (isDefaultConn && perms['audio'] != false) {
     final option = 'disable-audio';
     final value =
         bind.sessionGetToggleOptionSync(sessionId: sessionId, arg: option);

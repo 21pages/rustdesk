@@ -21,7 +21,6 @@ use crate::{
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
-use scrap::camera;
 use cidr_utils::cidr::IpCidr;
 #[cfg(target_os = "linux")]
 use hbb_common::platform::linux::run_cmds;
@@ -45,6 +44,7 @@ use hbb_common::{
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
+use scrap::camera;
 use serde_derive::Serialize;
 use serde_json::{json, value::Value};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -226,6 +226,7 @@ pub struct Connection {
     portable: PortableState,
     from_switch: bool,
     voice_call_request_timestamp: Option<NonZeroI64>,
+    voice_calling: bool,
     options_in_login: Option<OptionMessage>,
     #[cfg(not(any(target_os = "ios")))]
     pressed_modifiers: HashSet<rdev::Key>,
@@ -375,6 +376,7 @@ impl Connection {
             from_switch: false,
             audio_sender: None,
             voice_call_request_timestamp: None,
+            voice_calling: false,
             options_in_login: None,
             #[cfg(not(any(target_os = "ios")))]
             pressed_modifiers: Default::default(),
@@ -542,9 +544,17 @@ impl Connection {
                                 conn.send_permission(Permission::Audio, enabled).await;
                                 if conn.authorized {
                                     if let Some(s) = conn.server.upgrade() {
-                                        s.write().unwrap().subscribe(
-                                            super::audio_service::NAME,
-                                            conn.inner.clone(), conn.audio_enabled());
+                                        if conn.is_authed_view_camera_conn() {
+                                            if conn.voice_calling || !conn.audio_enabled() {
+                                                s.write().unwrap().subscribe(
+                                                    super::audio_service::NAME,
+                                                    conn.inner.clone(), conn.audio_enabled());
+                                            }
+                                        } else {
+                                            s.write().unwrap().subscribe(
+                                                super::audio_service::NAME,
+                                                conn.inner.clone(), conn.audio_enabled());
+                                        }
                                     }
                                 }
                             } else if &name == "file" {
@@ -1301,7 +1311,8 @@ impl Connection {
             return;
         }
         #[cfg(target_os = "linux")]
-        if !self.file_transfer.is_some() && !self.port_forward_socket.is_some() && !self.view_camera {
+        if !self.file_transfer.is_some() && !self.port_forward_socket.is_some() && !self.view_camera
+        {
             let mut msg = "".to_string();
             if crate::platform::linux::is_login_screen_wayland() {
                 msg = crate::client::LOGIN_SCREEN_WAYLAND.to_owned()
@@ -1368,11 +1379,16 @@ impl Connection {
             pi.current_display = camera::PRIMARY_CAMERA_IDX as _;
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                pi.resolutions = 
-                    Some(SupportedResolutions {
-                        resolutions: camera::Cameras::get_camera_resolution(pi.current_display as usize).ok().into_iter().collect(),
-                        ..Default::default()
-                    }).into();
+                pi.resolutions = Some(SupportedResolutions {
+                    resolutions: camera::Cameras::get_camera_resolution(
+                        pi.current_display as usize,
+                    )
+                    .ok()
+                    .into_iter()
+                    .collect(),
+                    ..Default::default()
+                })
+                .into();
             }
             res.set_peer_info(pi);
             self.update_codec_on_login();
@@ -1466,7 +1482,8 @@ impl Connection {
 
     // FIXME: rename to contrast with camera services.
     fn try_sub_services(&mut self) {
-        let is_remote = self.file_transfer.is_none() && self.port_forward_socket.is_none() && !self.view_camera;
+        let is_remote =
+            self.file_transfer.is_none() && self.port_forward_socket.is_none() && !self.view_camera;
         if is_remote && !self.services_subed {
             self.services_subed = true;
             if let Some(s) = self.server.upgrade() {
@@ -2672,9 +2689,11 @@ impl Connection {
                         }
                     }
                     Some(misc::Union::MessageQuery(mq)) => {
-                        if let Some(msg_out) =
-                            video_service::make_display_changed_msg(mq.switch_display as _, None, self.video_source())
-                        {
+                        if let Some(msg_out) = video_service::make_display_changed_msg(
+                            mq.switch_display as _,
+                            None,
+                            self.video_source(),
+                        ) {
                             self.send(msg_out).await;
                         }
                     }
@@ -2803,7 +2822,9 @@ impl Connection {
             // 1. For compatibility with old versions ( < 1.2.4 ).
             // 2. Sciter version.
             // 3. Update `SupportedResolutions`.
-            if let Some(msg_out) = video_service::make_display_changed_msg(self.display_idx, None, self.video_source()) {
+            if let Some(msg_out) =
+                video_service::make_display_changed_msg(self.display_idx, None, self.video_source())
+            {
                 self.send(msg_out).await;
             }
         }
@@ -2826,11 +2847,15 @@ impl Connection {
 
     fn switch_display_to(&mut self, display_idx: usize, server: Arc<RwLock<Server>>) {
         let new_service_name = video_service::get_service_name(self.video_source(), display_idx);
-        let old_service_name = video_service::get_service_name(self.video_source(), self.display_idx);
+        let old_service_name =
+            video_service::get_service_name(self.video_source(), self.display_idx);
         let mut lock = server.write().unwrap();
         if display_idx != *display_service::PRIMARY_DISPLAY_IDX {
             if !lock.contains(&new_service_name) {
-                lock.add_service(Box::new(video_service::new(self.video_source(), display_idx)));
+                lock.add_service(Box::new(video_service::new(
+                    self.video_source(),
+                    display_idx,
+                )));
             }
         }
         // For versions greater than 1.2.4, a `CaptureDisplays` message will be sent immediately.
@@ -3007,6 +3032,16 @@ impl Connection {
                 self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
             }
             self.send(msg).await;
+            self.voice_calling = accepted;
+            if self.is_authed_view_camera_conn() {
+                if let Some(s) = self.server.upgrade() {
+                    s.write().unwrap().subscribe(
+                        super::audio_service::NAME,
+                        self.inner.clone(),
+                        self.audio_enabled() && accepted,
+                    );
+                }
+            }
         } else {
             log::warn!("Possible a voice call attack.");
         }
@@ -3016,6 +3051,14 @@ impl Connection {
         crate::audio_service::set_voice_call_input_device(None, true);
         // Notify the connection manager that the voice call has been closed.
         self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
+        self.voice_calling = false;
+        if self.is_authed_view_camera_conn() {
+            if let Some(s) = self.server.upgrade() {
+                s.write()
+                    .unwrap()
+                    .subscribe(super::audio_service::NAME, self.inner.clone(), false);
+            }
+        }
     }
 
     async fn update_options(&mut self, o: &OptionMessage) {
@@ -3092,11 +3135,21 @@ impl Connection {
             if q != BoolOption::NotSet {
                 self.disable_audio = q == BoolOption::Yes;
                 if let Some(s) = self.server.upgrade() {
-                    s.write().unwrap().subscribe(
-                        super::audio_service::NAME,
-                        self.inner.clone(),
-                        self.audio_enabled(),
-                    );
+                    if self.is_authed_view_camera_conn() {
+                        if self.voice_calling || !self.audio_enabled() {
+                            s.write().unwrap().subscribe(
+                                super::audio_service::NAME,
+                                self.inner.clone(),
+                                self.audio_enabled(),
+                            );
+                        }
+                    } else {
+                        s.write().unwrap().subscribe(
+                            super::audio_service::NAME,
+                            self.inner.clone(),
+                            self.audio_enabled(),
+                        );
+                    }
                 }
             }
         }
@@ -3536,6 +3589,13 @@ impl Connection {
     fn is_authed_remote_conn(&self) -> bool {
         if let Some(id) = self.authed_conn_id.as_ref() {
             return id.conn_type() == AuthConnType::Remote;
+        }
+        false
+    }
+
+    fn is_authed_view_camera_conn(&self) -> bool {
+        if let Some(id) = self.authed_conn_id.as_ref() {
+            return id.conn_type() == AuthConnType::ViewCamera;
         }
         false
     }
