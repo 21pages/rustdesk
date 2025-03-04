@@ -18,7 +18,6 @@ use crate::AdapterDevice;
 use crate::common::{bail, ResultType};
 use crate::{Frame, PixelBuffer, Pixfmt, TraitCapturer};
 
-
 pub const PRIMARY_CAMERA_IDX: usize = 0;
 lazy_static::lazy_static! {
     static ref SYNC_CAMERA_DISPLAYS: Arc<Mutex<Vec<DisplayInfo>>> = Arc::new(Mutex::new(Vec::new()));
@@ -133,7 +132,7 @@ impl Cameras {
         let camera = Self::create_camera(&index)?;
         let resolution = camera.resolution();
         Ok(Resolution {
-            width: resolution.width() as i32, 
+            width: resolution.width() as i32,
             height: resolution.height() as i32,
             ..Default::default()
         })
@@ -151,6 +150,7 @@ impl Cameras {
 pub struct CameraCapturer {
     camera: Camera,
     data: Vec<u8>,
+    last_data: Vec<u8>, // for faster compare and copy
 }
 
 impl CameraCapturer {
@@ -160,6 +160,7 @@ impl CameraCapturer {
         Ok(CameraCapturer {
             camera,
             data: Vec::new(),
+            last_data: Vec::new(),
         })
     }
 }
@@ -178,8 +179,9 @@ impl TraitCapturer for CameraCapturer {
         match self.camera.frame() {
             Ok(buffer) => {
                 match buffer.decode_image::<RgbAFormat>() {
-                    Ok(mut decoded) => {
+                    Ok(decoded) => {
                         self.data = decoded.as_raw().to_vec();
+                        crate::would_block_if_equal(&mut self.last_data, &self.data)?;
                         // FIXME: macos's PixelBuffer cannot be directly created from bytes slice.
                         cfg_if::cfg_if! {
                             if #[cfg(any(target_os = "linux", target_os = "windows"))] {
@@ -227,5 +229,4 @@ impl TraitCapturer for CameraCapturer {
 
     #[cfg(feature = "vram")]
     fn set_output_texture(&mut self, _texture: bool) {}
-
 }
