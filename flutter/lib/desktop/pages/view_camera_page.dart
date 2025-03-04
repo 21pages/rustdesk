@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hbb/common/widgets/remote_input.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -75,6 +76,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   Timer? _timer;
   String keyboardMode = "legacy";
   bool _isWindowBlur = false;
+  final _cursorOverImage = false.obs;
 
   var _blockableOverlayState = BlockableOverlayState();
 
@@ -285,8 +287,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       return Stack(
         children: [
           Container(
-              color: kColorCanvas,
-              child: getBodyForDesktop(context),
+            color: kColorCanvas,
+            child: getBodyForDesktop(context),
           ),
           Stack(
             children: [
@@ -340,7 +342,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
               ],
             );
           }
-          if (_ffi.ffiModel.pi.platform != kPeerPlatformLinux && _ffi.ffiModel.pi.platform != kPeerPlatformWindows) {
+          if (_ffi.ffiModel.pi.platform != kPeerPlatformLinux &&
+              _ffi.ffiModel.pi.platform != kPeerPlatformWindows) {
             submit() async {
               closeConnection();
             }
@@ -401,7 +404,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   }
 
   void enterView(PointerEnterEvent evt) {
-    // _cursorOverImage.value = true;
+    _cursorOverImage.value = true;
     _firstEnterImage.value = true;
     if (_onEnterOrLeaveImage4Toolbar != null) {
       try {
@@ -424,7 +427,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       _ffi.inputModel.tryMoveEdgeOnExit(evt.position);
     }
 
-    // _cursorOverImage.value = false;
+    _cursorOverImage.value = false;
     _firstEnterImage.value = false;
     if (_onEnterOrLeaveImage4Toolbar != null) {
       try {
@@ -439,6 +442,45 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     }
   }
 
+  Widget _buildRawTouchAndPointerRegion(
+    Widget child,
+    PointerEnterEventListener? onEnter,
+    PointerExitEventListener? onExit,
+  ) {
+    return RawTouchGestureDetectorRegion(
+      child: _buildRawPointerMouseRegion(child, onEnter, onExit),
+      ffi: _ffi,
+    );
+  }
+
+  Widget _buildRawPointerMouseRegion(
+    Widget child,
+    PointerEnterEventListener? onEnter,
+    PointerExitEventListener? onExit,
+  ) {
+    return CameraRawPointerMouseRegion(
+      onEnter: onEnter,
+      onExit: onExit,
+      onPointerDown: (event) {
+        // A double check for blur status.
+        // Note: If there's an `onPointerDown` event is triggered, `_isWindowBlur` is expected being false.
+        // Sometimes the system does not send the necessary focus event to flutter. We should manually
+        // handle this inconsistent status by setting `_isWindowBlur` to false. So we can
+        // ensure the grab-key thread is running when our users are clicking the remote canvas.
+        if (_isWindowBlur) {
+          debugPrint(
+              "Unexpected status: onPointerDown is triggered while the remote window is in blur status");
+          _isWindowBlur = false;
+        }
+        if (!_rawKeyFocusNode.hasFocus) {
+          _rawKeyFocusNode.requestFocus();
+        }
+      },
+      inputModel: _ffi.inputModel,
+      child: child,
+    );
+  }
+
   Widget getBodyForDesktop(BuildContext context) {
     var paints = <Widget>[
       MouseRegion(onEnter: (evt) {
@@ -449,22 +491,20 @@ class _ViewCameraPageState extends State<ViewCameraPage>
         final c = Provider.of<CanvasModel>(context, listen: false);
         Future.delayed(Duration.zero, () => c.updateViewStyle());
         final peerDisplay = CurrentDisplayState.find(widget.id);
-
         return Obx(
-          () {
-            if (_ffi.ffiModel.pi.isSet.isFalse) {
-              return Container(color: Colors.transparent);
-            } else {
-              // Call the methods that were inside the second Obx
-              widget.toolbarState.initShow(sessionId);
-              _ffi.textureModel.updateCurrentDisplay(peerDisplay.value);
-              
-              return ImagePaint(
-                id: widget.id,
-                ffi: _ffi,
-              );
-            }
-          },
+          () => _ffi.ffiModel.pi.isSet.isFalse
+              ? Container(color: Colors.transparent)
+              : Obx(() {
+                  widget.toolbarState.initShow(sessionId);
+                  _ffi.textureModel.updateCurrentDisplay(peerDisplay.value);
+                  return ImagePaint(
+                    id: widget.id,
+                    cursorOverImage: _cursorOverImage,
+                    listenerBuilder: (child) => _buildRawTouchAndPointerRegion(
+                        child, enterView, leaveView),
+                    ffi: _ffi,
+                  );
+                }),
         );
       }))
     ];
@@ -473,7 +513,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       Positioned(
         top: 10,
         right: 10,
-        child: QualityMonitor(_ffi.qualityMonitorModel),
+        child: _buildRawTouchAndPointerRegion(
+            QualityMonitor(_ffi.qualityMonitorModel), null, null),
       ),
     );
     return Stack(
@@ -488,12 +529,14 @@ class _ViewCameraPageState extends State<ViewCameraPage>
 class ImagePaint extends StatefulWidget {
   final FFI ffi;
   final String id;
+  final RxBool cursorOverImage;
   final Widget Function(Widget)? listenerBuilder;
 
   ImagePaint(
       {Key? key,
       required this.ffi,
       required this.id,
+      required this.cursorOverImage,
       this.listenerBuilder})
       : super(key: key);
 
@@ -505,6 +548,7 @@ class _ImagePaintState extends State<ImagePaint> {
   bool _lastRemoteCursorMoved = false;
 
   String get id => widget.id;
+  RxBool get cursorOverImage => widget.cursorOverImage;
   Widget Function(Widget)? get listenerBuilder => widget.listenerBuilder;
 
   @override
@@ -513,13 +557,8 @@ class _ImagePaintState extends State<ImagePaint> {
     var c = Provider.of<CanvasModel>(context);
     final s = c.scale;
 
-    bool isViewAdaptive() => c.viewStyle.style == kRemoteViewStyleAdaptive;
     bool isViewOriginal() => c.viewStyle.style == kRemoteViewStyleOriginal;
 
-    mouseRegion({child}) => MouseRegion(
-                              cursor: MouseCursor.defer,
-                              onHover: (evt) {},
-                              child: child);
     if (c.imageOverflow.isTrue && c.scrollStyle == ScrollStyle.scrollbar) {
       final paintWidth = c.getDisplayWidth() * s;
       final paintHeight = c.getDisplayHeight() * s;
@@ -530,20 +569,20 @@ class _ImagePaintState extends State<ImagePaint> {
                   c, s, Offset.zero, paintSize, isViewOriginal())
               : _buildScrollbarNonTextureRender(m, paintSize, s);
       return NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            c.updateScrollPercent();
-            return false;
-          },
-          child: mouseRegion(
-            child: Obx(() => _buildCrossScrollbarFromLayout(
-                  context,
-                  _buildListener(paintWidget),
-                  c.size,
-                  paintSize,
-                  c.scrollHorizontal,
-                  c.scrollVertical,
-                )),
-          ));
+        onNotification: (notification) {
+          c.updateScrollPercent();
+          return false;
+        },
+        child: Container(
+            child: _buildCrossScrollbarFromLayout(
+          context,
+          _buildListener(paintWidget),
+          c.size,
+          paintSize,
+          c.scrollHorizontal,
+          c.scrollVertical,
+        )),
+      );
     } else {
       if (c.size.width > 0 && c.size.height > 0) {
         final paintWidget =
@@ -558,7 +597,7 @@ class _ImagePaintState extends State<ImagePaint> {
                     c.size,
                     isViewOriginal())
                 : _buildScrollAutoNonTextureRender(m, c, s);
-        return mouseRegion(child: _buildListener(paintWidget));
+        return Container(child: _buildListener(paintWidget));
       } else {
         return Container();
       }
@@ -643,7 +682,9 @@ class _ImagePaintState extends State<ImagePaint> {
         child: SingleChildScrollView(
           controller: horizontal,
           scrollDirection: Axis.horizontal,
-          physics: null,
+          physics: cursorOverImage.isTrue
+              ? const NeverScrollableScrollPhysics()
+              : null,
           child: widget,
         ),
       );
@@ -662,7 +703,9 @@ class _ImagePaintState extends State<ImagePaint> {
         behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
         child: SingleChildScrollView(
           controller: vertical,
-          physics: null,
+          physics: cursorOverImage.isTrue
+              ? const NeverScrollableScrollPhysics()
+              : null,
           child: widget,
         ),
       );
