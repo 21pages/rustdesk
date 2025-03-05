@@ -12,7 +12,10 @@ use hbb_common::{
     anyhow::{anyhow, Context},
     bail, base64,
     bytes::Bytes,
-    config::{self, Config, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT},
+    config::{
+        self, keys::OPTION_ALLOW_HTTPS_21114, Config, CONNECT_TIMEOUT, READ_TIMEOUT,
+        RENDEZVOUS_PORT,
+    },
     futures::future::join_all,
     futures_util::future::poll_fn,
     get_version_number, log,
@@ -901,8 +904,10 @@ pub fn get_custom_rendezvous_server(custom: String) -> String {
 #[inline]
 pub fn get_api_server(api: String, custom: String) -> String {
     let res = get_api_server_(api, custom);
-    if res.starts_with("https") && res.ends_with(":21114") {
-        return res.replace(":21114", "");
+    if crate::get_builtin_option(OPTION_ALLOW_HTTPS_21114) != "Y" {
+        if res.starts_with("https") && res.ends_with(":21114") {
+            return res.replace(":21114", "");
+        }
     }
     res
 }
