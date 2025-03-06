@@ -369,6 +369,7 @@ class InputModel {
   String? get peerPlatform => parent.target?.ffiModel.pi.platform;
   bool get isViewOnly => parent.target!.ffiModel.viewOnly;
   double get devicePixelRatio => parent.target!.canvasModel.devicePixelRatio;
+  bool get isViewCamera => parent.target!.connType == ConnType.viewCamera;
 
   InputModel(this.parent) {
     sessionId = parent.target!.sessionId;
@@ -724,6 +725,7 @@ class InputModel {
   /// [press] indicates a click event(down and up).
   void inputKey(String name, {bool? down, bool? press}) {
     if (!keyboardPerm) return;
+    if (isViewCamera) return;
     bind.sessionInputKey(
         sessionId: sessionId,
         name: name,
@@ -808,6 +810,7 @@ class InputModel {
   /// Send mouse press event.
   Future<void> sendMouse(String type, MouseButtons button) async {
     if (!keyboardPerm) return;
+    if (isViewCamera) return;
     await bind.sessionSendMouse(
         sessionId: sessionId,
         msg: json.encode(modify({'type': type, 'buttons': button.value})));
@@ -834,6 +837,7 @@ class InputModel {
   /// Send mouse movement event with distance in [x] and [y].
   Future<void> moveMouse(double x, double y) async {
     if (!keyboardPerm) return;
+    if (isViewCamera) return;
     var x2 = x.toInt();
     var y2 = y.toInt();
     await bind.sessionSendMouse(
