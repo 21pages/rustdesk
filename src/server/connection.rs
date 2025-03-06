@@ -1463,6 +1463,8 @@ impl Connection {
             if !wait_session_id_confirm {
                 self.try_sub_camera_displays();
             }
+            self.keyboard = false;
+            self.send_permission(Permission::Keyboard, false).await;
         } else if sub_service {
             if !wait_session_id_confirm {
                 self.try_sub_services();

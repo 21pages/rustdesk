@@ -450,6 +450,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     return RawTouchGestureDetectorRegion(
       child: _buildRawPointerMouseRegion(child, onEnter, onExit),
       ffi: _ffi,
+      isCamera: true,
     );
   }
 

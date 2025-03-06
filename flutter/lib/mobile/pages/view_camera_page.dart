@@ -263,6 +263,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                               : RawTouchGestureDetectorRegion(
                                   child: getBodyForMobile(),
                                   ffi: gFFI,
+                                  isCamera: true,
                                 ),
                         );
                       }),
@@ -276,9 +277,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   }
 
   Widget getRawPointerAndKeyBody(Widget child) {
-    final ffiModel = Provider.of<FfiModel>(context);
-    return RawPointerMouseRegion(
-      cursor: ffiModel.keyboard ? SystemMouseCursors.none : MouseCursor.defer,
+    return CameraRawPointerMouseRegion(
       inputModel: inputModel,
       // Disable RawKeyFocusScope before the connecting is established.
       // The "Delete" key on the soft keyboard may be grabbed when inputting the password dialog.

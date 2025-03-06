@@ -54,13 +54,14 @@ class RawKeyFocusScope extends StatelessWidget {
 class RawTouchGestureDetectorRegion extends StatefulWidget {
   final Widget child;
   final FFI ffi;
-
+  final bool isCamera;
   late final InputModel inputModel = ffi.inputModel;
   late final FfiModel ffiModel = ffi.ffiModel;
 
   RawTouchGestureDetectorRegion({
     required this.child,
     required this.ffi,
+    this.isCamera = false,
   });
 
   @override
@@ -383,6 +384,7 @@ class _RawTouchGestureDetectorRegionState
       _scale = d.scale;
 
       if (scale != 0) {
+        if (widget.isCamera) return;
         await bind.sessionSendPointer(
             sessionId: sessionId,
             msg: json.encode(
@@ -403,6 +405,7 @@ class _RawTouchGestureDetectorRegionState
       return;
     }
     if ((isDesktop || isWebDesktop)) {
+      if (widget.isCamera) return;
       await bind.sessionSendPointer(
           sessionId: sessionId,
           msg: json.encode(
