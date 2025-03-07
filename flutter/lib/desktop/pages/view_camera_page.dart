@@ -328,19 +328,9 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       backgroundColor: Theme.of(context).colorScheme.background,
       body: Obx(() {
         if (_ffi.ffiModel.pi.isSet.isTrue) {
-          final version = _ffi.ffiModel.pi.version;
-          if (versionCmp(version, '1.3.9') < 0) {
-            submit() async {
-              closeConnection();
-            }
-
-            return CustomAlertDialog(
-              content: msgboxContent('error', translate('Download new version'),
-                  translate('upgrade_remote_rustdesk_client_to_{1.3.9}_tip')),
-              actions: [
-                dialogButton('OK', onPressed: submit),
-              ],
-            );
+          final pi = _ffi.ffiModel.pi;
+          if (!pi.isSupportViewCamera) {
+            return unsupportViewCameraWidget(pi);
           }
         }
 

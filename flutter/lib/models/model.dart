@@ -3019,6 +3019,9 @@ class PeerInfo with ChangeNotifier {
   bool get isAmyuniIdd =>
       platformAdditions[kPlatformAdditionsIddImpl] == 'amyuni_idd';
 
+  bool get isSupportViewCamera =>
+      platformAdditions[kPlatformAdditionsSupportViewCamera] == true;
+
   Display? tryGetDisplay({int? display}) {
     if (displays.isEmpty) {
       return null;

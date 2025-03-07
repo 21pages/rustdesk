@@ -239,5 +239,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("new-version-of-{}-tip", "There is a new version of {} available"),
         ("View camera", "View camera"),
         ("upgrade_remote_rustdesk_client_to_{}_tip", "Please upgrade the RustDesk client to version {} or newer on the remote side!"),
+        ("unsupported_remote_platform_or_version_tip", "The remote platform does not support this feature or the remote client needs to be updated."),
     ].iter().cloned().collect();
 }

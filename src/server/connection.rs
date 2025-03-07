@@ -1298,6 +1298,11 @@ impl Connection {
             platform_additions.insert("has_file_clipboard".into(), json!(has_file_clipboard));
         }
 
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        {
+            platform_additions.insert("support-view-camera".into(), json!(true));
+        }
+
         #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
         if !platform_additions.is_empty() {
             pi.platform_additions = serde_json::to_string(&platform_additions).unwrap_or("".into());

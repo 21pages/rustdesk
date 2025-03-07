@@ -3786,3 +3786,33 @@ void updateTextAndPreserveSelection(
         baseOffset: 0, extentOffset: controller.value.text.length);
   }
 }
+
+Widget unsupportViewCameraWidget(PeerInfo pi) {
+  if ((pi.platform == kPeerPlatformWindows ||
+          pi.platform == kPeerPlatformLinux) &&
+      versionCmp(pi.version, '1.3.9') < 0) {
+    submit() async {
+      closeConnection();
+    }
+
+    return CustomAlertDialog(
+      content: msgboxContent('error', translate('Download new version'),
+          translate('upgrade_remote_rustdesk_client_to_{1.3.9}_tip')),
+      actions: [
+        dialogButton('OK', onPressed: submit),
+      ],
+    );
+  } else {
+    submit() async {
+      closeConnection();
+    }
+
+    return CustomAlertDialog(
+      content: msgboxContent('error', translate('Unsupported'),
+          translate('unsupported_remote_platform_or_version_tip')),
+      actions: [
+        dialogButton('OK', onPressed: submit),
+      ],
+    );
+  }
+}
