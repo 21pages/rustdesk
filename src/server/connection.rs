@@ -191,7 +191,6 @@ pub struct Connection {
     clipboard: bool,
     audio: bool,
     file: bool,
-    camera: bool,
     restart: bool,
     recording: bool,
     block_input: bool,
@@ -346,7 +345,6 @@ impl Connection {
             audio: Connection::permission("enable-audio"),
             // to-do: make sure is the option correct here
             file: Connection::permission(keys::OPTION_ENABLE_FILE_TRANSFER),
-            camera: Connection::permission("enable-camera"),
             restart: Connection::permission("enable-remote-restart"),
             recording: Connection::permission("enable-record-session"),
             block_input: Connection::permission("enable-block-input"),
@@ -414,9 +412,6 @@ impl Connection {
         #[cfg(not(target_os = "android"))]
         if !conn.keyboard {
             conn.send_permission(Permission::Keyboard, false).await;
-        }
-        if !conn.camera {
-            conn.send_permission(Permission::Camera, false).await;
         }
         if !conn.clipboard {
             conn.send_permission(Permission::Clipboard, false).await;
@@ -1300,7 +1295,7 @@ impl Connection {
 
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
-            platform_additions.insert("support-view-camera".into(), json!(true));
+            platform_additions.insert("support_view_camera".into(), json!(true));
         }
 
         #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
@@ -1472,7 +1467,7 @@ impl Connection {
             self.send_permission(Permission::Keyboard, false).await;
         } else if sub_service {
             if !wait_session_id_confirm {
-                self.try_sub_services();
+                self.try_sub_monitor_services();
             }
         }
     }
@@ -1482,11 +1477,11 @@ impl Connection {
             let mut s = s.write().unwrap();
 
             s.try_add_primary_camera_service();
-            s.add_camera_connection(self.inner.clone(), self.camera_enabled());
+            s.add_camera_connection(self.inner.clone());
         }
     }
 
-    fn try_sub_services(&mut self) {
+    fn try_sub_monitor_services(&mut self) {
         let is_remote =
             self.file_transfer.is_none() && self.port_forward_socket.is_none() && !self.view_camera;
         if is_remote && !self.services_subed {
@@ -1587,10 +1582,6 @@ impl Connection {
 
     fn audio_enabled(&self) -> bool {
         self.audio && !self.disable_audio
-    }
-
-    fn camera_enabled(&self) -> bool {
-        self.camera
     }
 
     #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
@@ -2701,7 +2692,7 @@ impl Connection {
                             } else if self.view_camera {
                                 self.try_sub_camera_displays();
                             } else {
-                                self.try_sub_services();
+                                self.try_sub_monitor_services();
                             }
                         }
                     }

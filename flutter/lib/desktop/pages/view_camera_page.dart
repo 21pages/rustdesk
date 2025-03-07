@@ -327,13 +327,6 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       body: Obx(() {
-        if (_ffi.ffiModel.pi.isSet.isTrue) {
-          final pi = _ffi.ffiModel.pi;
-          if (!pi.isSupportViewCamera) {
-            return unsupportViewCameraWidget(pi);
-          }
-        }
-
         final imageReady = _ffi.ffiModel.pi.isSet.isTrue &&
             _ffi.ffiModel.waitForFirstImage.isFalse;
         if (imageReady) {

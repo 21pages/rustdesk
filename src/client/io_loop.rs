@@ -83,6 +83,7 @@ struct ParsedPeerInfo {
     platform: String,
     is_installed: bool,
     idd_impl: String,
+    support_view_camera: bool,
 }
 
 impl ParsedPeerInfo {
@@ -129,7 +130,10 @@ impl<T: InvokeUiSession> Remote<T> {
         #[cfg(target_os = "windows")]
         let _file_clip_context_holder = {
             // `is_port_forward()` will not reach here, but we still check it for clarity.
-            if !self.handler.is_file_transfer() && !self.handler.is_port_forward() && !self.handler.is_view_camera() {
+            if !self.handler.is_file_transfer()
+                && !self.handler.is_port_forward()
+                && !self.handler.is_view_camera()
+            {
                 // It is ok to call this function multiple times.
                 ContextSend::enable(true);
                 Some(crate::SimpleCallOnReturn {
@@ -1179,6 +1183,25 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
+    fn check_view_camera_support(&self, peer_version: &str, peer_platform: &str) -> bool {
+        if self.peer_info.support_view_camera {
+            return true;
+        }
+        if hbb_common::get_version_number(&peer_version) < hbb_common::get_version_number("1.3.9")
+            && (peer_platform == "Windows" || peer_platform == "Linux")
+        {
+            self.handler.msgbox(
+                "error",
+                "Download new version",
+                "upgrade_remote_rustdesk_client_to_{1.3.9}_tip",
+                "",
+            );
+        } else {
+            self.handler.on_error("view_camera_unsupported_tip");
+        }
+        return false;
+    }
+
     async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
         if let Ok(msg_in) = Message::parse_from_bytes(&data) {
             match msg_in.union {
@@ -1233,12 +1256,19 @@ impl<T: InvokeUiSession> Remote<T> {
                         let peer_version = pi.version.clone();
                         let peer_platform = pi.platform.clone();
                         self.set_peer_info(&pi);
+                        if self.handler.is_view_camera() {
+                            if !self.check_view_camera_support(&peer_version, &peer_platform) {
+                                self.handler.lc.write().unwrap().handle_peer_info(&pi);
+                                return false;
+                            }
+                        }
                         self.handler.handle_peer_info(pi);
                         #[cfg(all(target_os = "windows", not(feature = "flutter")))]
                         self.check_clipboard_file_context();
                         if !(self.handler.is_file_transfer()
                             || self.handler.is_port_forward()
-                            || self.handler.is_view_camera()) {
+                            || self.handler.is_view_camera())
+                        {
                             #[cfg(feature = "flutter")]
                             #[cfg(not(target_os = "ios"))]
                             let rx = Client::try_start_clipboard(None);
@@ -1781,6 +1811,11 @@ impl<T: InvokeUiSession> Remote<T> {
                 .flatten()
                 .unwrap_or_default()
                 .to_string();
+            self.peer_info.support_view_camera = platform_additions
+                .get("support_view_camera")
+                .map(|v| v.as_bool())
+                .flatten()
+                .unwrap_or(false);
         }
     }
 

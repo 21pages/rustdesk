@@ -20,7 +20,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:bot_toast/bot_toast.dart';
 
-import '../../common/widgets/dialog.dart';
 import '../../models/platform_model.dart';
 
 class _MenuTheme {
@@ -244,8 +243,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         .firstWhere((tab) => tab.key == key)
         .page as ViewCameraPage;
     final ffi = viewCameraPage.ffi;
-    final pi = ffi.ffiModel.pi;
-    final perms = ffi.ffiModel.permissions;
     final sessionId = ffi.sessionId;
     final toolbarState = viewCameraPage.toolbarState;
     menu.addAll([

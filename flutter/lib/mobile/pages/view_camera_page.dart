@@ -256,12 +256,6 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                             gFFI.canvasModel.updateViewStyle();
                           });
                         }
-                        if (gFFI.ffiModel.pi.isSet.isTrue) {
-                          final pi = gFFI.ffiModel.pi;
-                          if (!pi.isSupportViewCamera) {
-                            return unsupportViewCameraWidget(pi);
-                          }
-                        }
                         return Container(
                           color: MyTheme.canvasColor,
                           child: inputModel.isPhysicalMouse.value

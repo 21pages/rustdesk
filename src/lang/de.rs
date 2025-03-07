@@ -659,6 +659,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Accessible devices", "Erreichbare Geräte"),
         ("View camera", "Kamera anzeigen"),
         ("upgrade_remote_rustdesk_client_to_{}_tip", "Bitte aktualisieren Sie den RustDesk-Client auf der Remote-Seite auf Version {} oder neuer!"),
-        ("unsupported_remote_platform_or_version_tip", ""),
+        ("view_camera_unsupported_tip", ""),
+        ("Enable camera", ""),
     ].iter().cloned().collect();
 }

@@ -311,8 +311,8 @@ impl Server {
         }
     }
 
-    pub fn add_camera_connection(&mut self, conn: ConnInner, camera_enabled: bool) {
-        if camera_enabled && camera::primary_camera_exists() {
+    pub fn add_camera_connection(&mut self, conn: ConnInner) {
+        if camera::primary_camera_exists() {
             let primary_camera_name =
                 video_service::get_service_name(VideoSource::Camera, camera::PRIMARY_CAMERA_IDX);
             if let Some(s) = self.services.get(&primary_camera_name) {

@@ -27,7 +27,7 @@ const String kPlatformAdditionsAmyuniVirtualDisplays =
 const String kPlatformAdditionsHasFileClipboard = "has_file_clipboard";
 const String kPlatformAdditionsSupportedPrivacyModeImpl =
     "supported_privacy_mode_impl";
-const String kPlatformAdditionsSupportViewCamera = "support-view-camera";
+const String kPlatformAdditionsSupportViewCamera = "support_view_camera";
 
 const String kPeerPlatformWindows = "Windows";
 const String kPeerPlatformLinux = "Linux";
