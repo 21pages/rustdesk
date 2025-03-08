@@ -308,13 +308,17 @@ impl Default for VideoRenderer {
         #[cfg(feature = "vram")]
         let on_texture_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
             Ok(lib) => {
+                log::info!("============== load texture gpu renderer plugin success");
                 let find_sym_res = unsafe {
                     lib.symbol::<FlutterGpuTextureRendererPluginCApiSetTexture>(
                         "FlutterGpuTextureRendererPluginCApiSetTexture",
                     )
                 };
                 match find_sym_res {
-                    Ok(sym) => Some(sym),
+                    Ok(sym) => {
+                        log::info!("============== find symbol FlutterGpuTextureRendererPluginCApiSetTexture success");
+                        Some(sym)
+                    }
                     Err(e) => {
                         log::error!("Failed to find symbol FlutterGpuTextureRendererPluginCApiSetTexture, {e}");
                         None
@@ -326,6 +330,7 @@ impl Default for VideoRenderer {
                 None
             }
         };
+        log::info!("============== on_texture_func: {:?}", on_texture_func);
 
         Self {
             map_display_sessions: Default::default(),
@@ -428,6 +433,7 @@ impl VideoRenderer {
                 info.notify_render_type = None;
             } else {
                 if ptr != usize::default() {
+                    log::info!("============== insert gpu output ptr: {}", ptr);
                     sessions_lock.insert(
                         display,
                         DisplaySessionInfo {
@@ -500,12 +506,15 @@ impl VideoRenderer {
             write_lock.get_mut(&display)
         };
         let Some(info) = opt_info else {
+            log::error!("============== no info");
             return false;
         };
         if info.gpu_output_ptr == usize::default() {
+            log::error!("============== gpu_output_ptr is default");
             return false;
         }
         if let Some(func) = &self.on_texture_func {
+            log::info!("============== on_texture_func: {:?}", func);
             unsafe { func(info.gpu_output_ptr as _, texture) };
         }
         if info.notify_render_type != Some(RenderType::Texture) {
