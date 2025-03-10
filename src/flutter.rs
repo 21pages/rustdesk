@@ -2113,6 +2113,16 @@ pub mod sessions {
                 .write()
                 .unwrap()
                 .insert(session_id, h);
+            // If the session is a single display session, it may be a software rgba rendered display.
+            // If this is the second time the display is opened, the old valid flag may be true.
+            if displays.len() == 1 {
+                s.ui_handler
+                    .display_rgbas
+                    .write()
+                    .unwrap()
+                    .get_mut(&(displays[0] as usize))
+                    .map(|rgba_data| rgba_data.valid = false);
+            }
             true
         } else {
             false
