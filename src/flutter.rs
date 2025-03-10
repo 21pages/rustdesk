@@ -1073,6 +1073,43 @@ impl FlutterHandler {
                 }
             }
         }
+
+        let mut active_streams = Vec::new();
+        let is_multi_sessions = self.is_multi_ui_session();
+
+        let handler_lock = self.session_handlers.read().unwrap();
+        for h in handler_lock.values() {
+            // The soft renderer does not support multi-displays session for now.
+            if h.displays.len() > 1 {
+                continue;
+            }
+            // If there're multiple ui sessions, we only notify the ui session that has the display.
+            if is_multi_sessions {
+                if !h.displays.contains(&display) {
+                    continue;
+                }
+            }
+            if let Some(stream) = &h.event_stream {
+                active_streams.push(stream);
+            }
+        }
+
+        let is_sent = !active_streams.is_empty();
+
+        // We need `is_sent` here. Because we use texture render for multi-displays session.
+        //
+        // Eg. We have two windows, one is display 1, the other is displays 0&1.
+        // When image of display 0 is received, we will not send the event.
+        //
+        // 1. "display 1" will not send the event.
+        // 2. "displays 0&1" will not send the event. Because it uses texutre render for now.
+        if !is_sent {
+            if let Some(rgba_data) = self.display_rgbas.write().unwrap().get_mut(&display) {
+                rgba_data.valid = false;
+            }
+            return;
+        }
+
         // If the current rgba is not fetched by flutter, i.e., is valid.
         // We give up sending a new event to flutter.
         let mut rgba_write_lock = self.display_rgbas.write().unwrap();
@@ -1092,35 +1129,8 @@ impl FlutterHandler {
         }
         drop(rgba_write_lock);
 
-        let mut is_sent = false;
-        let is_multi_sessions = self.is_multi_ui_session();
-        for h in self.session_handlers.read().unwrap().values() {
-            // The soft renderer does not support multi-displays session for now.
-            if h.displays.len() > 1 {
-                continue;
-            }
-            // If there're multiple ui sessions, we only notify the ui session that has the display.
-            if is_multi_sessions {
-                if !h.displays.contains(&display) {
-                    continue;
-                }
-            }
-            if let Some(stream) = &h.event_stream {
-                stream.add(EventToUI::Rgba(display));
-                is_sent = true;
-            }
-        }
-        // We need `is_sent` here. Because we use texture render for multi-displays session.
-        //
-        // Eg. We have two windows, one is display 1, the other is displays 0&1.
-        // When image of display 0 is received, we will not send the event.
-        //
-        // 1. "display 1" will not send the event.
-        // 2. "displays 0&1" will not send the event. Because it uses texutre render for now.
-        if !is_sent {
-            if let Some(rgba_data) = self.display_rgbas.write().unwrap().get_mut(&display) {
-                rgba_data.valid = false;
-            }
+        for stream in active_streams {
+            stream.add(EventToUI::Rgba(display));
         }
     }
 
