@@ -124,7 +124,8 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     _hideNetwork =
         bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) == 'Y';
     _hideWebSocket =
-        bind.mainGetBuildinOption(key: kOptionHideWebSocketSetting) == 'Y' || isWeb;
+        bind.mainGetBuildinOption(key: kOptionHideWebSocketSetting) == 'Y' ||
+            isWeb;
     _enableTrustedDevices = mainGetBoolOptionSync(kOptionEnableTrustedDevices);
   }
 
@@ -638,25 +639,8 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     final settings = SettingsList(
       sections: [
         customClientSection,
-        if (!bind.isDisableAccount())
-          SettingsSection(
-            title: Text(translate('Account')),
-            tiles: [
-              SettingsTile(
-                title: Obx(() => Text(gFFI.userModel.userName.value.isEmpty
-                    ? translate('Login')
-                    : '${translate('Logout')} (${gFFI.userModel.userName.value})')),
-                leading: Icon(Icons.person),
-                onPressed: (context) {
-                  if (gFFI.userModel.userName.value.isEmpty) {
-                    loginDialog();
-                  } else {
-                    logOutConfirmDialog();
-                  }
-                },
-              ),
-            ],
-          ),
+        if (!bind.isDisableAccount()) _AccountSection(),
+        if (isAndroid && bind.isHost()) _HostDeploySection(),
         SettingsSection(title: Text(translate("Settings")), tiles: [
           if (!disabledSettings && !_hideNetwork && !_hideServer)
             SettingsTile(
@@ -1206,4 +1190,105 @@ SettingsTile _getPopupDialogRadioEntry({
       child: Obx(() => Text(translate(valueText.value))),
     ),
   );
+}
+
+class _HostDeploySection extends AbstractSettingsSection {
+  @override
+  Widget build(BuildContext context) {
+    final model = gFFI.deployModel;
+    return Obx(() {
+      final tiles = <AbstractSettingsTile>[];
+
+      // Only show status tile when not deployed or no team
+      if (!model.isDeployed.value || model.team.value.isEmpty) {
+        tiles.add(SettingsTile(
+          title: model.checking.value
+              ? Text('${translate('Checking')}...')
+              : model.error.value.isNotEmpty
+                  ? Text(translate('Error'))
+                  : Text(translate('Deploy now')),
+          leading: model.checking.value
+              ? Icon(Icons.hourglass_empty, color: Colors.blue)
+              : model.error.value.isNotEmpty
+                  ? Icon(Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error)
+                  : Icon(Icons.rocket_launch, color: MyTheme.accent),
+          description:
+              model.error.value.isNotEmpty ? Text(model.error.value) : null,
+          onPressed: model.checking.value || model.error.value.isNotEmpty
+              ? null
+              : (context) {
+                  model.showDeployPage.value = true;
+                },
+        ));
+      }
+
+      if (model.isDeployed.value) {
+        if (model.team.value.isNotEmpty) {
+          tiles.add(SettingsTile(
+            title: Text(translate('Team')),
+            value: Text(model.team.value),
+            leading: Icon(Icons.people_outline, color: Colors.green),
+          ));
+        }
+        if (model.group.value.isNotEmpty) {
+          tiles.add(SettingsTile(
+            title: Text(translate('Group')),
+            value: Text(model.group.value),
+            leading: Icon(Icons.device_hub_outlined, color: Colors.blue),
+          ));
+        }
+        if (model.user.value.isNotEmpty) {
+          tiles.add(SettingsTile(
+            title: Text(translate('Account')),
+            value: Text(model.user.value),
+            leading: Icon(Icons.person_outline, color: Colors.orange),
+          ));
+        }
+      }
+
+      return SettingsSection(
+        title: Text(translate('Deploy')),
+        tiles: tiles,
+      );
+    });
+  }
+}
+
+class _AccountSection extends AbstractSettingsSection {
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() => SettingsSection(
+          title: Text(translate('Account')),
+          tiles: [
+            SettingsTile(
+              title: Text(gFFI.userModel.userName.value.isEmpty
+                  ? translate('Login')
+                  : '${translate('Logout')} (${gFFI.userModel.userName.value})'),
+              leading: Icon(Icons.person),
+              onPressed: (context) {
+                if (gFFI.userModel.userName.value.isEmpty) {
+                  loginDialog();
+                } else {
+                  logOutConfirmDialog();
+                }
+              },
+            ),
+            if (gFFI.userModel.isLogin) ...[
+              if (gFFI.userModel.teamName.value.isNotEmpty)
+                SettingsTile(
+                  title: Text(translate("Team")),
+                  description: Text(gFFI.userModel.teamName.value),
+                  leading: Icon(Icons.people),
+                ),
+              if (gFFI.deployModel.group.isNotEmpty && bind.isFull())
+                SettingsTile(
+                  title: Text(translate("Device Group")),
+                  description: Text(gFFI.deployModel.group.value),
+                  leading: Icon(Icons.device_hub),
+                ),
+            ],
+          ],
+        ));
+  }
 }

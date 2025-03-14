@@ -7,6 +7,7 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
+import 'package:flutter_hbb/common/widgets/deploy_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
 import 'package:flutter_hbb/desktop/pages/install_page.dart';
 import 'package:flutter_hbb/desktop/pages/server_page.dart';
@@ -136,6 +137,7 @@ void runMainApp(bool startService) async {
     bind.pluginSyncUi(syncTo: kAppTypeMain);
     bind.pluginListReload();
   }
+  if (bind.isHost() || bind.isFull()) gFFI.deployModel.checkDeploy();
   await Future.wait([gFFI.abModel.loadCache(), gFFI.groupModel.loadCache()]);
   gFFI.userModel.refreshCurrentUser();
   runApp(App());
@@ -170,6 +172,7 @@ void runMobileApp() async {
   if (isAndroid) androidChannelInit();
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
   draggablePositions.load();
+  if (bind.isHost() || bind.isFull()) gFFI.deployModel.checkDeploy();
   await Future.wait([gFFI.abModel.loadCache(), gFFI.groupModel.loadCache()]);
   gFFI.userModel.refreshCurrentUser();
   runApp(App());
@@ -464,8 +467,8 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     // final analytics = FirebaseAnalytics.instance;
     final botToastBuilder = BotToastInit();
-    return RefreshWrapper(builder: (context) {
-      return MultiProvider(
+    return RefreshWrapper(
+      builder: (context) => MultiProvider(
         providers: [
           // global configuration
           // use session related FFI when in remote control or file transfer page
@@ -499,31 +502,47 @@ class _AppState extends State<App> with WidgetsBindingObserver {
             // FirebaseAnalyticsObserver(analytics: analytics),
             BotToastNavigatorObserver(),
           ],
-          builder: isAndroid
-              ? (context, child) => AccessibilityListener(
-                    child: MediaQuery(
-                      data: MediaQuery.of(context).copyWith(
-                        textScaler: TextScaler.linear(1.0),
-                      ),
-                      child: child ?? Container(),
-                    ),
-                  )
-              : (context, child) {
-                  child = _keepScaleBuilder(context, child);
-                  child = botToastBuilder(context, child);
-                  if ((isDesktop && desktopType == DesktopType.main) ||
-                      isWebDesktop) {
-                    child = keyListenerBuilder(context, child);
-                  }
-                  if (isLinux) {
-                    return buildVirtualWindowFrame(context, child);
-                  } else {
-                    return workaroundWindowBorder(context, child);
-                  }
-                },
+          builder: (context, child) {
+            Widget processedChild;
+
+            if (isAndroid) {
+              processedChild = AccessibilityListener(
+                child: MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    textScaler: TextScaler.linear(1.0),
+                  ),
+                  child: child ?? Container(),
+                ),
+              );
+            } else {
+              processedChild = _keepScaleBuilder(context, child);
+              processedChild = botToastBuilder(context, processedChild);
+              if ((isDesktop && desktopType == DesktopType.main) ||
+                  isWebDesktop) {
+                processedChild = keyListenerBuilder(context, processedChild);
+              }
+              if (isLinux) {
+                processedChild =
+                    buildVirtualWindowFrame(context, processedChild);
+              } else {
+                processedChild =
+                    workaroundWindowBorder(context, processedChild);
+              }
+            }
+
+            // if ((isDesktop && desktopType == DesktopType.main) || !isDesktop) {
+            //   return DeployPage(
+            //       child: processedChild,
+            //       onDeploySuccess: (code) {
+            //         debugPrint('Successfully deployed with code: $code');
+            //       });
+            // }
+
+            return processedChild;
+          },
         ),
-      );
-    });
+      ),
+    );
   }
 }
 

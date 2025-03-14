@@ -318,20 +318,22 @@ class LoginWidgetOP extends StatelessWidget {
 }
 
 class LoginWidgetUserPass extends StatelessWidget {
-  final TextEditingController username;
+  final TextEditingController email;
   final TextEditingController pass;
-  final String? usernameMsg;
+  final String? emailMsg;
   final String? passMsg;
   final bool isInProgress;
   final RxString curOP;
   final Function() onLogin;
   final FocusNode? userFocusNode;
+  final String? loginButtonText;
   const LoginWidgetUserPass({
     Key? key,
     this.userFocusNode,
-    required this.username,
+    this.loginButtonText,
+    required this.email,
     required this.pass,
-    required this.usernameMsg,
+    required this.emailMsg,
     required this.passMsg,
     required this.isInProgress,
     required this.curOP,
@@ -347,11 +349,11 @@ class LoginWidgetUserPass extends StatelessWidget {
           children: [
             const SizedBox(height: 8.0),
             DialogTextField(
-                title: translate(DialogTextField.kUsernameTitle),
-                controller: username,
+                title: translate(DialogTextField.kEmailTitle),
+                controller: email,
                 focusNode: userFocusNode,
-                prefixIcon: DialogTextField.kUsernameIcon,
-                errorText: usernameMsg),
+                prefixIcon: DialogTextField.kEmailIccon,
+                errorText: emailMsg),
             PasswordWidget(
               controller: pass,
               autoFocus: false,
@@ -369,7 +371,7 @@ class LoginWidgetUserPass extends StatelessWidget {
                 width: 200,
                 child: Obx(() => ElevatedButton(
                       child: Text(
-                        translate('Login'),
+                        translate(loginButtonText ?? 'Login'),
                         style: TextStyle(fontSize: 16),
                       ),
                       onPressed:
@@ -390,13 +392,13 @@ const kAuthReqTypeOidc = 'oidc/';
 
 // call this directly
 Future<bool?> loginDialog() async {
-  var username =
-      TextEditingController(text: UserModel.getLocalUserInfo()?['name'] ?? '');
+  var email =
+      TextEditingController(text: UserModel.getLocalUserInfo()?['email'] ?? '');
   var password = TextEditingController();
   final userFocusNode = FocusNode()..requestFocus();
   Timer(Duration(milliseconds: 100), () => userFocusNode..requestFocus());
 
-  String? usernameMsg;
+  String? emailMsg;
   String? passwordMsg;
   var isInProgress = false;
   final RxString curOP = ''.obs;
@@ -407,9 +409,9 @@ Future<bool?> loginDialog() async {
   });
 
   final res = await gFFI.dialogManager.show<bool>((setState, close, context) {
-    username.addListener(() {
-      if (usernameMsg != null) {
-        setState(() => usernameMsg = null);
+    email.addListener(() {
+      if (emailMsg != null) {
+        setState(() => emailMsg = null);
       }
     });
 
@@ -455,7 +457,9 @@ Future<bool?> loginDialog() async {
             if (isMobile) {
               if (close != null) close(null);
               verificationCodeDialog(
-                  resp.user, resp.secret, isEmailVerification);
+                  email.text.trim().isNotEmpty ? email.text.trim() : null,
+                  resp.secret,
+                  isEmailVerification);
             } else {
               setState(() => isInProgress = false);
               // Workaround for web, close the dialog first, then show the verification code dialog.
@@ -463,7 +467,9 @@ Future<bool?> loginDialog() async {
               // Not sure why this happens.
               if (isWeb && close != null) close(null);
               final res = await verificationCodeDialog(
-                  resp.user, resp.secret, isEmailVerification);
+                  email.text.trim().isNotEmpty ? email.text.trim() : null,
+                  resp.secret,
+                  isEmailVerification);
               if (res == true) {
                 if (!isWeb && close != null) close(false);
                 return;
@@ -479,8 +485,8 @@ Future<bool?> loginDialog() async {
 
     onLogin() async {
       // validate
-      if (username.text.isEmpty) {
-        setState(() => usernameMsg = translate('Username missed'));
+      if (email.text.isEmpty) {
+        setState(() => emailMsg = translate('Email missed'));
         return;
       }
       if (password.text.isEmpty) {
@@ -491,7 +497,7 @@ Future<bool?> loginDialog() async {
       setState(() => isInProgress = true);
       try {
         final resp = await gFFI.userModel.login(LoginRequest(
-            username: username.text,
+            email: email.text,
             password: password.text,
             id: await bind.mainGetMyId(),
             uuid: await bind.mainGetUuid(),
@@ -588,9 +594,9 @@ Future<bool?> loginDialog() async {
             height: 8.0,
           ),
           LoginWidgetUserPass(
-            username: username,
+            email: email,
             pass: password,
-            usernameMsg: usernameMsg,
+            emailMsg: emailMsg,
             passMsg: passwordMsg,
             isInProgress: isInProgress,
             curOP: curOP,
@@ -613,7 +619,7 @@ Future<bool?> loginDialog() async {
 }
 
 Future<bool?> verificationCodeDialog(
-    UserPayload? user, String? secret, bool isEmailVerification) async {
+    String? email, String? secret, bool isEmailVerification) async {
   var autoLogin = true;
   var isInProgress = false;
   String? errorText;
@@ -629,7 +635,7 @@ Future<bool?> verificationCodeDialog(
             verificationCode: code.text,
             tfaCode: isEmailVerification ? null : code.text,
             secret: secret,
-            username: user?.name,
+            email: email,
             id: await bind.mainGetMyId(),
             uuid: await bind.mainGetUuid(),
             autoLogin: autoLogin,
@@ -679,12 +685,12 @@ Future<bool?> verificationCodeDialog(
         content: Column(
           children: [
             Offstage(
-                offstage: !isEmailVerification || user?.email == null,
+                offstage: !isEmailVerification || email == null,
                 child: TextField(
                   decoration: InputDecoration(
                       labelText: "Email", prefixIcon: Icon(Icons.email)),
                   readOnly: true,
-                  controller: TextEditingController(text: user?.email),
+                  controller: TextEditingController(text: email),
                 ).workaroundFreezeLinuxMint()),
             isEmailVerification ? const SizedBox(height: 8) : const Offstage(),
             codeField,

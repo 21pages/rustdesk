@@ -2317,7 +2317,8 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
   if (isMobile) {
     if (id != null) {
       final forceRelay = queryParameters["relay"] != null;
-      connect(Get.context!, id, forceRelay: forceRelay, password: queryParameters["password"]);
+      connect(Get.context!, id,
+          forceRelay: forceRelay, password: queryParameters["password"]);
       return null;
     }
   }
@@ -3353,6 +3354,9 @@ Future<bool> setServerConfig(
       oldApiServer != newApiServer &&
       gFFI.userModel.isLogin) {
     gFFI.userModel.logOut(apiServer: oldApiServer);
+  }
+  if (!isWeb) {
+    gFFI.deployModel.checkDeploy();
   }
   return true;
 }
