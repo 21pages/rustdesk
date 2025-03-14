@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/animated_rotation_widget.dart';
 import 'package:flutter_hbb/common/widgets/custom_password.dart';
+import 'package:flutter_hbb/common/widgets/deploy_page.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/connection_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
@@ -23,6 +24,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:window_size/window_size.dart' as window_size;
+import 'package:flutter_hbb/common/widgets/login.dart';
+
 import '../widgets/button.dart';
 
 class DesktopHomePage extends StatefulWidget {
@@ -58,6 +61,22 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    if (bind.isHost()) {
+      return Obx(() {
+        if (gFFI.deployModel.isDeployed.isFalse &&
+            gFFI.deployModel.showDeployPage.value) {
+          return DeployPage();
+        } else {
+          return _buildBody();
+        }
+      });
+    } else if (bind.isClient()) {
+    } else if (bind.isSos()) {}
+    return _buildBody();
+  }
+
+  Widget _buildBody() {
     final isIncomingOnly = bind.isIncomingOnly();
     return _buildBlock(
         child: Row(
@@ -79,17 +98,14 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
     final children = <Widget>[
+      if (bind.isClient()) buildClientHeader(),
+      if (bind.isFull()) buildFullHeader(),
+      if (bind.isHost()) buildHostHeader(),
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
-      if (bind.isCustomClient())
-        Align(
-          alignment: Alignment.center,
-          child: loadPowered(context),
-        ),
       Align(
         alignment: Alignment.center,
         child: loadLogo(),
       ),
-      buildTip(context),
       if (!isOutgoingOnly) buildIDBoard(context),
       if (!isOutgoingOnly) buildPasswordBoard(context),
       FutureBuilder<Widget>(
@@ -126,53 +142,22 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ).marginOnly(bottom: 6, right: 6)
       ]);
     }
-    final textColor = Theme.of(context).textTheme.titleLarge?.color;
     return ChangeNotifierProvider.value(
       value: gFFI.serverModel,
       child: Container(
         width: isIncomingOnly ? 280.0 : 200.0,
         color: Theme.of(context).colorScheme.background,
-        child: Stack(
+        child: Column(
           children: [
-            Column(
-              children: [
-                SingleChildScrollView(
-                  controller: _leftPaneScrollController,
-                  child: Column(
-                    key: _childKey,
-                    children: children,
-                  ),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _leftPaneScrollController,
+                child: Column(
+                  key: _childKey,
+                  children: children,
                 ),
-                Expanded(child: Container())
-              ],
+              ),
             ),
-            if (isOutgoingOnly)
-              Positioned(
-                bottom: 6,
-                left: 12,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: InkWell(
-                    child: Obx(
-                      () => Icon(
-                        Icons.settings,
-                        color: _editHover.value
-                            ? textColor
-                            : Colors.grey.withOpacity(0.5),
-                        size: 22,
-                      ),
-                    ),
-                    onTap: () => {
-                      if (DesktopSettingPage.tabKeys.isNotEmpty)
-                        {
-                          DesktopSettingPage.switch2page(
-                              DesktopSettingPage.tabKeys[0])
-                        }
-                    },
-                    onHover: (value) => _editHover.value = value,
-                  ),
-                ),
-              )
           ],
         ),
       ),
@@ -414,12 +399,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           if (!isOutgoingOnly)
             Text(
               translate("desk_tip"),
-              overflow: TextOverflow.clip,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          if (isOutgoingOnly)
-            Text(
-              translate("outgoing_only_desk_tip"),
               overflow: TextOverflow.clip,
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -687,6 +666,464 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           ),
       ],
     );
+  }
+
+  Widget buildHostHeader() {
+    final model = gFFI.deployModel;
+    return Obx(() {
+      Widget buildCheckingContent() {
+        return Row(
+          children: [
+            Icon(
+              Icons.hourglass_empty,
+              size: 16,
+              color: Colors.blue,
+            ),
+            SizedBox(width: 8),
+            Text(
+              translate("Checking..."),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.blue[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        );
+      }
+
+      Widget buildDeployedContent() {
+        Widget buildInfoRow(String label, String value) {
+          return Row(
+            children: [
+              Text(
+                "$label:",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.color
+                      ?.withOpacity(0.7),
+                ),
+              ),
+              SizedBox(width: 6),
+              Expanded(
+                child: SelectableText(
+                  value,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildInfoRow(translate("Team"), model.team.value),
+            if (model.group.value.isNotEmpty) ...[
+              SizedBox(height: 6),
+              buildInfoRow(translate("Group"), model.group.value),
+            ],
+            if (model.user.value.isNotEmpty) ...[
+              SizedBox(height: 6),
+              buildInfoRow(translate("User"), model.user.value),
+            ],
+          ],
+        );
+      }
+
+      Widget buildNotDeployedContent() {
+        return Column(
+          children: [
+            ElevatedButton.icon(
+              icon: Icon(Icons.rocket_launch, size: 16),
+              label: Text(translate("Deploy now")),
+              onPressed: () {
+                gFFI.deployModel.showDeployPage.value = true;
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MyTheme.accent,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ],
+        );
+      }
+
+      return Card(
+        elevation: 0,
+        margin: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: model.error.value.isNotEmpty
+                ? Theme.of(context).colorScheme.error.withOpacity(0.2)
+                : model.isDeployed.value
+                    ? Colors.green.withOpacity(0.2)
+                    : Colors.grey.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        color: Theme.of(context).cardColor.withOpacity(0.7),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16.0),
+          child: model.checking.value
+              ? buildCheckingContent()
+              : model.isDeployed.value
+                  ? buildDeployedContent()
+                  : buildNotDeployedContent(),
+        ),
+      );
+    });
+  }
+
+  Widget buildClientHeader() {
+    Widget buildTeamInfo() {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: 5, horizontal: 12),
+        decoration: BoxDecoration(
+          color: MyTheme.accent.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Tooltip(
+          message: "${translate("Team")}: ${gFFI.userModel.teamName.value}",
+          waitDuration: Duration(milliseconds: 300),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.people_outline,
+                size: 14,
+                color: MyTheme.accent,
+              ),
+              SizedBox(width: 4),
+              Flexible(
+                child: SelectableText(
+                  gFFI.userModel.teamName.value,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: MyTheme.accent,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget buildAvatar() {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: gFFI.userModel.isLogin
+                    ? [
+                        MyTheme.accent.withOpacity(0.7),
+                        MyTheme.accent.withOpacity(0.4),
+                      ]
+                    : [
+                        Colors.grey.withOpacity(0.5),
+                        Colors.grey.withOpacity(0.2),
+                      ],
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: gFFI.userModel.isLogin
+                      ? MyTheme.accent.withOpacity(0.3)
+                      : Colors.grey.withOpacity(0.2),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: Colors.transparent,
+            child: Icon(
+              Icons.person_outline,
+              color: Colors.white,
+              size: 40,
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildLoggedInContent() {
+      return Column(
+        children: [
+          SelectableText(
+            gFFI.userModel.userName.value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (gFFI.userModel.teamName.value.isNotEmpty) ...[
+            buildTeamInfo(),
+            const SizedBox(height: 8),
+          ],
+        ],
+      );
+    }
+
+    Widget buildNotLoggedInContent() {
+      return InkWell(
+        onTap: () async {
+          await loginDialog();
+          setState(() {});
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_outline,
+              size: 14,
+              color: Colors.grey,
+            ),
+            SizedBox(width: 4),
+            Text(
+              translate("Not logged in"),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.3,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Obx(() {
+      return Card(
+        elevation: 0,
+        margin: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Colors.grey.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        color: Theme.of(context).cardColor.withOpacity(0.7),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              buildAvatar(),
+              const SizedBox(height: 16),
+              if (gFFI.userModel.isLogin)
+                buildLoggedInContent()
+              else
+                buildNotLoggedInContent(),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget buildFullHeader() {
+    final iconSize = 14.0;
+    final textStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      color: Colors.grey,
+    );
+
+    Widget buildLoggedInContent() {
+      return Column(
+        children: [
+          Tooltip(
+            message:
+                '${translate("Username")}: ${gFFI.userModel.userName.value}\n${translate("Email")}: ${gFFI.userModel.email.value}\n${translate("Team")}: ${gFFI.userModel.teamName.value}',
+            waitDuration: Duration(milliseconds: 300),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.person_outline,
+                  size: iconSize,
+                  color: MyTheme.accent,
+                ),
+                SizedBox(width: 4),
+                Expanded(
+                  child: SelectableText(
+                    gFFI.userModel.userName.value,
+                    style: textStyle,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildNotLoggedInContent() {
+      return InkWell(
+        onTap: () async {
+          await loginDialog();
+          setState(() {});
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.person_outline,
+              size: iconSize,
+              color: Colors.grey,
+            ),
+            SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                translate("Not logged in"),
+                style: textStyle,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget buildDeploymentInfo() {
+      return Obx(() {
+        final isDeployed = gFFI.deployModel.isDeployed.value;
+        final teamName = gFFI.deployModel.team.value;
+        final groupName = gFFI.deployModel.group.value;
+        final userName = gFFI.deployModel.user.value;
+
+        if (gFFI.deployModel.checking.value) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.hourglass_empty,
+                size: 14,
+                color: Colors.grey,
+              ),
+              SizedBox(width: 4),
+              Text(
+                translate('Checking...'),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.3,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Tooltip(
+          waitDuration: Duration(milliseconds: 300),
+          message: isDeployed
+              ? [
+                  if (teamName.isNotEmpty) 'Team: $teamName',
+                  if (groupName.isNotEmpty) 'Group: $groupName',
+                  if (userName.isNotEmpty) 'User: $userName',
+                ].join('\n')
+              : translate('Not deployed'),
+          child: isDeployed
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      size: iconSize,
+                      color: isDeployed ? MyTheme.accent : Colors.grey,
+                    ),
+                    SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        translate('Deployed'),
+                        style: textStyle,
+                      ),
+                    ),
+                  ],
+                )
+              : InkWell(
+                  onTap: () {
+                    DeployPage.showAsDialog(context);
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.info,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          translate('Not deployed'),
+                          style: textStyle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      }).marginOnly(top: 4);
+    }
+
+    return Obx(() {
+      return Card(
+        elevation: 0,
+        margin: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Colors.grey.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        color: Theme.of(context).cardColor.withOpacity(0.7),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (gFFI.userModel.isLogin)
+                buildLoggedInContent()
+              else
+                buildNotLoggedInContent(),
+              buildDeploymentInfo(),
+            ],
+          ),
+        ),
+      );
+    });
   }
 
   @override

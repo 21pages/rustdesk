@@ -2146,6 +2146,22 @@ pub fn main_support_remove_wallpaper() -> bool {
     support_remove_wallpaper()
 }
 
+pub fn is_full() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_full())
+}
+
+pub fn is_host() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_host())
+}
+
+pub fn is_client() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_client())
+}
+
+pub fn is_sos() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_sos())
+}
+
 pub fn is_incoming_only() -> SyncReturn<bool> {
     SyncReturn(config::is_incoming_only())
 }

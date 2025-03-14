@@ -2479,15 +2479,25 @@ impl LoginConfigHandler {
         } else {
             (my_id, self.id.clone())
         };
+        
+        #[derive(Deserialize)]
+        struct E {
+            email: String,
+        }
+        let use_info = LocalConfig::get_option("user_info");
+        let email = serde_json::from_str::<E>(&use_info)
+            .map(|x| x.email)
+            .unwrap_or_default();
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
         if display_name.is_empty() {
+            #[derive(Deserialize)]
+            struct N {
+                name: String,
+            }
             display_name =
-                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                serde_json::from_str::<N>(&use_info)
                     .map(|x| {
-                        x.get("name")
-                            .map(|x| x.as_str().unwrap_or_default())
-                            .unwrap_or_default()
-                            .to_owned()
+                        x.name
                     })
                     .unwrap_or_default();
         }
@@ -2519,6 +2529,7 @@ impl LoginConfigHandler {
         } else {
             Bytes::new()
         };
+            
         let mut lr = LoginRequest {
             username: pure_id,
             password: password.into(),
@@ -2535,6 +2546,7 @@ impl LoginConfigHandler {
             })
             .into(),
             hwid,
+            email,
             ..Default::default()
         };
         match self.conn_type {

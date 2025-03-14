@@ -6221,6 +6221,7 @@ dependencies = [
  "dirs 5.0.1",
  "md5",
  "native-windows-gui",
+ "regex",
  "winapi 0.3.9",
  "winres",
 ]

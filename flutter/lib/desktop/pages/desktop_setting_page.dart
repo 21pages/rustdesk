@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
+import 'package:flutter_hbb/common/widgets/deploy_page.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
@@ -1738,9 +1739,9 @@ class _DisplayState extends State<_Display> {
   }
 
   Widget trackpadSpeed(BuildContext context) {
-    final initSpeed = (int.tryParse(
-            bind.mainGetUserDefaultOption(key: kKeyTrackpadSpeed)) ??
-        kDefaultTrackpadSpeed);
+    final initSpeed =
+        (int.tryParse(bind.mainGetUserDefaultOption(key: kKeyTrackpadSpeed)) ??
+            kDefaultTrackpadSpeed);
     final curSpeed = SimpleWrapper(initSpeed);
     void onDebouncer(int v) {
       bind.mainSetUserDefaultOption(
@@ -1899,6 +1900,7 @@ class _AccountState extends State<_Account> {
       controller: scrollController,
       children: [
         _Card(title: 'Account', children: [accountAction(), useInfo()]),
+        _Card(title: 'Deployment', children: [deploy()]),
       ],
     ).marginOnly(bottom: _kListViewBottomMargin);
   }
@@ -1913,24 +1915,97 @@ class _AccountState extends State<_Account> {
             }));
   }
 
-  Widget useInfo() {
-    text(String key, String value) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: SelectionArea(child: Text('${translate(key)}: $value'))
-            .marginSymmetric(vertical: 4),
-      );
-    }
+  text(String key, String value) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SelectionArea(child: Text('${translate(key)}: $value'))
+          .marginSymmetric(vertical: 4),
+    );
+  }
 
+  final marginLeft = 18.0;
+  final marginTop = 16.0;
+
+  Widget useInfo() {
     return Obx(() => Offstage(
           offstage: gFFI.userModel.userName.value.isEmpty,
           child: Column(
             children: [
+              if (gFFI.userModel.teamName.isNotEmpty)
+                text('Team', gFFI.userModel.teamName.value),
               text('Username', gFFI.userModel.userName.value),
               // text('Group', gFFI.groupModel.groupName.value),
             ],
           ),
-        )).marginOnly(left: 18, top: 16);
+        )).marginOnly(left: marginLeft, top: marginTop);
+  }
+
+  Widget deploy() {
+    return Obx(() {
+      final model = gFFI.deployModel;
+      final isDeployed = model.isDeployed.value;
+      final isChecking = model.checking.value;
+
+      if (isChecking) {
+        return Container(
+          margin:
+              EdgeInsets.symmetric(horizontal: marginLeft, vertical: marginTop),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+              ),
+              SizedBox(width: 8),
+              Text(
+                translate("Checking..."),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.blue,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (isDeployed) {
+        return Container(
+          margin: EdgeInsets.only(left: marginLeft, top: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!(bind.isFull() &&
+                  gFFI.userModel.isLogin &&
+                  gFFI.userModel.teamName.value == model.team.value))
+                text('Team', model.team.value),
+              if (model.group.value.isNotEmpty)
+                text('Device Group', model.group.value),
+              if (model.user.value.isNotEmpty &&
+                  !(bind.isFull() &&
+                      gFFI.userModel.isLogin &&
+                      gFFI.userModel.userName.value == model.user.value))
+                text('User', model.user.value),
+            ],
+          ),
+        );
+      }
+      return Row(
+        children: [
+          _Button(
+            "Deploy",
+            () {
+              DeployPage.showAsDialog(context);
+            },
+          ),
+        ],
+      );
+    });
   }
 }
 

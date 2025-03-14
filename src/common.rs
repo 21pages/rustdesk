@@ -926,7 +926,7 @@ pub fn get_app_name() -> String {
 
 #[inline]
 pub fn is_rustdesk() -> bool {
-    hbb_common::config::APP_NAME.read().unwrap().eq("RustDesk")
+    true
 }
 
 #[inline]
@@ -1720,7 +1720,7 @@ pub fn get_builtin_option(key: &str) -> String {
 
 #[inline]
 pub fn is_custom_client() -> bool {
-    get_app_name() != "RustDesk"
+    false
 }
 
 pub fn verify_login(raw: &str, id: &str) -> bool {
