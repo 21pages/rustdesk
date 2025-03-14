@@ -26,6 +26,7 @@ enum UserStatus { kDisabled, kNormal, kUnverified }
 class UserPayload {
   String name = '';
   String email = '';
+  String teamName = '';
   String note = '';
   UserStatus status;
   bool isAdmin = false;
@@ -33,6 +34,7 @@ class UserPayload {
   UserPayload.fromJson(Map<String, dynamic> json)
       : name = json['name'] ?? '',
         email = json['email'] ?? '',
+        teamName = json['team_name'] ?? '',
         note = json['note'] ?? '',
         status = json['status'] == 0
             ? UserStatus.kDisabled
@@ -116,8 +118,12 @@ class PeerPayload {
   }
 }
 
+const loginClientTypeClient = 1;
+const loginClientTypeHost = 2;
+const loginClientTypeFull = 3;
+
 class LoginRequest {
-  String? username;
+  String? email;
   String? password;
   String? id;
   String? uuid;
@@ -126,9 +132,10 @@ class LoginRequest {
   String? verificationCode;
   String? tfaCode;
   String? secret;
+  int? clientType;
 
   LoginRequest(
-      {this.username,
+      {this.email,
       this.password,
       this.id,
       this.uuid,
@@ -136,11 +143,12 @@ class LoginRequest {
       this.type,
       this.verificationCode,
       this.tfaCode,
-      this.secret});
+      this.secret,
+      this.clientType});
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
-    if (username != null) data['username'] = username;
+    if (email != null) data['email'] = email;
     if (password != null) data['password'] = password;
     if (id != null) data['id'] = id;
     if (uuid != null) data['uuid'] = uuid;
@@ -151,6 +159,7 @@ class LoginRequest {
     }
     if (tfaCode != null) data['tfaCode'] = tfaCode;
     if (secret != null) data['secret'] = secret;
+    if (clientType != null) data['clientType'] = clientType;
 
     Map<String, dynamic> deviceInfo = {};
     try {
@@ -160,6 +169,18 @@ class LoginRequest {
     }
     data['deviceInfo'] = deviceInfo;
     return data;
+  }
+
+  void setClientType() {
+    if (bind.isClient()) {
+      clientType = loginClientTypeClient;
+      id = null;
+      uuid = null;
+    } else if (bind.isHost()) {
+      clientType = loginClientTypeHost;
+    } else if (bind.isFull()) {
+      clientType = loginClientTypeFull;
+    }
   }
 }
 

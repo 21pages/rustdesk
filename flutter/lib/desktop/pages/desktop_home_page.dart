@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/animated_rotation_widget.dart';
 import 'package:flutter_hbb/common/widgets/custom_password.dart';
+import 'package:flutter_hbb/common/widgets/deploy_page.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/connection_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
@@ -22,6 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:window_size/window_size.dart' as window_size;
+import 'package:flutter_hbb/common/widgets/login.dart';
 
 import '../widgets/button.dart';
 
@@ -58,6 +60,22 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    if (bind.isHost()) {
+      return Obx(() {
+        if (gFFI.deployModel.isDeployed.isFalse &&
+            gFFI.deployModel.showDeployPage.value) {
+          return DeployPage();
+        } else {
+          return _buildBody();
+        }
+      });
+    } else if (bind.isClient()) {
+    } else if (bind.isSos()) {}
+    return _buildBody();
+  }
+
+  Widget _buildBody() {
     final isIncomingOnly = bind.isIncomingOnly();
     return _buildBlock(
         child: Row(
@@ -79,6 +97,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
     final children = <Widget>[
+      if (bind.isClient() || bind.isFull()) buildAccount(),
+      if (bind.isHost()) buildDeployState(),
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
       if (bind.isCustomClient())
         Align(
@@ -89,7 +109,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         alignment: Alignment.center,
         child: loadLogo(),
       ),
-      buildTip(context),
       if (!isOutgoingOnly) buildIDBoard(context),
       if (!isOutgoingOnly) buildPasswordBoard(context),
       FutureBuilder<Widget>(
@@ -132,47 +151,43 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       child: Container(
         width: isIncomingOnly ? 280.0 : 200.0,
         color: Theme.of(context).colorScheme.background,
-        child: Stack(
+        child: Column(
           children: [
-            Column(
-              children: [
-                SingleChildScrollView(
-                  controller: _leftPaneScrollController,
-                  child: Column(
-                    key: _childKey,
-                    children: children,
-                  ),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _leftPaneScrollController,
+                child: Column(
+                  key: _childKey,
+                  children: children,
                 ),
-                Expanded(child: Container())
-              ],
+              ),
             ),
-            if (isOutgoingOnly)
-              Positioned(
-                bottom: 6,
-                left: 12,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: InkWell(
-                    child: Obx(
-                      () => Icon(
-                        Icons.settings,
-                        color: _editHover.value
-                            ? textColor
-                            : Colors.grey.withOpacity(0.5),
-                        size: 22,
+            if (bind.isClient() || bind.isFull())
+              Obx(() => gFFI.userModel.isLogin
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 6, left: 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Tooltip(
+                          message: translate('Logout'),
+                          waitDuration: Duration(milliseconds: 300),
+                          child: InkWell(
+                            child: Obx(
+                              () => Icon(
+                                Icons.logout,
+                                color: _editHover.value
+                                    ? textColor
+                                    : Colors.grey.withOpacity(0.5),
+                                size: 22,
+                              ),
+                            ),
+                            onTap: () => logOutConfirmDialog(),
+                            onHover: (value) => _editHover.value = value,
+                          ),
+                        ),
                       ),
-                    ),
-                    onTap: () => {
-                      if (DesktopSettingPage.tabKeys.isNotEmpty)
-                        {
-                          DesktopSettingPage.switch2page(
-                              DesktopSettingPage.tabKeys[0])
-                        }
-                    },
-                    onHover: (value) => _editHover.value = value,
-                  ),
-                ),
-              )
+                    )
+                  : const SizedBox.shrink())
           ],
         ),
       ),
@@ -414,12 +429,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           if (!isOutgoingOnly)
             Text(
               translate("desk_tip"),
-              overflow: TextOverflow.clip,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          if (isOutgoingOnly)
-            Text(
-              translate("outgoing_only_desk_tip"),
               overflow: TextOverflow.clip,
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -677,6 +686,483 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           ),
       ],
     );
+  }
+
+  Widget buildDeployState() {
+    final model = gFFI.deployModel;
+    return Obx(() {
+      // Determine the appropriate icon and color based on status
+      IconData statusIcon;
+      Color statusColor;
+      Color? textColor;
+      String statusText;
+
+      if (model.checking.value) {
+        statusIcon = Icons.hourglass_empty;
+        statusColor = Colors.blue;
+        textColor = Colors.grey;
+        statusText = translate("Checking");
+      } else if (model.error.value.isNotEmpty) {
+        statusIcon = Icons.error_outline;
+        statusColor = Theme.of(context).colorScheme.error;
+        textColor = Theme.of(context).colorScheme.error;
+        statusText = translate("Error");
+      } else if (model.isDeployed.value && model.team.value.isNotEmpty) {
+        statusIcon = Icons.check_circle_outline;
+        statusColor = Colors.green;
+        textColor = null; // Use default/normal text color
+        statusText = translate("Deployed");
+      } else {
+        statusIcon = Icons.info_outline;
+        statusColor = Colors.grey;
+        textColor = Colors.grey;
+        statusText = translate("Not deployed");
+      }
+
+      return Card(
+        elevation: 0,
+        margin: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: model.error.value.isNotEmpty
+                ? Theme.of(context).colorScheme.error.withOpacity(0.2)
+                : model.isDeployed.value
+                    ? Colors.green.withOpacity(0.2)
+                    : Colors.grey.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        color: Theme.of(context).cardColor.withOpacity(0.7),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      statusIcon,
+                      color: statusColor,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    statusText,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: textColor,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (model.checking.value)
+                    Container(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Display content based on current status
+              if (model.checking.value) ...[
+                // Checking state
+                Container(
+                  padding: EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                  ),
+                  child: Text(
+                    translate("Checking deployment status..."),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.blue[600],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ] else if (model.error.value.isNotEmpty) ...[
+                // Error state
+                Container(
+                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color:
+                        Theme.of(context).colorScheme.error.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color:
+                          Theme.of(context).colorScheme.error.withOpacity(0.2),
+                    ),
+                  ),
+                  child: Text(
+                    model.error.value,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ] else if (model.isDeployed.value) ...[
+                // Deployed state
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.withOpacity(0.2)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            "${translate("Team")}:",
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.color
+                                  ?.withOpacity(0.7),
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              model.team.value,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (model.group.value.isNotEmpty) ...[
+                        SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Text(
+                              "${translate("Group")}:",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.color
+                                    ?.withOpacity(0.7),
+                              ),
+                            ),
+                            SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                model.group.value,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (model.user.value.isNotEmpty) ...[
+                        SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Text(
+                              "${translate("Account")}:",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.color
+                                    ?.withOpacity(0.7),
+                              ),
+                            ),
+                            SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                model.user.value,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ] else ...[
+                // Not deployed state
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.03)
+                        : Colors.black.withOpacity(0.02),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        translate("This device is not deployed to any team"),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.color
+                              ?.withOpacity(0.7),
+                        ),
+                      ),
+                      SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        icon: Icon(Icons.rocket_launch, size: 16),
+                        label: Text(translate("Deploy now")),
+                        onPressed: () {
+                          gFFI.deployModel.showDeployPage.value = true;
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: MyTheme.accent,
+                          foregroundColor: Colors.white,
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget buildAccount() {
+    return Obx(() {
+      return Card(
+        elevation: 0,
+        margin: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Colors.grey.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        color: Theme.of(context).cardColor.withOpacity(0.7),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 74,
+                    height: 74,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: gFFI.userModel.isLogin
+                            ? [
+                                MyTheme.accent.withOpacity(0.7),
+                                MyTheme.accent.withOpacity(0.4),
+                              ]
+                            : [
+                                Colors.grey.withOpacity(0.5),
+                                Colors.grey.withOpacity(0.2),
+                              ],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: gFFI.userModel.isLogin
+                              ? MyTheme.accent.withOpacity(0.3)
+                              : Colors.grey.withOpacity(0.2),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                  ),
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor: Colors.transparent,
+                    child: Icon(
+                      Icons.person_outline,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (gFFI.userModel.isLogin) ...[
+                SelectableText(
+                  gFFI.userModel.userName.value,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (gFFI.userModel.teamName.value.isNotEmpty)
+                  Container(
+                    padding: EdgeInsets.symmetric(vertical: 5, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: MyTheme.accent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Tooltip(
+                      message:
+                          "${translate("Team")}: ${gFFI.userModel.teamName.value}",
+                      waitDuration: Duration(milliseconds: 300),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.people_outline,
+                            size: 14,
+                            color: MyTheme.accent,
+                          ),
+                          SizedBox(width: 4),
+                          Flexible(
+                            child: SelectableText(
+                              gFFI.userModel.teamName.value,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: MyTheme.accent,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (gFFI.userModel.teamName.value.isNotEmpty)
+                  const SizedBox(height: 8),
+                if (gFFI.deployModel.group.isNotEmpty && bind.isFull())
+                  Container(
+                    padding: EdgeInsets.symmetric(vertical: 5, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withOpacity(0.05)
+                          : Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Tooltip(
+                      message:
+                          "${translate("Device group")}: ${gFFI.deployModel.group.value}",
+                      waitDuration: Duration(milliseconds: 300),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.device_hub_outlined,
+                            size: 14,
+                            color: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.color
+                                ?.withOpacity(0.7),
+                          ),
+                          SizedBox(width: 4),
+                          Flexible(
+                            child: SelectableText(
+                              gFFI.deployModel.group.value,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.color,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ] else ...[
+                Text(
+                  translate("Not logged in"),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.color
+                        ?.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  child: Text(translate("Login")),
+                  onPressed: () async {
+                    await loginDialog();
+                    setState(() {});
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MyTheme.accent,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 2,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    });
   }
 
   @override
