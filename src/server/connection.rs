@@ -1080,6 +1080,7 @@ impl Connection {
             Self::post_alarm_audit(
                 AlarmAuditType::IpWhitelist, //"ip whitelist",
                 json!({ "ip":addr.ip() }),
+                None,
             );
             return false;
         }
@@ -1176,7 +1177,7 @@ impl Connection {
         let v = json!({
             "id":json!(Config::get_id()),
             "uuid":json!(crate::encode64(hbb_common::get_uuid())),
-            "peer_id":json!(self.lr.my_id),
+            "email": json!(self.lr.email),
             "type": r#type as i8,
             "path":path,
             "is_file":is_file,
@@ -1187,7 +1188,7 @@ impl Connection {
         });
     }
 
-    pub fn post_alarm_audit(typ: AlarmAuditType, info: Value) {
+    pub fn post_alarm_audit(typ: AlarmAuditType, info: Value, email: Option<String>) {
         let url = crate::get_audit_server(
             Config::get_option("api-server"),
             Config::get_option("custom-rendezvous-server"),
@@ -1200,6 +1201,9 @@ impl Connection {
         v["id"] = json!(Config::get_id());
         v["uuid"] = json!(crate::encode64(hbb_common::get_uuid()));
         v["typ"] = json!(typ as i8);
+        if let Some(email) = email {
+            v["email"] = json!(email);
+        }
         v["info"] = serde_json::Value::String(info.to_string());
         tokio::spawn(async move {
             allow_err!(Self::post_audit_async(url, v).await);
@@ -1269,7 +1273,7 @@ impl Connection {
             .get(&self.session_key())
             .map(|s| s.last_recv_time.clone());
         self.post_conn_audit(
-            json!({"peer": ((&self.lr.my_id, &self.lr.my_name)), "type": conn_type}),
+            json!({"name": &self.lr.my_name, "type": conn_type, "email": &self.lr.email}),
         );
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
@@ -1393,7 +1397,8 @@ impl Connection {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if self.file_transfer.is_some() {
-            if crate::platform::is_prelogin() { // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
+            if crate::platform::is_prelogin() {
+                // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
                 username = "".to_owned();
             }
         }
@@ -2884,9 +2889,9 @@ impl Connection {
                 AlarmAuditType::ExceedThirtyAttempts,
                 json!({
                             "ip": self.ip,
-                            "id": self.lr.my_id.clone(),
                             "name": self.lr.my_name.clone(),
                 }),
+                Some(self.lr.email.clone()),
             );
             false
         } else if time == failure.0 && failure.1 > 6 {
@@ -2895,9 +2900,9 @@ impl Connection {
                 AlarmAuditType::SixAttemptsWithinOneMinute,
                 json!({
                             "ip": self.ip,
-                            "id": self.lr.my_id.clone(),
                             "name": self.lr.my_name.clone(),
                 }),
+                Some(self.lr.email.clone()),
             );
             false
         } else {
