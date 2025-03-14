@@ -1,0 +1,69 @@
+name: 'Modify Source Code'
+description: 'Modify source code based on client type'
+inputs:
+  client-type:
+    description: 'Client type (full, host, client, sos)'
+    required: true
+  appname:
+    description: 'App name (RustDesk-Full, RustDesk-Host, RustDesk-Client, RustDesk-SOS)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Modify source code for ${{ inputs.client-type }}
+      shell: bash
+      run: |
+        echo "Modifying source code for ${{ inputs.client-type }} client type"
+        
+        CLIENT_TYPE_CAPITALIZED=$(echo "${{ inputs.client-type }}" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')
+        echo "Client type with first letter capitalized: ${CLIENT_TYPE_CAPITALIZED}"
+        
+        # libs/portable/src/main.rs
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -E -i '' 's/const APP_PREFIX: &str = "([^"]*)".*/const APP_PREFIX: \&str = "rustdesk-${{ inputs.client-type }}";/g' libs/portable/src/main.rs
+        else
+          sed -E -i 's/const APP_PREFIX: &str = "([^"]*)".*/const APP_PREFIX: \&str = "rustdesk-${{ inputs.client-type }}";/g' libs/portable/src/main.rs
+        fi
+        echo "Modified APP_PREFIX in libs/portable/src/main.rs"
+
+        # libs/hbb_common/src/lib.rs
+        CLIENT_TYPE_ENUM="ClientType::${CLIENT_TYPE_CAPITALIZED}"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -E -i '' "s/const CLIENT_TYPE: ClientType = ClientType::[A-Za-z]+;/const CLIENT_TYPE: ClientType = ${CLIENT_TYPE_ENUM};/g" libs/hbb_common/src/lib.rs
+        else
+          sed -E -i "s/const CLIENT_TYPE: ClientType = ClientType::[A-Za-z]+;/const CLIENT_TYPE: ClientType = ${CLIENT_TYPE_ENUM};/g" libs/hbb_common/src/lib.rs
+        fi
+        echo "Modified CLIENT_TYPE in libs/hbb_common/src/lib.rs to ${CLIENT_TYPE_ENUM}"
+        
+        APP_NAME_LOWER=$(echo "${{ inputs.appname }}" | awk '{print tolower($0)}')
+        echo "App name in lowercase: ${APP_NAME_LOWER}"
+
+        # android/app/src/main/AndroidManifest.xml
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -i '' "s/RustDesk/${{ inputs.appname }}/g" flutter/android/app/src/main/AndroidManifest.xml
+          sed -i '' "s/rustdesk/${APP_NAME_LOWER}/g" flutter/android/app/src/main/AndroidManifest.xml
+        else
+          sed -i "s/RustDesk/${{ inputs.appname }}/g" flutter/android/app/src/main/AndroidManifest.xml
+          sed -i "s/rustdesk/${APP_NAME_LOWER}/g" flutter/android/app/src/main/AndroidManifest.xml
+        fi
+        echo "Modified AndroidManifest.xml"
+        
+        # android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -i '' "s/RustDesk/${{ inputs.appname }}/g" flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+          sed -i '' "s/rustdesk/${APP_NAME_LOWER}/g" flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+        else
+          sed -i "s/RustDesk/${{ inputs.appname }}/g" flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+          sed -i "s/rustdesk/${APP_NAME_LOWER}/g" flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+        fi
+        echo "Modified MainService.kt"
+        
+        # flutter/android/app/build.gradle - modify applicationId
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -i '' "s/applicationId \"com.carriez.flutter_hbb\"/applicationId \"com.carriez.flutter_hbb.${{ inputs.client-type }}\"/g" flutter/android/app/build.gradle
+        else
+          sed -i "s/applicationId \"com.carriez.flutter_hbb\"/applicationId \"com.carriez.flutter_hbb.${{ inputs.client-type }}\"/g" flutter/android/app/build.gradle
+        fi
+        echo "Modified applicationId in build.gradle to com.carriez.flutter_hbb.${{ inputs.client-type }}"
+  

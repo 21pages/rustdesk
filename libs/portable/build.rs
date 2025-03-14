@@ -1,3 +1,12 @@
+#[cfg(windows)]
+use regex::Regex;
+#[cfg(windows)]
+use std::{
+    env, fs,
+    io::{Read, Write},
+    path::Path,
+};
+
 fn main() {
     #[cfg(windows)]
     {
