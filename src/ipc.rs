@@ -287,6 +287,7 @@ pub enum Data {
     #[cfg(target_os = "windows")]
     PortForwardSessionCount(Option<usize>),
     SocksWs(Option<Box<(Option<config::Socks5Server>, String)>>),
+    Strategy(Option<(HashMap<String, String>, HashMap<String, String>)>),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -749,6 +750,15 @@ async fn handle(data: Data, stream: &mut Connection) {
                 // Port forward session count is only a get value.
             }
         },
+        Data::Strategy(None) => {
+            let override_options = config::STRATEGY_OVERRIDE_SETTINGS.read().unwrap().clone();
+            let hard_options = config::STRATEGY_HARD_SETTINGS.read().unwrap().clone();
+            allow_err!(
+                stream
+                    .send(&Data::Strategy(Some((override_options, hard_options))))
+                    .await
+            );
+        }
         _ => {}
     }
 }

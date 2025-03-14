@@ -1,0 +1,83 @@
+name: Flutter Client Types Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_full:
+        description: 'Build Full Version'
+        type: boolean
+        default: true
+      build_host:
+        description: 'Build Host Version'
+        type: boolean
+        default: true
+      build_client:
+        description: 'Build Client Version'
+        type: boolean
+        default: true
+      build_sos:
+        description: 'Build SOS Version'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+
+  build-RustDeskTempTopMostWindow:
+    uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
+    with:
+      upload-artifact: true
+      target: windows-2022
+      configuration: Release
+      platform: x64
+      target_version: Windows10
+    strategy:
+      fail-fast: false
+
+  build-full-version:
+    needs: [generate-bridge, build-RustDeskTempTopMostWindow]
+    if: ${{ inputs.build_full }}
+    uses: ./.github/workflows/flutter-build.yml
+    secrets: inherit
+    with:
+      upload-artifact: true
+      upload-tag: "full"
+      client-type: "full"
+      client-type-capitalized: "Full"
+  
+  build-host-version:
+    needs: [generate-bridge, build-RustDeskTempTopMostWindow]
+    if: ${{ inputs.build_host }}
+    uses: ./.github/workflows/flutter-build.yml
+    secrets: inherit
+    with:
+      upload-artifact: true
+      upload-tag: "host"
+      client-type: "host"
+      client-type-capitalized: "Host"
+  
+  build-client-version:
+    needs: [generate-bridge, build-RustDeskTempTopMostWindow]
+    if: ${{ inputs.build_client }}
+    uses: ./.github/workflows/flutter-build.yml
+    secrets: inherit
+    with:
+      upload-artifact: true
+      upload-tag: "client"
+      client-type: "client"
+      client-type-capitalized: "Client"
+  
+  build-sos-version:
+    needs: [generate-bridge, build-RustDeskTempTopMostWindow]
+    if: ${{ inputs.build_sos }}
+    uses: ./.github/workflows/flutter-build.yml
+    secrets: inherit
+    with:
+      upload-artifact: true
+      upload-tag: "sos"
+      client-type: "sos"
+      client-type-capitalized: "SOS"
