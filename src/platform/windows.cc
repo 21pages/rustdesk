@@ -942,8 +942,12 @@ extern "C"
         std::shared_ptr<IXpsPrintJobStream> jobStreamGuard(jobStream, [](IXpsPrintJobStream *jobStream) {
                 jobStream->Release();
         });
-        std::shared_ptr<IXpsPrintJob> jobGuard(job, [](IXpsPrintJob *job) {
-            job->Cancel();
+        BOOL jobOk = FALSE;
+        std::shared_ptr<IXpsPrintJob> jobGuard(job, [&jobOk](IXpsPrintJob* job) {
+            if (jobOk == FALSE)
+            {
+                job->Cancel();
+            }
             job->Release();
         });
 
@@ -954,6 +958,7 @@ extern "C"
         hr = jobStream->Close();
         PRINT_XPS_CHECK_HR(hr, "Failed to close print job stream.");
 
+        // Wait about 5 minutes for the print job to complete.
         DWORD waitMillis = 300 * 1000;
         DWORD waitResult = WaitForSingleObject(completionEvent, waitMillis);
         if (waitResult != WAIT_OBJECT_0)
@@ -961,6 +966,7 @@ extern "C"
             flog("Wait for print job completion failed. Last error: %d\n", GetLastError());
             return -1;
         }
+        jobOk = TRUE;
 
         return 0;
     }
