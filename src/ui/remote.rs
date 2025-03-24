@@ -379,6 +379,10 @@ impl InvokeUiSession for SciterHandler {
     fn update_record_status(&self, start: bool) {
         self.call("updateRecordStatus", &make_args!(start));
     }
+
+    fn printer_request(&self, id: i32, path: String) {
+        self.call("printerRequest", &make_args!(id, path));
+    }
 }
 
 pub struct SciterSession(Session<SciterHandler>);
@@ -543,6 +547,8 @@ impl sciter::EventHandler for SciterSession {
         fn set_selected_windows_session_id(String);
         fn is_recording();
         fn has_file_clipboard();
+        fn get_printer_names();
+        fn on_printer_selected(i32, String, String);
     }
 }
 
@@ -843,6 +849,22 @@ impl SciterSession {
 
     fn version_cmp(&self, v1: String, v2: String) -> i32 {
         (hbb_common::get_version_number(&v1) - hbb_common::get_version_number(&v2)) as i32
+    }
+
+    fn get_printer_names(&self) -> Value {
+        #[cfg(target_os = "windows")]
+        let printer_names = crate::platform::windows::get_printer_names().unwrap_or_default();
+        #[cfg(not(target_os = "windows"))]
+        let printer_names: Vec<String> = vec![];
+        let mut v = Value::array(0);
+        for name in printer_names {
+            v.push(name);
+        }
+        v
+    }
+
+    fn on_printer_selected(&self, id: i32, path: String, printer_name: String) {
+        self.printer_response(id, path, printer_name);
     }
 }
 

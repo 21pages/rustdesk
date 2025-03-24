@@ -1507,7 +1507,6 @@ impl<T: InvokeUiSession> Session<T> {
         self.lc.read().unwrap().get_conn_token()
     }
 
-    #[cfg(feature = "flutter")]
     pub fn printer_response(&self, id: i32, path: String, printer_name: String) {
         self.printer_names.write().unwrap().insert(id, printer_name);
         let to = std::env::temp_dir().join(format!("rustdesk_printer_{id}"));
@@ -1586,7 +1585,6 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn is_multi_ui_session(&self) -> bool;
     fn update_record_status(&self, start: bool);
     fn update_empty_dirs(&self, _res: ReadEmptyDirsResponse) {}
-    #[cfg(feature = "flutter")]
     fn printer_request(&self, id: i32, path: String);
 }
 

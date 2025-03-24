@@ -28,16 +28,15 @@ use std::{
     time::{Duration, Instant},
 };
 use wallpaper;
+#[cfg(not(debug_assertions))]
+use winapi::um::libloaderapi::{LoadLibraryExW, LOAD_LIBRARY_SEARCH_USER_DIRS};
 use winapi::{
     ctypes::c_void,
     shared::{minwindef::*, ntdef::NULL, windef::*, winerror::*},
     um::{
         errhandlingapi::GetLastError,
         handleapi::CloseHandle,
-        libloaderapi::{
-            GetProcAddress, LoadLibraryExA, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
-            LOAD_LIBRARY_SEARCH_USER_DIRS,
-        },
+        libloaderapi::{GetProcAddress, LoadLibraryExA, LOAD_LIBRARY_SEARCH_SYSTEM32},
         minwinbase::STILL_ACTIVE,
         processthreadsapi::{
             GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcess,
@@ -1381,7 +1380,11 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 
 pub fn run_after_install() -> ResultType<()> {
     let (_, _, _, exe) = get_install_info();
-    run_cmds(get_after_install(&exe, None, None, None), true, "after_install")
+    run_cmds(
+        get_after_install(&exe, None, None, None),
+        true,
+        "after_install",
+    )
 }
 
 pub fn run_before_uninstall() -> ResultType<()> {
@@ -1602,9 +1605,18 @@ pub fn bootstrap() -> bool {
         *config::EXE_RENDEZVOUS_SERVER.write().unwrap() = lic.host.clone();
     }
 
-    set_safe_load_dll()
+    #[cfg(debug_assertions)]
+    {
+        true
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        // This function will cause `'sciter.dll' was not found neither in PATH nor near the current executable.` when debugging RustDesk.
+        set_safe_load_dll()
+    }
 }
 
+#[cfg(not(debug_assertions))]
 fn set_safe_load_dll() -> bool {
     if !unsafe { set_default_dll_directories() } {
         return false;
@@ -1621,6 +1633,7 @@ fn set_safe_load_dll() -> bool {
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-setdefaultdlldirectories
+#[cfg(not(debug_assertions))]
 unsafe fn set_default_dll_directories() -> bool {
     let module = LoadLibraryExW(
         wide_string("Kernel32.dll").as_ptr(),

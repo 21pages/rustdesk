@@ -1,8 +1,4 @@
-use hbb_common::{
-    fs::{self, JobType},
-    log,
-    message_proto::*,
-};
+use hbb_common::{fs, log, message_proto::*};
 
 use super::{Data, Interface};
 

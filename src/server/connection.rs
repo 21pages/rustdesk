@@ -3699,7 +3699,7 @@ impl Connection {
     async fn send_remote_printing_disallowed(&mut self) {
         let mut msg_out = Message::new();
         let res = MessageBox {
-            msgtype: "nook-nocancel-hasclose".to_owned(),
+            msgtype: "custom-nook-nocancel-hasclose".to_owned(),
             title: "remote-printing-disallowed-tile-tip".to_owned(),
             text: "remote-printing-disallowed-text-tip".to_owned(),
             link: "".to_owned(),
@@ -4046,6 +4046,7 @@ fn start_wakelock_thread() -> std::sync::mpsc::Sender<(usize, usize)> {
 #[cfg(all(target_os = "windows", feature = "flutter"))]
 pub fn on_printer_file(file_path: String) {
     if !std::path::Path::new(&file_path).exists() {
+        log::warn!("The printer file does not exist");
         return;
     }
     crate::server::AUTHED_CONNS
@@ -4231,18 +4232,8 @@ mod raii {
             sender: mpsc::UnboundedSender<Data>,
             lr: LoginRequest,
         ) -> Self {
-            let platform_additions: HashMap<String, Value> =
-                serde_json::from_str(&lr.platform_additions).unwrap_or_default();
-            let is_flutter = platform_additions.get("flutter").map_or(true, |v| {
-                if let Value::Bool(true) = v {
-                    true
-                } else {
-                    false
-                }
-            });
             let printer = conn_type == crate::server::AuthConnType::Remote
-                && lr.my_platform == whoami::Platform::Windows.to_string()
-                && is_flutter;
+                && lr.my_platform == whoami::Platform::Windows.to_string();
             AUTHED_CONNS.lock().unwrap().push(AuthedConn {
                 conn_id,
                 conn_type,

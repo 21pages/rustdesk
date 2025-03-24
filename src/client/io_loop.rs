@@ -1526,7 +1526,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                 }
                                 fs::JobType::Printer =>
                                 {
-                                    #[cfg(all(target_os = "windows", feature = "flutter"))]
+                                    #[cfg(target_os = "windows")]
                                     if let Some(path) = path {
                                         if path.exists() {
                                             let path = path.to_string_lossy().to_string();
@@ -1784,18 +1784,24 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
                 Some(message::Union::FileAction(action)) => match action.union {
                     Some(file_action::Union::Send(_s)) => match _s.file_type.enum_value() {
-                        #[cfg(all(target_os = "windows", feature = "flutter"))]
+                        #[cfg(target_os = "windows")]
                         Ok(file_transfer_send_request::FileType::Printer) => {
+                            #[cfg(feature = "flutter")]
                             let action = LocalConfig::get_option(
                                 config::keys::OPTION_PRINTER_INCOMING_JOB_ACTION,
                             );
+                            #[cfg(not(feature = "flutter"))]
+                            let action = "";
                             if action == "dismiss" {
                                 // Just ignore the incoming print job.
                             } else {
                                 let id = fs::get_next_job_id();
+                                #[cfg(feature = "flutter")]
                                 let allow_auto_print = LocalConfig::get_bool_option(
                                     config::keys::OPTION_PRINTER_ALLOW_AUTO_PRINT,
                                 );
+                                #[cfg(not(feature = "flutter"))]
+                                let allow_auto_print = false;
                                 if allow_auto_print {
                                     let printer_name = LocalConfig::get_option(
                                         config::keys::OPTION_PRINTER_SELECTED_NAME,
