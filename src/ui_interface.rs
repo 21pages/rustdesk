@@ -1351,11 +1351,10 @@ async fn check_id(
     id: String,
     uuid: Bytes,
 ) -> &'static str {
-    if let Ok(mut socket) = hbb_common::socket_client::connect_tcp(
-        crate::check_port(rendezvous_server, RENDEZVOUS_PORT),
-        CONNECT_TIMEOUT,
-    )
-    .await
+    let rendezvous_server = crate::check_port(rendezvous_server, RENDEZVOUS_PORT);
+    let rendezvous_server = crate::client_check_ws(&rendezvous_server, false);
+    if let Ok(mut socket) =
+        hbb_common::socket_client::connect_tcp(rendezvous_server, CONNECT_TIMEOUT).await
     {
         let mut msg_out = Message::new();
         msg_out.set_register_pk(RegisterPk {

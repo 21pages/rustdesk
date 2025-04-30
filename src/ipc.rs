@@ -22,7 +22,7 @@ pub use clipboard::ClipboardFile;
 use hbb_common::{
     allow_err, bail, bytes,
     bytes_codec::BytesCodec,
-    config::{self, Config, Config2},
+    config::{self, keys::OPTION_ENABLE_WEBSOCKET, Config, Config2},
     futures::StreamExt as _,
     futures_util::sink::SinkExt,
     log, password_security as password, timeout,
@@ -346,29 +346,40 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     }
 }
 
-pub struct CheckIfRestart(String, Vec<String>, String, String);
+pub struct CheckIfRestart {
+    stop_service: String,
+    rendezvous_servers: Vec<String>,
+    audio_input: String,
+    voice_call_input: String,
+    ws: String,
+    api_server: String,
+}
 
 impl CheckIfRestart {
     pub fn new() -> CheckIfRestart {
-        CheckIfRestart(
-            Config::get_option("stop-service"),
-            Config::get_rendezvous_servers(),
-            Config::get_option("audio-input"),
-            Config::get_option("voice-call-input"),
-        )
+        CheckIfRestart {
+            stop_service: Config::get_option("stop-service"),
+            rendezvous_servers: Config::get_rendezvous_servers(),
+            audio_input: Config::get_option("audio-input"),
+            voice_call_input: Config::get_option("voice-call-input"),
+            ws: Config::get_option(OPTION_ENABLE_WEBSOCKET),
+            api_server: Config::get_option("api-server"),
+        }
     }
 }
 impl Drop for CheckIfRestart {
     fn drop(&mut self) {
-        if self.0 != Config::get_option("stop-service")
-            || self.1 != Config::get_rendezvous_servers()
+        if self.stop_service != Config::get_option("stop-service")
+            || self.rendezvous_servers != Config::get_rendezvous_servers()
+            || self.ws != Config::get_option(OPTION_ENABLE_WEBSOCKET)
+            || self.api_server != Config::get_option("api-server")
         {
             RendezvousMediator::restart();
         }
-        if self.2 != Config::get_option("audio-input") {
+        if self.audio_input != Config::get_option("audio-input") {
             crate::audio_service::restart();
         }
-        if self.3 != Config::get_option("voice-call-input") {
+        if self.voice_call_input != Config::get_option("voice-call-input") {
             crate::audio_service::set_voice_call_input_device(
                 Some(Config::get_option("voice-call-input")),
                 true,
@@ -499,7 +510,8 @@ async fn handle(data: Data, stream: &mut Connection) {
                         None
                     };
                 } else if name == "hide_cm" {
-                    value = if crate::hbbs_http::sync::is_pro() || crate::common::is_custom_client() {
+                    value = if crate::hbbs_http::sync::is_pro() || crate::common::is_custom_client()
+                    {
                         Some(hbb_common::password_security::hide_cm().to_string())
                     } else {
                         None

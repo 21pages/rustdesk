@@ -237,7 +237,7 @@ impl Client {
         } else {
             (peer, "", key, token)
         };
-        let (mut rendezvous_server, servers, contained) = if other_server.is_empty() {
+        let (rendezvous_server, servers, contained) = if other_server.is_empty() {
             crate::get_rendezvous_server(1_000).await
         } else {
             if other_server == PUBLIC_SERVER {
@@ -254,12 +254,14 @@ impl Client {
             }
         };
 
-        let mut socket = connect_tcp(&*rendezvous_server, CONNECT_TIMEOUT).await;
         debug_assert!(!servers.contains(&rendezvous_server));
+        let mut rendezvous_server = crate::client_check_ws(&rendezvous_server, false);
+        let mut socket = connect_tcp(&*rendezvous_server, CONNECT_TIMEOUT).await;
         if socket.is_err() && !servers.is_empty() {
             log::info!("try the other servers: {:?}", servers);
             for server in servers {
                 let server = check_port(server, RENDEZVOUS_PORT);
+                let server = crate::client_check_ws(&server, false);
                 socket = connect_tcp(&*server, CONNECT_TIMEOUT).await;
                 if socket.is_ok() {
                     rendezvous_server = server;
@@ -276,7 +278,7 @@ impl Client {
         let mut signed_id_pk = Vec::new();
         let mut relay_server = "".to_owned();
 
-        if !key.is_empty() && !token.is_empty() {
+        if !key.is_empty() && !token.is_empty() && !crate::is_ws_endpoint(&rendezvous_server) {
             // mainly for the security of token
             allow_err!(secure_tcp(&mut socket, key).await);
         }
@@ -291,7 +293,9 @@ impl Client {
             log::info!("#{} punch attempt with {}, id: {}", i, my_addr, peer);
             let mut msg_out = RendezvousMessage::new();
             use hbb_common::protobuf::Enum;
-            let nat_type = if interface.is_force_relay() {
+            let nat_type = if interface.is_force_relay()
+                || crate::common::is_ws_endpoint(&rendezvous_server)
+            {
                 NatType::SYMMETRIC
             } else {
                 NatType::from_i32(my_nat_type).unwrap_or(NatType::UNKNOWN_NAT)
@@ -592,7 +596,7 @@ impl Client {
                 .await
                 .with_context(|| "Failed to connect to rendezvous server")?;
 
-            if !key.is_empty() && !token.is_empty() {
+            if !key.is_empty() && !token.is_empty() && !crate::is_ws_endpoint(&rendezvous_server) {
                 // mainly for the security of token
                 allow_err!(secure_tcp(&mut socket, key).await);
             }
@@ -645,12 +649,11 @@ impl Client {
         conn_type: ConnType,
         ipv4: bool,
     ) -> ResultType<Stream> {
-        let mut conn = connect_tcp(
-            ipv4_to_ipv6(check_port(relay_server, RELAY_PORT), ipv4),
-            CONNECT_TIMEOUT,
-        )
-        .await
-        .with_context(|| "Failed to connect to relay server")?;
+        let relay_server = check_port(relay_server, RELAY_PORT);
+        let relay_server = crate::client_check_ws(&relay_server, true);
+        let mut conn = connect_tcp(ipv4_to_ipv6(relay_server, ipv4), CONNECT_TIMEOUT)
+            .await
+            .with_context(|| "Failed to connect to relay server")?;
         let mut msg_out = RendezvousMessage::new();
         msg_out.set_request_relay(RequestRelay {
             licence_key: key.to_owned(),
@@ -3520,9 +3523,12 @@ async fn hc_connection_(
     let mut keep_alive = crate::DEFAULT_KEEP_ALIVE;
 
     let host = check_port(&rendezvous_server, RENDEZVOUS_PORT);
+    let host = crate::client_check_ws(&host, false);
     let mut conn = connect_tcp(host.clone(), CONNECT_TIMEOUT).await?;
     let key = crate::get_key(true).await;
-    crate::secure_tcp(&mut conn, &key).await?;
+    if !crate::is_ws_endpoint(&host) {
+        crate::secure_tcp(&mut conn, &key).await?;
+    }
     let mut msg_out = RendezvousMessage::new();
     msg_out.set_hc(HealthCheck {
         token,
@@ -3549,7 +3555,6 @@ async fn hc_connection_(
                     Some(rendezvous_message::Union::RegisterPkResponse(rpr)) => {
                         if rpr.keep_alive > 0 {
                             keep_alive = rpr.keep_alive * 1000;
-                            log::info!("keep_alive: {}ms", keep_alive);
                         }
                     }
                     _ => {}
@@ -3608,7 +3613,11 @@ pub mod peer_online {
         if port == 0 {
             bail!("Invalid server address: {}", rendezvous_server);
         }
-        let online_server = format!("{}:{}", tmp[0], port - 1);
+        let online_server = if crate::is_ws_config(false) {
+            crate::client_check_ws(&rendezvous_server, false)
+        } else {
+            format!("{}:{}", tmp[0], port - 1)
+        };
         connect_tcp(online_server, CONNECT_TIMEOUT).await
     }
 
