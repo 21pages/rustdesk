@@ -164,6 +164,7 @@ void showServerSettingsWithValue(
   final relayCtrl = TextEditingController(text: serverConfig.relayServer);
   final apiCtrl = TextEditingController(text: serverConfig.apiServer);
   final keyCtrl = TextEditingController(text: serverConfig.key);
+  final RxBool ws = serverConfig.ws.obs;
 
   RxString idServerMsg = ''.obs;
   RxString relayServerMsg = ''.obs;
@@ -183,12 +184,15 @@ void showServerSettingsWithValue(
       });
       bool ret = await setServerConfig(
           null,
+          null,
           errMsgs,
           ServerConfig(
-              idServer: idCtrl.text.trim(),
-              relayServer: relayCtrl.text.trim(),
-              apiServer: apiCtrl.text.trim(),
-              key: keyCtrl.text.trim()));
+            idServer: idCtrl.text.trim(),
+            relayServer: relayCtrl.text.trim(),
+            apiServer: apiCtrl.text.trim(),
+            key: keyCtrl.text.trim(),
+            ws: ws.value,
+          ));
       setState(() {
         isInProgress = false;
       });
@@ -232,11 +236,62 @@ void showServerSettingsWithValue(
       ).workaroundFreezeLinuxMint();
     }
 
+    Widget buildWsCheckbox() {
+      if (isWeb) {
+        return Offstage();
+      } else if (isDesktop) {
+        return Row(
+          children: [
+            SizedBox(
+              width: 120,
+              child: Tooltip(
+                waitDuration: Duration(milliseconds: 100),
+                message: translate('websocket_tip'),
+                child: Row(
+                  children: [
+                    Text('WebSocket'),
+                    SizedBox(width: 5),
+                    Icon(Icons.help_outline, size: 16),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: 8),
+            Obx(() => Checkbox(
+                value: ws.value,
+                onChanged: (v) {
+                  if (v != null) {
+                    ws.value = v;
+                  }
+                })),
+          ],
+        );
+      } else {
+        return Obx(() => SwitchListTile(
+              title: Tooltip(
+                waitDuration: Duration(milliseconds: 100),
+                message: translate('websocket_tip'),
+                child: Row(
+                  children: [
+                    Text("WebSocket"),
+                    SizedBox(width: 5),
+                    Icon(Icons.help_outline, size: 16),
+                  ],
+                ),
+              ),
+              value: ws.value,
+              onChanged: (v) {
+                ws.value = v;
+              },
+            ));
+      }
+    }
+
     return CustomAlertDialog(
       title: Row(
         children: [
           Expanded(child: Text(translate('ID/Relay Server'))),
-          ...ServerConfigImportExportWidgets(controllers, errMsgs),
+          ...ServerConfigImportExportWidgets(controllers, ws, errMsgs),
         ],
       ),
       content: ConstrainedBox(
@@ -269,6 +324,8 @@ void showServerSettingsWithValue(
                   ),
                   SizedBox(height: 8),
                   buildField('Key', keyCtrl, ''),
+                  SizedBox(height: 8),
+                  buildWsCheckbox(),
                   if (isInProgress)
                     Padding(
                       padding: EdgeInsets.only(top: 8),

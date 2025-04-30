@@ -432,11 +432,14 @@ class MyIdMenu: Reactor.Component {
             var old_api = configOptions["api-server"] || "";
             var old_id = configOptions["custom-rendezvous-server"] || "";
             var old_key = configOptions["key"] || "";
+            var old_ws = configOptions["ws"] || "";
+            var ws_checked = old_ws === "Y" ? "checked" : "";
             msgbox("custom-server", "ID/Relay Server", "<div .form .set-password> \
             <div><span>" + translate("ID Server") + ": </span><input|text .outline-focus name='id' value='" + old_id + "' /></div> \
             <div><span>" + translate("Relay Server") + ": </span><input|text name='relay' value='" + old_relay + "' /></div> \
             <div><span>" + translate("API Server") + ": </span><input|text name='api' value='" + old_api + "' /></div> \
             <div><span>" + translate("Key") + ": </span><input|text name='key' value='" + old_key + "' /></div> \
+            <div><span>WebSocket: </span><button|checkbox(ws) " + ws_checked + "></button></div> \
             </div> \
             ", "", function(res=null) {
                 if (!res) return;
@@ -444,7 +447,8 @@ class MyIdMenu: Reactor.Component {
                 var relay = (res.relay || "").trim();
                 var api = (res.api || "").trim().toLowerCase();
                 var key = (res.key || "").trim();
-                if (id == old_id && relay == old_relay && key == old_key && api == old_api) return;
+                var ws = res.ws === true ? "Y" : "";
+                if (id == old_id && relay == old_relay && key == old_key && api == old_api && ws == old_ws) return;
                 if (id) {
                     var err = handler.test_if_valid_server(id, true);
                     if (err) return translate("ID Server") + ": " + err;
@@ -462,6 +466,7 @@ class MyIdMenu: Reactor.Component {
                 configOptions["relay-server"] = relay;
                 configOptions["api-server"] = api;
                 configOptions["key"] = key;
+                configOptions["ws"] = ws;
                 handler.set_options(configOptions);
             }, 260);
         } else if (me.id == "socks5-server") {

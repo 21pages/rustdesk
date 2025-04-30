@@ -253,5 +253,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("remote-printing-disallowed-text-tip", "The permission settings of the controlled side deny Remote Printing."),
         ("save-settings-tip", "Save settings"),
         ("dont-show-again-tip", "Don't show this again"),
+        ("websocket_tip", "When using WebSocket, only relay connections are supported."),
     ].iter().cloned().collect();
 }

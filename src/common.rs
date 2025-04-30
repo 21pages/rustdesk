@@ -12,12 +12,16 @@ use hbb_common::{
     anyhow::{anyhow, Context},
     bail, base64,
     bytes::Bytes,
-    config::{self, Config, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT},
+    config::{
+        self, Config, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT, WS_RELAY_PORT,
+        WS_RENDEZVOUS_PORT,
+    },
     futures::future::join_all,
     futures_util::future::poll_fn,
     get_version_number, log,
     message_proto::*,
     protobuf::{Enum, Message as _},
+    regex,
     rendezvous_proto::*,
     socket_client,
     sodiumoxide::crypto::{box_, secretbox, sign},
@@ -32,7 +36,7 @@ use hbb_common::{
 
 use crate::{
     hbbs_http::create_http_client_async,
-    ui_interface::{get_option, set_option},
+    ui_interface::{self, get_option, set_option},
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -646,12 +650,12 @@ async fn test_rendezvous_server_() {
     for host in servers {
         futs.push(tokio::spawn(async move {
             let tm = std::time::Instant::now();
-            if socket_client::connect_tcp(
-                crate::check_port(&host, RENDEZVOUS_PORT),
-                CONNECT_TIMEOUT,
-            )
-            .await
-            .is_ok()
+            // Still store the latency of the original host
+            let rendezvous_server = crate::check_port(&host, RENDEZVOUS_PORT);
+            let rendezvous_server = crate::server_check_ws(&rendezvous_server, false);
+            if socket_client::connect_tcp(rendezvous_server, CONNECT_TIMEOUT)
+                .await
+                .is_ok()
             {
                 let elapsed = tm.elapsed().as_micros();
                 Config::update_latency(&host, elapsed as _);
@@ -1265,6 +1269,10 @@ pub fn check_process(arg: &str, mut same_uid: bool) -> bool {
     false
 }
 
+// Skip additional encryption when using WebSocket connections (wss://)
+// as WebSocket Secure (wss://) already provides transport layer encryption.
+// This doesn't affect the end-to-end encryption between clients,
+// it only avoids redundant encryption between client and server.
 pub async fn secure_tcp(conn: &mut Stream, key: &str) -> ResultType<()> {
     let rs_pk = get_rs_pk(key);
     let Some(rs_pk) = rs_pk else {
@@ -1583,6 +1591,221 @@ pub fn get_hwid() -> Bytes {
     Bytes::from(hasher.finalize().to_vec())
 }
 
+/**
+ * Check if WebSocket configuration is enabled
+ *
+ * @param server When true, called from server process or mobile client
+ *               When false, called from non-server process (desktop app)
+ * @return true if WebSocket is enabled in configuration
+ */
+pub fn is_ws_config(server: bool) -> bool {
+    let v = if server {
+        Config::get_option("ws")
+    } else {
+        ui_interface::get_option("ws")
+    };
+    v == "Y"
+}
+
+/**
+ * Check if an endpoint URL is a WebSocket URL
+ *
+ * @param endpoint The endpoint URL to check
+ * @return true if the endpoint starts with "ws://" or "wss://"
+ */
+pub fn is_ws_endpoint(endpoint: &str) -> bool {
+    endpoint.starts_with("ws://") || endpoint.starts_with("wss://")
+}
+
+/**
+ * Convert endpoint to WebSocket format if needed (server-side)
+ *
+ * Used by server process or mobile clients to check and convert
+ * endpoints to WebSocket format if WebSocket is enabled
+ *
+ * @param endpoint The endpoint to check and possibly convert
+ * @param relay Whether this is a relay endpoint
+ * @return The original or converted endpoint
+ */
+pub fn server_check_ws(endpoint: &str, relay: bool) -> String {
+    if !is_ws_config(true) {
+        return endpoint.to_string();
+    }
+    return check_ws_(endpoint, relay, true);
+}
+
+/**
+ * Convert rendezvous server to WebSocket format if needed (client-side)
+ *
+ * Used by desktop app in non-server process to check and convert
+ * rendezvous server to WebSocket format if WebSocket is enabled.
+ *
+ * @param rendezvous_server The rendezvous server to check and possibly convert
+ * @param relay Whether this is a relay endpoint
+ * @return The original or converted rendezvous server
+ */
+pub fn client_check_ws(rendezvous_server: &str, relay: bool) -> String {
+    if !is_ws_config(false) {
+        return rendezvous_server.to_string();
+    }
+    return check_ws_(rendezvous_server, relay, false);
+}
+
+/**
+ * Core function to convert an endpoint to WebSocket format
+ *
+ * Converts between different address formats:
+ * 1. IPv4 address with/without port -> ws://ipv4:port
+ * 2. IPv6 address with/without port -> ws://[ipv6]:port
+ * 3. Domain with/without port -> ws(s)://domain/ws/path
+ *
+ * @param endpoint The endpoint to convert
+ * @param relay Whether this is a relay endpoint (affects port and path)
+ * @param server Whether this is called from server context (affects protocol)
+ * @return The converted WebSocket endpoint
+ */
+fn check_ws_(endpoint: &str, relay: bool, server: bool) -> String {
+    let default_port = if relay {
+        WS_RELAY_PORT
+    } else {
+        WS_RENDEZVOUS_PORT
+    };
+    let domain_path = if relay { "/ws/relay" } else { "/ws/id" };
+
+    if endpoint.is_empty() {
+        return endpoint.to_string();
+    }
+
+    if is_ws_endpoint(endpoint) {
+        return endpoint.to_string();
+    }
+
+    // First check if it's an IP address
+    let (address, is_domain) = if hbb_common::is_ipv4_str(endpoint) {
+        // Case 1: IPv4 address (with or without port)
+        if let Some(colon_pos) = endpoint.find(':') {
+            let (ip, port) = endpoint.split_at(colon_pos);
+            if let Ok(port) = port.trim_start_matches(':').parse::<u16>() {
+                (format!("{}:{}", ip, port + 2), false)
+            } else {
+                (format!("{}:{}", ip, default_port), false)
+            }
+        } else {
+            (format!("{}:{}", endpoint, default_port), false)
+        }
+    } else if hbb_common::is_ipv6_str(endpoint) {
+        // Case 2: IPv6 address (with or without port)
+        if let Some(bracket_end) = endpoint.rfind(']') {
+            // Already has port in format [IPv6]:port
+            let (ip, port) = endpoint.split_at(bracket_end + 1);
+            if let Ok(port) = port.trim_start_matches(':').parse::<u16>() {
+                (format!("{}:{}", ip, port + 2), false)
+            } else {
+                (format!("{}:{}", ip, default_port), false)
+            }
+        } else {
+            // No port, need to add brackets
+            (format!("[{}]:{}", endpoint, default_port), false)
+        }
+    } else {
+        // Not an IP address, check if it's a domain
+        if let Some(colon_pos) = endpoint.find(':') {
+            let (domain, _port) = endpoint.split_at(colon_pos);
+            if hbb_common::is_domain_port_str(endpoint) {
+                // Valid domain with port
+                (format!("{}{}", domain, domain_path), true)
+            } else {
+                // Invalid format
+                return endpoint.to_string();
+            }
+        } else {
+            // No port, just check if it looks like a domain
+            if let Ok(reg) = regex::Regex::new(
+                r"(?i)^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z-]{0,61}[a-z]$",
+            ) {
+                if reg.is_match(endpoint) {
+                    (format!("{}{}", endpoint, domain_path), true)
+                } else {
+                    return endpoint.to_string();
+                }
+            } else {
+                return endpoint.to_string();
+            }
+        }
+    };
+    let protocol = if is_domain {
+        let api_server = if server {
+            get_api_server(
+                Config::get_option("api-server"),
+                Config::get_option("custom-rendezvous-server"),
+            )
+        } else {
+            ui_interface::get_api_server()
+        };
+        if api_server.starts_with("https") {
+            "wss"
+        } else {
+            "ws"
+        }
+    } else {
+        "ws"
+    };
+    format!("{}://{}", protocol, address)
+}
+
+/**
+ * Convert a WebSocket rendezvous server URL to a relay server URL
+ *
+ * For IP addresses: Keeps the protocol and IP, changes the port (+1)
+ * For domains: Replaces "/ws/id" with "/ws/relay" in the path
+ *
+ * @param rendezvous_server The WebSocket rendezvous server URL
+ * @return The corresponding WebSocket relay server URL
+ */
+pub fn ws_rendezvous_to_relay(rendezvous_server: &str) -> String {
+    if !is_ws_endpoint(rendezvous_server) {
+        return rendezvous_server.to_string();
+    }
+
+    // Get protocol prefix
+    let protocol = if rendezvous_server.starts_with("wss://") {
+        "wss://"
+    } else {
+        "ws://"
+    };
+
+    // Remove protocol prefix
+    let host = rendezvous_server
+        .trim_start_matches("ws://")
+        .trim_start_matches("wss://");
+
+    // Check if it's an IP address
+    if hbb_common::is_ipv4_str(host) {
+        if let Some(colon_pos) = host.find(':') {
+            let (ip, port) = host.split_at(colon_pos);
+            if let Ok(port) = port.trim_start_matches(':').parse::<u16>() {
+                return format!("{protocol}{ip}:{}", port + 1);
+            }
+        }
+        return format!("{protocol}{host}:{WS_RELAY_PORT}");
+    } else if hbb_common::is_ipv6_str(host) {
+        if let Some(bracket_end) = host.rfind(']') {
+            let (ip, port) = host.split_at(bracket_end + 1);
+            if let Ok(port) = port.trim_start_matches(':').parse::<u16>() {
+                return format!("{protocol}{ip}:{}", port + 1);
+            }
+        }
+        return format!("{protocol}[{host}]:{WS_RELAY_PORT}");
+    } else {
+        // It's a domain, replace /ws/id with /ws/relay
+        if host.ends_with("/ws/id") {
+            return format!("{}{}", protocol, host.replace("/ws/id", "/ws/relay"));
+        }
+    }
+
+    rendezvous_server.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1721,6 +1944,200 @@ mod tests {
         assert_eq!(
             Duration::from_secs_f64(dur.as_secs_f64() * 0.499 * 1e-9),
             Duration::from_nanos(0)
+        );
+    }
+
+    fn setup_test_env() {
+        Config::set_option("ws".to_owned(), "Y".to_owned());
+        Config::set_option("api-server".to_owned(), "http://example.com".to_owned());
+    }
+
+    #[test]
+    fn test_check_ws() {
+        setup_test_env();
+
+        // Test empty host
+        assert_eq!(check_ws_("", false, true), "");
+        assert_eq!(check_ws_("", true, true), "");
+
+        // Test IPv4 addresses
+        assert_eq!(
+            check_ws_("192.168.1.1", false, true),
+            "ws://192.168.1.1:21118"
+        );
+        assert_eq!(
+            check_ws_("192.168.1.1", true, true),
+            "ws://192.168.1.1:21119"
+        );
+        assert_eq!(
+            check_ws_("192.168.1.1:8080", false, true),
+            "ws://192.168.1.1:8082"
+        );
+        assert_eq!(
+            check_ws_("192.168.1.1:8080", true, true),
+            "ws://192.168.1.1:8082"
+        );
+
+        // Test IPv6 addresses
+        assert_eq!(
+            check_ws_("2001:db8::1", false, true),
+            "ws://[2001:db8::1]:21118"
+        );
+        assert_eq!(
+            check_ws_("2001:db8::1", true, true),
+            "ws://[2001:db8::1]:21119"
+        );
+        assert_eq!(
+            check_ws_("[2001:db8::1]:8080", false, true),
+            "ws://[2001:db8::1]:8082"
+        );
+        assert_eq!(
+            check_ws_("[2001:db8::1]:8080", true, true),
+            "ws://[2001:db8::1]:8082"
+        );
+
+        // Test domains with port
+        assert_eq!(
+            check_ws_("example.com:8080", false, true),
+            "ws://example.com/ws/id"
+        );
+        assert_eq!(
+            check_ws_("example.com:8080", true, true),
+            "ws://example.com/ws/relay"
+        );
+        assert_eq!(
+            check_ws_("sub.example.com:8080", false, true),
+            "ws://sub.example.com/ws/id"
+        );
+        assert_eq!(
+            check_ws_("sub.example.com:8080", true, true),
+            "ws://sub.example.com/ws/relay"
+        );
+
+        // Test domains without port
+        assert_eq!(
+            check_ws_("example.com", false, true),
+            "ws://example.com/ws/id"
+        );
+        assert_eq!(
+            check_ws_("example.com", true, true),
+            "ws://example.com/ws/relay"
+        );
+        assert_eq!(
+            check_ws_("sub.example.com", false, true),
+            "ws://sub.example.com/ws/id"
+        );
+        assert_eq!(
+            check_ws_("sub.example.com", true, true),
+            "ws://sub.example.com/ws/relay"
+        );
+
+        // Test invalid inputs
+        assert_eq!(check_ws_("invalid", false, true), "invalid");
+        assert_eq!(check_ws_("invalid:port", false, true), "invalid:port");
+        assert_eq!(
+            check_ws_("192.168.1.1:invalid", false, true),
+            "192.168.1.1:invalid"
+        );
+        assert_eq!(
+            check_ws_("[2001:db8::1]:invalid", false, true),
+            "[2001:db8::1]:invalid"
+        );
+
+        // Test with https api-server (only domains should use wss)
+        Config::set_option("api-server".to_owned(), "https://example.com".to_owned());
+        assert_eq!(
+            check_ws_("192.168.1.1", false, true),
+            "ws://192.168.1.1:21118"
+        ); // IP still uses ws
+        assert_eq!(
+            check_ws_("example.com", false, true),
+            "wss://example.com/ws/id"
+        ); // Domain uses wss
+        assert_eq!(
+            check_ws_("2001:db8::1", false, true),
+            "ws://[2001:db8::1]:21118"
+        ); // IPv6 still uses ws
+
+        // Test with ws disabled
+        Config::set_option("ws".to_owned(), "".to_owned());
+        assert_eq!(server_check_ws("192.168.1.1", false), "192.168.1.1");
+        assert_eq!(server_check_ws("example.com", false), "example.com");
+
+        // Test with ws:// or wss:// prefix
+        Config::set_option("ws".to_owned(), "Y".to_owned());
+        assert_eq!(
+            check_ws_("ws://192.168.1.1", false, true),
+            "ws://192.168.1.1"
+        );
+        assert_eq!(
+            check_ws_("wss://example.com", false, true),
+            "wss://example.com"
+        );
+    }
+
+    #[test]
+    fn test_ws_rendezvous_to_relay() {
+        setup_test_env();
+
+        // Test empty input
+        assert_eq!(ws_rendezvous_to_relay(""), "");
+
+        // Test non-ws input
+        assert_eq!(ws_rendezvous_to_relay("192.168.1.1"), "192.168.1.1");
+        assert_eq!(ws_rendezvous_to_relay("example.com"), "example.com");
+
+        // Test IPv4 addresses
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://192.168.1.1:21118"),
+            "ws://192.168.1.1:21119"
+        );
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://192.168.1.1:8082"),
+            "ws://192.168.1.1:8083"
+        );
+        assert_eq!(
+            ws_rendezvous_to_relay("wss://192.168.1.1:21118"),
+            "wss://192.168.1.1:21119"
+        );
+
+        // Test IPv6 addresses
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://[2001:db8::1]:21118"),
+            "ws://[2001:db8::1]:21119"
+        );
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://[2001:db8::1]:8082"),
+            "ws://[2001:db8::1]:8083"
+        );
+        assert_eq!(
+            ws_rendezvous_to_relay("wss://[2001:db8::1]:21118"),
+            "wss://[2001:db8::1]:21119"
+        );
+
+        // Test domains
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://example.com/ws/id"),
+            "ws://example.com/ws/relay"
+        );
+        assert_eq!(
+            ws_rendezvous_to_relay("wss://example.com/ws/id"),
+            "wss://example.com/ws/relay"
+        );
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://sub.example.com/ws/id"),
+            "ws://sub.example.com/ws/relay"
+        );
+
+        // Test invalid inputs
+        assert_eq!(ws_rendezvous_to_relay("ws://invalid"), "ws://invalid");
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://192.168.1.1:invalid"),
+            "ws://192.168.1.1:invalid"
+        );
+        assert_eq!(
+            ws_rendezvous_to_relay("ws://[2001:db8::1]:invalid"),
+            "ws://[2001:db8::1]:invalid"
         );
     }
 }

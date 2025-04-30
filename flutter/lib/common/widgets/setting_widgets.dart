@@ -180,11 +180,12 @@ customImageQualitySetting() {
 
 List<Widget> ServerConfigImportExportWidgets(
   List<TextEditingController> controllers,
+  RxBool ws,
   List<RxString> errMsgs,
 ) {
   import() {
     Clipboard.getData(Clipboard.kTextPlain).then((value) {
-      importConfig(controllers, errMsgs, value?.text);
+      importConfig(controllers, ws, errMsgs, value?.text);
     });
   }
 
@@ -193,7 +194,8 @@ List<Widget> ServerConfigImportExportWidgets(
             idServer: controllers[0].text.trim(),
             relayServer: controllers[1].text.trim(),
             apiServer: controllers[2].text.trim(),
-            key: controllers[3].text.trim())
+            key: controllers[3].text.trim(),
+            ws: ws.value)
         .encode();
     debugPrint("ServerConfig export: $text");
     Clipboard.setData(ClipboardData(text: text));

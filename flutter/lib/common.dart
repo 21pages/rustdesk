@@ -2241,7 +2241,7 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
       final config = uri.path.substring("/".length);
       // add a timer to make showToast work
       Timer(Duration(seconds: 1), () {
-        importConfig(null, null, config);
+        importConfig(null, null, null, config);
       });
     }
     return null;
@@ -2648,13 +2648,19 @@ class ServerConfig {
   late String relayServer;
   late String apiServer;
   late String key;
+  late bool ws;
 
   ServerConfig(
-      {String? idServer, String? relayServer, String? apiServer, String? key}) {
+      {String? idServer,
+      String? relayServer,
+      String? apiServer,
+      String? key,
+      bool? ws}) {
     this.idServer = idServer?.trim() ?? '';
     this.relayServer = relayServer?.trim() ?? '';
     this.apiServer = apiServer?.trim() ?? '';
     this.key = key?.trim() ?? '';
+    this.ws = ws ?? false;
   }
 
   /// decode from shared string (from user shared or rustdesk-server generated)
@@ -2674,16 +2680,18 @@ class ServerConfig {
     relayServer = json['relay'] ?? '';
     apiServer = json['api'] ?? '';
     key = json['key'] ?? '';
+    ws = json['ws'] ?? false;
   }
 
   /// encode to shared string
   /// also see [ServerConfig.decode]
   String encode() {
-    Map<String, String> config = {};
+    Map<String, dynamic> config = {};
     config['host'] = idServer.trim();
     config['relay'] = relayServer.trim();
     config['api'] = apiServer.trim();
     config['key'] = key.trim();
+    config['ws'] = ws;
     return base64UrlEncode(Uint8List.fromList(jsonEncode(config).codeUnits))
         .split('')
         .reversed
@@ -2695,7 +2703,8 @@ class ServerConfig {
       : idServer = options['custom-rendezvous-server'] ?? "",
         relayServer = options['relay-server'] ?? "",
         apiServer = options['api-server'] ?? "",
-        key = options['key'] ?? "";
+        key = options['key'] ?? "",
+        ws = options['ws'] == 'Y';
 }
 
 Widget dialogButton(String text,
@@ -3236,8 +3245,8 @@ class _ReconnectCountDownButtonState extends State<_ReconnectCountDownButton> {
   }
 }
 
-importConfig(List<TextEditingController>? controllers, List<RxString>? errMsgs,
-    String? text) {
+importConfig(List<TextEditingController>? controllers, RxBool? ws,
+    List<RxString>? errMsgs, String? text) {
   text = text?.trim();
   if (text != null && text.isNotEmpty) {
     try {
@@ -3246,7 +3255,7 @@ importConfig(List<TextEditingController>? controllers, List<RxString>? errMsgs,
         sc.relayServer = '';
       }
       if (sc.idServer.isNotEmpty) {
-        Future<bool> success = setServerConfig(controllers, errMsgs, sc);
+        Future<bool> success = setServerConfig(controllers, ws, errMsgs, sc);
         success.then((value) {
           if (value) {
             showToast(translate('Import server configuration successfully'));
@@ -3268,6 +3277,7 @@ importConfig(List<TextEditingController>? controllers, List<RxString>? errMsgs,
 
 Future<bool> setServerConfig(
   List<TextEditingController>? controllers,
+  RxBool? ws,
   List<RxString>? errMsgs,
   ServerConfig config,
 ) async {
@@ -3287,6 +3297,9 @@ Future<bool> setServerConfig(
     controllers[1].text = config.relayServer;
     controllers[2].text = config.apiServer;
     controllers[3].text = config.key;
+  }
+  if (ws != null) {
+    ws.value = config.ws;
   }
   // id
   if (config.idServer.isNotEmpty && errMsgs != null) {
@@ -3321,6 +3334,7 @@ Future<bool> setServerConfig(
   await bind.mainSetOption(key: 'relay-server', value: config.relayServer);
   await bind.mainSetOption(key: 'api-server', value: config.apiServer);
   await bind.mainSetOption(key: 'key', value: config.key);
+  await bind.mainSetOption(key: 'ws', value: config.ws ? 'Y' : '');
   final newApiServer = await bind.mainGetApiServer();
   if (oldApiServer.isNotEmpty &&
       oldApiServer != newApiServer &&

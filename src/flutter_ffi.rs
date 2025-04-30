@@ -880,7 +880,7 @@ pub fn main_set_option(key: String, value: String) {
         );
     }
 
-    if key.eq("custom-rendezvous-server") {
+    if key.eq("custom-rendezvous-server") || key.eq("ws") || key.eq("api-server") {
         set_option(key, value.clone());
         #[cfg(target_os = "android")]
         crate::rendezvous_mediator::RendezvousMediator::restart();
