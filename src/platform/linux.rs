@@ -619,8 +619,36 @@ pub fn is_prelogin() -> bool {
     if is_flatpak() {
         return false;
     }
-    let n = get_active_userid().len();
-    n < 4 && n > 1
+    let name = get_active_username();
+    if let Ok(res) = run_cmds(&format!("getent passwd {}", name)) {
+        return res.contains("/bin/false") || res.contains("/usr/sbin/nologin");
+    }
+    false
+}
+
+// Check "Lock".
+// "Switch user" can't be checked, because `get_values_of_seat0(&[0])` does not return the session.
+// The logged in session is "online" not "active".
+// And the "Switch user" screen is usually Wayland login session, which we do not support.
+pub fn is_locked() -> bool {
+    if is_prelogin() {
+        return false;
+    }
+
+    let values = get_values_of_seat0(&[0]);
+    // Though the values can't be empty, we still add check here for safety.
+    // Because we cannot guarantee whether the internal implementation will change in the future.
+    // https://github.com/rustdesk/hbb_common/blob/ebb4d4a48cf7ed6ca62e93f8ed124065c6408536/src/platform/linux.rs#L119
+    if values.is_empty() {
+        log::debug!("Failed to check is locked, values vector is empty.");
+        return false;
+    }
+    let session = &values[0];
+    if session.is_empty() {
+        log::debug!("Failed to check is locked, session is empty.");
+        return false;
+    }
+    is_session_locked(session)
 }
 
 pub fn is_root() -> bool {
@@ -991,7 +1019,7 @@ mod desktop {
         pub sid: String,
         pub username: String,
         pub uid: String,
-        pub protocal: String,
+        pub protocol: String,
         pub display: String,
         pub xauth: String,
         pub home: String,
@@ -1002,12 +1030,12 @@ mod desktop {
     impl Desktop {
         #[inline]
         pub fn is_wayland(&self) -> bool {
-            self.protocal == DISPLAY_SERVER_WAYLAND
+            self.protocol == DISPLAY_SERVER_WAYLAND
         }
 
         #[inline]
         pub fn is_login_wayland(&self) -> bool {
-            super::is_gdm_user(&self.username) && self.protocal == DISPLAY_SERVER_WAYLAND
+            super::is_gdm_user(&self.username) && self.protocol == DISPLAY_SERVER_WAYLAND
         }
 
         #[inline]
@@ -1064,7 +1092,7 @@ mod desktop {
             }
             self.display = self
                 .display
-                .replace(&whoami::hostname(), "")
+                .replace(&hbb_common::whoami::hostname(), "")
                 .replace("localhost", "");
         }
 
@@ -1246,7 +1274,7 @@ mod desktop {
             self.sid = seat0_values[0].clone();
             self.uid = seat0_values[1].clone();
             self.username = seat0_values[2].clone();
-            self.protocal = get_display_server_of_session(&self.sid).into();
+            self.protocol = get_display_server_of_session(&self.sid).into();
             if self.is_login_wayland() {
                 self.display = "".to_owned();
                 self.xauth = "".to_owned();

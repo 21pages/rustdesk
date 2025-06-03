@@ -1268,8 +1268,8 @@ impl Connection {
 
         #[cfg(not(target_os = "android"))]
         {
-            pi.hostname = whoami::hostname();
-            pi.platform = whoami::platform().to_string();
+            pi.hostname = hbb_common::whoami::hostname();
+            pi.platform = hbb_common::whoami::platform().to_string();
         }
         #[cfg(target_os = "android")]
         {
@@ -1314,13 +1314,13 @@ impl Connection {
         #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
         {
             let is_both_windows = cfg!(target_os = "windows")
-                && self.lr.my_platform == whoami::Platform::Windows.to_string();
+                && self.lr.my_platform == hbb_common::whoami::Platform::Windows.to_string();
             #[cfg(feature = "unix-file-copy-paste")]
             let is_unix_and_peer_supported = crate::is_support_file_copy_paste(&self.lr.version);
             #[cfg(not(feature = "unix-file-copy-paste"))]
             let is_unix_and_peer_supported = false;
             let is_both_macos = cfg!(target_os = "macos")
-                && self.lr.my_platform == whoami::Platform::MacOS.to_string();
+                && self.lr.my_platform == hbb_common::whoami::Platform::MacOS.to_string();
             let is_peer_support_paste_if_macos =
                 crate::is_support_file_paste_if_macos(&self.lr.version);
             let has_file_clipboard = is_both_windows
@@ -1379,7 +1379,7 @@ impl Connection {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if self.file_transfer.is_some() {
-            if crate::platform::is_prelogin() || self.tx_to_cm.send(ipc::Data::Test).is_err() {
+            if crate::platform::is_prelogin() { // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
                 username = "".to_owned();
             }
         }
@@ -1946,6 +1946,27 @@ impl Connection {
                 return true;
             }
 
+            // https://github.com/rustdesk/rustdesk-server-pro/discussions/646
+            // `is_logon` is used to check login with `OPTION_ALLOW_LOGON_SCREEN_PASSWORD` == "Y".
+            // `is_logon_ui()` is used on Windows, because there's no good way to detect `is_locked()`.
+            // Detecting `is_logon_ui()` (if `LogonUI.exe` running) is a workaround.
+            #[cfg(target_os = "windows")]
+            let is_logon = || {
+                crate::platform::is_prelogin() || {
+                    match crate::platform::is_logon_ui() {
+                        Ok(result) => result,
+                        Err(e) => {
+                            log::error!("Failed to detect logon UI: {:?}", e);
+                            false
+                        }
+                    }
+                }
+            };
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            let is_logon = || crate::platform::is_prelogin() || crate::platform::is_locked();
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let is_logon = || crate::platform::is_prelogin();
+
             if !hbb_common::is_ip_str(&lr.username)
                 && !hbb_common::is_domain_port_str(&lr.username)
                 && lr.username != Config::get_id()
@@ -1954,8 +1975,8 @@ impl Connection {
                     .await;
                 return false;
             } else if (password::approve_mode() == ApproveMode::Click
-                && !(crate::platform::is_prelogin()
-                    && crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"))
+                && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
+                    && is_logon()))
                 || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
             {
                 self.try_start_cm(lr.my_id, lr.my_name, false);
@@ -2798,6 +2819,16 @@ impl Connection {
                 Some(message::Union::VoiceCallResponse(_response)) => {
                     // TODO: Maybe we can do a voice call from cm directly.
                 }
+                Some(message::Union::ScreenshotRequest(request)) => {
+                    if let Some(tx) = self.inner.tx.clone() {
+                        crate::video_service::set_take_screenshot(
+                            request.display as _,
+                            request.sid.clone(),
+                            tx,
+                        );
+                        self.refresh_video_display(Some(request.display as usize));
+                    }
+                }
                 _ => {}
             }
         }
@@ -3062,10 +3093,18 @@ impl Connection {
                     if virtual_display_manager::amyuni_idd::is_my_display(&name) {
                         record_changed = false;
                     }
+                    #[cfg(not(target_os = "macos"))]
+                    let scale = 1.0;
+                    #[cfg(target_os = "macos")]
+                    let scale = display.scale();
+                    let original = (
+                        ((display.width() as f64) / scale).round() as _,
+                        (display.height() as f64 / scale).round() as _,
+                    );
                     if record_changed {
                         display_service::set_last_changed_resolution(
                             &name,
-                            (display.width() as _, display.height() as _),
+                            original,
                             (r.width, r.height),
                         );
                     }
@@ -4248,7 +4287,7 @@ mod raii {
         ) -> Self {
             let printer = conn_type == crate::server::AuthConnType::Remote
                 && crate::is_support_remote_print(&lr.version)
-                && lr.my_platform == whoami::Platform::Windows.to_string();
+                && lr.my_platform == hbb_common::whoami::Platform::Windows.to_string();
             AUTHED_CONNS.lock().unwrap().push(AuthedConn {
                 conn_id,
                 conn_type,
@@ -4393,7 +4432,7 @@ mod raii {
                     *WALLPAPER_REMOVER.lock().unwrap() = None;
                 }
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                display_service::reset_resolutions();
+                display_service::restore_resolutions();
                 #[cfg(windows)]
                 let _ = virtual_display_manager::reset_all();
                 #[cfg(target_os = "linux")]
