@@ -62,7 +62,7 @@ class HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!bind.isHost()) {
+    if (!bind.isHost() && !bind.isFull()) {
       return _buildHome();
     }
 

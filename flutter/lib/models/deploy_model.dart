@@ -148,6 +148,35 @@ class DeployModel {
       deploying.value = false;
     }
   }
+
+  Future<void> deployToLoginUser() async {
+    try {
+      deploying.value = true;
+      error.value = '';
+      final api = "${await bind.mainGetApiServer()}/api/deploy/login-account";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode({
+        'id': await bind.mainGetMyId(),
+        "uuid": await bind.mainGetUuid(),
+      });
+      final resp =
+          await http.post(Uri.parse(api), headers: headers, body: body);
+      if (resp.body.isNotEmpty) {
+        Map<String, dynamic> json = jsonDecode(utf8.decode(resp.bodyBytes));
+        if (json.containsKey('error')) {
+          throw json['error'];
+        }
+      }
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+    } catch (e) {
+      error.value = e.toString();
+    } finally {
+      deploying.value = false;
+    }
+  }
 }
 
 class DeployWithCodeResponse {

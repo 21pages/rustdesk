@@ -31,7 +31,9 @@ class UserModel {
       //  For login success, should clear network error
       networkError.value = '';
       if (p0.isNotEmpty && bind.isFull()) {
-        gFFI.deployModel.checkDeploy();
+        if (!gFFI.deployModel.isDeployed.value) {
+          gFFI.deployModel.checkDeploy();
+        }
       }
     });
   }

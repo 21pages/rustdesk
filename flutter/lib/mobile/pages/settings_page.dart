@@ -640,7 +640,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       sections: [
         customClientSection,
         if (!bind.isDisableAccount()) _AccountSection(),
-        if (isAndroid && bind.isHost()) _HostDeploySection(),
+        if (isAndroid && (bind.isHost() || bind.isFull())) _DeploySection(),
         SettingsSection(title: Text(translate("Settings")), tiles: [
           if (!disabledSettings && !_hideNetwork && !_hideServer)
             SettingsTile(
@@ -1192,7 +1192,7 @@ SettingsTile _getPopupDialogRadioEntry({
   );
 }
 
-class _HostDeploySection extends AbstractSettingsSection {
+class _DeploySection extends AbstractSettingsSection {
   @override
   Widget build(BuildContext context) {
     final model = gFFI.deployModel;
@@ -1203,19 +1203,12 @@ class _HostDeploySection extends AbstractSettingsSection {
       if (!model.isDeployed.value || model.team.value.isEmpty) {
         tiles.add(SettingsTile(
           title: model.checking.value
-              ? Text('${translate('Checking')}...')
-              : model.error.value.isNotEmpty
-                  ? Text(translate('Error'))
-                  : Text(translate('Deploy now')),
+              ? Text(translate('Checking...'))
+              : Text(translate('Deploy now')),
           leading: model.checking.value
-              ? Icon(Icons.hourglass_empty, color: Colors.blue)
-              : model.error.value.isNotEmpty
-                  ? Icon(Icons.error_outline,
-                      color: Theme.of(context).colorScheme.error)
-                  : Icon(Icons.rocket_launch, color: MyTheme.accent),
-          description:
-              model.error.value.isNotEmpty ? Text(model.error.value) : null,
-          onPressed: model.checking.value || model.error.value.isNotEmpty
+              ? Icon(Icons.hourglass_empty)
+              : Icon(Icons.rocket_launch),
+          onPressed: model.checking.value
               ? null
               : (context) {
                   model.showDeployPage.value = true;
@@ -1225,30 +1218,38 @@ class _HostDeploySection extends AbstractSettingsSection {
 
       if (model.isDeployed.value) {
         if (model.team.value.isNotEmpty) {
-          tiles.add(SettingsTile(
-            title: Text(translate('Team')),
-            value: Text(model.team.value),
-            leading: Icon(Icons.people_outline, color: Colors.green),
-          ));
+          if (!(bind.isFull() &&
+              gFFI.userModel.isLogin &&
+              gFFI.userModel.teamName.value == model.team.value)) {
+            tiles.add(SettingsTile(
+              title: Text(translate('Team')),
+              value: Text(model.team.value),
+              leading: Icon(Icons.people),
+            ));
+          }
         }
         if (model.group.value.isNotEmpty) {
           tiles.add(SettingsTile(
-            title: Text(translate('Group')),
+            title: Text(translate('Device Group')),
             value: Text(model.group.value),
-            leading: Icon(Icons.device_hub_outlined, color: Colors.blue),
+            leading: Icon(Icons.device_hub),
           ));
         }
         if (model.user.value.isNotEmpty) {
-          tiles.add(SettingsTile(
-            title: Text(translate('Account')),
-            value: Text(model.user.value),
-            leading: Icon(Icons.person_outline, color: Colors.orange),
-          ));
+          if (!(bind.isFull() &&
+              gFFI.userModel.isLogin &&
+              gFFI.userModel.userName.value == model.user.value)) {
+            tiles.add(SettingsTile(
+              title: Text(translate('User')),
+              value: Text(model.user.value),
+              leading: Icon(Icons.person),
+            ));
+          }
         }
       }
 
       return SettingsSection(
-        title: Text(translate('Deploy')),
+        title: Text(translate('Deployment')),
         tiles: tiles,
       );
     });
@@ -1280,12 +1281,6 @@ class _AccountSection extends AbstractSettingsSection {
                   title: Text(translate("Team")),
                   description: Text(gFFI.userModel.teamName.value),
                   leading: Icon(Icons.people),
-                ),
-              if (gFFI.deployModel.group.isNotEmpty && bind.isFull())
-                SettingsTile(
-                  title: Text(translate("Device Group")),
-                  description: Text(gFFI.deployModel.group.value),
-                  leading: Icon(Icons.device_hub),
                 ),
             ],
           ],

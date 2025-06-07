@@ -11,9 +11,34 @@ import 'package:flutter_hbb/models/deploy_model.dart';
 import 'package:window_manager/window_manager.dart';
 
 class DeployPage extends StatefulWidget {
+  final bool isDialogMode;
+  final Function()? onClose;
+
   const DeployPage({
     Key? key,
+    this.isDialogMode = false,
+    this.onClose,
   }) : super(key: key);
+
+  static Future<void> showAsDialog(BuildContext context) {
+    gFFI.deployModel.error.value = '';
+    return gFFI.dialogManager.show(
+      (setState, close, context) => CustomAlertDialog(
+        content: DeployPage(
+          isDialogMode: true,
+          onClose: close,
+        ),
+        actions: [
+          dialogButton(
+            'Close',
+            onPressed: close,
+            isOutline: true,
+          ),
+        ],
+        onCancel: close,
+      ),
+    );
+  }
 
   @override
   State<DeployPage> createState() => _DeployPageState();
@@ -33,6 +58,7 @@ class _DeployPageState extends State<DeployPage> {
       Rx<DeployWithCodeResponse?>(null);
   final RxBool _showConfirmation = false.obs;
   final RxString _currentCode = ''.obs;
+  final RxBool _isConfirmationMode = false.obs;
 
   final GlobalKey _contentKey = GlobalKey();
 
@@ -42,9 +68,11 @@ class _DeployPageState extends State<DeployPage> {
     _emailController.text = UserModel.getLocalUserInfo()?['email'] ?? '';
     _isDeployCodeMode.value = false;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkContentSizeAndResizeWindow();
-    });
+    if (!widget.isDialogMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkContentSizeAndResizeWindow();
+      });
+    }
   }
 
   void _checkContentSizeAndResizeWindow() {
@@ -66,7 +94,7 @@ class _DeployPageState extends State<DeployPage> {
     _controller.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    if (bind.isIncomingOnly()) {
+    if (!widget.isDialogMode && bind.isIncomingOnly()) {
       windowManager.setSize(getIncomingOnlyHomeSize());
     }
     super.dispose();
@@ -99,6 +127,12 @@ class _DeployPageState extends State<DeployPage> {
     _currentCode.value = '';
   }
 
+  void _checkCloseDialog() {
+    if (widget.isDialogMode && gFFI.deployModel.isDeployed.value) {
+      widget.onClose?.call();
+    }
+  }
+
   Future<void> _confirmDeployment() async {
     _isLoading.value = true;
     await gFFI.deployModel.deployWithCode(_currentCode.value);
@@ -111,6 +145,7 @@ class _DeployPageState extends State<DeployPage> {
     if (gFFI.deployModel.error.isEmpty) {
       await gFFI.deployModel.checkDeploy();
     }
+    _checkCloseDialog();
   }
 
   Future<void> _deployWithAccount() async {
@@ -136,6 +171,36 @@ class _DeployPageState extends State<DeployPage> {
       _passwordError.value = translate('Login failed');
     } finally {
       _isLoading.value = false;
+      _checkCloseDialog();
+    }
+  }
+
+  Future<void> _deployToCurrentAccount() async {
+    _isLoading.value = true;
+    try {
+      await gFFI.deployModel.deployToLoginUser();
+      if (gFFI.deployModel.error.isEmpty) {
+        await gFFI.deployModel.checkDeploy();
+      }
+    } finally {
+      _isLoading.value = false;
+      _checkCloseDialog();
+    }
+  }
+
+  void _handleBack() {
+    if (_isConfirmationMode.value) {
+      _cancelDeployment();
+    } else if (_isDeployCodeMode.value) {
+      _isDeployCodeMode.value = false;
+      _controller.clear();
+      _errorTextEdit.value = '';
+    } else {
+      if (widget.isDialogMode) {
+        widget.onClose?.call();
+      } else {
+        gFFI.deployModel.showDeployPage.value = false;
+      }
     }
   }
 
@@ -150,9 +215,57 @@ class _DeployPageState extends State<DeployPage> {
       final bool isLoading =
           model.checking.value || model.deploying.value || _isLoading.value;
 
-      final bool isConfirmationMode = _isDeployCodeMode.value &&
+      _isConfirmationMode.value = _isDeployCodeMode.value &&
           _showConfirmation.value &&
           _deployResponse.value != null;
+
+      body() {
+        return Center(
+          child: SingleChildScrollView(
+            child: Container(
+              key: _contentKey,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.isDialogMode &&
+                      !_isConfirmationMode.value &&
+                      _isDeployCodeMode.value)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.grey),
+                      onPressed: _handleBack,
+                      tooltip: translate('Back'),
+                    ),
+                  _isConfirmationMode.value
+                      ? _buildDeployConfirmation(context, isLoading)
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (isLoading)
+                              _buildLoadingState(model)
+                            else
+                              _buildHeader(context),
+                            const SizedBox(height: 24),
+                            if (_isDeployCodeMode.value)
+                              _buildDeployCodeMode(context, isLoading)
+                            else if (bind.isFull() && gFFI.userModel.isLogin)
+                              _buildLoggedInMode(context, isLoading)
+                            else
+                              _buildAccountMode(context, isLoading),
+                            const SizedBox(height: 16),
+                            if (gFFI.deployModel.error.isNotEmpty)
+                              _buildErrorText(context),
+                          ],
+                        ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+
+      if (widget.isDialogMode) return body();
 
       return Scaffold(
         backgroundColor: Theme.of(context).colorScheme.background,
@@ -162,48 +275,11 @@ class _DeployPageState extends State<DeployPage> {
           backgroundColor: Colors.transparent,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.grey),
-            onPressed: () {
-              if (isConfirmationMode) {
-                _cancelDeployment();
-              } else if (_isDeployCodeMode.value) {
-                _isDeployCodeMode.value = false;
-                _controller.clear();
-                _errorTextEdit.value = '';
-              } else {
-                gFFI.deployModel.showDeployPage.value = false;
-              }
-            },
+            onPressed: _handleBack,
             tooltip: translate('Back'),
           ),
         ),
-        body: Center(
-          child: SingleChildScrollView(
-            child: Container(
-              key: _contentKey,
-              padding: const EdgeInsets.all(24),
-              child: isConfirmationMode
-                  ? _buildDeployConfirmation(context, isLoading)
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (isLoading)
-                          _buildLoadingState(model)
-                        else
-                          _buildHeader(context),
-                        const SizedBox(height: 24),
-                        if (_isDeployCodeMode.value)
-                          _buildDeployCodeMode(context, isLoading)
-                        else
-                          _buildAccountMode(context, isLoading),
-                        const SizedBox(height: 16),
-                        if (gFFI.deployModel.error.isNotEmpty)
-                          _buildErrorText(context),
-                      ],
-                    ),
-            ),
-          ),
-        ),
+        body: body(),
       );
     });
   }
@@ -342,7 +418,7 @@ class _DeployPageState extends State<DeployPage> {
     final response = _deployResponse.value!;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           translate('Deployment Information'),
@@ -350,6 +426,7 @@ class _DeployPageState extends State<DeployPage> {
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
         Card(
@@ -357,7 +434,7 @@ class _DeployPageState extends State<DeployPage> {
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 _buildInfoRow(translate('Team'), response.team),
                 const SizedBox(height: 8),
@@ -376,6 +453,7 @@ class _DeployPageState extends State<DeployPage> {
             fontSize: 16,
             fontWeight: FontWeight.w500,
           ),
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
         Row(
@@ -408,25 +486,20 @@ class _DeployPageState extends State<DeployPage> {
 
   Widget _buildInfoRow(String label, String value) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Expanded(
-          flex: 2,
-          child: Text(
-            '$label:',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+        Text(
+          '$label:',
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
         ),
-        Expanded(
-          flex: 3,
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-            ),
+        const SizedBox(width: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
           ),
         ),
       ],
@@ -473,6 +546,42 @@ class _DeployPageState extends State<DeployPage> {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoggedInMode(BuildContext context, bool isLoading) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Card(
+          elevation: 8,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                if (gFFI.userModel.teamName.value.isNotEmpty)
+                  _buildInfoRow(
+                      translate('Team'), gFFI.userModel.teamName.value),
+                if (gFFI.userModel.userName.value.isNotEmpty)
+                  _buildInfoRow(
+                      translate('User'), gFFI.userModel.userName.value),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: isLoading ? null : _deployToCurrentAccount,
+            child: Text(
+              translate('Confirm'),
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
         ),
       ],
     );
