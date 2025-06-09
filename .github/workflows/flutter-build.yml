@@ -52,6 +52,7 @@ env:
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
   CLIENT_TYPE: "${{ inputs.client-type }}"
+  CLIENT_TYPE_CAPITALIZED: "${{ inputs.client-type-capitalized }}"
   APP_NAME: "RustDesk-${{ inputs.client-type-capitalized }}"
   APP_NAME_LOWER: "rustdesk-${{ inputs.client-type }}"
   FILE_NAME: "rustdesk-${{ inputs.client-type }}"
@@ -1197,7 +1198,7 @@ jobs:
             pushd /workspace
             export CARGO_INCREMENTAL=0
             export DEB_ARCH=${{ matrix.job.deb_arch }}
-            python3 ./build.py --flutter --skip-cargo --client-type ${{ env.CLIENT_TYPE }}
+            python3 ./build.py --flutter --skip-cargo --client-type ${{ env.CLIENT_TYPE_CAPITALIZED }}
             for name in rustdesk*??.deb; do
               mv "$name" "${name%%.deb}-${{ matrix.job.arch }}.deb"
             done

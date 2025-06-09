@@ -371,8 +371,8 @@ def build_flutter_deb(version, features):
     os.chdir("..")
 
 def set_deb_client_type(client_type, version):
-    name = f"rustdesk-{client_type}-{version}.deb"
-    app_name0 = f"rustdesk-{client_type}"
+    name = f"rustdesk-{client_type.lower()}-{version}.deb"
+    app_name0 = f"RustDesk-{client_type}"
     app_name = app_name0.lower()
     os.system(
         f"""
@@ -396,7 +396,7 @@ def set_deb_client_type(client_type, version):
     )
 
 def compile_arch_common(client_type):
-    app_name0 = f"rustdesk-{client_type}" # todo: flatpak
+    app_name0 = f"RustDesk-{client_type}" # todo: flatpak
     app_name = app_name0.lower()
     arch2 = "arm64" if os.environ.get("DEB_ARCH") == "arm64" else "x64"
     os.system(
