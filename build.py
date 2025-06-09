@@ -388,8 +388,8 @@ def set_deb_client_type(client_type, version):
     mv usr/share/applications/rustdesk-link.desktop usr/share/applications/{app_name}-link.desktop
     mv usr/share/icons/hicolor/256x256/apps/rustdesk.png usr/share/icons/hicolor/256x256/apps/{app_name}.png
     rm -rf usr/share/icons/hicolor/scalable
-    find . -type f -exec grep -Il -w RustDesk {{}} \\; | xargs sed -i 's/RustDesk/{app_name0}/g'
-    find . -type f -exec grep -Il -w rustdesk {{}} \\; | xargs sed -i 's/rustdesk/{app_name}/g'
+    find . -type f -exec grep -Il -w RustDesk {{}} \\; | xargs sed -i 's/RustDesk(?!-)/{app_name0}/g'
+    find . -type f -exec grep -Il -w rustdesk {{}} \\; | xargs sed -i 's/rustdesk(?!-)/{app_name}/g'
     cd ..
     dpkg-deb -b -Zxz tmpdeb {name}
     """
