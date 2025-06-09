@@ -1383,7 +1383,8 @@ impl Connection {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if self.file_transfer.is_some() {
-            if crate::platform::is_prelogin() { // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
+            if crate::platform::is_prelogin() {
+                // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
                 username = "".to_owned();
             }
         }
@@ -1872,10 +1873,6 @@ impl Connection {
             self.handle_login_request_without_validation(&lr).await;
             if self.authorized {
                 return true;
-            }
-            if lr.email.is_empty() {
-                self.send_login_error("Invalid email").await;
-                return false;
             }
             match lr.union {
                 Some(login_request::Union::FileTransfer(ft)) => {
@@ -2880,7 +2877,7 @@ impl Connection {
                             "ip": self.ip,
                             "name": self.lr.my_name.clone(),
                 }),
-                Some(self.lr.email.clone())
+                Some(self.lr.email.clone()),
             );
             false
         } else if time == failure.0 && failure.1 > 6 {
@@ -2891,7 +2888,7 @@ impl Connection {
                             "ip": self.ip,
                             "name": self.lr.my_name.clone(),
                 }),
-                Some(self.lr.email.clone())
+                Some(self.lr.email.clone()),
             );
             false
         } else {
