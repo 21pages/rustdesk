@@ -98,8 +98,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
     final children = <Widget>[
-      if (bind.isClient() || bind.isFull()) buildAccount(),
-      if (bind.isHost()) buildDeployState(),
+      if (bind.isClient()) buildClientHeader(),
+      if (bind.isFull()) buildFullHeader(),
+      if (bind.isHost()) buildHostHeader(),
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
       if (bind.isCustomClient())
         Align(
@@ -702,7 +703,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         : const SizedBox.shrink());
   }
 
-  Widget buildDeployState() {
+  Widget buildHostHeader() {
     final model = gFFI.deployModel;
     return Obx(() {
       Widget buildCheckingContent() {
@@ -823,7 +824,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     });
   }
 
-  Widget buildAccount() {
+  Widget buildClientHeader() {
     Widget buildTeamInfo() {
       return Container(
         padding: EdgeInsets.symmetric(vertical: 5, horizontal: 12),
@@ -927,38 +928,31 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     }
 
     Widget buildNotLoggedInContent() {
-      return Column(
-        children: [
-          Text(
-            translate("Not logged in"),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.color
-                  ?.withOpacity(0.7),
+      return InkWell(
+        onTap: () async {
+          await loginDialog();
+          setState(() {});
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_outline,
+              size: 14,
+              color: Colors.grey,
             ),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            child: Text(translate("Login")),
-            onPressed: () async {
-              await loginDialog();
-              setState(() {});
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyTheme.accent,
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
+            SizedBox(width: 4),
+            Text(
+              translate("Not logged in"),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.3,
+                color: Colors.grey,
               ),
-              elevation: 2,
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -978,14 +972,19 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           message: isDeployed
               ? 'Team: $teamName\nGroup: $groupName\nUser: $userName'
               : translate('Not deployed'),
-          child: Container(
+          child: InkWell(
+            onTap: () {
+              if (!isDeployed) {
+                DeployPage.showAsDialog(context);
+              }
+            },
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   isDeployed ? Icons.check_circle : Icons.info,
                   size: 14,
-                  color: isDeployed ? Colors.green : Colors.grey,
+                  color: Colors.grey,
                 ),
                 SizedBox(width: 4),
                 Text(
@@ -996,6 +995,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.3,
+                    color: Colors.grey,
                   ),
                 ),
               ],
@@ -1029,6 +1029,133 @@ class _DesktopHomePageState extends State<DesktopHomePage>
               else
                 buildNotLoggedInContent(),
               if (bind.isFull()) buildDeploymentInfo(),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget buildFullHeader() {
+    Widget buildLoggedInContent() {
+      return Column(
+        children: [
+          Tooltip(
+            message:
+                '${translate("Username")}: ${gFFI.userModel.userName.value}\n${translate("Email")}: ${gFFI.userModel.email.value}\n${translate("Team")}: ${gFFI.userModel.teamName.value}',
+            waitDuration: Duration(milliseconds: 300),
+            child: SelectableText(
+              gFFI.userModel.userName.value,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildNotLoggedInContent() {
+      return InkWell(
+        onTap: () async {
+          await loginDialog();
+          setState(() {});
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_outline,
+              size: 14,
+              color: Colors.grey,
+            ),
+            SizedBox(width: 4),
+            Text(
+              translate("Not logged in"),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.3,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget buildDeploymentInfo() {
+      return Obx(() {
+        final isDeployed = gFFI.deployModel.isDeployed.value;
+        final teamName = gFFI.deployModel.team.value;
+        final groupName = gFFI.deployModel.group.value;
+        final userName = gFFI.deployModel.user.value;
+
+        if (gFFI.deployModel.checking.value) {
+          return Offstage();
+        }
+
+        return Tooltip(
+          waitDuration: Duration(milliseconds: 300),
+          message: isDeployed
+              ? 'Team: $teamName\nGroup: $groupName\nUser: $userName'
+              : translate('Not deployed'),
+          child: InkWell(
+            onTap: () {
+              if (!isDeployed) {
+                DeployPage.showAsDialog(context);
+              }
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isDeployed ? Icons.check_circle : Icons.info,
+                  size: 14,
+                  color: Colors.grey,
+                ),
+                SizedBox(width: 4),
+                Text(
+                  isDeployed
+                      ? translate('Deployed')
+                      : translate('Not deployed'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.3,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).marginOnly(top: 4);
+    }
+
+    return Obx(() {
+      return Card(
+        elevation: 0,
+        margin: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Colors.grey.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        color: Theme.of(context).cardColor.withOpacity(0.7),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (gFFI.userModel.isLogin)
+                buildLoggedInContent()
+              else
+                buildNotLoggedInContent(),
+              buildDeploymentInfo(),
             ],
           ),
         ),
