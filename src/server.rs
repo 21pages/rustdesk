@@ -545,6 +545,20 @@ pub async fn start_server(is_server: bool, no_server: bool) {
     });
 
     if is_server {
+        #[cfg(windows)]
+        {
+            let sid = crate::platform::windows::get_current_process_session_id();
+            if let Some(sid) = sid {
+                let name = crate::platform::windows::get_session_username(sid);
+                let all_sessions = crate::platform::windows::print_all_sessions();
+                log::info!(
+                    "current process session id: {}, name: {}, {}",
+                    sid,
+                    name,
+                    all_sessions
+                );
+            }
+        }
         crate::common::set_server_running(true);
         std::thread::spawn(move || {
             if let Err(err) = crate::ipc::start("") {

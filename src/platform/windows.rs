@@ -560,7 +560,12 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     status_handle.set_service_status(next_status)?;
 
     let mut session_id = unsafe { get_current_session(share_rdp()) };
-    log::info!("session id {}", session_id);
+    log::info!(
+        "initial session id: {}, username: {}, {}",
+        session_id,
+        get_session_username(session_id),
+        print_all_sessions()
+    );
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
     let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
     let mut stored_usid = None;
@@ -572,11 +577,22 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
         if !sids.contains(&session_id) || !is_share_rdp() {
             let current_active_session = unsafe { get_current_session(share_rdp()) };
             if session_id != current_active_session {
+                log::info!(
+                    "active session changed from {}(sid = {}) to {}(sid = {}), {}",
+                    get_session_username(session_id),
+                    session_id,
+                    get_session_username(current_active_session),
+                    current_active_session,
+                    print_all_sessions()
+                );
                 session_id = current_active_session;
                 // https://github.com/rustdesk/rustdesk/discussions/10039
                 let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
                 if count == 0 {
+                    log::info!("no port forward session, launch server");
                     h_process = launch_server(session_id, true).await.unwrap_or(NULL);
+                } else {
+                    log::info!("port forward session exists, do nothing");
                 }
             }
         }
@@ -598,9 +614,12 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                 if let Some(usid) = usid {
                                     if session_id != usid {
                                         log::info!(
-                                            "session changed from {} to {}",
+                                            "choose session changed from {}(sid = {}) to {}(sid = {}), {}",
+                                            get_session_username(session_id),
                                             session_id,
-                                            usid
+                                            get_session_username(usid),
+                                            usid,
+                                            print_all_sessions()
                                         );
                                         session_id = usid;
                                         stored_usid = Some(session_id);
@@ -624,12 +643,23 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                     }
                     let mut close_sent = false;
                     if tmp != session_id && stored_usid != Some(session_id) {
-                        log::info!("session changed from {} to {}", session_id, tmp);
+                        log::info!(
+                            "timeout session changed from {}(sid = {}) to {}(sid = {}), {}",
+                            get_session_username(session_id),
+                            session_id,
+                            get_session_username(tmp),
+                            tmp,
+                            print_all_sessions()
+                        );
+
                         session_id = tmp;
                         let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
                         if count == 0 {
+                            log::info!("no port forward session, close server");
                             send_close_async("").await.ok();
                             close_sent = true;
+                        } else {
+                            log::info!("port forward session exists, do nothing");
                         }
                     }
                     let mut exit_code: DWORD = 0;
@@ -895,7 +925,7 @@ fn get_current_session_username() -> Option<String> {
     Some(get_session_username(sid))
 }
 
-fn get_session_username(session_id: u32) -> String {
+pub fn get_session_username(session_id: u32) -> String {
     extern "C" {
         fn get_session_user_info(path: *mut u16, n: u32, session_id: u32) -> u32;
     }
@@ -987,6 +1017,16 @@ pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
         }
     }
     v
+}
+
+pub fn print_all_sessions() -> String {
+    let names = get_available_sessions(true);
+    let res = names
+        .iter()
+        .map(|e| format!("{} (sid = {})", e.name, e.sid))
+        .collect::<Vec<String>>()
+        .join(", ");
+    format!("all sessions: {}", res)
 }
 
 pub fn get_active_user_home() -> Option<PathBuf> {
