@@ -99,6 +99,7 @@ class DeployModel {
         'id': await bind.mainGetMyId(),
         "uuid": await bind.mainGetUuid(),
         'code': code,
+        'type': deployType,
       });
       final resp =
           await http.post(Uri.parse(api), headers: headers, body: body);
@@ -129,7 +130,8 @@ class DeployModel {
         'id': await bind.mainGetMyId(),
         "uuid": await bind.mainGetUuid(),
         'email': email,
-        'password': password
+        'password': password,
+        'type': deployType,
       });
       final resp =
           await http.post(Uri.parse(api), headers: headers, body: body);
@@ -175,6 +177,16 @@ class DeployModel {
       error.value = e.toString();
     } finally {
       deploying.value = false;
+    }
+  }
+
+  int get deployType {
+    if (bind.isFull()) {
+      return 1;
+    } else if (bind.isHost()) {
+      return 2;
+    } else {
+      return 0;
     }
   }
 }
