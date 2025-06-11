@@ -147,7 +147,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ).marginOnly(bottom: 6, right: 6)
       ]);
     }
-    final textColor = Theme.of(context).textTheme.titleLarge?.color;
     return ChangeNotifierProvider.value(
       value: gFFI.serverModel,
       child: Container(
@@ -164,7 +163,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                 ),
               ),
             ),
-            if (bind.isClient() || bind.isFull()) buildLogoutButton(textColor),
           ],
         ),
       ),
@@ -675,34 +673,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     );
   }
 
-  Widget buildLogoutButton(Color? textColor) {
-    return Obx(() => gFFI.userModel.isLogin
-        ? Padding(
-            padding: const EdgeInsets.only(bottom: 6, left: 12),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Tooltip(
-                message: translate('Logout'),
-                waitDuration: Duration(milliseconds: 300),
-                child: InkWell(
-                  child: Obx(
-                    () => Icon(
-                      Icons.logout,
-                      color: _editHover.value
-                          ? textColor
-                          : Colors.grey.withOpacity(0.5),
-                      size: 22,
-                    ),
-                  ),
-                  onTap: () => logOutConfirmDialog(),
-                  onHover: (value) => _editHover.value = value,
-                ),
-              ),
-            ),
-          )
-        : const SizedBox.shrink());
-  }
-
   Widget buildHostHeader() {
     final model = gFFI.deployModel;
     return Obx(() {
@@ -1037,6 +1007,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   Widget buildFullHeader() {
+    final iconSize = 14.0;
+    final textStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      color: Colors.grey,
+    );
+
     Widget buildLoggedInContent() {
       return Column(
         children: [
@@ -1044,12 +1021,22 @@ class _DesktopHomePageState extends State<DesktopHomePage>
             message:
                 '${translate("Username")}: ${gFFI.userModel.userName.value}\n${translate("Email")}: ${gFFI.userModel.email.value}\n${translate("Team")}: ${gFFI.userModel.teamName.value}',
             waitDuration: Duration(milliseconds: 300),
-            child: SelectableText(
-              gFFI.userModel.userName.value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.person_outline,
+                  size: iconSize,
+                  color: MyTheme.accent,
+                ),
+                SizedBox(width: 4),
+                Expanded(
+                  child: SelectableText(
+                    gFFI.userModel.userName.value,
+                    style: textStyle,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1063,21 +1050,18 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           setState(() {});
         },
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.start,
           children: [
             Icon(
               Icons.person_outline,
-              size: 14,
+              size: iconSize,
               color: Colors.grey,
             ),
             SizedBox(width: 4),
-            Text(
-              translate("Not logged in"),
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.3,
-                color: Colors.grey,
+            Expanded(
+              child: Text(
+                translate("Not logged in"),
+                style: textStyle,
               ),
             ),
           ],
@@ -1101,35 +1085,46 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           message: isDeployed
               ? 'Team: $teamName\nGroup: $groupName\nUser: $userName'
               : translate('Not deployed'),
-          child: InkWell(
-            onTap: () {
-              if (!isDeployed) {
-                DeployPage.showAsDialog(context);
-              }
-            },
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isDeployed ? Icons.check_circle : Icons.info,
-                  size: 14,
-                  color: Colors.grey,
-                ),
-                SizedBox(width: 4),
-                Text(
-                  isDeployed
-                      ? translate('Deployed')
-                      : translate('Not deployed'),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.3,
-                    color: Colors.grey,
+          child: isDeployed
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      size: iconSize,
+                      color: isDeployed ? MyTheme.accent : Colors.grey,
+                    ),
+                    SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        translate('Deployed'),
+                        style: textStyle,
+                      ),
+                    ),
+                  ],
+                )
+              : InkWell(
+                  onTap: () {
+                    DeployPage.showAsDialog(context);
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.info,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          translate('Not deployed'),
+                          style: textStyle,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
         );
       }).marginOnly(top: 4);
     }
