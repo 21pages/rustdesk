@@ -121,10 +121,6 @@ class PeerPayload {
   }
 }
 
-const loginClientTypeClient = 1;
-const loginClientTypeHost = 2;
-const loginClientTypeFull = 3;
-
 class LoginRequest {
   String? email;
   String? password;
@@ -135,7 +131,6 @@ class LoginRequest {
   String? verificationCode;
   String? tfaCode;
   String? secret;
-  int? clientType;
 
   LoginRequest(
       {this.email,
@@ -146,8 +141,7 @@ class LoginRequest {
       this.type,
       this.verificationCode,
       this.tfaCode,
-      this.secret,
-      this.clientType});
+      this.secret});
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
@@ -162,7 +156,6 @@ class LoginRequest {
     }
     if (tfaCode != null) data['tfaCode'] = tfaCode;
     if (secret != null) data['secret'] = secret;
-    if (clientType != null) data['clientType'] = clientType;
 
     Map<String, dynamic> deviceInfo = {};
     try {
@@ -172,18 +165,6 @@ class LoginRequest {
     }
     data['deviceInfo'] = deviceInfo;
     return data;
-  }
-
-  void setClientType() {
-    if (bind.isClient()) {
-      clientType = loginClientTypeClient;
-      id = null;
-      uuid = null;
-    } else if (bind.isHost()) {
-      clientType = loginClientTypeHost;
-    } else if (bind.isFull()) {
-      clientType = loginClientTypeFull;
-    }
   }
 }
 
