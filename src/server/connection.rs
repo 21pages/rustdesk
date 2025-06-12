@@ -1379,7 +1379,8 @@ impl Connection {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if self.file_transfer.is_some() {
-            if crate::platform::is_prelogin() { // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
+            if crate::platform::is_prelogin() {
+                // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
                 username = "".to_owned();
             }
         }
@@ -1563,7 +1564,7 @@ impl Connection {
         if let Some(current_sid) = crate::platform::get_current_process_session_id() {
             if crate::platform::is_installed()
                 && crate::platform::is_share_rdp()
-                && raii::AuthedConnID::non_port_forward_conn_count() == 1
+                && raii::AuthedConnID::authed_conn_count() == 1
                 && sessions.len() > 1
                 && sessions.iter().any(|e| e.sid == current_sid)
                 && get_version_number(&self.lr.version) >= get_version_number("1.2.4")
@@ -2761,7 +2762,7 @@ impl Connection {
                             let sessions = crate::platform::get_available_sessions(false);
                             if crate::platform::is_installed()
                                 && crate::platform::is_share_rdp()
-                                && raii::AuthedConnID::non_port_forward_conn_count() == 1
+                                && raii::AuthedConnID::authed_conn_count() == 1
                                 && sessions.len() > 1
                                 && current_process_sid != sid
                                 && sessions.iter().any(|e| e.sid == sid)
@@ -4324,7 +4325,7 @@ mod raii {
                 .send((conn_count, remote_count)));
         }
 
-        pub fn non_port_forward_conn_count() -> usize {
+        pub fn authed_conn_count() -> usize {
             AUTHED_CONNS
                 .lock()
                 .unwrap()

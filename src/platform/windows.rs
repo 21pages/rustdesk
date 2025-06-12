@@ -523,6 +523,31 @@ extern "system" {
     fn BlockInput(v: BOOL) -> BOOL;
 }
 
+fn should_change_session(current_sid: u32) -> Option<u32> {
+    let shared_rdp = share_rdp();
+    if shared_rdp == TRUE {
+        let sids: Vec<_> = get_available_sessions(false)
+            .iter()
+            .map(|e| e.sid)
+            .collect();
+        if sids.contains(&current_sid) {
+            return None;
+        } else {
+            let sid = unsafe { get_current_session(TRUE) };
+            if sid == u32::MAX || current_sid == sid {
+                return None;
+            }
+            Some(sid)
+        }
+    } else {
+        let console_sid = unsafe { get_current_session(FALSE) };
+        if console_sid == u32::MAX || current_sid == console_sid {
+            return None;
+        }
+        Some(console_sid)
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
@@ -563,22 +588,11 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     log::info!("session id {}", session_id);
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
     let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
-    let mut stored_usid = None;
     loop {
-        let sids: Vec<_> = get_available_sessions(false)
-            .iter()
-            .map(|e| e.sid)
-            .collect();
-        if !sids.contains(&session_id) || !is_share_rdp() {
-            let current_active_session = unsafe { get_current_session(share_rdp()) };
-            if session_id != current_active_session {
-                session_id = current_active_session;
-                // https://github.com/rustdesk/rustdesk/discussions/10039
-                let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
-                if count == 0 {
-                    h_process = launch_server(session_id, true).await.unwrap_or(NULL);
-                }
-            }
+        if let Some(new_sid) = should_change_session(session_id) {
+            log::info!("session changed from {} to {}", session_id, new_sid);
+            session_id = new_sid;
+            h_process = launch_server(session_id, true).await.unwrap_or(NULL);
         }
         let res = timeout(super::SERVICE_INTERVAL, incoming.next()).await;
         match res {
@@ -598,12 +612,11 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                 if let Some(usid) = usid {
                                     if session_id != usid {
                                         log::info!(
-                                            "session changed from {} to {}",
+                                            "user changed session from {} to {}",
                                             session_id,
                                             usid
                                         );
                                         session_id = usid;
-                                        stored_usid = Some(session_id);
                                         h_process =
                                             launch_server(session_id, true).await.unwrap_or(NULL);
                                     }
@@ -618,19 +631,15 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
             Err(_) => {
                 // timeout
                 unsafe {
-                    let tmp = get_current_session(share_rdp());
-                    if tmp == 0xFFFFFFFF {
-                        continue;
-                    }
                     let mut close_sent = false;
-                    if tmp != session_id && stored_usid != Some(session_id) {
-                        log::info!("session changed from {} to {}", session_id, tmp);
-                        session_id = tmp;
-                        let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
-                        if count == 0 {
-                            send_close_async("").await.ok();
-                            close_sent = true;
-                        }
+                    if let Some(new_sid) = should_change_session(session_id) {
+                        log::info!(
+                            "session changed from {} to {} in timeout",
+                            session_id,
+                            new_sid
+                        );
+                        send_close_async("").await.ok();
+                        close_sent = true;
                     }
                     let mut exit_code: DWORD = 0;
                     if h_process.is_null()
