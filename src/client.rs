@@ -127,7 +127,7 @@ pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
 
 #[cfg(not(target_os = "linux"))]
-pub const AUDIO_BUFFER_MS: usize = 3000;
+pub const AUDIO_BUFFER_MS: usize = 150;
 
 #[cfg(feature = "flutter")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1077,8 +1077,7 @@ pub struct AudioHandler {
 #[cfg(not(target_os = "linux"))]
 struct AudioBuffer(
     pub Arc<std::sync::Mutex<ringbuf::HeapRb<f32>>>,
-    usize,
-    [usize; 30],
+    usize, // samples per second * channels
 );
 
 #[cfg(not(target_os = "linux"))]
@@ -1089,7 +1088,6 @@ impl Default for AudioBuffer {
                 ringbuf::HeapRb::<f32>::new(48000 * 2 * AUDIO_BUFFER_MS / 1000), // 48000hz, 2 channel
             )),
             48000 * 2,
-            [0; 30],
         )
     }
 }
@@ -1107,64 +1105,45 @@ impl AudioBuffer {
     }
 
     fn try_shrink(&mut self, having: usize) {
-        extern crate chrono;
-        use chrono::prelude::*;
-
-        let mut i = (having * 10) / self.1;
-        if i > 29 {
-            i = 29;
+        // Calculate buffered time in milliseconds
+        let sample_rate_per_ms = self.1 / 1000; // samples per millisecond
+        if sample_rate_per_ms == 0 {
+            return; // Avoid division by zero
         }
-        self.2[i] += 1;
-
-        #[allow(non_upper_case_globals)]
-        static mut tms: i64 = 0;
-        let dt = Local::now().timestamp_millis();
-        unsafe {
-            if tms == 0 {
-                tms = dt;
-                return;
-            } else if dt < tms + 12000 {
-                return;
-            }
-            tms = dt;
+        let buffered_ms = having / sample_rate_per_ms;
+        
+        // Moonlight-inspired thresholds: more conservative, similar to their 30ms max queue
+        const TARGET_LATENCY_MS: usize = 30;   // Similar to Moonlight's max queue
+        const WARN_LATENCY_MS: usize = 100;    // Start monitoring
+        const DROP_LATENCY_MS: usize = 200;    // Begin gentle dropping
+        
+        if buffered_ms <= TARGET_LATENCY_MS {
+            return; // Buffer is optimal, no action needed
         }
-
-        // the safer water mark to drop
-        let mut zero = 0;
-        // the water mark taking most of time
-        let mut max = 0;
-        for i in 0..30 {
-            if self.2[i] == 0 && zero == i {
-                zero += 1;
-            }
-
-            if self.2[i] > self.2[max] {
-                self.2[max] = 0;
-                max = i;
+        
+        if buffered_ms > DROP_LATENCY_MS {
+            // Gradual reduction to avoid stuttering - only drop small amounts at a time
+            let mut lock = self.0.lock().unwrap();
+            let current_samples = lock.occupied_len();
+            
+            // Drop maximum 50ms worth of audio at a time to prevent stuttering
+            let max_drop_samples = 50 * sample_rate_per_ms;
+            let excess_samples = if current_samples > TARGET_LATENCY_MS * sample_rate_per_ms {
+                current_samples - TARGET_LATENCY_MS * sample_rate_per_ms
             } else {
-                self.2[i] = 0;
+                0
+            };
+            
+            if excess_samples > 0 {
+                let drop_samples = std::cmp::min(excess_samples, max_drop_samples);
+                lock.skip(drop_samples);
+                let dropped_ms = drop_samples / sample_rate_per_ms;
+                log::info!("Audio buffer gradual drop: {}ms (dropped {}ms)", 
+                          buffered_ms, dropped_ms);
             }
-        }
-        zero = zero * 2 / 3;
-
-        // how many data can be dropped:
-        // 1. will not drop if buffered data is less than 600ms
-        // 2. choose based on min(zero, max)
-        const N: usize = 4;
-        self.2[max] = 0;
-        if max < 6 {
-            return;
-        } else if max > zero * N {
-            max = zero * N;
-        }
-
-        let mut lock = self.0.lock().unwrap();
-        let cap = lock.capacity();
-        let having = lock.occupied_len();
-        let skip = (cap * max / (30 * N) + 1) & (!1);
-        if (having > skip * 3) && (skip > 0) {
-            lock.skip(skip);
-            log::info!("skip {skip}, based {max} {zero}");
+        } else if buffered_ms > WARN_LATENCY_MS {
+            // Just log the warning, similar to Moonlight's monitoring
+            log::debug!("Audio buffer growing: {}ms", buffered_ms);
         }
     }
 
@@ -1187,12 +1166,21 @@ impl AudioBuffer {
         lock.occupied_len()
     }
 
-    /// append pcm to audio buffer, trying to drop data
-    /// when data is too much (per 12 seconds) based
-    /// statistics.
+    /// append pcm to audio buffer, actively managing latency
+    /// by dropping excess audio data to maintain low latency.
     pub fn append_pcm(&mut self, buffer: &[f32]) {
+        // Add new data first
         let having = self.append_pcm2(buffer);
-        self.try_shrink(having);
+        
+        // Check buffer management every few frames to balance responsiveness with stability
+        // Audio frames are typically 10ms, so check every 5 frames = ~50ms
+        static mut CHECK_COUNTER: u32 = 0;
+        unsafe {
+            CHECK_COUNTER += 1;
+            if CHECK_COUNTER % 5 == 0 {
+                self.try_shrink(having);
+            }
+        }
     }
 }
 
