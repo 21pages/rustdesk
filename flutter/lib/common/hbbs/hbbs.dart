@@ -72,6 +72,7 @@ class PeerPayload {
   int? status;
   String user = '';
   String user_name = '';
+  String user_email = '';
   String? device_group_name;
   String note = '';
 
@@ -81,6 +82,7 @@ class PeerPayload {
         status = json['status'],
         user = json['user'] ?? '',
         user_name = json['user_name'] ?? '',
+        user_email = json['user_email'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
         note = json['note'] ?? '';
 
@@ -88,6 +90,8 @@ class PeerPayload {
     return Peer.fromJson({
       "id": p.id,
       'loginName': p.user_name,
+      'user': p.user,
+      'userEmail': p.user_email,
       "username": p.info['username'] ?? '',
       "platform": _platform(p.info['os']),
       "hostname": p.info['device_name'],

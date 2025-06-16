@@ -18,6 +18,7 @@ class Peer {
   String rdpPort;
   String rdpUsername;
   bool online = false;
+  String userEmail;
   String loginName; //login username
   String device_group_name;
   bool? sameServer;
@@ -41,6 +42,7 @@ class Peer {
         forceAlwaysRelay = json['forceAlwaysRelay'] == 'true',
         rdpPort = json['rdpPort'] ?? '',
         rdpUsername = json['rdpUsername'] ?? '',
+        userEmail = json['userEmail'] ?? '',
         loginName = json['loginName'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
         sameServer = json['same_server'];
@@ -58,6 +60,7 @@ class Peer {
       "forceAlwaysRelay": forceAlwaysRelay.toString(),
       "rdpPort": rdpPort,
       "rdpUsername": rdpUsername,
+      'userEmail': userEmail,
       'loginName': loginName,
       'device_group_name': device_group_name,
       'same_server': sameServer,
@@ -102,6 +105,7 @@ class Peer {
     required this.forceAlwaysRelay,
     required this.rdpPort,
     required this.rdpUsername,
+    required this.userEmail,
     required this.loginName,
     required this.device_group_name,
     this.sameServer,
@@ -120,6 +124,7 @@ class Peer {
           forceAlwaysRelay: false,
           rdpPort: '',
           rdpUsername: '',
+          userEmail: '',
           loginName: '',
           device_group_name: '',
         );
@@ -152,6 +157,7 @@ class Peer {
             forceAlwaysRelay: other.forceAlwaysRelay,
             rdpPort: other.rdpPort,
             rdpUsername: other.rdpUsername,
+            userEmail: other.userEmail,
             loginName: other.loginName,
             device_group_name: other.device_group_name,
             sameServer: other.sameServer);

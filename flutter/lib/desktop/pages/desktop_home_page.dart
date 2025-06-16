@@ -926,55 +926,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       );
     }
 
-    Widget buildDeploymentInfo() {
-      return Obx(() {
-        final isDeployed = gFFI.deployModel.isDeployed.value;
-        final teamName = gFFI.deployModel.team.value;
-        final groupName = gFFI.deployModel.group.value;
-        final userName = gFFI.deployModel.user.value;
-
-        if (gFFI.deployModel.checking.value) {
-          return Offstage();
-        }
-
-        return Tooltip(
-          waitDuration: Duration(milliseconds: 300),
-          message: isDeployed
-              ? 'Team: $teamName\nGroup: $groupName\nUser: $userName'
-              : translate('Not deployed'),
-          child: InkWell(
-            onTap: () {
-              if (!isDeployed) {
-                DeployPage.showAsDialog(context);
-              }
-            },
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isDeployed ? Icons.check_circle : Icons.info,
-                  size: 14,
-                  color: Colors.grey,
-                ),
-                SizedBox(width: 4),
-                Text(
-                  isDeployed
-                      ? translate('Deployed')
-                      : translate('Not deployed'),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.3,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }).marginOnly(top: 4);
-    }
-
     return Obx(() {
       return Card(
         elevation: 0,
@@ -998,7 +949,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                 buildLoggedInContent()
               else
                 buildNotLoggedInContent(),
-              if (bind.isFull()) buildDeploymentInfo(),
             ],
           ),
         ),
@@ -1083,7 +1033,11 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         return Tooltip(
           waitDuration: Duration(milliseconds: 300),
           message: isDeployed
-              ? 'Team: $teamName\nGroup: $groupName\nUser: $userName'
+              ? [
+                  if (teamName.isNotEmpty) 'Team: $teamName',
+                  if (groupName.isNotEmpty) 'Group: $groupName',
+                  if (userName.isNotEmpty) 'User: $userName',
+                ].join('\n')
               : translate('Not deployed'),
           child: isDeployed
               ? Row(

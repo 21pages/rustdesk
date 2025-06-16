@@ -187,18 +187,19 @@ class _MyGroupState extends State<MyGroup> {
 
   Widget _buildUserItem(UserPayload user) {
     final username = user.name;
+    final userEmail = user.email;
     return InkWell(onTap: () {
       isSelectedDeviceGroup.value = false;
-      if (selectedAccessibleItemName.value != username) {
-        selectedAccessibleItemName.value = username;
+      if (selectedAccessibleItemName.value != userEmail) {
+        selectedAccessibleItemName.value = userEmail;
       } else {
         selectedAccessibleItemName.value = '';
       }
     }, child: Obx(
       () {
         bool selected = !isSelectedDeviceGroup.value &&
-            selectedAccessibleItemName.value == username;
-        final isMe = username == gFFI.userModel.userName.value;
+            selectedAccessibleItemName.value == userEmail;
+        final isMe = userEmail == gFFI.userModel.email.value;
         final colorMe = MyTheme.color(context).me!;
         return Container(
           decoration: BoxDecoration(
