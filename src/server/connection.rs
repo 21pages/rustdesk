@@ -1379,7 +1379,8 @@ impl Connection {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if self.file_transfer.is_some() {
-            if crate::platform::is_prelogin() { // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
+            if crate::platform::is_prelogin() {
+                // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
                 username = "".to_owned();
             }
         }
@@ -1499,8 +1500,8 @@ impl Connection {
             if !wait_session_id_confirm {
                 self.try_sub_camera_displays();
             }
-            self.keyboard = false;
-            self.send_permission(Permission::Keyboard, false).await;
+            // self.keyboard = false;
+            // self.send_permission(Permission::Keyboard, false).await;
         } else if sub_service {
             if !wait_session_id_confirm {
                 self.try_sub_monitor_services();
@@ -2115,6 +2116,7 @@ impl Connection {
             match msg.union {
                 #[allow(unused_mut)]
                 Some(message::Union::MouseEvent(mut me)) => {
+                    log::info!("========== MouseEvent: {me:?}");
                     if self.is_authed_view_camera_conn() {
                         return true;
                     }
@@ -2136,6 +2138,7 @@ impl Connection {
                     self.update_auto_disconnect_timer();
                 }
                 Some(message::Union::PointerDeviceEvent(pde)) => {
+                    log::info!("========== PointerDeviceEvent: {pde:?}");
                     if self.is_authed_view_camera_conn() {
                         return true;
                     }
@@ -2233,6 +2236,7 @@ impl Connection {
                 }
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 Some(message::Union::KeyEvent(me)) => {
+                    log::info!("========== KeyEvent: {me:?}");
                     if self.is_authed_view_camera_conn() {
                         return true;
                     }

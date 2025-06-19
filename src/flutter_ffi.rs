@@ -1860,11 +1860,14 @@ pub fn cm_switch_back(conn_id: i32) {
 }
 
 pub fn cm_get_config(name: String) -> String {
+    log::info!("cm_get_config: {}", name);
     #[cfg(not(target_os = "ios"))]
     {
         if let Ok(Some(v)) = crate::ipc::get_config(&name) {
+            log::info!("cm_get_config ok: {}", v);
             v
         } else {
+            log::info!("cm_get_config failed");
             "".to_string()
         }
     }

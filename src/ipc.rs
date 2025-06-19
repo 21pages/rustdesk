@@ -527,9 +527,24 @@ async fn handle(data: Data, stream: &mut Connection) {
                         None
                     };
                 } else if name == "hide_cm" {
+                    log::info!(
+                        "get_config: hide_cm, is_pro: {}, is_custom_client: {}",
+                        crate::hbbs_http::sync::is_pro(),
+                        crate::common::is_custom_client()
+                    );
                     value = if crate::hbbs_http::sync::is_pro() || crate::common::is_custom_client()
                     {
-                        Some(hbb_common::password_security::hide_cm().to_string())
+                        log::info!(
+                            "hide_cm: approve_mode: {:?}, allow-hide-cm: {}",
+                            password::approve_mode(),
+                            hbb_common::config::option2bool(
+                                "allow-hide-cm",
+                                &Config::get_option("allow-hide-cm")
+                            )
+                        );
+                        let hide_cm = hbb_common::password_security::hide_cm().to_string();
+                        log::info!("hide_cm: {}", hide_cm);
+                        Some(hide_cm)
                     } else {
                         None
                     };
@@ -953,13 +968,23 @@ pub async fn get_config(name: &str) -> ResultType<Option<String>> {
 }
 
 async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<String>> {
+    log::info!("get_config_async: {}", name);
     let mut c = connect(ms_timeout, "").await?;
+    log::info!("get_config_async: connected, name: {}", name);
     c.send(&Data::Config((name.to_owned(), None))).await?;
+    log::info!("get_config_async: sent, name: {}", name);
     if let Some(Data::Config((name2, value))) = c.next_timeout(ms_timeout).await? {
+        log::info!(
+            "get_config_async: received, name: {}, name2: {}, value: {:?}",
+            name,
+            name2,
+            value
+        );
         if name == name2 {
             return Ok(value);
         }
     }
+    log::info!("get_config_async: none, name: {}", name);
     return Ok(None);
 }
 
