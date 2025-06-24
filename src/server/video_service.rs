@@ -1071,8 +1071,10 @@ fn handle_one_frame(
     let mut send_conn_ids: HashSet<i32> = Default::default();
     let first = *first_frame;
     *first_frame = false;
+    let start = Instant::now();
     match encoder.encode_to_message(frame, ms) {
         Ok(mut vf) => {
+            log::info!("encode time: {:?}", start.elapsed());
             *encode_fail_counter = 0;
             vf.display = display as _;
             let mut msg = Message::new();

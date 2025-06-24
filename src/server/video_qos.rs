@@ -198,6 +198,7 @@ impl VideoQoS {
     }
 
     pub fn user_custom_fps(&mut self, id: i32, fps: u32) {
+        log::info!("user_custom_fps: {}", fps);
         if fps < MIN_FPS || fps > MAX_FPS {
             return;
         }
@@ -207,6 +208,7 @@ impl VideoQoS {
     }
 
     pub fn user_auto_adjust_fps(&mut self, id: i32, fps: u32) {
+        log::info!("user_auto_adjust_fps: {}", fps);
         if fps < MIN_FPS || fps > MAX_FPS {
             return;
         }
@@ -533,6 +535,7 @@ impl VideoQoS {
 
         // Ensure fps stays within valid range
         self.fps = fps.clamp(MIN_FPS, highest_fps);
+        log::info!("adjust_fps: {}", self.fps);
     }
 }
 

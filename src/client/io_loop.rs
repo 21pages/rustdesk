@@ -1141,7 +1141,15 @@ impl<T: InvokeUiSession> Remote<T> {
         if limited_fps > custom_fps {
             limited_fps = custom_fps;
         }
+
         let last_auto_fps = self.handler.lc.read().unwrap().last_auto_fps.clone();
+        log::info!(
+            "min_decode_fps: {}, custom_fps: {}, limited_fps: {}, last_auto_fps: {}",
+            min_decode_fps,
+            custom_fps,
+            limited_fps,
+            last_auto_fps.unwrap_or(custom_fps as _)
+        );
         let displays = self.video_threads.keys().cloned().collect::<Vec<_>>();
         let mut fps_trending = |display: usize| {
             let thread = self.video_threads.get_mut(&display)?;

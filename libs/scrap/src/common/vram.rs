@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::c_void,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use crate::{
@@ -368,7 +369,10 @@ impl VRamDecoder {
         }
     }
     pub fn decode(&mut self, data: &[u8]) -> ResultType<Vec<VRamDecoderImage>> {
-        match self.decoder.decode(data) {
+        let start = Instant::now();
+        let v = self.decoder.decode(data);
+        log::info!("decode time: {:?}, ok: {}", start.elapsed(), v.is_ok());
+        match v {
             Ok(v) => Ok(v.iter().map(|f| VRamDecoderImage { frame: f }).collect()),
             Err(e) => Err(anyhow!(e)),
         }
