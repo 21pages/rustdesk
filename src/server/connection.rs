@@ -1393,7 +1393,8 @@ impl Connection {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if self.file_transfer.is_some() {
-            if crate::platform::is_prelogin() { // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
+            if crate::platform::is_prelogin() {
+                // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
                 username = "".to_owned();
             }
         }
@@ -1754,6 +1755,10 @@ impl Connection {
             }
         }
         if password::permanent_enabled() {
+            log::info!(
+                "====DEBUG==== validate_password: permanent_password: {:?}",
+                Config::get_permanent_password()
+            );
             if self.validate_one_password(Config::get_permanent_password()) {
                 return true;
             }
