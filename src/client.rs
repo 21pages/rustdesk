@@ -274,7 +274,6 @@ impl Client {
             }
         };
 
-
         if crate::get_ipv6_punch_enabled() {
             crate::test_ipv6().await;
         }
@@ -3186,6 +3185,10 @@ pub async fn handle_hash(
     interface: &impl Interface,
     peer: &mut Stream,
 ) {
+    log::info!(
+        "====DEBUG==== handle_hash:  password_preset: {}",
+        password_preset
+    );
     lc.write().unwrap().hash = hash.clone();
     // Take care of password application order
 
@@ -3200,6 +3203,7 @@ pub async fn handle_hash(
     }
     // last password
     let mut password = lc.read().unwrap().password.clone();
+    log::info!("====DEBUG==== handle_hash: last password: {:?}", password);
     // preset password
     if password.is_empty() {
         if !password_preset.is_empty() {
@@ -3214,6 +3218,10 @@ pub async fn handle_hash(
     // shared password
     // Currently it's used only when click shared ab peer card
     let shared_password = lc.write().unwrap().shared_password.take();
+    log::info!(
+        "====DEBUG==== handle_hash: shared_password: {:?}",
+        shared_password
+    );
     if let Some(shared_password) = shared_password {
         if !shared_password.is_empty() {
             let mut hasher = Sha256::new();
@@ -3229,6 +3237,7 @@ pub async fn handle_hash(
         password = lc.read().unwrap().config.password.clone();
         if !password.is_empty() {
             lc.write().unwrap().password_source = Default::default();
+            log::info!("====DEBUG==== handle_hash: config password: {:?}", password);
         }
     }
     // personal ab password
@@ -3263,7 +3272,11 @@ pub async fn handle_hash(
 
     let os_username = lc.read().unwrap().get_option("os-username");
     let os_password = lc.read().unwrap().get_option("os-password");
-
+    log::info!(
+        "====DEBUG==== handle_hash: os_username: {:?}, os_password: {:?}",
+        os_username,
+        os_password
+    );
     send_login(lc.clone(), os_username, os_password, password, peer).await;
     lc.write().unwrap().hash = hash;
 }
@@ -3286,6 +3299,10 @@ fn try_get_password_from_personal_ab(lc: Arc<RwLock<LoginConfigHandler>>, passwo
                         *password = hash_password.clone();
                         lc.write().unwrap().password_source =
                             PasswordSource::PersonalAb(hash_password);
+                        log::info!(
+                            "====DEBUG==== try_get_password_from_personal_ab: password: {:?}",
+                            password
+                        );
                     }
                 }
             }
@@ -3789,11 +3806,9 @@ pub mod peer_online {
         }
         // Retry for 2 times to get the online response
         for _ in 0..2 {
-            if let Some(msg_in) = crate::get_next_nonkeyexchange_msg(
-                &mut socket,
-                Some(timeout.as_millis() as _),
-            )
-            .await
+            if let Some(msg_in) =
+                crate::get_next_nonkeyexchange_msg(&mut socket, Some(timeout.as_millis() as _))
+                    .await
             {
                 match msg_in.union {
                     Some(rendezvous_message::Union::OnlineResponse(online_response)) => {
