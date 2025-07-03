@@ -408,28 +408,28 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   Widget buildHelpCards(String updateUrl) {
-    if (!bind.isCustomClient() &&
-        updateUrl.isNotEmpty &&
-        !isCardClosed &&
-        bind.mainUriPrefixSync().contains('rustdesk')) {
-      final isToUpdate = (isWindows || isMacOS) && bind.mainIsInstalled();
-      String btnText = isToUpdate ? 'Click to update' : 'Click to download';
-      GestureTapCallback onPressed = () async {
-        final Uri url = Uri.parse('https://rustdesk.com/download');
-        await launchUrl(url);
-      };
-      if (isToUpdate) {
-        onPressed = () {
-          handleUpdate(updateUrl);
-        };
-      }
-      return buildInstallCard(
-          "Status",
-          "${translate("new-version-of-{${bind.mainGetAppNameSync()}}-tip")} (${bind.mainGetNewVersion()}).",
-          btnText,
-          onPressed,
-          closeButton: true);
-    }
+    // if (!bind.isCustomClient() &&
+    //     updateUrl.isNotEmpty &&
+    //     !isCardClosed &&
+    //     bind.mainUriPrefixSync().contains('rustdesk')) {
+    //   final isToUpdate = (isWindows || isMacOS) && bind.mainIsInstalled();
+    //   String btnText = isToUpdate ? 'Click to update' : 'Click to download';
+    //   GestureTapCallback onPressed = () async {
+    //     final Uri url = Uri.parse('https://rustdesk.com/download');
+    //     await launchUrl(url);
+    //   };
+    //   if (isToUpdate) {
+    //     onPressed = () {
+    //       handleUpdate(updateUrl);
+    //     };
+    //   }
+    //   return buildInstallCard(
+    //       "Status",
+    //       "${translate("new-version-of-{${bind.mainGetAppNameSync()}}-tip")} (${bind.mainGetNewVersion()}).",
+    //       btnText,
+    //       onPressed,
+    //       closeButton: true);
+    // }
     if (systemError.isNotEmpty) {
       return buildInstallCard("", systemError, "", () {});
     }

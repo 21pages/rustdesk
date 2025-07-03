@@ -1690,6 +1690,80 @@ pub fn read_custom_client(config: &str) {
     }
 }
 
+pub fn read_strategy_override_settings(data: &str) {
+    // let Ok(data) = decode64(config) else {
+    //     log::error!("Failed to decode strategy override settings config");
+    //     return;
+    // };
+    // const KEY: &str = "5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=";
+    // let Some(pk) = get_rs_pk(KEY) else {
+    //     log::error!("Failed to parse public key of strategy override settings");
+    //     return;
+    // };
+    // let Ok(data) = sign::verify(&data, &pk) else {
+    //     log::error!("Failed to dec strategy override settings config");
+    //     return;
+    // };
+    let Ok(data) =
+        serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(data)
+    else {
+        log::error!("Failed to parse strategy override settings config");
+        return;
+    };
+
+    // Put all settings into STRATEGY_OVERRIDE_SETTINGS
+    let mut strategy_settings = config::STRATEGY_OVERRIDE_SETTINGS.write().unwrap();
+
+    for (k, v) in &data {
+        let Some(v) = v.as_str() else {
+            continue;
+        };
+        strategy_settings.insert(k.replace("_", "-"), v.to_owned());
+    }
+}
+
+pub fn read_strategy_normal_settings(data: &str) {
+    let Ok(settings) =
+        serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(data)
+    else {
+        log::error!("Failed to parse strategy normal settings config");
+        return;
+    };
+    let mut map_display_settings = HashMap::new();
+    for s in keys::KEYS_DISPLAY_SETTINGS {
+        map_display_settings.insert(s.replace("_", "-"), s);
+    }
+    let mut map_local_settings = HashMap::new();
+    for s in keys::KEYS_LOCAL_SETTINGS {
+        map_local_settings.insert(s.replace("_", "-"), s);
+    }
+    let mut map_settings = HashMap::new();
+    for s in keys::KEYS_SETTINGS {
+        map_settings.insert(s.replace("_", "-"), s);
+    }
+    for (k, v) in settings {
+        let Some(v) = v.as_str() else {
+            continue;
+        };
+        if let Some(k2) = map_display_settings.get(&k) {
+            let old = config::UserDefaultConfig::read(k2);
+            if old != *v {
+                config::UserDefaultConfig::load().set(k2.to_string(), v.to_owned());
+            }
+        } else if let Some(k2) = map_local_settings.get(&k) {
+            let old = config::LocalConfig::get_option(k2);
+            if old != *v {
+                config::LocalConfig::set_option(k2.to_string(), v.to_owned());
+            }
+        } else if let Some(k2) = map_settings.get(&k) {
+            let old = config::Config::get_option(k2);
+            if old != *v {
+                config::Config::set_option(k2.to_string(), v.to_owned());
+            }
+        }
+    }
+}
+
 #[inline]
 pub fn is_empty_uni_link(arg: &str) -> bool {
     let prefix = crate::get_uri_prefix();

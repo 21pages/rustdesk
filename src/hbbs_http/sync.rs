@@ -43,10 +43,10 @@ fn start_hbbs_sync() -> broadcast::Sender<Vec<i32>> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StrategyOptions {
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub config_options: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub extra: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub options: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub override_options: String,
 }
 
 struct InfoUploaded {
@@ -239,7 +239,11 @@ async fn start_hbbs_sync_async() {
                         if let Some(strategy) = rsp.remove("strategy") {
                             if let Ok(strategy) = serde_json::from_value::<StrategyOptions>(strategy) {
                                 log::info!("strategy updated");
-                                handle_config_options(strategy.config_options);
+                                if !strategy.options.is_empty() {
+                                    crate::common::read_strategy_normal_settings(&strategy.options);
+                                }
+                                crate::common::read_strategy_override_settings(&strategy.override_options);
+                                save_strategy_override_settings(&strategy.override_options);
                             }
                         }
                     }
@@ -260,23 +264,12 @@ fn heartbeat_url() -> String {
     format!("{}/api/heartbeat", url)
 }
 
-fn handle_config_options(config_options: HashMap<String, String>) {
-    let mut options = Config::get_options();
-    config_options
-        .iter()
-        .map(|(k, v)| {
-            if v.is_empty() {
-                options.remove(k);
-            } else {
-                options.insert(k.to_string(), v.to_string());
-            }
-        })
-        .count();
-    Config::set_options(options);
-}
-
 #[allow(unused)]
 #[cfg(not(any(target_os = "ios")))]
 pub fn is_pro() -> bool {
     PRO.lock().unwrap().clone()
+}
+
+fn save_strategy_override_settings(data: &str) {
+    LocalConfig::set_option("override-strategy".to_string(), data.to_string());
 }

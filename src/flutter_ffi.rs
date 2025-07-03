@@ -44,6 +44,12 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
     } else {
         crate::read_custom_client(custom_client_config);
     }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        crate::read_strategy_override_settings(&config::LocalConfig::get_option(
+            "override-strategy",
+        ));
+    }
     #[cfg(target_os = "android")]
     {
         // flexi_logger can't work when android_logger initialized.
@@ -622,7 +628,10 @@ pub fn session_open_terminal(session_id: SessionID, terminal_id: i32, rows: u32,
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.open_terminal(terminal_id, rows, cols);
     } else {
-        log::error!("[flutter_ffi] Session not found for session_id: {}", session_id);
+        log::error!(
+            "[flutter_ffi] Session not found for session_id: {}",
+            session_id
+        );
     }
 }
 
@@ -1395,6 +1404,10 @@ pub fn main_is_option_fixed(key: String) -> SyncReturn<bool> {
                 .unwrap()
                 .contains_key(&key)
             || config::OVERWRITE_SETTINGS
+                .read()
+                .unwrap()
+                .contains_key(&key)
+            || config::STRATEGY_OVERRIDE_SETTINGS
                 .read()
                 .unwrap()
                 .contains_key(&key),
