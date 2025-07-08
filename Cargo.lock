@@ -3289,7 +3289,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hwcodec"
 version = "0.7.1"
-source = "git+https://github.com/rustdesk-org/hwcodec#0ea7e709d3c48bb6446e33a9cc8fd0e0da5709b9"
+source = "git+https://github.com/21pages/hwcodec?branch=check_available_in_single_thread#07807f5ec84c39ba52f6fe37c65867c48b88a9d2"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
