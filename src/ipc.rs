@@ -1338,6 +1338,7 @@ pub fn client_get_hwcodec_config_thread(wait_sec: u64) {
 #[cfg(feature = "hwcodec")]
 #[tokio::main(flavor = "current_thread")]
 pub async fn hwcodec_process() {
+    let start_time = std::time::Instant::now();
     let s = scrap::hwcodec::check_available_hwcodec();
     for _ in 0..5 {
         match crate::ipc::connect(1000, "").await {
@@ -1361,6 +1362,7 @@ pub async fn hwcodec_process() {
         }
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
+    log::info!("hwcodec process completed in {:?}", start_time.elapsed());
 }
 
 #[tokio::main(flavor = "current_thread")]

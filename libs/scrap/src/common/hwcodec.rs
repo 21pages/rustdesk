@@ -723,24 +723,62 @@ pub fn start_check_process() {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(_) = exe.file_name().to_owned() {
                 let arg = "--check-hwcodec-config";
-                if let Ok(mut child) = std::process::Command::new(exe).arg(arg).spawn() {
-                    // wait up to 30 seconds, it maybe slow on windows startup for poorly performing machines
+
+                // Create child process with appropriate configuration
+                let mut cmd = std::process::Command::new(exe);
+                cmd.arg(arg);
+
+                // Create new process group on Unix systems for easier cleanup when parent dies
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::CommandExt;
+                    cmd.process_group(0);
+
+                    #[cfg(target_os = "linux")]
+                    {
+                        cmd.pre_exec(|| {
+                            unsafe {
+                                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                            }
+                            Ok(())
+                        });
+                    }
+                }
+
+                // On Windows, make child process automatically terminate when parent exits
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    // CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP
+                    cmd.creation_flags(0x01000000 | 0x00000200);
+                }
+
+                if let Ok(mut child) = cmd.spawn() {
+                    log::info!("Started hwcodec check process with PID: {:?}", child.id());
+
+                    // Wait up to 30 seconds (shorter than the 60-second timeout inside child process)
                     for _ in 0..30 {
                         std::thread::sleep(std::time::Duration::from_secs(1));
-                        if let Ok(Some(_)) = child.try_wait() {
-                            break;
+                        if let Ok(Some(status)) = child.try_wait() {
+                            log::info!("Check hwcodec config completed, exit with: {status}");
+                            return;
                         }
                     }
+
+                    // If timeout, forcefully terminate child process
+                    log::warn!("Check hwcodec config timeout, killing child process");
                     allow_err!(child.kill());
-                    std::thread::sleep(std::time::Duration::from_millis(30));
+
+                    // Give child process some time to exit gracefully
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+
+                    // Final check
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             log::info!("Check hwcodec config, exit with: {status}")
                         }
                         Ok(None) => {
-                            log::info!(
-                                "Check hwcodec config, status not ready yet, let's really wait"
-                            );
+                            log::warn!("Check hwcodec config, process still running after kill, forcing wait");
                             let res = child.wait();
                             log::info!("Check hwcodec config, wait result: {res:?}");
                         }
@@ -748,6 +786,8 @@ pub fn start_check_process() {
                             log::error!("Check hwcodec config, error attempting to wait: {e}")
                         }
                     }
+                } else {
+                    log::error!("Failed to spawn hwcodec check process");
                 }
             }
         };
