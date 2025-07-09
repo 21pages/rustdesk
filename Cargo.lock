@@ -1855,7 +1855,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.8.4",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -3289,7 +3289,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hwcodec"
 version = "0.7.1"
-source = "git+https://github.com/rustdesk-org/hwcodec#0ea7e709d3c48bb6446e33a9cc8fd0e0da5709b9"
+source = "git+https://github.com/21pages/hwcodec?branch=parent_death_signal#da6198a1962fc84a6fe96394f0b36cb2f602f059"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
@@ -3783,7 +3783,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e310b3a6b5907f99202fcdb4960ff45b93735d7c7d96b760fcff8db2dc0e103d"
 dependencies = [
  "cfg-if 1.0.0",
- "windows-targets 0.52.5",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]

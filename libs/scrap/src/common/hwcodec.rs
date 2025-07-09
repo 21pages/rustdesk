@@ -678,6 +678,8 @@ impl HwCodecConfig {
 }
 
 pub fn check_available_hwcodec() -> String {
+    hwcodec::common::setup_parent_death_signal();
+    std::thread::sleep(std::time::Duration::from_secs(40));
     let ctx = EncodeContext {
         name: String::from(""),
         mc_name: None,
@@ -725,7 +727,7 @@ pub fn start_check_process() {
                 let arg = "--check-hwcodec-config";
                 if let Ok(mut child) = std::process::Command::new(exe).arg(arg).spawn() {
                     // wait up to 30 seconds, it maybe slow on windows startup for poorly performing machines
-                    for _ in 0..30 {
+                    for _ in 0..60 {
                         std::thread::sleep(std::time::Duration::from_secs(1));
                         if let Ok(Some(_)) = child.try_wait() {
                             break;
