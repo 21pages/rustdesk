@@ -23,7 +23,7 @@ env:
   MAC_RUST_VERSION: "1.81" # 1.81 is requred for macos, because of https://github.com/yury/cidre requires 1.81
   CARGO_NDK_VERSION: "3.1.2"
   SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
-  SCITER_NASM_DEBVERSION: "2.14-1"
+  SCITER_NASM_DEBVERSION: "2.15.05-1"
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
   ANDROID_FLUTTER_VERSION: "3.24.5"
@@ -1978,11 +1978,7 @@ jobs:
           # https://github.com/AppImage/AppImageKit/wiki/FUSE
           sudo apt-get install -y libarchive-tools libfuse2
           # set-up appimage-builder
-          pushd /tmp
-          wget -O appimage-builder-x86_64.AppImage https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
-          chmod +x appimage-builder-x86_64.AppImage
-          sudo mv appimage-builder-x86_64.AppImage /usr/local/bin/appimage-builder
-          popd
+          sudo pip3 install git+https://github.com/Frederic98/appimage-builder.git
           # run appimage-builder
           pushd appimage
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml
@@ -2009,14 +2005,14 @@ jobs:
         job:
           - {
               target: x86_64-unknown-linux-gnu,
-              distro: ubuntu18.04,
+              distro: ubuntu20.04,
               on: ubuntu-22.04,
               arch: x86_64,
               suffix: "",
             }
           - {
               target: x86_64-unknown-linux-gnu,
-              distro: ubuntu18.04,
+              distro: ubuntu20.04,
               on: ubuntu-22.04,
               arch: x86_64,
               suffix: "-sciter",
@@ -2058,19 +2054,27 @@ jobs:
             --volume "${PWD}:/workspace"
           shell: /bin/bash
           install: |
+            echo "=========== apt-get update ==========="
             apt-get update -y
+            echo "=========== install flatpak ==========="
             apt-get install -y git flatpak flatpak-builder
+            flatpak --version
+            echo "=========== install flatpak finish ==========="
           run: |
             # disable git safe.directory
             git config --global --add safe.directory "*"
             pushd /workspace
             # flatpak deps
+            echo "=========== flatpak remote-add ==========="
             flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
             # package
             pushd flatpak
             git clone https://github.com/flathub/shared-modules.git --depth=1
+            echo "=========== flatpak-builder ==========="
             flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk.json
+            echo "=========== flatpak-builder finish ==========="
             flatpak build-bundle ./repo rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.flatpak com.rustdesk.RustDesk
+            echo "=========== flatpak build-bundle finish ==========="
 
       - name: Publish flatpak package
         uses: softprops/action-gh-release@v1
