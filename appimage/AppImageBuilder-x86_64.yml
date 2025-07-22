@@ -102,3 +102,6 @@ AppDir:
 AppImage:
   arch: x86_64
   update-information: guess
+  runtime:
+    url: https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
+
