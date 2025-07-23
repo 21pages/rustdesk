@@ -895,9 +895,11 @@ impl Connection {
             raii::AuthedConnID::check_remove_session(conn.inner.id(), conn.session_key());
         }
 
+        log::info!("before post_conn_audit close");
         conn.post_conn_audit(json!({
             "action": "close",
         }));
+        log::info!("after post_conn_audit close");
         if let Some(s) = conn.server.upgrade() {
             let mut s = s.write().unwrap();
             s.remove_connection(&conn.inner);
@@ -1008,9 +1010,11 @@ impl Connection {
 
     async fn post_seq_loop(mut rx: mpsc::UnboundedReceiver<(String, Value)>) {
         while let Some((url, v)) = rx.recv().await {
+            log::info!("post_seq_loop recv, v: {:?}", v);
             allow_err!(Self::post_audit_async(url, v).await);
+            log::info!("post_seq_loop after post_audit_async");
         }
-        log::debug!("post_seq_loop exited");
+        log::info!("post_seq_loop exited");
     }
 
     async fn try_port_forward_loop(
@@ -2948,7 +2952,11 @@ impl Connection {
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn fill_terminal_user_token(&mut self, _username: &str, _password: &str) -> Option<&'static str> {
+    fn fill_terminal_user_token(
+        &mut self,
+        _username: &str,
+        _password: &str,
+    ) -> Option<&'static str> {
         self.terminal_user_token = Some(TerminalUserToken::SelfUser);
         None
     }
