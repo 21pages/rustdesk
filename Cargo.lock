@@ -1864,7 +1864,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.8.4",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -3651,7 +3651,7 @@ dependencies = [
 [[package]]
 name = "kcp-sys"
 version = "0.1.0"
-source = "git+https://github.com/rustdesk-org/kcp-sys#1e5e30ab8b8c2f7787ab0f88822de36476531562"
+source = "git+https://github.com/21pages/kcp-sys?branch=limit_send_len#f928a3b6566bf5a335caca2db3836b75f39d46a9"
 dependencies = [
  "anyhow",
  "auto_impl",
@@ -3660,6 +3660,7 @@ dependencies = [
  "bytes",
  "cc",
  "dashmap 6.1.0",
+ "log",
  "parking_lot",
  "rand 0.8.5",
  "thiserror 2.0.11",

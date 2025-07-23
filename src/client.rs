@@ -544,6 +544,11 @@ impl Client {
         udp_socket_nat: Option<Arc<UdpSocket>>,
         udp_socket_v6: Option<Arc<UdpSocket>>,
     ) -> ResultType<(Stream, bool, Option<Vec<u8>>, Option<KcpStream>)> {
+        log::info!(
+            "connect start, udp_socket_nat: {:?}, udp_socket_v6: {:?}",
+            udp_socket_nat,
+            udp_socket_v6
+        );
         let direct_failures = interface.get_lch().read().unwrap().direct_failures;
         let mut connect_timeout = 0;
         const MIN: u64 = 1000;
@@ -583,6 +588,7 @@ impl Client {
         let fut = connect_tcp_local(peer, Some(local_addr), connect_timeout);
         connect_futures.push(
             async move {
+                hbb_common::sleep(6.0).await;
                 let conn = fut.await?;
                 Ok((conn, None, "TCP"))
             }
@@ -630,7 +636,10 @@ impl Client {
             interface.get_lch().write().unwrap().set_direct_failure(n);
         }
         let mut conn = conn?;
-        log::info!("{:?} used to establish {typ} connection", start.elapsed());
+        log::info!(
+            "================== {:?} used to establish {typ} connection",
+            start.elapsed()
+        );
         let pk = Self::secure_connection(peer_id, signed_id_pk, key, &mut conn).await?;
         Ok((conn, direct, pk, kcp))
     }
@@ -4010,6 +4019,7 @@ async fn udp_nat_connect(
     socket: Arc<UdpSocket>,
     typ: &'static str,
 ) -> ResultType<(Stream, Option<KcpStream>, &'static str)> {
+    log::info!("UDP NAT connect start, typ: {}", typ);
     crate::punch_udp(socket.clone(), false)
         .await
         .map_err(|err| {
@@ -4022,5 +4032,6 @@ async fn udp_nat_connect(
             log::debug!("Failed to connect KCP stream: {}", err);
             anyhow!(err)
         })?;
+    log::info!("UDP NAT connect end, typ: {}", typ);
     Ok((res.1, Some(res.0), typ))
 }
