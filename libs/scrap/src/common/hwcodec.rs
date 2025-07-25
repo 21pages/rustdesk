@@ -537,7 +537,7 @@ impl HwCodecConfig {
         #[cfg(target_os = "android")]
         {
             let info = crate::android::ffi::get_codec_info();
-            log::info!("all codec info: {info:?}");
+            // log::info!("all codec info: {info:?}");
             struct T {
                 name_prefix: &'static str,
                 data_format: DataFormat,
@@ -593,7 +593,7 @@ impl HwCodecConfig {
                     }
                 });
             }
-            log::debug!("e: {e:?}");
+            // log::debug!("e: {e:?}");
             HwCodecConfig {
                 ram_encode: e,
                 ..Default::default()

@@ -1861,7 +1861,10 @@ pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
         .map(|x| x.elapsed().as_secs() < 60)
         .unwrap_or(false)
     {
-        return None;
+        if config::Config::get_bool_option(config::keys::OPTION_ENABLE_HWCODEC) {
+            log::info!("============ use old ipv6 address");
+            return None;
+        }
     }
     PUBLIC_IPV6_ADDR.lock().unwrap().1 = Some(Instant::now());
 
@@ -1942,6 +1945,7 @@ pub async fn punch_udp(
     socket: Arc<UdpSocket>,
     listen: bool,
 ) -> ResultType<Option<bytes::BytesMut>> {
+    log::info!("============ punch_udp, listen: {:?}", listen);
     let mut retry_interval = Duration::from_millis(20);
     const MAX_INTERVAL: Duration = Duration::from_millis(200);
     const MAX_TIME: Duration = Duration::from_secs(20);
@@ -1955,12 +1959,14 @@ pub async fn punch_udp(
     loop {
         tokio::select! {
             _ = hbb_common::sleep(retry_interval.as_secs_f32()) => {
+                log::info!("============ punch_udp, retry_interval: {:?}, tm elapsed: {:?}, send_elapsed: {:?}", retry_interval, tm.elapsed(), last_send_time.elapsed());
                 if tm.elapsed() > MAX_TIME {
                     bail!("UDP punch is timed out, stop sending packets after {:?} packets", packets_sent);
                 }
                 let elapsed = last_send_time.elapsed();
 
                 if elapsed >= retry_interval {
+                    log::info!("============ punch_udp,  elapasd > retry_interval");
                     socket.send(&[]).await.ok();
                     packets_sent += 1;
 
@@ -1969,13 +1975,14 @@ pub async fn punch_udp(
                         Duration::from_millis((retry_interval.as_millis() as f64 * 1.5) as u64),
                         MAX_INTERVAL
                     );
+                    log::info!("============ punch_udp, new retry_interval: {:?}", retry_interval);
                     last_send_time = Instant::now();
                 }
             }
             res = socket.recv(&mut data) => match res {
                 Err(e) => bail!("UDP punch failed, {packets_sent} packets sent: {e}"),
                 Ok(n) => {
-                    // log::debug!("UDP punch succeeded after sending {} packets after {:?}", packets_sent, tm.elapsed());
+                    log::debug!("UDP punch succeeded after sending {} packets after {:?}, n: {:?}", packets_sent, tm.elapsed(), n);
                     if listen {
                         if n == 0 {
                             continue;

@@ -388,6 +388,7 @@ impl Client {
             {
                 match msg_in.union {
                     Some(rendezvous_message::Union::PunchHoleResponse(ph)) => {
+                        log::info!("============== PunchHoleResponse: {:?}", ph);
                         if ph.socket_addr.is_empty() {
                             if !ph.other_failure.is_empty() {
                                 bail!(ph.other_failure);
@@ -414,16 +415,34 @@ impl Client {
                             relay_server = ph.relay_server;
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
                             feedback = ph.feedback;
+                            log::info!(
+                                "============== Hole Punched peer_nat_type: {:?}, is_local: {:?}, peer_addr: {:?}, is_udp: {:?}, udp.0.is_some(): {:?}",
+                                peer_nat_type,
+                                is_local,
+                                peer_addr,
+                                ph.is_udp,
+                                udp.0.is_some()
+                            );
                             let s = udp.0.take();
                             if ph.is_udp && s.is_some() {
                                 if let Some(s) = s {
+                                    log::info!(
+                                        "===================== connect udp, peer_addr: {:?}",
+                                        peer_addr
+                                    );
                                     allow_err!(s.connect(peer_addr).await);
                                     udp.0 = Some(s);
                                 }
                             }
+                            log::info!(
+                                "===================== connect ipv6, ipv6.0.is_some(): {:?}, ph.socket_addr_v6: {:?}",
+                                ipv6.0.is_some(),
+                                ph.socket_addr_v6
+                            );
                             let s = ipv6.0.take();
                             if !ph.socket_addr_v6.is_empty() && s.is_some() {
                                 let addr = AddrMangle::decode(&ph.socket_addr_v6);
+                                log::info!("===================== connect ipv6, addr: {:?}", addr);
                                 if addr.port() > 0 {
                                     if let Some(s) = s {
                                         allow_err!(s.connect(addr).await);
@@ -431,7 +450,7 @@ impl Client {
                                     }
                                 }
                             }
-                            log::info!("Hole Punched {} = {}", peer, peer_addr);
+                            log::info!("============== Hole Punched {} = {}", peer, peer_addr);
                             break;
                         }
                     }
@@ -583,6 +602,12 @@ impl Client {
         let fut = connect_tcp_local(peer, Some(local_addr), connect_timeout);
         connect_futures.push(
             async move {
+                if config::LocalConfig::get_bool_option(
+                    config::keys::OPTION_ALLOW_AUTO_RECORD_OUTGOING,
+                ) {
+                    log::info!("============ let tcp sleep 5s");
+                    hbb_common::sleep(5.0).await;
+                }
                 let conn = fut.await?;
                 Ok((conn, None, "TCP"))
             }
@@ -602,8 +627,14 @@ impl Client {
 
         let mut direct = !conn.is_err();
         interface.update_direct(Some(direct));
+        log::info!(
+            "============ interface.is_force_relay(): {:?}, conn.is_err(): {:?}",
+            interface.is_force_relay(),
+            conn.is_err()
+        );
         if interface.is_force_relay() || conn.is_err() {
             if !relay_server.is_empty() {
+                log::info!("============ request_relay");
                 conn = Self::request_relay(
                     peer_id,
                     relay_server.to_owned(),
@@ -630,7 +661,10 @@ impl Client {
             interface.get_lch().write().unwrap().set_direct_failure(n);
         }
         let mut conn = conn?;
-        log::info!("{:?} used to establish {typ} connection", start.elapsed());
+        log::error!(
+            "================================================ {:?} used to establish {typ} connection",
+            start.elapsed()
+        );
         let pk = Self::secure_connection(peer_id, signed_id_pk, key, &mut conn).await?;
         Ok((conn, direct, pk, kcp))
     }
@@ -3994,7 +4028,7 @@ async fn test_udp_uat(
     }
 
     let final_port = *udp_port.lock().unwrap();
-    log::debug!(
+    log::info!(
         "UDP NAT test to {:?} finished: time={:?}, port={}, packets_sent={}, success={}",
         server_addr,
         start.elapsed(),
@@ -4010,6 +4044,7 @@ async fn udp_nat_connect(
     socket: Arc<UdpSocket>,
     typ: &'static str,
 ) -> ResultType<(Stream, Option<KcpStream>, &'static str)> {
+    log::info!("============ udp_nat_connect, typ: {:?}", typ);
     crate::punch_udp(socket.clone(), false)
         .await
         .map_err(|err| {

@@ -1565,7 +1565,7 @@ bool option2bool(String option, String value) {
       option == kOptionForceAlwaysRelay) {
     res = value == "Y";
   } else {
-    assert(false);
+    // assert(false);
     res = value != "N";
   }
   return res;
@@ -1583,7 +1583,7 @@ String bool2option(String option, bool b) {
       option == kOptionForceAlwaysRelay) {
     res = b ? 'Y' : defaultOptionNo;
   } else {
-    assert(false);
+    // assert(false);
     res = b ? 'Y' : 'N';
   }
   return res;
