@@ -518,7 +518,11 @@ impl RendezvousMediator {
         socket_addr_v6: bytes::Bytes,
     ) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&fla.socket_addr);
-        log::debug!("Handle intranet from {:?}", peer_addr);
+        log::info!(
+            "============ Handle intranet from {:?}, socket_addr_v6: {:?}",
+            peer_addr,
+            socket_addr_v6
+        );
         let mut socket = connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
         let local_addr = socket.local_addr();
         // we saw invalid local_addr while using proxy, local_addr.ip() == "::1"
@@ -541,6 +545,11 @@ impl RendezvousMediator {
     }
 
     async fn handle_punch_hole(&self, ph: PunchHole, server: ServerPtr) -> ResultType<()> {
+        log::info!(
+            "============ handle_punch_hole, ph: {:?}, my_nat_type: {:?}",
+            ph,
+            Config::get_nat_type()
+        );
         let mut peer_addr = AddrMangle::decode(&ph.socket_addr);
         let last = *LAST_MSG.lock().await;
         *LAST_MSG.lock().await = (peer_addr, Instant::now());
@@ -562,6 +571,7 @@ impl RendezvousMediator {
             || (config::is_disable_tcp_listen() && ph.udp_port <= 0)
         {
             let uuid = Uuid::new_v4().to_string();
+            log::info!("============ create_relay");
             return self
                 .create_relay(
                     ph.socket_addr.into(),
@@ -586,11 +596,17 @@ impl RendezvousMediator {
             ..Default::default()
         };
         if ph.udp_port > 0 {
+            log::info!(
+                "============ punch_udp_hole, peer_addr: {:?}, ph.udp_port: {}",
+                peer_addr,
+                ph.udp_port
+            );
             peer_addr.set_port(ph.udp_port as u16);
+            log::info!("============ punch_udp_hole, peer_addr: {:?}", peer_addr);
             self.punch_udp_hole(peer_addr, server, msg_punch).await?;
             return Ok(());
         }
-        log::debug!("Punch tcp hole to {:?}", peer_addr);
+        log::info!("============ Punch tcp hole to {:?}", peer_addr);
         let mut socket = {
             let socket = connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
             let local_addr = socket.local_addr();
@@ -616,8 +632,10 @@ impl RendezvousMediator {
         let mut msg_out = Message::new();
         msg_out.set_punch_hole_sent(msg_punch);
         let (socket, addr) = new_direct_udp_for(&self.host).await?;
+        log::info!("============ new_direct_udp_for, addr: {:?}", addr);
         let data = msg_out.write_to_bytes()?;
         socket.send_to(&data, addr).await?;
+        log::info!("============ send_to, addr: {:?}", addr);
         let socket_cloned = socket.clone();
         tokio::spawn(async move {
             for _ in 0..2 {
@@ -627,6 +645,7 @@ impl RendezvousMediator {
             }
         });
         udp_nat_listen(socket_cloned.clone(), peer_addr, peer_addr, server).await?;
+        log::info!("============ udp_nat_listen, peer_addr: {:?}", peer_addr);
         Ok(())
     }
 
@@ -819,15 +838,36 @@ async fn udp_nat_listen(
     let tm = Instant::now();
     let socket_cloned = socket.clone();
     let func = async {
-        socket.connect(peer_addr).await?;
-        let res = crate::punch_udp(socket.clone(), true).await?;
+        log::info!("============ udp_nat_listen, peer_addr: {:?}", peer_addr);
+        let res = socket.connect(peer_addr).await;
+        log::info!("============ udp_nat_listen connect res: {:?}", res);
+        res?;
+        log::info!("============ udp_nat_listen connect ok");
+        let res = crate::punch_udp(socket.clone(), true).await;
+        log::info!("============ punch_udp, res: {:?}", res);
+        let res = res?;
         let stream = crate::kcp_stream::KcpStream::accept(
             socket,
             Duration::from_secs(CONNECT_TIMEOUT as _),
             res,
         )
-        .await?;
+        .await;
+        let stream = match stream {
+            Ok(stream) => {
+                log::info!("============ udp_nat_listen kcp accept stream ok");
+                stream
+            }
+            Err(e) => {
+                log::error!(
+                    "============ udp_nat_listen kcp accept stream error: {:?}",
+                    e
+                );
+                return Err(e);
+            }
+        };
+        log::info!("============udp_nat_listen kcp accept ok");
         crate::server::create_tcp_connection(server, stream.1, peer_addr_v4, true).await?;
+        log::info!("============ udp_nat_listen create_tcp_connection ok");
         Ok(())
     };
     func.await.map_err(|e: anyhow::Error| {

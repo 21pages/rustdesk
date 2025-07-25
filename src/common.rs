@@ -1942,6 +1942,7 @@ pub async fn punch_udp(
     socket: Arc<UdpSocket>,
     listen: bool,
 ) -> ResultType<Option<bytes::BytesMut>> {
+    log::info!("============ punch_udp, listen: {:?}", listen);
     let mut retry_interval = Duration::from_millis(20);
     const MAX_INTERVAL: Duration = Duration::from_millis(200);
     const MAX_TIME: Duration = Duration::from_secs(20);
