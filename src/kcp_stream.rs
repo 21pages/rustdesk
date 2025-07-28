@@ -81,7 +81,12 @@ impl KcpStream {
         let (stop_sender, stop_receiver) = oneshot::channel();
         Self::kcp_io(udp_socket.clone(), input, output, stop_receiver).await;
 
+        log::info!("============ KcpStream::connect, timeout: {:?}", timeout);
         let conn_id = endpoint.connect(timeout, 0, 0, Bytes::new()).await?;
+        log::info!(
+            "============ after KcpStream::connect, conn_id: {:?}",
+            conn_id
+        );
         if let Some(stream) = stream::KcpStream::new(&endpoint, conn_id) {
             Ok((
                 Self {
