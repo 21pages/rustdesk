@@ -213,23 +213,16 @@ pub fn is_option_fixed(key: &str) -> bool {
             .read()
             .unwrap()
             .contains_key(key)
+        || config::STRATEGY_OVERRIDE_SETTINGS
+            .read()
+            .unwrap()
+            .contains_key(key)
         || config::OVERWRITE_SETTINGS.read().unwrap().contains_key(key)
 }
 
 #[inline]
 pub fn get_local_option(key: String) -> String {
     crate::get_local_option(&key)
-}
-
-#[inline]
-#[cfg(feature = "flutter")]
-pub fn get_hard_option(key: String) -> String {
-    config::HARD_SETTINGS
-        .read()
-        .unwrap()
-        .get(&key)
-        .cloned()
-        .unwrap_or_default()
 }
 
 #[inline]
@@ -441,6 +434,7 @@ pub fn set_option(key: String, value: String) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _nat = crate::CheckTestNatType::new();
+        let _public = crate::hbbs_http::sync::CheckPublicServer::new();
         Config::set_option(key, value);
     }
 }
@@ -1236,6 +1230,11 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                     video_conn_count,
                                 };
                             }
+                            Ok(Some(ipc::Data::Strategy(Some(strategy)))) => {
+                                let (override_options, hard_options) = serde_json::from_str::<(HashMap<String, String>, HashMap<String, String>)>(&strategy).unwrap();
+                                *config::STRATEGY_OVERRIDE_SETTINGS.write().unwrap() = override_options;
+                                *config::STRATEGY_HARD_SETTINGS.write().unwrap() = hard_options;
+                            }
                             _ => {}
                         }
                     }
@@ -1249,6 +1248,7 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                         c.send(&ipc::Data::Config(("temporary-password".to_owned(), None))).await.ok();
                         #[cfg(feature = "flutter")]
                         c.send(&ipc::Data::VideoConnCount(None)).await.ok();
+                        c.send(&ipc::Data::Strategy(None)).await.ok();
                     }
                 }
             }

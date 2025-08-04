@@ -15,6 +15,7 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/cm_file_model.dart';
+import 'package:flutter_hbb/models/deploy_model.dart';
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_hbb/models/group_model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
@@ -1081,7 +1082,8 @@ class FfiModel with ChangeNotifier {
       if (displays.length == 1) {
         bind.sessionSetSize(
           sessionId: sessionId,
-          display: pi.currentDisplay == kAllDisplayValue ? 0 : pi.currentDisplay,
+          display:
+              pi.currentDisplay == kAllDisplayValue ? 0 : pi.currentDisplay,
           width: displays[0].width,
           height: displays[0].height,
         );
@@ -1100,6 +1102,11 @@ class FfiModel with ChangeNotifier {
 
   void _queryAuditGuid(String peerId) async {
     try {
+      if (bind
+          .sessionGetAuditServerSync(sessionId: sessionId, typ: "conn/active")
+          .isEmpty) {
+        return;
+      }
       if (!mainGetLocalBoolOptionSync(
           kOptionAllowAskForNoteAtEndOfConnection)) {
         return;
@@ -3455,6 +3462,7 @@ class FFI {
   late final Peers recentPeersModel; // global
   late final Peers favoritePeersModel; // global
   late final Peers lanPeersModel; // global
+  late final DeployModel deployModel; // global
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -3491,6 +3499,7 @@ class FFI {
         getInitPeers: null);
     lanPeersModel = Peers(
         name: PeersModelName.lan, loadEvent: LoadEvent.lan, getInitPeers: null);
+    deployModel = DeployModel();
   }
 
   /// Mobile reuse FFI

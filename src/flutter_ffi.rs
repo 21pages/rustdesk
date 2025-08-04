@@ -21,6 +21,7 @@ use hbb_common::{
     rendezvous_proto::ConnType,
     ResultType,
 };
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -52,6 +53,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
     }
     #[cfg(target_os = "android")]
     {
+        crate::hbbs_http::sync::load_strategy(None);
         // flexi_logger can't work when android_logger initialized.
         #[cfg(debug_assertions)]
         android_logger::init_once(
@@ -2233,6 +2235,26 @@ pub fn main_support_remove_wallpaper() -> bool {
     support_remove_wallpaper()
 }
 
+pub fn is_standard() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_standard())
+}
+
+pub fn is_host() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_host())
+}
+
+pub fn is_client() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_client())
+}
+
+pub fn is_sos() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_sos())
+}
+
+pub fn with_public() -> SyncReturn<bool> {
+    SyncReturn(crate::common::with_public())
+}
+
 pub fn is_incoming_only() -> SyncReturn<bool> {
     SyncReturn(config::is_incoming_only())
 }
@@ -2528,10 +2550,6 @@ pub fn main_has_valid_bot_sync() -> SyncReturn<bool> {
     SyncReturn(has_valid_bot())
 }
 
-pub fn main_get_hard_option(key: String) -> SyncReturn<String> {
-    SyncReturn(get_hard_option(key))
-}
-
 pub fn main_get_buildin_option(key: String) -> SyncReturn<String> {
     SyncReturn(get_builtin_option(&key))
 }
@@ -2642,6 +2660,22 @@ pub fn main_get_common(key: String) -> String {
 
 pub fn main_get_common_sync(key: String) -> SyncReturn<String> {
     SyncReturn(main_get_common(key))
+}
+
+pub fn main_hash_shared_password(password: String) -> String {
+    if password.is_empty() {
+        return "{}".to_owned();
+    }
+    let salt = hbb_common::config::Config::get_auto_password(6);
+    let mut hasher = Sha256::new();
+    hasher.update(password);
+    hasher.update(&salt);
+    let res = hasher.finalize();
+    let v = serde_json::json!({
+        "hash": res[..].to_vec(),
+        "salt": salt,
+    });
+    return v.to_string();
 }
 
 pub fn main_set_common(_key: String, _value: String) {

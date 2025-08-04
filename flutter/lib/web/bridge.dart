@@ -1752,10 +1752,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainHasValid2FaSync");
   }
 
-  String mainGetHardOption({required String key, dynamic hint}) {
-    return mainGetLocalOption(key: key, hint: hint);
-  }
-
   Future<void> mainCheckHwcodec({dynamic hint}) {
     throw UnimplementedError("mainCheckHwcodec");
   }
@@ -2018,6 +2014,34 @@ class RustdeskImpl {
 
   String sessionGetAuditGuid({required UuidValue sessionId, dynamic hint}) {
     return js.context.callMethod('getByName', ['audit_guid']);
+  }
+
+  bool isStandard({dynamic hint}) {
+    return true;
+  }
+
+  bool isHost({dynamic hint}) {
+    return false;
+  }
+
+  bool isClient({dynamic hint}) {
+    return false;
+  }
+
+  bool isSos({dynamic hint}) {
+    return false;
+  }
+
+  Future<String> mainHashSharedPassword(
+      {required String password, dynamic hint}) {
+    return Future(() =>
+        js.context.callMethod('getByName', ['hash_shared_password', password]));
+  }
+
+  bool withPublic({dynamic hint}) {
+    final apiServer =
+        js.context.callMethod('getByName', ['api_server']).toString();
+    return apiServer.contains("rustdesk.com");
   }
 
   void dispose() {}
