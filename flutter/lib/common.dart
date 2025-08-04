@@ -3406,6 +3406,7 @@ Future<bool> setServerConfig(
     }
   }
   final oldApiServer = await bind.mainGetApiServer();
+  final oldWithPublic = withPublic();
 
   // should set one by one
   await bind.mainSetOption(
@@ -3418,6 +3419,12 @@ Future<bool> setServerConfig(
       oldApiServer != newApiServer &&
       gFFI.userModel.isLogin) {
     gFFI.userModel.logOut(apiServer: oldApiServer);
+  }
+  if (!isWeb) {
+    gFFI.deployModel.checkDeploy();
+    if (oldWithPublic != withPublic()) {
+      reloadCurrentWindow();
+    }
   }
   return true;
 }
@@ -3910,3 +3917,5 @@ String get appName {
   }
   return _appName;
 }
+
+bool withPublic() => bind.withPublic();

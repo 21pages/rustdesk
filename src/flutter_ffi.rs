@@ -629,7 +629,10 @@ pub fn session_open_terminal(session_id: SessionID, terminal_id: i32, rows: u32,
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.open_terminal(terminal_id, rows, cols);
     } else {
-        log::error!("[flutter_ffi] Session not found for session_id: {}", session_id);
+        log::error!(
+            "[flutter_ffi] Session not found for session_id: {}",
+            session_id
+        );
     }
 }
 
@@ -2144,6 +2147,26 @@ pub fn main_test_wallpaper(_second: u64) {
 
 pub fn main_support_remove_wallpaper() -> bool {
     support_remove_wallpaper()
+}
+
+pub fn is_standard() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_standard())
+}
+
+pub fn is_host() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_host())
+}
+
+pub fn is_client() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_client())
+}
+
+pub fn is_sos() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_sos())
+}
+
+pub fn with_public() -> SyncReturn<bool> {
+    SyncReturn(crate::common::with_public())
 }
 
 pub fn is_incoming_only() -> SyncReturn<bool> {
