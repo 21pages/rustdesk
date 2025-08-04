@@ -46,6 +46,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
     }
     #[cfg(target_os = "android")]
     {
+        crate::hbbs_http::sync::load_strategy(None);
         // flexi_logger can't work when android_logger initialized.
         #[cfg(debug_assertions)]
         android_logger::init_once(
@@ -1436,6 +1437,10 @@ pub fn main_is_option_fixed(key: String) -> SyncReturn<bool> {
             || config::OVERWRITE_SETTINGS
                 .read()
                 .unwrap()
+                .contains_key(&key)
+            || config::STRATEGY_OVERRIDE_SETTINGS
+                .read()
+                .unwrap()
                 .contains_key(&key),
     )
 }
@@ -2147,6 +2152,26 @@ pub fn main_test_wallpaper(_second: u64) {
 
 pub fn main_support_remove_wallpaper() -> bool {
     support_remove_wallpaper()
+}
+
+pub fn is_standard() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_standard())
+}
+
+pub fn is_host() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_host())
+}
+
+pub fn is_client() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_client())
+}
+
+pub fn is_sos() -> SyncReturn<bool> {
+    SyncReturn(hbb_common::is_sos())
+}
+
+pub fn with_public() -> SyncReturn<bool> {
+    SyncReturn(crate::common::with_public())
 }
 
 pub fn is_incoming_only() -> SyncReturn<bool> {

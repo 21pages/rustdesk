@@ -121,6 +121,7 @@ class AbModel {
 
   Future<void> _pullAb(
       {required ForcePullAb? force, required bool quiet}) async {
+    if (bind.isDisableAccount()) return;
     if (bind.isDisableAb()) return;
     if (!gFFI.userModel.isLogin) return;
     if (gFFI.userModel.networkError.isNotEmpty) return;
@@ -576,6 +577,7 @@ class AbModel {
 
   Future<void> loadCache() async {
     try {
+      if (bind.isDisableAccount() || bind.isDisableAb()) return;
       if (_cacheLoadOnceFlag || currentAbLoading.value) return;
       _cacheLoadOnceFlag = true;
       final access_token = bind.mainGetLocalOption(key: 'access_token');
