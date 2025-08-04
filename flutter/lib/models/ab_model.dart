@@ -121,6 +121,7 @@ class AbModel {
 
   Future<void> _pullAb(
       {required ForcePullAb? force, required bool quiet}) async {
+    if (bind.isDisableAccount()) return;
     if (bind.isDisableAb()) return;
     if (!gFFI.userModel.isLogin) return;
     if (gFFI.userModel.networkError.isNotEmpty) return;
@@ -331,7 +332,7 @@ class AbModel {
     };
     // avoid set existing password to empty
     if (password.isNotEmpty) {
-      peer['password'] = password;
+      peer = await _updatePasswordField(peer, password);
     }
     if (note.isNotEmpty) {
       peer['note'] = note;
@@ -587,6 +588,7 @@ class AbModel {
 
   Future<void> loadCache() async {
     try {
+      if (bind.isDisableAccount() || bind.isDisableAb()) return;
       if (_cacheLoadOnceFlag || currentAbLoading.value) return;
       _cacheLoadOnceFlag = true;
       final access_token = bind.mainGetLocalOption(key: 'access_token');
@@ -798,8 +800,15 @@ class AbModel {
     try {
       if (profile.info is Map) {
         final password = (profile.info as Map)['password'];
-        if (password is String && password.isNotEmpty) {
-          return password;
+        if (withPublic()) {
+          final hashSalt = HashSalt.fromJson(password);
+          if (hashSalt.hash.isNotEmpty && hashSalt.salt.isNotEmpty) {
+            return jsonEncode(hashSalt.toJson());
+          }
+        } else {
+          if (password is String && password.isNotEmpty) {
+            return password;
+          }
         }
       }
       return null;
@@ -1628,7 +1637,8 @@ class Ab extends BaseAb {
   @override
   Future<bool> changeSharedPassword(String id, String password) async {
     if (personal) return false;
-    return await _setPassword({"id": id, "password": password});
+    final peer = await _updatePasswordField({"id": id}, password);
+    return await _setPassword(peer);
   }
 
   @override
@@ -1976,4 +1986,22 @@ String _jsonDecodeActionResp(http.Response resp) {
     }
   }
   return errMsg;
+}
+
+Future<Map<String, dynamic>> _updatePasswordField(
+    Map<String, dynamic> peer, String password) async {
+  if (withPublic()) {
+    final hashedPasswordStr =
+        await bind.mainHashSharedPassword(password: password);
+    var hashedPasswordMap = {};
+    try {
+      hashedPasswordMap = jsonDecode(hashedPasswordStr);
+      peer['shared_password'] = hashedPasswordMap;
+    } catch (e) {
+      debugPrint("changeSharedPassword: $e");
+    }
+  } else {
+    peer['password'] = password;
+  }
+  return peer;
 }

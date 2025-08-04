@@ -1,5 +1,6 @@
 use crate::{
     common::CheckTestNatType,
+    hbbs_http::sync::CheckPublicServer,
     privacy_mode::PrivacyModeState,
     ui_interface::{get_local_option, set_local_option},
 };
@@ -291,6 +292,7 @@ pub enum Data {
     SocksWs(Option<Box<(Option<config::Socks5Server>, String)>>),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Whiteboard((String, crate::whiteboard::CustomEvent)),
+    Strategy(Option<String>),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -363,9 +365,9 @@ pub struct CheckIfRestart {
     audio_input: String,
     voice_call_input: String,
     ws: String,
-    disable_udp: String,
     allow_insecure_tls_fallback: String,
     api_server: String,
+    disable_udp: bool,
 }
 
 impl CheckIfRestart {
@@ -376,11 +378,11 @@ impl CheckIfRestart {
             audio_input: Config::get_option("audio-input"),
             voice_call_input: Config::get_option("voice-call-input"),
             ws: Config::get_option(OPTION_ALLOW_WEBSOCKET),
-            disable_udp: Config::get_option(config::keys::OPTION_DISABLE_UDP),
             allow_insecure_tls_fallback: Config::get_option(
                 config::keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK,
             ),
             api_server: Config::get_option("api-server"),
+            disable_udp: crate::is_udp_disabled(),
         }
     }
 }
@@ -395,8 +397,9 @@ impl Drop for CheckIfRestart {
             || self.stop_service != Config::get_option("stop-service")
             || self.rendezvous_servers != Config::get_rendezvous_servers()
             || self.ws != Config::get_option(OPTION_ALLOW_WEBSOCKET)
-            || self.disable_udp != Config::get_option(config::keys::OPTION_DISABLE_UDP)
+            || self.disable_udp != crate::is_udp_disabled()
             || self.api_server != Config::get_option("api-server")
+            || self.disable_udp != crate::is_udp_disabled()
         {
             if allow_insecure_tls_fallback_changed {
                 hbb_common::tls::reset_tls_cache();
@@ -595,6 +598,7 @@ async fn handle(data: Data, stream: &mut Connection) {
             Some(value) => {
                 let _chk = CheckIfRestart::new();
                 let _nat = CheckTestNatType::new();
+                let _public = CheckPublicServer::new();
                 if let Some(v) = value.get("privacy-mode-impl-key") {
                     crate::privacy_mode::switch(v);
                 }
@@ -609,6 +613,7 @@ async fn handle(data: Data, stream: &mut Connection) {
         Data::SyncConfig(Some(configs)) => {
             let (config, config2) = *configs;
             let _chk = CheckIfRestart::new();
+            let _public = CheckPublicServer::new();
             Config::set(config);
             Config2::set(config2);
             allow_err!(stream.send(&Data::SyncConfig(None)).await);
@@ -769,6 +774,13 @@ async fn handle(data: Data, stream: &mut Connection) {
                 // Port forward session count is only a get value.
             }
         },
+        Data::Strategy(None) => {
+            let override_options = config::STRATEGY_OVERRIDE_SETTINGS.read().unwrap().clone();
+            let hard_options = config::STRATEGY_HARD_SETTINGS.read().unwrap().clone();
+            let strategy =
+                serde_json::to_string(&(override_options, hard_options)).unwrap_or_default();
+            allow_err!(stream.send(&Data::Strategy(Some(strategy))).await);
+        }
         _ => {}
     }
 }

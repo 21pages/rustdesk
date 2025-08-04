@@ -1681,13 +1681,12 @@ class LastWindowPosition {
       this.offsetHeight, this.isMaximized, this.isFullscreen);
 
   bool equals(LastWindowPosition other) {
-    return (
-      (width == other.width) &&
-      (height == other.height) &&
-      (offsetWidth == other.offsetWidth) &&
-      (offsetHeight == other.offsetHeight) &&
-      (isMaximized == other.isMaximized) &&
-      (isFullscreen == other.isFullscreen));
+    return ((width == other.width) &&
+        (height == other.height) &&
+        (offsetWidth == other.offsetWidth) &&
+        (offsetHeight == other.offsetHeight) &&
+        (isMaximized == other.isMaximized) &&
+        (isFullscreen == other.isFullscreen));
   }
 
   Map<String, dynamic> toJson() {
@@ -1815,7 +1814,8 @@ Future<void> saveWindowPosition(WindowType type,
 
   final WindowKey key = (type: type, windowId: windowId);
 
-  final bool haveNewWindowPosition = (_lastWindowPosition == null) || !pos.equals(_lastWindowPosition!);
+  final bool haveNewWindowPosition =
+      (_lastWindowPosition == null) || !pos.equals(_lastWindowPosition!);
   final bool isPreviousNewWindowPositionPending = _saveWindowDebounce.isRunning;
 
   if (haveNewWindowPosition || isPreviousNewWindowPositionPending) {
@@ -1841,10 +1841,11 @@ Future<void> _saveWindowPositionActual(WindowKey key) async {
     await bind.setLocalFlutterOption(
         k: windowFramePrefix + key.type.name, v: pos.toString());
 
-    if ((key.type == WindowType.RemoteDesktop || key.type == WindowType.ViewCamera) &&
+    if ((key.type == WindowType.RemoteDesktop ||
+            key.type == WindowType.ViewCamera) &&
         key.windowId != null) {
-      await _saveSessionWindowPosition(
-          key.type, key.windowId!, pos.isMaximized ?? false, pos.isFullscreen ?? false, pos);
+      await _saveSessionWindowPosition(key.type, key.windowId!,
+          pos.isMaximized ?? false, pos.isFullscreen ?? false, pos);
     }
   }
 }
@@ -3484,6 +3485,7 @@ Future<bool> setServerConfig(
     }
   }
   final oldApiServer = await bind.mainGetApiServer();
+  final oldWithPublic = withPublic();
 
   // should set one by one
   await bind.mainSetOption(
@@ -3496,6 +3498,15 @@ Future<bool> setServerConfig(
       oldApiServer != newApiServer &&
       gFFI.userModel.isLogin) {
     gFFI.userModel.logOut(apiServer: oldApiServer);
+  }
+  if (!isWeb) {
+    gFFI.deployModel.checkDeploy();
+    if (oldWithPublic != withPublic()) {
+      // Wait for strategy synchronization to complete through IPC.
+      Future.delayed(Duration(milliseconds: 2000), () {
+        reloadCurrentWindow();
+      });
+    }
   }
   return true;
 }
@@ -4024,3 +4035,5 @@ String decode_http_response(http.Response resp) {
 bool peerTabShowNote(PeerTabIndex peerTabIndex) {
   return peerTabIndex == PeerTabIndex.ab || peerTabIndex == PeerTabIndex.group;
 }
+
+bool withPublic() => bind.withPublic();
