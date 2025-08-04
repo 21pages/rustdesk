@@ -372,6 +372,7 @@ class _ConnectionPageState extends State<ConnectionPage>
                         forceAlwaysRelay: false,
                         rdpPort: '',
                         rdpUsername: '',
+                        user: '',
                         loginName: '',
                         device_group_name: '',
                       );
