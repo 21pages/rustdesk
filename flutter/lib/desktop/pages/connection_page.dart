@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/connection_page_title.dart';
@@ -369,9 +370,11 @@ class _ConnectionPageState extends State<ConnectionPage>
                         tags: [],
                         hash: '',
                         password: '',
+                        sharedPassword: HashSalt(hash: Uint8List(0), salt: ''),
                         forceAlwaysRelay: false,
                         rdpPort: '',
                         rdpUsername: '',
+                        user: '',
                         loginName: '',
                         device_group_name: '',
                         note: '',

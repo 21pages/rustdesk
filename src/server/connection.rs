@@ -17,6 +17,7 @@ use crate::{
     client::{
         new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
     },
+    common::with_public,
     display_service, ipc, privacy_mode, video_service, VERSION,
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -1161,6 +1162,7 @@ impl Connection {
             Self::post_alarm_audit(
                 AlarmAuditType::IpWhitelist, //"ip whitelist",
                 json!({ "ip":addr.ip() }),
+                None,
             );
             return false;
         }
@@ -1254,7 +1256,7 @@ impl Connection {
         info["name"] = json!(self.lr.my_name.clone());
         info["num"] = json!(file_num);
         info["files"] = json!(files);
-        let v = json!({
+        let mut v = json!({
             "id":json!(Config::get_id()),
             "uuid":json!(crate::encode64(hbb_common::get_uuid())),
             "peer_id":json!(self.lr.my_id),
@@ -1263,12 +1265,15 @@ impl Connection {
             "is_file":is_file,
             "info":json!(info).to_string(),
         });
+        if crate::with_public() {
+            v["email"] = json!(self.lr.email);
+        }
         tokio::spawn(async move {
             allow_err!(Self::post_audit_async(url, v).await);
         });
     }
 
-    pub fn post_alarm_audit(typ: AlarmAuditType, info: Value) {
+    pub fn post_alarm_audit(typ: AlarmAuditType, info: Value, email: Option<String>) {
         let url = crate::get_audit_server(
             Config::get_option("api-server"),
             Config::get_option("custom-rendezvous-server"),
@@ -1281,6 +1286,11 @@ impl Connection {
         v["id"] = json!(Config::get_id());
         v["uuid"] = json!(crate::encode64(hbb_common::get_uuid()));
         v["typ"] = json!(typ as i8);
+        if crate::with_public() {
+            if let Some(email) = email {
+                v["email"] = json!(email);
+            }
+        }
         v["info"] = serde_json::Value::String(info.to_string());
         tokio::spawn(async move {
             allow_err!(Self::post_audit_async(url, v).await);
@@ -1351,9 +1361,11 @@ impl Connection {
             .unwrap()
             .get(&self.session_key())
             .map(|s| s.last_recv_time.clone());
-        self.post_conn_audit(
-            json!({"peer": ((&self.lr.my_id, &self.lr.my_name)), "type": conn_type}),
-        );
+        let mut info = json!({"peer": ((&self.lr.my_id, &self.lr.my_name)), "type": conn_type});
+        if crate::with_public() {
+            info["email"] = json!(self.lr.email);
+        }
+        self.post_conn_audit(info);
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
         let mut res = LoginResponse::new();
@@ -1852,16 +1864,29 @@ impl Connection {
     }
 
     fn validate_one_password(&self, password: String) -> bool {
-        if password.len() == 0 {
+        if password.len() == 0 || self.lr.password.is_empty() {
             return false;
         }
-        let mut hasher = Sha256::new();
-        hasher.update(password);
-        hasher.update(&self.hash.salt);
-        let mut hasher2 = Sha256::new();
-        hasher2.update(&hasher.finalize()[..]);
-        hasher2.update(&self.hash.challenge);
-        hasher2.finalize()[..] == self.lr.password[..]
+        if self.lr.salt.is_empty() {
+            let mut hasher = Sha256::new();
+            hasher.update(password);
+            hasher.update(&self.hash.salt);
+            let mut hasher2 = Sha256::new();
+            hasher2.update(&hasher.finalize()[..]);
+            hasher2.update(&self.hash.challenge);
+            hasher2.finalize()[..] == self.lr.password[..]
+        } else {
+            let mut hasher = Sha256::new();
+            hasher.update(password);
+            hasher.update(&self.lr.salt);
+            let mut hasher2 = Sha256::new();
+            hasher2.update(&hasher.finalize()[..]);
+            hasher2.update(&self.hash.salt);
+            let mut hasher3 = Sha256::new();
+            hasher3.update(&hasher2.finalize()[..]);
+            hasher3.update(&self.hash.challenge);
+            hasher3.finalize()[..] == self.lr.password[..]
+        }
     }
 
     fn validate_password(&mut self) -> bool {
@@ -3305,6 +3330,11 @@ impl Connection {
             .copied()
             .unwrap_or((0, 0, 0));
 
+        let email = if crate::with_public() {
+            Some(self.lr.email.clone())
+        } else {
+            None
+        };
         let res = if failure.2 > 30 {
             self.send_login_error("Too many wrong attempts").await;
             Self::post_alarm_audit(
@@ -3314,6 +3344,7 @@ impl Connection {
                             "id": self.lr.my_id.clone(),
                             "name": self.lr.my_name.clone(),
                 }),
+                email,
             );
             false
         } else if time == failure.0 && failure.1 > 6 {
@@ -3325,6 +3356,7 @@ impl Connection {
                             "id": self.lr.my_id.clone(),
                             "name": self.lr.my_name.clone(),
                 }),
+                email,
             );
             false
         } else {

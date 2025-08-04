@@ -1,14 +1,47 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_hbb/common.dart';
 import 'package:get/get.dart';
 import 'platform_model.dart';
 // ignore: depend_on_referenced_packages
 import 'package:collection/collection.dart';
 
+class HashSalt {
+  late final Uint8List hash;
+  late final String salt;
+
+  HashSalt({required this.hash, required this.salt});
+
+  HashSalt.fromJson(dynamic v) {
+    if (v is Map<String, dynamic>) {
+      final hashValue = v['hash'];
+      if (hashValue is Uint8List) {
+        hash = hashValue;
+      } else if (hashValue is List<dynamic>) {
+        // Convert List<dynamic> to Uint8List
+        hash = Uint8List.fromList(hashValue.cast<int>());
+      } else if (hashValue is List<int>) {
+        hash = Uint8List.fromList(hashValue);
+      } else {
+        hash = Uint8List(0);
+      }
+      salt = v['salt'] is String ? v['salt'] : '';
+    } else {
+      hash = Uint8List(0);
+      salt = '';
+    }
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{'hash': hash, 'salt': salt};
+  }
+}
+
 class Peer {
   final String id;
   String hash; // personal ab hash password
   String password; // shared ab password
+  HashSalt sharedPassword;
   String username; // pc username
   String hostname;
   String platform;
@@ -18,6 +51,7 @@ class Peer {
   String rdpPort;
   String rdpUsername;
   bool online = false;
+  String user;
   String loginName; //login username
   String device_group_name;
   String note;
@@ -34,6 +68,7 @@ class Peer {
       : id = json['id'] ?? '',
         hash = json['hash'] ?? '',
         password = json['password'] ?? '',
+        sharedPassword = HashSalt.fromJson(json['shared_password']),
         username = json['username'] ?? '',
         hostname = json['hostname'] ?? '',
         platform = json['platform'] ?? '',
@@ -42,7 +77,8 @@ class Peer {
         forceAlwaysRelay = json['forceAlwaysRelay'] == 'true',
         rdpPort = json['rdpPort'] ?? '',
         rdpUsername = json['rdpUsername'] ?? '',
-        loginName = json['loginName'] ?? '',
+        user = json['user'] ?? '',
+        loginName = json['login_name'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
         note = json['note'] is String ? json['note'] : '',
         sameServer = json['same_server'];
@@ -52,6 +88,7 @@ class Peer {
       "id": id,
       "hash": hash,
       "password": password,
+      "shared_password": sharedPassword.toJson(),
       "username": username,
       "hostname": hostname,
       "platform": platform,
@@ -60,7 +97,8 @@ class Peer {
       "forceAlwaysRelay": forceAlwaysRelay.toString(),
       "rdpPort": rdpPort,
       "rdpUsername": rdpUsername,
-      'loginName': loginName,
+      'user': user,
+      'login_name': loginName,
       'device_group_name': device_group_name,
       'note': note,
       'same_server': sameServer,
@@ -89,6 +127,7 @@ class Peer {
       "hostname": hostname,
       "platform": platform,
       "login_name": loginName,
+      'user': user,
       "device_group_name": device_group_name,
     };
   }
@@ -97,6 +136,7 @@ class Peer {
     required this.id,
     required this.hash,
     required this.password,
+    required this.sharedPassword,
     required this.username,
     required this.hostname,
     required this.platform,
@@ -105,6 +145,7 @@ class Peer {
     required this.forceAlwaysRelay,
     required this.rdpPort,
     required this.rdpUsername,
+    required this.user,
     required this.loginName,
     required this.device_group_name,
     required this.note,
@@ -116,6 +157,7 @@ class Peer {
           id: '...',
           hash: '',
           password: '',
+          sharedPassword: HashSalt(hash: Uint8List(0), salt: ''),
           username: '...',
           hostname: '...',
           platform: '...',
@@ -124,6 +166,7 @@ class Peer {
           forceAlwaysRelay: false,
           rdpPort: '',
           rdpUsername: '',
+          user: '',
           loginName: '',
           device_group_name: '',
           note: '',
@@ -132,6 +175,7 @@ class Peer {
     return id == other.id &&
         hash == other.hash &&
         password == other.password &&
+        sharedPassword == other.sharedPassword &&
         username == other.username &&
         hostname == other.hostname &&
         platform == other.platform &&
@@ -150,6 +194,7 @@ class Peer {
             id: other.id,
             hash: other.hash,
             password: other.password,
+            sharedPassword: other.sharedPassword,
             username: other.username,
             hostname: other.hostname,
             platform: other.platform,
@@ -158,10 +203,19 @@ class Peer {
             forceAlwaysRelay: other.forceAlwaysRelay,
             rdpPort: other.rdpPort,
             rdpUsername: other.rdpUsername,
+            user: other.user,
             loginName: other.loginName,
             device_group_name: other.device_group_name,
             note: other.note,
             sameServer: other.sameServer);
+
+  bool hasValidPassword() {
+    if (withPublic()) {
+      return sharedPassword.hash.isNotEmpty && sharedPassword.salt.isNotEmpty;
+    } else {
+      return password.isNotEmpty;
+    }
+  }
 }
 
 enum UpdateEvent { online, load }

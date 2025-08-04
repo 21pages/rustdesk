@@ -585,7 +585,7 @@ class MyGroupPeerView extends BasePeersView {
           return false;
         }
       } else {
-        if (model.selectedAccessibleItemName.value != peer.loginName) {
+        if (model.selectedAccessibleItemName.value != peer.user) {
           return false;
         }
       }
