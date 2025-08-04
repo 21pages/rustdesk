@@ -1979,5 +1979,33 @@ class RustdeskImpl {
         ]));
   }
 
+  bool isStandard({dynamic hint}) {
+    return true;
+  }
+
+  bool isHost({dynamic hint}) {
+    return false;
+  }
+
+  bool isClient({dynamic hint}) {
+    return false;
+  }
+
+  bool isSos({dynamic hint}) {
+    return false;
+  }
+
+  Future<String> mainHashSharedPassword(
+      {required String password, dynamic hint}) {
+    return Future(() =>
+        js.context.callMethod('getByName', ['hash_shared_password', password]));
+  }
+
+  bool withPublic({dynamic hint}) {
+    final apiServer =
+        js.context.callMethod('getByName', ['api_server']).toString();
+    return apiServer.contains("rustdesk.com");
+  }
+
   void dispose() {}
 }
