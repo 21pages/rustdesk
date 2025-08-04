@@ -1029,7 +1029,15 @@ fn get_api_server_(api: String, custom: String) -> String {
 
 #[inline]
 pub fn is_public(url: &str) -> bool {
-    url.contains("rustdesk.com")
+    url.contains("rustdesk.com") || url.contains("saas") || url.contains("192")
+}
+
+pub fn with_public() -> bool {
+    let url = crate::get_api_server(
+        Config::get_option("api-server"),
+        Config::get_option("custom-rendezvous-server"),
+    );
+    is_public(&url)
 }
 
 pub fn get_udp_punch_enabled() -> bool {
@@ -1060,7 +1068,10 @@ pub fn get_local_option(key: &str) -> String {
 
 pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
     let url = get_api_server(api, custom);
-    if url.is_empty() || is_public(&url) {
+    // TODO: remove is_public in the future
+    if url.is_empty()
+    /*|| is_public(&url)*/
+    {
         return "".to_owned();
     }
     format!("{}/api/audit/{}", url, typ)
@@ -1730,7 +1741,16 @@ pub fn get_hwid() -> Bytes {
 
 #[inline]
 pub fn get_builtin_option(key: &str) -> String {
-    config::BUILTIN_SETTINGS
+    let v = config::BUILTIN_SETTINGS
+        .read()
+        .unwrap()
+        .get(key)
+        .cloned()
+        .unwrap_or_default();
+    if !v.is_empty() {
+        return v;
+    }
+    config::STRATEGY_OVERRIDE_SETTINGS
         .read()
         .unwrap()
         .get(key)
@@ -1740,7 +1760,7 @@ pub fn get_builtin_option(key: &str) -> String {
 
 #[inline]
 pub fn is_custom_client() -> bool {
-    get_app_name() != "RustDesk"
+    hbb_common::is_standard() && get_app_name() != "RustDesk"
 }
 
 pub fn verify_login(_raw: &str, _id: &str) -> bool {

@@ -251,7 +251,7 @@ impl OidcSession {
                             );
                             LocalConfig::set_option(
                                 "user_info".to_owned(),
-                                serde_json::json!({ "name": auth_body.user.name, "status": auth_body.user.status }).to_string(),
+                                serde_json::json!({ "name": auth_body.user.name, "email": auth_body.user.email,  "status": auth_body.user.status }).to_string(),
                             );
                         }
                     }
