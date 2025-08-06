@@ -21,6 +21,8 @@ mod cm;
 pub mod inline;
 pub mod remote;
 
+pub use cm::start_cm_no_ui;
+
 #[allow(dead_code)]
 type Status = (i32, bool, i64, String);
 
@@ -633,9 +635,9 @@ impl UI {
     pub fn verify2fa(&self, code: String) -> bool {
         verify2fa(code)
     }
-        
+
     fn verify_login(&self, raw: String, id: String) -> bool {
-       crate::verify_login(&raw, &id)
+        crate::verify_login(&raw, &id)
     }
 
     fn generate_2fa_img_src(&self, data: String) -> String {

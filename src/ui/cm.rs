@@ -174,3 +174,23 @@ impl sciter::EventHandler for SciterConnectionManager {
         fn get_option(String);
     }
 }
+
+fn start_listen_ipc(new_thread: bool) {
+    use crate::ui_cm_interface::{start_ipc, ConnectionManager};
+
+    #[cfg(target_os = "linux")]
+    std::thread::spawn(start_pa);
+
+    let cm = ConnectionManager {
+        ui_handler: SciterHandler::default(),
+    };
+    if new_thread {
+        std::thread::spawn(move || start_ipc(cm));
+    } else {
+        start_ipc(cm);
+    }
+}
+
+pub fn start_cm_no_ui() {
+    start_listen_ipc(false);
+}

@@ -568,11 +568,15 @@ pub fn core_main() -> Option<Vec<String>> {
             // meanwhile, return true to call flutter window to show control panel
             crate::ui_interface::start_option_status_sync();
         } else if args[0] == "--cm-no-ui" {
-            #[cfg(feature = "flutter")]
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
+                #[cfg(feature = "flutter")]
+                use crate::flutter::connection_manager::start_cm_no_ui;
+                #[cfg(not(feature = "flutter"))]
+                use crate::ui::start_cm_no_ui;
+
                 crate::ui_interface::start_option_status_sync();
-                crate::flutter::connection_manager::start_cm_no_ui();
+                start_cm_no_ui();
             }
             return None;
         } else if args[0] == "-gtk-sudo" {

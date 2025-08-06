@@ -530,9 +530,8 @@ async fn handle(data: Data, stream: &mut Connection) {
                         None
                     };
                 } else if name == "hide_cm" {
-                    value = if crate::hbbs_http::sync::is_pro() || crate::common::is_custom_client()
-                    {
-                        Some(hbb_common::password_security::hide_cm().to_string())
+                    value = if hide_cm() {
+                        Some("true".to_string())
                     } else {
                         None
                     };
@@ -1430,6 +1429,14 @@ pub async fn set_install_option(k: String, v: String) -> ResultType<()> {
         c.next_timeout(1000).await.ok();
     }
     Ok(())
+}
+
+pub fn hide_cm() -> bool {
+    if crate::hbbs_http::sync::is_pro() || crate::common::is_custom_client() {
+        hbb_common::password_security::hide_cm()
+    } else {
+        false
+    }
 }
 
 #[cfg(test)]
