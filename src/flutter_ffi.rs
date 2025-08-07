@@ -46,6 +46,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
     }
     #[cfg(target_os = "android")]
     {
+        crate::hbbs_http::sync::load_strategy(None);
         // flexi_logger can't work when android_logger initialized.
         #[cfg(debug_assertions)]
         android_logger::init_once(
@@ -1434,6 +1435,10 @@ pub fn main_is_option_fixed(key: String) -> SyncReturn<bool> {
                 .unwrap()
                 .contains_key(&key)
             || config::OVERWRITE_SETTINGS
+                .read()
+                .unwrap()
+                .contains_key(&key)
+            || config::STRATEGY_OVERRIDE_SETTINGS
                 .read()
                 .unwrap()
                 .contains_key(&key),

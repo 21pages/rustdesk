@@ -1719,7 +1719,16 @@ pub fn get_hwid() -> Bytes {
 
 #[inline]
 pub fn get_builtin_option(key: &str) -> String {
-    config::BUILTIN_SETTINGS
+    let v = config::BUILTIN_SETTINGS
+        .read()
+        .unwrap()
+        .get(key)
+        .cloned()
+        .unwrap_or_default();
+    if !v.is_empty() {
+        return v;
+    }
+    config::STRATEGY_OVERRIDE_SETTINGS
         .read()
         .unwrap()
         .get(key)
