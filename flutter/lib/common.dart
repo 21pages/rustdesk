@@ -3910,3 +3910,21 @@ String get appName {
   }
   return _appName;
 }
+
+String getConnectionText(bool secure, bool direct, String streamType) {
+  String connectionText;
+  if (secure && direct) {
+    connectionText = translate("Direct and encrypted connection");
+  } else if (secure && !direct) {
+    connectionText = translate("Relayed and encrypted connection");
+  } else if (!secure && direct) {
+    connectionText = translate("Direct and unencrypted connection");
+  } else {
+    connectionText = translate("Relayed and unencrypted connection");
+  }
+  if (streamType.isEmpty || streamType == 'Relay') {
+    return connectionText;
+  } else {
+    return '$connectionText ($streamType)';
+  }
+}
