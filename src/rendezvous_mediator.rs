@@ -479,6 +479,7 @@ impl RendezvousMediator {
     }
 
     async fn handle_intranet(&self, fla: FetchLocalAddr, server: ServerPtr) -> ResultType<()> {
+        log::info!("============ Handle intranet: {:?}", fla);
         let addr = AddrMangle::decode(&fla.socket_addr);
         let last = *LAST_MSG.lock().await;
         *LAST_MSG.lock().await = (addr, Instant::now());
@@ -552,6 +553,11 @@ impl RendezvousMediator {
     }
 
     async fn handle_punch_hole(&self, ph: PunchHole, server: ServerPtr) -> ResultType<()> {
+        log::info!(
+            "============ handle_punch_hole, ph: {:?}, my_nat_type: {:?}",
+            ph,
+            Config::get_nat_type()
+        );
         let mut peer_addr = AddrMangle::decode(&ph.socket_addr);
         let last = *LAST_MSG.lock().await;
         *LAST_MSG.lock().await = (peer_addr, Instant::now());
@@ -573,6 +579,7 @@ impl RendezvousMediator {
             || (config::is_disable_tcp_listen() && ph.udp_port <= 0)
         {
             let uuid = Uuid::new_v4().to_string();
+            log::info!("============ create_relay");
             return self
                 .create_relay(
                     ph.socket_addr.into(),
@@ -597,11 +604,12 @@ impl RendezvousMediator {
             ..Default::default()
         };
         if ph.udp_port > 0 {
+            log::info!("============ punch_udp_hole");
             peer_addr.set_port(ph.udp_port as u16);
             self.punch_udp_hole(peer_addr, server, msg_punch).await?;
             return Ok(());
         }
-        log::debug!("Punch tcp hole to {:?}", peer_addr);
+        log::info!("============ Punch tcp hole to {:?}", peer_addr);
         let mut socket = {
             let socket = connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
             let local_addr = socket.local_addr();

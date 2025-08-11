@@ -437,6 +437,7 @@ impl Client {
             (None, None)
         };
         let udp_nat_port = udp.1.map(|x| *x.lock().unwrap()).unwrap_or(0);
+        log::info!("============ udp_nat_port: {:?}", udp_nat_port);
         if udp.0.is_some() && udp_nat_port == 0 {
             let err_msg = "udp nat port of udp punch is 0, skip";
             log::info!("{}", err_msg);
@@ -675,6 +676,12 @@ impl Client {
         let fut = connect_tcp_local(peer, Some(local_addr), connect_timeout);
         connect_futures.push(
             async move {
+                if config::LocalConfig::get_bool_option(
+                    config::keys::OPTION_ALLOW_AUTO_RECORD_OUTGOING,
+                ) {
+                    log::info!("============ let tcp sleep 5s");
+                    hbb_common::sleep(5.0).await;
+                }
                 let conn = fut.await?;
                 Ok((conn, None, "TCP"))
             }

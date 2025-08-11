@@ -253,6 +253,10 @@ pub async fn accept_connection(
     if let Err(err) = accept_connection_(server, socket, secure).await {
         log::warn!("Failed to accept connection from {}: {}", peer_addr, err);
     }
+    log::info!(
+        "============ accept_connection ok, peer_addr: {:?}",
+        peer_addr
+    );
 }
 
 pub async fn create_relay_connection(
