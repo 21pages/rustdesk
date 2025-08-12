@@ -681,7 +681,19 @@ pub async fn get_nat_type(_ms_timeout: u64) -> i32 {
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub async fn get_nat_type(ms_timeout: u64) -> i32 {
-    crate::ipc::get_nat_type(ms_timeout).await
+    if test_option(true) {
+        NatType::ASYMMETRIC as i32
+    } else {
+        crate::ipc::get_nat_type(ms_timeout).await
+    }
+}
+
+pub fn test_option(client: bool) -> bool {
+    if client {
+        LocalConfig::get_bool_option(config::keys::OPTION_ALLOW_AUTO_RECORD_OUTGOING)
+    } else {
+        Config::get_bool_option(config::keys::OPTION_ALLOW_AUTO_RECORD_INCOMING)
+    }
 }
 
 // used for client to test which server is faster in case stop-servic=Y

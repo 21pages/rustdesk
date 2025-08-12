@@ -218,7 +218,7 @@ impl Client {
                 let direct = x.0 .1;
                 if !interface.is_force_relay() && (direct_failures == 0) != direct {
                     let n = if direct { 0 } else { 1 };
-                    log::info!("direct_failures updated to {}", n);
+                    log::info!("========== direct_failures updated to {}", n);
                     interface.get_lch().write().unwrap().set_direct_failure(n);
                 }
                 Ok(x)
@@ -641,6 +641,10 @@ impl Client {
         &'static str,
     )> {
         let direct_failures = interface.get_lch().read().unwrap().direct_failures;
+        log::info!(
+            "======================= connect direct_failures: {}",
+            direct_failures
+        );
         let mut connect_timeout = 0;
         const MIN: u64 = 1000;
         if is_local || peer_nat_type == NatType::SYMMETRIC {
@@ -712,6 +716,9 @@ impl Client {
                 if let Err(e) = conn {
                     // this direct is mainly used by on_establish_connection_error, so we update it here before bail
                     interface.update_direct(Some(false));
+                    log::info!(
+                        "======================= request_relay failed, update direct to false"
+                    );
                     bail!("Failed to connect via relay server: {}", e);
                 }
                 typ = "Relay";
@@ -732,6 +739,10 @@ impl Client {
             Err(e) => {
                 // this direct is mainly used by on_establish_connection_error, so we update it here before bail
                 interface.update_direct(Some(direct));
+                log::info!(
+                    "======================= secure_connection failed, update direct to {}",
+                    direct
+                );
                 bail!(e);
             }
         };
@@ -3594,6 +3605,10 @@ pub trait Interface: Send + Clone + 'static + Sized {
         let text = err.to_string();
         let lc = self.get_lch();
         let direct = lc.read().unwrap().direct;
+        log::info!(
+            "======================= on_establish_connection_error direct: {:?}",
+            direct
+        );
         let received = lc.read().unwrap().received;
 
         let mut relay_hint = false;

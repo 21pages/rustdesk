@@ -566,9 +566,14 @@ impl RendezvousMediator {
             socket_addr_v6 = start_ipv6(peer_addr_v6, peer_addr, server.clone()).await;
         }
         let relay_server = self.get_relay_server(ph.relay_server);
+        let my_nat_type = if crate::common::test_option(false) {
+            NatType::ASYMMETRIC as i32
+        } else {
+            Config::get_nat_type()
+        };
         // for ensure, websocket go relay directly
         if ph.nat_type.enum_value() == Ok(NatType::SYMMETRIC)
-            || Config::get_nat_type() == NatType::SYMMETRIC as i32
+            || my_nat_type == NatType::SYMMETRIC as i32
             || relay
             || (config::is_disable_tcp_listen() && ph.udp_port <= 0)
         {
@@ -586,7 +591,7 @@ impl RendezvousMediator {
                 .await;
         }
         use hbb_common::protobuf::Enum;
-        let nat_type = NatType::from_i32(Config::get_nat_type()).unwrap_or(NatType::UNKNOWN_NAT);
+        let nat_type = NatType::from_i32(my_nat_type).unwrap_or(NatType::UNKNOWN_NAT);
         let msg_punch = PunchHoleSent {
             socket_addr: ph.socket_addr,
             id: Config::get_id(),
