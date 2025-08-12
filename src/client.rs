@@ -181,6 +181,18 @@ pub fn get_key_state(key: enigo::Key) -> bool {
     ENIGO.lock().unwrap().get_key_state(key)
 }
 
+#[derive(Debug, Default)]
+struct PunchData {
+    direct: Option<bool>,
+}
+
+#[derive(Debug)]
+pub struct PunchError {
+    pub error: hbb_common::anyhow::Error,
+    pub is_udp: bool,
+    pub punch_data: PunchData,
+}
+
 impl Client {
     const CLIENT_CLIPBOARD_NAME: &'static str = "client-clipboard";
 
@@ -312,7 +324,7 @@ impl Client {
         } else {
             (None, None)
         };
-        let fut = Self::_start_inner(
+        let fut = Self::start_inner_wrapper(
             peer.to_owned(),
             key.to_owned(),
             token.to_owned(),
@@ -325,16 +337,24 @@ impl Client {
             contained,
         );
         if udp.0.is_none() {
-            return fut.await;
+            match fut.await {
+                Ok(x) => return Ok(x),
+                Err(e) => {
+                    if e.punch_data.direct.is_some() {
+                        interface.update_direct(e.punch_data.direct);
+                    }
+                    return Err(e.error);
+                }
+            }
         }
         let mut connect_futures = Vec::new();
         connect_futures.push(fut.boxed());
-        let fut = Self::_start_inner(
+        let fut = Self::start_inner_wrapper(
             peer.to_owned(),
             key.to_owned(),
             token.to_owned(),
             conn_type,
-            interface,
+            interface.clone(),
             (None, None),
             None,
             rendezvous_server,
@@ -344,7 +364,62 @@ impl Client {
         connect_futures.push(fut.boxed());
         match select_ok(connect_futures).await {
             Ok(conn) => Ok((conn.0 .0, conn.0 .1)),
-            Err(e) => Err(e),
+            Err(e) => {
+                if e.punch_data.direct.is_some() {
+                    interface.update_direct(e.punch_data.direct);
+                }
+                Err(e.error)
+            }
+        }
+    }
+
+    async fn start_inner_wrapper(
+        peer: String,
+        key: String,
+        token: String,
+        conn_type: ConnType,
+        interface: impl Interface,
+        udp: (Option<Arc<UdpSocket>>, Option<Arc<Mutex<u16>>>),
+        stop_udp_tx: Option<oneshot::Sender<()>>,
+        rendezvous_server: String,
+        servers: Vec<String>,
+        contained: bool,
+    ) -> Result<
+        (
+            (
+                Stream,
+                bool,
+                Option<Vec<u8>>,
+                Option<KcpStream>,
+                &'static str,
+            ),
+            (i32, String),
+        ),
+        PunchError,
+    > {
+        let mut punch_data = PunchData::default();
+        let is_udp = udp.0.is_some();
+        let result = Self::_start_inner(
+            peer,
+            key,
+            token,
+            conn_type,
+            interface,
+            udp,
+            stop_udp_tx,
+            rendezvous_server,
+            servers,
+            contained,
+            &mut punch_data,
+        )
+        .await;
+        match result {
+            Ok(x) => Ok(x),
+            Err(error) => Err(PunchError {
+                error,
+                is_udp,
+                punch_data,
+            }),
         }
     }
 
@@ -359,6 +434,7 @@ impl Client {
         mut rendezvous_server: String,
         servers: Vec<String>,
         contained: bool,
+        punch_data: &mut PunchData,
     ) -> ResultType<(
         (
             Stream,
@@ -599,6 +675,7 @@ impl Client {
                 udp.0,
                 ipv6.0,
                 punch_type,
+                punch_data,
             )
             .await?,
             (feedback, rendezvous_server),
@@ -624,6 +701,7 @@ impl Client {
         udp_socket_nat: Option<Arc<UdpSocket>>,
         udp_socket_v6: Option<Arc<UdpSocket>>,
         punch_type: &str,
+        punch_data: &mut PunchData,
     ) -> ResultType<(
         Stream,
         bool,
@@ -688,7 +766,7 @@ impl Client {
         };
 
         let mut direct = !conn.is_err();
-        interface.update_direct(Some(direct));
+        punch_data.direct = Some(direct);
         if interface.is_force_relay() || conn.is_err() {
             if !relay_server.is_empty() {
                 conn = Self::request_relay(
@@ -701,7 +779,7 @@ impl Client {
                     conn_type,
                 )
                 .await;
-                interface.update_direct(Some(false));
+                punch_data.direct = Some(false);
                 if let Err(e) = conn {
                     bail!("Failed to connect via relay server: {}", e);
                 }
