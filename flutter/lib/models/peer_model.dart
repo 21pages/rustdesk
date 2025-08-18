@@ -1,14 +1,47 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_hbb/common.dart';
 import 'package:get/get.dart';
 import 'platform_model.dart';
 // ignore: depend_on_referenced_packages
 import 'package:collection/collection.dart';
 
+class SharedPassword {
+  late final Uint8List hash;
+  late final String salt;
+
+  SharedPassword({required this.hash, required this.salt});
+
+  SharedPassword.fromJson(dynamic v) {
+    if (v is Map<String, dynamic>) {
+      final hashValue = v['hash'];
+      if (hashValue is Uint8List) {
+        hash = hashValue;
+      } else if (hashValue is List<dynamic>) {
+        // Convert List<dynamic> to Uint8List
+        hash = Uint8List.fromList(hashValue.cast<int>());
+      } else if (hashValue is List<int>) {
+        hash = Uint8List.fromList(hashValue);
+      } else {
+        hash = Uint8List(0);
+      }
+      salt = v['salt'] is String ? v['salt'] : '';
+    } else {
+      hash = Uint8List(0);
+      salt = '';
+    }
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{'hash': hash, 'salt': salt};
+  }
+}
+
 class Peer {
   final String id;
   String hash; // personal ab hash password
   String password; // shared ab password
+  SharedPassword sharedPassword;
   String username; // pc username
   String hostname;
   String platform;
@@ -34,6 +67,7 @@ class Peer {
       : id = json['id'] ?? '',
         hash = json['hash'] ?? '',
         password = json['password'] ?? '',
+        sharedPassword = SharedPassword.fromJson(json['shared_password']),
         username = json['username'] ?? '',
         hostname = json['hostname'] ?? '',
         platform = json['platform'] ?? '',
@@ -52,6 +86,7 @@ class Peer {
       "id": id,
       "hash": hash,
       "password": password,
+      "shared_password": sharedPassword.toJson(),
       "username": username,
       "hostname": hostname,
       "platform": platform,
@@ -98,6 +133,7 @@ class Peer {
     required this.id,
     required this.hash,
     required this.password,
+    required this.sharedPassword,
     required this.username,
     required this.hostname,
     required this.platform,
@@ -117,6 +153,7 @@ class Peer {
           id: '...',
           hash: '',
           password: '',
+          sharedPassword: SharedPassword(hash: Uint8List(0), salt: ''),
           username: '...',
           hostname: '...',
           platform: '...',
@@ -133,6 +170,7 @@ class Peer {
     return id == other.id &&
         hash == other.hash &&
         password == other.password &&
+        sharedPassword == other.sharedPassword &&
         username == other.username &&
         hostname == other.hostname &&
         platform == other.platform &&
@@ -150,6 +188,7 @@ class Peer {
             id: other.id,
             hash: other.hash,
             password: other.password,
+            sharedPassword: other.sharedPassword,
             username: other.username,
             hostname: other.hostname,
             platform: other.platform,
@@ -162,6 +201,14 @@ class Peer {
             loginName: other.loginName,
             device_group_name: other.device_group_name,
             sameServer: other.sameServer);
+
+  bool hasValidPassword() {
+    if (withPublic()) {
+      return sharedPassword.hash.isNotEmpty && sharedPassword.salt.isNotEmpty;
+    } else {
+      return password.isNotEmpty;
+    }
+  }
 }
 
 enum UpdateEvent { online, load }

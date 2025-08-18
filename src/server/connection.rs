@@ -334,6 +334,7 @@ impl Connection {
         let hash = Hash {
             salt: Config::get_salt(),
             challenge: Config::get_auto_password(6),
+            support_controlling_salt: true,
             ..Default::default()
         };
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
@@ -1800,16 +1801,29 @@ impl Connection {
     }
 
     fn validate_one_password(&self, password: String) -> bool {
-        if password.len() == 0 {
+        if password.len() == 0 || self.lr.password.is_empty() {
             return false;
         }
-        let mut hasher = Sha256::new();
-        hasher.update(password);
-        hasher.update(&self.hash.salt);
-        let mut hasher2 = Sha256::new();
-        hasher2.update(&hasher.finalize()[..]);
-        hasher2.update(&self.hash.challenge);
-        hasher2.finalize()[..] == self.lr.password[..]
+        if self.lr.salt.is_empty() {
+            let mut hasher = Sha256::new();
+            hasher.update(password);
+            hasher.update(&self.hash.salt);
+            let mut hasher2 = Sha256::new();
+            hasher2.update(&hasher.finalize()[..]);
+            hasher2.update(&self.hash.challenge);
+            hasher2.finalize()[..] == self.lr.password[..]
+        } else {
+            let mut hasher = Sha256::new();
+            hasher.update(password);
+            hasher.update(&self.lr.salt);
+            let mut hasher2 = Sha256::new();
+            hasher2.update(&hasher.finalize()[..]);
+            hasher2.update(&self.hash.salt);
+            let mut hasher3 = Sha256::new();
+            hasher3.update(&hasher2.finalize()[..]);
+            hasher3.update(&self.hash.challenge);
+            hasher3.finalize()[..] == self.lr.password[..]
+        }
     }
 
     fn validate_password(&mut self) -> bool {

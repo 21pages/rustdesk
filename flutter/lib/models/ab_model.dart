@@ -332,7 +332,7 @@ class AbModel {
     };
     // avoid set existing password to empty
     if (password.isNotEmpty) {
-      peer['password'] = password;
+      peer = await _updatePasswordField(peer, password);
     }
     final ret = await addPeersTo([peer], _currentName.value);
     _syncAllFromRecent = true;
@@ -1559,7 +1559,8 @@ class Ab extends BaseAb {
   @override
   Future<bool> changeSharedPassword(String id, String password) async {
     if (personal) return false;
-    return await _setPassword({"id": id, "password": password});
+    final peer = await _updatePasswordField({"id": id}, password);
+    return await _setPassword(peer);
   }
 
   @override
@@ -1902,4 +1903,22 @@ String _jsonDecodeActionResp(http.Response resp) {
     }
   }
   return errMsg;
+}
+
+Future<Map<String, dynamic>> _updatePasswordField(
+    Map<String, dynamic> peer, String password) async {
+  if (withPublic()) {
+    final hashedPasswordStr =
+        await bind.mainHashSharedPassword(password: password);
+    var hashedPasswordMap = {};
+    try {
+      hashedPasswordMap = jsonDecode(hashedPasswordStr);
+      peer['shared_password'] = hashedPasswordMap;
+    } catch (e) {
+      debugPrint("changeSharedPassword: $e");
+    }
+  } else {
+    peer['password'] = password;
+  }
+  return peer;
 }

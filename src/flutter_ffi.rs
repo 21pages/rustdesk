@@ -19,6 +19,7 @@ use hbb_common::{
     rendezvous_proto::ConnType,
     ResultType,
 };
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -2583,6 +2584,22 @@ pub fn main_get_common(key: String) -> String {
 
 pub fn main_get_common_sync(key: String) -> SyncReturn<String> {
     SyncReturn(main_get_common(key))
+}
+
+pub fn main_hash_shared_password(password: String) -> String {
+    if password.is_empty() {
+        return "{}".to_owned();
+    }
+    let salt = hbb_common::config::Config::get_auto_password(6);
+    let mut hasher = Sha256::new();
+    hasher.update(password);
+    hasher.update(&salt);
+    let res = hasher.finalize();
+    let v = serde_json::json!({
+        "hash": res[..].to_vec(),
+        "salt": salt,
+    });
+    return v.to_string();
 }
 
 pub fn main_set_common(_key: String, _value: String) {
