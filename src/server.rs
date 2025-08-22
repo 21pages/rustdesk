@@ -197,10 +197,21 @@ pub async fn create_tcp_connection(
             .into(),
             ..Default::default()
         });
+        let msg_bytes_without_enc = msg_out.write_to_bytes().unwrap();
         timeout(CONNECT_TIMEOUT, stream.send(&msg_out)).await??;
+        log::info!(
+            "=====DEBUG==== create_tcp_connection: SignedId msg_bytes_without_enc: length {:?}, bytes: {:?}",
+            msg_bytes_without_enc.len(),
+            msg_bytes_without_enc
+        );
         match timeout(CONNECT_TIMEOUT, stream.next()).await? {
             Some(res) => {
                 let bytes = res?;
+                log::info!(
+                    "=====DEBUG==== create_tcp_connection: length {:?}, bytes: {:?}",
+                    bytes.len(),
+                    bytes
+                );
                 if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
                     if let Some(message::Union::PublicKey(pk)) = msg_in.union {
                         if pk.asymmetric_value.len() == box_::PUBLICKEYBYTES {
