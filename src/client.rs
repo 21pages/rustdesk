@@ -572,6 +572,7 @@ impl Client {
                         log::info!("{:?} used to establish {typ} connection", start.elapsed());
                         let pk =
                             Self::secure_connection(&peer, signed_id_pk, &key, &mut conn).await?;
+                        log::info!("=====DEBUG==== secure_connection ok",);
                         return Ok((
                             (conn, typ == "IPv6", pk, kcp, typ),
                             (feedback, rendezvous_server),
@@ -739,6 +740,7 @@ impl Client {
             punch_type
         );
         let res = Self::secure_connection(peer_id, signed_id_pk, key, &mut conn).await;
+        log::info!("=====DEBUG==== secure_connection res: {:?}", res);
         let pk: Option<Vec<u8>> = match res {
             Ok(pk) => pk,
             Err(e) => {
@@ -782,6 +784,7 @@ impl Client {
             Some(v) => v,
             None => {
                 // send an empty message out in case server is setting up secure and waiting for first message
+                log::info!("=====DEBUG==== secure_connection send empty message");
                 conn.send(&Message::new()).await?;
                 return Ok(option_pk);
             }
@@ -789,6 +792,11 @@ impl Client {
         match timeout(READ_TIMEOUT, conn.next()).await? {
             Some(res) => {
                 let bytes = res?;
+                log::info!(
+                    "=====DEBUG==== secure_connection: length {:?}, bytes: {:?}",
+                    bytes.len(),
+                    bytes
+                );
                 if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
                     if let Some(message::Union::SignedId(si)) = msg_in.union {
                         if let Ok((id, their_pk_b)) = decode_id_pk(&si.id, &sign_pk) {
