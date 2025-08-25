@@ -58,11 +58,14 @@ env:
 jobs:
   generate-bridge:
     uses: ./.github/workflows/bridge.yml
+    with:
+      artifact-name: bridge-artifact-${{ inputs.appname-lower }}
 
   build-RustDeskTempTopMostWindow:
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
       upload-artifact: ${{ inputs.upload-artifact }}
+      artifact-name: topmostwindow-artifacts-${{ inputs.appname-lower }}
       target: windows-2022
       configuration: Release
       platform: x64
@@ -108,7 +111,7 @@ jobs:
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
-          name: bridge-artifact
+          name: bridge-artifact-${{ inputs.appname-lower }}
           path: ./
 
       - name: Install LLVM and Clang
@@ -236,7 +239,7 @@ jobs:
         uses: actions/download-artifact@master
         if: ${{ inputs.upload-artifact }}
         with:
-          name: topmostwindow-artifacts
+          name: topmostwindow-artifacts-${{ inputs.appname-lower }}
           path: "./rustdesk"
 
       - name: Upload unsigned
@@ -524,7 +527,7 @@ jobs:
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
-          name: bridge-artifact
+          name: bridge-artifact-${{ inputs.appname-lower }}
           path: ./
 
       - name: Build rustdesk lib
@@ -680,7 +683,7 @@ jobs:
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
-          name: bridge-artifact
+          name: bridge-artifact-${{ inputs.appname-lower }}
           path: ./
 
       - name: Setup vcpkg with Github Actions binary cache
@@ -965,7 +968,7 @@ jobs:
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
-          name: bridge-artifact
+          name: bridge-artifact-${{ inputs.appname-lower }}
           path: ./
 
       - name: Install Rust toolchain
@@ -1200,7 +1203,7 @@ jobs:
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
-          name: bridge-artifact
+          name: bridge-artifact-${{ inputs.appname-lower }}
           path: ./
 
       - name: Download Rustdesk library from Artifacts
@@ -1387,7 +1390,7 @@ jobs:
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
         uses: actions/download-artifact@master
         with:
-          name: bridge-artifact
+          name: bridge-artifact-${{ inputs.appname-lower }}
           path: ./
 
       - name: Setup vcpkg with Github Actions binary cache
@@ -1422,7 +1425,7 @@ jobs:
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
         uses: actions/download-artifact@master
         with:
-          name: bridge-artifact
+          name: bridge-artifact-${{ inputs.appname-lower }}
           path: ./
 
       - uses: rustdesk-org/run-on-arch-action@amd64-support
