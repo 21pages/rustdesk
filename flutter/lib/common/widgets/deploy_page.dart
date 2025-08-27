@@ -327,19 +327,7 @@ class _DeployPageState extends State<DeployPage> {
 
   Widget _buildHeaderContent(BuildContext context) {
     if (_isDeployCodeMode.value) {
-      return Align(
-        alignment: Alignment.center,
-        child: TextButton(
-          onPressed: () {},
-          child: Text(
-            translate('How to get deploy code?'),
-            style: TextStyle(
-              color: MyTheme.accent,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     } else {
       return TextButton.icon(
         onPressed: () {
@@ -519,36 +507,9 @@ class _DeployPageState extends State<DeployPage> {
           passMsg: _passwordError.value.isEmpty ? null : _passwordError.value,
           isInProgress: isLoading,
           curOP: RxString(''),
-          // onLogin: _deployWithLogin,
           onLogin: _deployWithAccount,
           userFocusNode: FocusNode(),
           loginButtonText: 'Confirm',
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            TextButton(
-              onPressed: () {},
-              child: Text(
-                translate('No account?'),
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {},
-              child: Text(
-                translate('Forgot password'),
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
         ),
       ],
     );

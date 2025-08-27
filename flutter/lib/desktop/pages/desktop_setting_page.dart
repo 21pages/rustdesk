@@ -473,8 +473,10 @@ class _GeneralState extends State<_General> {
   }
 
   Widget other() {
-    final showAutoUpdate =
-        isWindows && bind.mainIsInstalled() && !bind.isCustomClient();
+    final showAutoUpdate = isWindows &&
+        bind.mainIsInstalled() &&
+        !bind.isCustomClient() &&
+        bind.isStandard();
     final children = <Widget>[
       if (!isWeb && !bind.isIncomingOnly())
         _OptionCheckBox(context, 'Confirm before closing multiple tabs',
@@ -521,7 +523,7 @@ class _GeneralState extends State<_General> {
               isServer: false,
             ),
           ),
-        if (!isWeb && !bind.isCustomClient())
+        if (!isWeb && !bind.isCustomClient() && bind.isStandard())
           _OptionCheckBox(
             context,
             'Check for software update on startup',
