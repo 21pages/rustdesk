@@ -576,6 +576,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let capture_width = c.width;
     let capture_height = c.height;
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
+    let mut log_instant = Instant::now();
 
     while sp.ok() {
         #[cfg(windows)]
@@ -639,6 +640,17 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
 
         frame_controller.reset();
+
+        if log_instant.elapsed().as_millis() > 1000 {
+            log_instant = Instant::now();
+            let mut qos = VIDEO_QOS.lock().unwrap();
+            log::info!(
+                "fps: {}, ratio: {}, bitrate: {}",
+                qos.fps(),
+                qos.ratio(),
+                qos.bitrate()
+            );
+        }
 
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;

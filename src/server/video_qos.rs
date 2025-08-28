@@ -198,6 +198,7 @@ impl VideoQoS {
     }
 
     pub fn user_custom_fps(&mut self, id: i32, fps: u32) {
+        log::info!("user_custom_fps: id={}, fps={}", id, fps);
         if fps < MIN_FPS || fps > MAX_FPS {
             return;
         }
@@ -207,6 +208,7 @@ impl VideoQoS {
     }
 
     pub fn user_auto_adjust_fps(&mut self, id: i32, fps: u32) {
+        log::info!("user_auto_adjust_fps: id={}, fps={}", id, fps);
         if fps < MIN_FPS || fps > MAX_FPS {
             return;
         }
@@ -216,6 +218,11 @@ impl VideoQoS {
     }
 
     pub fn user_image_quality(&mut self, id: i32, image_quality: i32) {
+        log::info!(
+            "user_image_quality: id={}, image_quality={}",
+            id,
+            image_quality
+        );
         let convert_quality = |q: i32| -> Quality {
             if q == ImageQuality::Balanced.value() {
                 Quality::Balanced
@@ -331,9 +338,20 @@ impl VideoQoS {
             //Reduce the possibility of vaapi being created twice
             self.adjust_ratio(false);
         }
+        log::info!(
+            "user_network_delay: id={}, fps={}, ratio={}",
+            id,
+            self.fps,
+            self.ratio
+        );
     }
 
     pub fn user_delay_response_elapsed(&mut self, id: i32, elapsed: u128) {
+        log::info!(
+            "user_delay_response_elapsed: id={}, elapsed={}",
+            id,
+            elapsed
+        );
         if let Some(user) = self.users.get_mut(&id) {
             user.delay.response_delayed = elapsed > 2000;
             if user.delay.response_delayed {

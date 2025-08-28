@@ -481,6 +481,7 @@ impl Client {
             {
                 match msg_in.union {
                     Some(rendezvous_message::Union::PunchHoleResponse(ph)) => {
+                        log::info!("============== PunchHoleResponse: {:?}", ph);
                         if ph.socket_addr.is_empty() {
                             if !ph.other_failure.is_empty() {
                                 bail!(ph.other_failure);
@@ -507,16 +508,34 @@ impl Client {
                             relay_server = ph.relay_server;
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
                             feedback = ph.feedback;
+                            log::info!(
+                                "============== Hole Punched peer_nat_type: {:?}, is_local: {:?}, peer_addr: {:?}, is_udp: {:?}, udp.0.is_some(): {:?}",
+                                peer_nat_type,
+                                is_local,
+                                peer_addr,
+                                ph.is_udp,
+                                udp.0.is_some()
+                            );
                             let s = udp.0.take();
                             if ph.is_udp && s.is_some() {
                                 if let Some(s) = s {
+                                    log::info!(
+                                        "===================== connect udp, peer_addr: {:?}",
+                                        peer_addr
+                                    );
                                     allow_err!(s.connect(peer_addr).await);
                                     udp.0 = Some(s);
                                 }
                             }
+                            log::info!(
+                                "===================== connect ipv6, ipv6.0.is_some(): {:?}, ph.socket_addr_v6: {:?}",
+                                ipv6.0.is_some(),
+                                ph.socket_addr_v6
+                            );
                             let s = ipv6.0.take();
                             if !ph.socket_addr_v6.is_empty() && s.is_some() {
                                 let addr = AddrMangle::decode(&ph.socket_addr_v6);
+                                log::info!("===================== connect ipv6, addr: {:?}", addr);
                                 if addr.port() > 0 {
                                     if let Some(s) = s {
                                         allow_err!(s.connect(addr).await);
@@ -708,9 +727,16 @@ impl Client {
             Err(e) => (Err(e), None, ""),
         };
 
+        log::info!(
+            "typ: {:?}, is_force_relay: {:?}, conn_is_err: {:?}",
+            typ,
+            interface.is_force_relay(),
+            conn.is_err()
+        );
         let mut direct = !conn.is_err();
         if interface.is_force_relay() || conn.is_err() {
             if !relay_server.is_empty() {
+                log::info!("============ request_relay");
                 conn = Self::request_relay(
                     peer_id,
                     relay_server.to_owned(),

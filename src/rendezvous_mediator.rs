@@ -399,6 +399,9 @@ impl RendezvousMediator {
     pub async fn start(server: ServerPtr, host: String) -> ResultType<()> {
         log::info!("start rendezvous mediator of {}", host);
         //If the investment agent type is http or https, then tcp forwarding is enabled.
+        log::info!("Config::is_proxy(): {}", Config::is_proxy());
+        log::info!("use_ws(): {}", use_ws());
+        log::info!("crate::is_udp_disabled(): {}", crate::is_udp_disabled());
         if (cfg!(debug_assertions) && option_env!("TEST_TCP").is_some())
             || Config::is_proxy()
             || use_ws()
@@ -493,6 +496,12 @@ impl RendezvousMediator {
         if peer_addr_v6.port() > 0 && !relay {
             socket_addr_v6 = start_ipv6(peer_addr_v6, addr, server.clone()).await;
         }
+        log::info!(
+            "handle_intranet is_ipv4:{:?} relay:{:?} disable_tcp_listen:{:?}",
+            is_ipv4(&self.addr),
+            relay,
+            config::is_disable_tcp_listen(),
+        );
         if is_ipv4(&self.addr) && !relay && !config::is_disable_tcp_listen() {
             if let Err(err) = self
                 .handle_intranet_(
@@ -552,6 +561,11 @@ impl RendezvousMediator {
     }
 
     async fn handle_punch_hole(&self, ph: PunchHole, server: ServerPtr) -> ResultType<()> {
+        log::info!(
+            "============ handle_punch_hole, ph: {:?}, my_nat_type: {:?}",
+            ph,
+            Config::get_nat_type()
+        );
         let mut peer_addr = AddrMangle::decode(&ph.socket_addr);
         let last = *LAST_MSG.lock().await;
         *LAST_MSG.lock().await = (peer_addr, Instant::now());
@@ -573,6 +587,7 @@ impl RendezvousMediator {
             || (config::is_disable_tcp_listen() && ph.udp_port <= 0)
         {
             let uuid = Uuid::new_v4().to_string();
+            log::info!("============ create_relay");
             return self
                 .create_relay(
                     ph.socket_addr.into(),
