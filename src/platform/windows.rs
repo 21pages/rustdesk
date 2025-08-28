@@ -3702,6 +3702,28 @@ pub(super) fn get_pids_with_first_arg_by_wmic<S1: AsRef<str>, S2: AsRef<str>>(
         .unwrap_or_default()
 }
 
+/// C++ to Rust logging function
+/// Receives log messages from C++ code and forwards them to Rust logger
+#[no_mangle]
+pub extern "C" fn log_c_to_rust(level: i32, msg: *const i8) {
+    // if msg.is_null() {
+    //     return;
+    // }
+
+    // unsafe {
+    //     let c_str = std::ffi::CStr::from_ptr(msg);
+    //     if let Ok(rust_str) = c_str.to_str() {
+    //         match level {
+    //             0 => log::error!("====[C]==== {}", rust_str),
+    //             1 => log::warn!("====[C]==== {}", rust_str),
+    //             2 => log::info!("====[C]==== {}", rust_str),
+    //             3 => log::debug!("====[C]==== {}", rust_str),
+    //             _ => log::trace!("====[C]==== {}", rust_str),
+    //         }
+    //     }
+    // }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

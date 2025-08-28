@@ -452,9 +452,11 @@ impl VideoRenderer {
             write_lock.get_mut(&display)
         };
         let Some(info) = opt_info else {
+            log::error!("opt_info is None");
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
+            log::error!("texture_rgba_ptr is null");
             return false;
         }
 
@@ -473,6 +475,7 @@ impl VideoRenderer {
             }
         }
         if let Some(func) = &self.on_rgba_func {
+            log::info!("====DEBUG====  on_rgba_func");
             unsafe {
                 func(
                     info.texture_rgba_ptr as _,
@@ -485,6 +488,7 @@ impl VideoRenderer {
             };
         }
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
+            log::info!("notify_render_type: PixelBuffer");
             info.notify_render_type = Some(RenderType::PixelBuffer);
             true
         } else {
@@ -501,16 +505,20 @@ impl VideoRenderer {
             write_lock.get_mut(&display)
         };
         let Some(info) = opt_info else {
+            log::error!("opt_info is None");
             return false;
         };
         if info.gpu_output_ptr == usize::default() {
+            log::error!("gpu_output_ptr is null");
             return false;
         }
         if let Some(func) = &self.on_texture_func {
+            log::info!("====DEBUG====  on_texture_func");
             unsafe { func(info.gpu_output_ptr as _, texture) };
         }
         if info.notify_render_type != Some(RenderType::Texture) {
             info.notify_render_type = Some(RenderType::Texture);
+            log::info!("notify_render_type: Texture");
             true
         } else {
             false
@@ -1184,6 +1192,7 @@ impl InvokeUiSession for FlutterHandler {
 impl FlutterHandler {
     #[inline]
     fn on_rgba_soft_render(&self, display: usize, rgba: &mut scrap::ImageRgb) {
+        log::info!("====DEBUG====  on_rgba_soft_render");
         // Give a chance for plugins or etc to hook a rgba data.
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         for (key, hook) in self.hooks.read().unwrap().iter() {

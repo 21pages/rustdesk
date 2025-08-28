@@ -552,11 +552,13 @@ impl<T: InvokeUiSession> Remote<T> {
                 match &msg.union {
                     Some(message::Union::Misc(misc)) => match misc.union {
                         Some(misc::Union::RefreshVideo(_)) => {
+                            log::info!("=====DEBUG==== RefreshVideo");
                             self.video_threads.iter().for_each(|(_, v)| {
                                 *v.discard_queue.write().unwrap() = true;
                             });
                         }
                         Some(misc::Union::RefreshVideoDisplay(display)) => {
+                            log::info!("=====DEBUG==== RefreshVideoDisplay");
                             if let Some(v) = self.video_threads.get_mut(&(display as usize)) {
                                 *v.discard_queue.write().unwrap() = true;
                             }
@@ -1281,9 +1283,15 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
+        let res = Message::parse_from_bytes(&data);
+        if res.is_err() {
+            log::error!("====DEBUG==== handle_msg_from_peer res: {:?}", res);
+        }
+
         if let Ok(msg_in) = Message::parse_from_bytes(&data) {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    log::info!("====DEBUG==== VideoFrame");
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();
@@ -1298,14 +1306,20 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.new_video_thread(display);
                     }
                     let Some(thread) = self.video_threads.get_mut(&display) else {
+                        log::error!(
+                            "====DEBUG==== Received video frame for unknown display {}",
+                            display
+                        );
                         return true;
                     };
                     if Self::contains_key_frame(&vf) {
+                        log::info!("====DEBUG==== Key frame");
                         thread
                             .video_sender
                             .send(MediaData::VideoFrame(Box::new(vf)))
                             .ok();
                     } else {
+                        log::info!("====DEBUG==== Non-key frame");
                         let video_queue = thread.video_queue.read().unwrap();
                         if video_queue.force_push(vf).is_some() {
                             drop(video_queue);

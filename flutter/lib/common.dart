@@ -809,9 +809,12 @@ class OverlayDialogManager {
   }
 
   void dismissByTag(String tag) {
+    bind.logToRust(
+        msg: "before dismissByTag: $tag, existing: ${_dialogs.keys}");
     _dialogs[tag]?.complete(null);
     _dialogs.remove(tag);
     BackButtonInterceptor.removeByName(tag);
+    bind.logToRust(msg: "after dismissByTag: $tag, existing: ${_dialogs.keys}");
   }
 
   Future<T?> show<T>(DialogBuilder builder,
@@ -838,6 +841,7 @@ class OverlayDialogManager {
 
     final dialog = Dialog<T>();
     _dialogs[dialogTag] = dialog;
+    bind.logToRust(msg: "add tag $dialogTag to _dialogs");
 
     close([res]) {
       _dialogs.remove(dialogTag);
@@ -870,6 +874,7 @@ class OverlayDialogManager {
               })));
     });
     overlayState.insert(dialog.entry!);
+    bind.logToRust(msg: "insert dialog to overlayState: $dialogTag");
     BackButtonInterceptor.add((stopDefaultButtonEvent, routeInfo) {
       if (backDismiss) {
         close();

@@ -2792,6 +2792,15 @@ pub fn start_video_thread<F, T>(
     let mut last_chroma = None;
     let is_view_camera = session.is_view_camera();
 
+    #[cfg(windows)]
+    {
+        log::info!(
+            "====DEBUG====  use texture render: {}, use d3d render: {}",
+            use_texture_render(),
+            scrap::codec::allow_d3d_render()
+        );
+    }
+
     std::thread::spawn(move || {
         #[cfg(windows)]
         sync_cpu_usage();
@@ -2806,12 +2815,14 @@ pub fn start_video_thread<F, T>(
                     MediaData::VideoFrame(_) | MediaData::VideoQueue => {
                         let vf = match data {
                             MediaData::VideoFrame(vf) => {
+                                log::info!(" ====DEBUG==== receive key frame");
                                 *discard_queue.write().unwrap() = false;
                                 *vf
                             }
                             MediaData::VideoQueue => {
                                 if let Some(vf) = video_queue.read().unwrap().pop() {
                                     if discard_queue.read().unwrap().clone() {
+                                        log::info!("====DEBUG====  Discard video frame");
                                         continue;
                                     }
                                     vf
@@ -2824,6 +2835,7 @@ pub fn start_video_thread<F, T>(
                                 continue;
                             }
                         };
+                        log::info!(" ====DEBUG==== receive video frame");
                         let display = vf.display as usize;
                         let start = std::time::Instant::now();
                         let format = CodecFormat::from(&vf);
@@ -2843,6 +2855,7 @@ pub fn start_video_thread<F, T>(
                             let format_changed = handler.decoder.format() != format;
                             match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
                                 Ok(true) => {
+                                    log::info!(" ====DEBUG==== video frame decoded ok, display:{}, pixelbuffer:{}, texture:{:?}", display, pixelbuffer, handler.texture.texture);
                                     video_callback(
                                         display,
                                         &mut handler.rgb,
@@ -2878,7 +2891,7 @@ pub fn start_video_thread<F, T>(
                                     // 3. If the error does not occur. Switch from A to display B. The error occurs.
                                     //
                                     // to-do: fix the error
-                                    log::error!("handle video frame error, {}", e);
+                                    log::error!("====DEBUG==== handle video frame error, {}", e);
                                     session.refresh_video(display as _);
                                 }
                                 _ => {}
