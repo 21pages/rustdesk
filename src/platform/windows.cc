@@ -16,6 +16,23 @@
 #include <memory>
 
 extern "C" uint32_t get_session_user_info(PWSTR bufin, uint32_t nin, uint32_t id);
+extern "C" void log_c_to_rust(int level, const char* msg);
+
+// Helper macros for logging to Rust
+#define LOG_ERROR(msg) log_c_to_rust(0, msg)
+#define LOG_WARN(msg) log_c_to_rust(1, msg)
+#define LOG_INFO(msg) log_c_to_rust(2, msg)
+#define LOG_DEBUG(msg) log_c_to_rust(3, msg)
+
+// Helper function for formatted logging
+void log_format(int level, const char* fmt, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    log_c_to_rust(level, buffer);
+}
 
 void flog(char const *fmt, ...)
 {
@@ -277,15 +294,35 @@ extern "C"
     static bool
     switchToDesktop(HDESK desktop)
     {
+        LOG_DEBUG("switchToDesktop: Starting desktop switch operation");
+        
         HDESK old_desktop = GetThreadDesktop(GetCurrentThreadId());
+        if (!old_desktop)
+        {
+            DWORD error = GetLastError();
+            log_format(1, "switchToDesktop: GetThreadDesktop failed with error code: %lu", error);
+        }
+        else
+        {
+            LOG_DEBUG("switchToDesktop: Successfully got current thread desktop");
+        }
+        
         if (!SetThreadDesktop(desktop))
         {
+            DWORD error = GetLastError();
+            log_format(0, "switchToDesktop: SetThreadDesktop failed with error code: %lu", error);
             return false;
         }
-        if (!CloseDesktop(old_desktop))
+        
+        LOG_DEBUG("switchToDesktop: Successfully set thread desktop");
+        
+        if (old_desktop && !CloseDesktop(old_desktop))
         {
-            //
+            DWORD error = GetLastError();
+            log_format(1, "switchToDesktop: CloseDesktop failed with error code: %lu", error);
         }
+        
+        LOG_DEBUG("switchToDesktop: Desktop switch completed successfully");
         return true;
     }
 
@@ -295,7 +332,18 @@ extern "C"
     BOOL
     inputDesktopSelected()
     {
+        LOG_INFO("inputDesktopSelected: Starting desktop comparison check");
+        
         HDESK current = GetThreadDesktop(GetCurrentThreadId());
+        if (!current)
+        {
+            DWORD error = GetLastError();
+            log_format(0, "inputDesktopSelected: GetThreadDesktop failed with error code: %lu", error);
+            return FALSE;
+        }
+        
+        LOG_DEBUG("inputDesktopSelected: Successfully got current thread desktop");
+        
         HDESK input = OpenInputDesktop(0, FALSE,
                                        DESKTOP_CREATEMENU | DESKTOP_CREATEWINDOW |
                                            DESKTOP_ENUMERATE | DESKTOP_HOOKCONTROL |
@@ -303,8 +351,12 @@ extern "C"
                                            DESKTOP_SWITCHDESKTOP | GENERIC_WRITE);
         if (!input)
         {
+            DWORD error = GetLastError();
+            log_format(0, "inputDesktopSelected: OpenInputDesktop failed with error code: %lu", error);
             return FALSE;
         }
+        
+        LOG_DEBUG("inputDesktopSelected: Successfully opened input desktop");
 
         DWORD size;
         char currentname[256];
@@ -312,23 +364,48 @@ extern "C"
 
         if (!GetUserObjectInformation(current, UOI_NAME, currentname, sizeof(currentname), &size))
         {
+            DWORD error = GetLastError();
+            log_format(0, "inputDesktopSelected: GetUserObjectInformation for current desktop failed with error code: %lu", error);
             CloseDesktop(input);
             return FALSE;
         }
+        
+        log_format(2, "inputDesktopSelected: Current desktop name: '%s'", currentname);
+        
         if (!GetUserObjectInformation(input, UOI_NAME, inputname, sizeof(inputname), &size))
         {
+            DWORD error = GetLastError();
+            log_format(0, "inputDesktopSelected: GetUserObjectInformation for input desktop failed with error code: %lu", error);
             CloseDesktop(input);
             return FALSE;
         }
+        
+        log_format(2, "inputDesktopSelected: Input desktop name: '%s'", inputname);
+        
         CloseDesktop(input);
-        // flog("%s %s\n", currentname, inputname);
-        return strcmp(currentname, inputname) == 0 ? TRUE : FALSE;
+        
+        BOOL result = strcmp(currentname, inputname) == 0 ? TRUE : FALSE;
+        log_format(2, "inputDesktopSelected: Desktop comparison result: %s (current='%s', input='%s')", 
+                   result ? "TRUE" : "FALSE", currentname, inputname);
+        
+        if (!result)
+        {
+            LOG_WARN("inputDesktopSelected: Desktop names do not match - returning FALSE");
+        }
+        else
+        {
+            LOG_INFO("inputDesktopSelected: Desktop names match - returning TRUE");
+        }
+        
+        return result;
     }
 
     // Switch the current thread into the input desktop
     bool
     selectInputDesktop()
     {
+        LOG_INFO("selectInputDesktop: Starting desktop selection process");
+        
         // - Open the input desktop
         HDESK desktop = OpenInputDesktop(0, FALSE,
                                          DESKTOP_CREATEMENU | DESKTOP_CREATEWINDOW |
@@ -337,24 +414,38 @@ extern "C"
                                              DESKTOP_SWITCHDESKTOP | GENERIC_WRITE);
         if (!desktop)
         {
+            DWORD error = GetLastError();
+            log_format(0, "selectInputDesktop: OpenInputDesktop failed with error code: %lu", error);
             return false;
         }
+
+        LOG_INFO("selectInputDesktop: Successfully opened input desktop");
 
         // - Switch into it
         if (!switchToDesktop(desktop))
         {
+            DWORD error = GetLastError();
+            log_format(0, "selectInputDesktop: switchToDesktop failed with error code: %lu", error);
             CloseDesktop(desktop);
             return false;
         }
+
+        LOG_INFO("selectInputDesktop: Successfully switched to desktop");
 
         // ***
         DWORD size = 256;
         char currentname[256];
         if (GetUserObjectInformation(desktop, UOI_NAME, currentname, 256, &size))
         {
-            //
+            log_format(2, "selectInputDesktop: Current desktop name: %s", currentname);
+        }
+        else
+        {
+            DWORD error = GetLastError();
+            log_format(1, "selectInputDesktop: GetUserObjectInformation failed with error code: %lu", error);
         }
 
+        LOG_INFO("selectInputDesktop: Desktop selection completed successfully");
         return true;
     }
 

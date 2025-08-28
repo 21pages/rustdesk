@@ -111,6 +111,7 @@ impl EncoderApi for VRamEncoder {
             .encode(texture, ms)
             .with_context(|| "Failed to encode")?
         {
+            log::info!("frame: key={}, pts={}", frame.key, frame.pts);
             frames.push(EncodedVideoFrame {
                 data: Bytes::from(frame.data),
                 pts: frame.pts,
