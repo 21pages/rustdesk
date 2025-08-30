@@ -31,13 +31,13 @@ env:
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  # vcpkg version: 2025.01.13
+  # vcpkg version: 2025.08.27
   # If we change the `VCPKG COMMIT_ID`, please remember:
   # 1. Call `$VCPKG_ROOT/vcpkg x-update-baseline` to update the baseline in `vcpkg.json`.
   #  Or we may face build issue like 
   #  https://github.com/rustdesk/rustdesk/actions/runs/14414119794/job/40427970174
   # 2. Update the `VCPKG_COMMIT_ID` in `ci.yml` and `playground.yml`.
-  VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
   VERSION: "1.4.2"
   NDK_VERSION: "r27c"
   #signing keys env variable checks
@@ -615,7 +615,7 @@ jobs:
 
       - name: Install build runtime
         run: |
-          brew install llvm create-dmg nasm cmake gcc wget ninja
+          brew install llvm create-dmg nasm
           # pkg-config is handled in a separate step, because it may be already installed by `macos-latest`(14.7.1) runner
           if command -v pkg-config &>/dev/null; then
               echo "pkg-config is already installed"
