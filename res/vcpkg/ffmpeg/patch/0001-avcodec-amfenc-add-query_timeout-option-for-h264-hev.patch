@@ -1,71 +1,69 @@
-From da6921d5bcb50961193526f47aa2dbe71ee5fe81 Mon Sep 17 00:00:00 2001
+From 47884bff4a789f9a6a7bade04d45d39deefd54b7 Mon Sep 17 00:00:00 2001
 From: 21pages <sunboeasy@gmail.com>
-Date: Tue, 10 Dec 2024 13:40:46 +0800
-Subject: [PATCH 1/5] avcodec/amfenc: add query_timeout option for h264/hevc
+Date: Sun, 31 Aug 2025 14:55:48 +0800
+Subject: [PATCH 1/8] avcodec/amfenc: add query_timeout option for h264/hevc
 
 Signed-off-by: 21pages <sunboeasy@gmail.com>
 ---
  libavcodec/amfenc.h      | 1 +
- libavcodec/amfenc_h264.c | 4 ++++
- libavcodec/amfenc_hevc.c | 4 ++++
- 3 files changed, 9 insertions(+)
+ libavcodec/amfenc_h264.c | 3 ++-
+ libavcodec/amfenc_hevc.c | 3 ++-
+ 3 files changed, 5 insertions(+), 2 deletions(-)
 
 diff --git a/libavcodec/amfenc.h b/libavcodec/amfenc.h
-index d985d01bb1..320c66919e 100644
+index 8f5eb5a9ef..6c1ff6a615 100644
 --- a/libavcodec/amfenc.h
 +++ b/libavcodec/amfenc.h
-@@ -91,6 +91,7 @@ typedef struct AmfContext {
+@@ -74,6 +74,7 @@ typedef struct AMFEncoderContext {
      int                 quality;
      int                 b_frame_delta_qp;
      int                 ref_b_frame_delta_qp;
 +    int64_t             query_timeout;
- 
-     // Dynamic options, can be set after Init() call
+     int                 bit_depth;
+     int                 smart_access_video;
  
 diff --git a/libavcodec/amfenc_h264.c b/libavcodec/amfenc_h264.c
-index 8edd39c633..6ad4961b2f 100644
+index 131ba871f5..e589630f49 100644
 --- a/libavcodec/amfenc_h264.c
 +++ b/libavcodec/amfenc_h264.c
 @@ -137,6 +137,7 @@ static const AVOption options[] = {
+     { "me_quarter_pel", "Enable ME Quarter Pixel",              OFFSET(me_quarter_pel),AV_OPT_TYPE_BOOL,  { .i64 = -1 }, -1, 1, VE },
  
+     { "forced_idr",     "Force I frames to be IDR frames",      OFFSET(forced_idr)   , AV_OPT_TYPE_BOOL,  { .i64 = 0  }, 0, 1, VE },
++    { "query_timeout",  "Timeout for QueryOutput call in ms",    OFFSET(query_timeout), AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, 1000, VE },
+     { "aud",            "Inserts AU Delimiter NAL unit",        OFFSET(aud)          , AV_OPT_TYPE_BOOL,  { .i64 = -1 }, -1, 1, VE },
  
-     { "log_to_dbg",     "Enable AMF logging to debug output",   OFFSET(log_to_dbg)    , AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
-+    { "query_timeout", "Timeout for QueryOutput call in ms", OFFSET(query_timeout), AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, 1000, VE },
+     { "smart_access_video",     "Enable Smart Access Video to enhance  performance by utilizing both APU and dGPU memory access",    OFFSET(smart_access_video), AV_OPT_TYPE_BOOL, {.i64 = -1  }, -1, 1, VE},
+@@ -541,7 +542,7 @@ static av_cold int amf_encode_init_h264(AVCodecContext *avctx)
+     }
  
-     //Pre Analysis options
-     { "preanalysis",                            "Enable preanalysis",                                           OFFSET(preanalysis),                            AV_OPT_TYPE_BOOL,   {.i64 = -1 }, -1, 1, VE },
-@@ -228,6 +229,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
+     // Wait inside QueryOutput() if supported by the driver
+-    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_QUERY_TIMEOUT, 1);
++    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_QUERY_TIMEOUT, ctx->query_timeout > 0 ? ctx->query_timeout : 1000);
+     res = ctx->encoder->pVtbl->GetProperty(ctx->encoder, AMF_VIDEO_ENCODER_QUERY_TIMEOUT, &var);
+     ctx->query_timeout_supported = res == AMF_OK && var.int64Value;
  
-     AMF_ASSIGN_PROPERTY_RATE(res, ctx->encoder, AMF_VIDEO_ENCODER_FRAMERATE, framerate);
- 
-+    if (ctx->query_timeout >= 0)
-+        AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_QUERY_TIMEOUT, ctx->query_timeout);
-+
-     switch (avctx->profile) {
-     case AV_PROFILE_H264_BASELINE:
-         profile = AMF_VIDEO_ENCODER_PROFILE_BASELINE;
 diff --git a/libavcodec/amfenc_hevc.c b/libavcodec/amfenc_hevc.c
-index 4898824f3a..22cb95c7ce 100644
+index 73c555db38..ff5f404e91 100644
 --- a/libavcodec/amfenc_hevc.c
 +++ b/libavcodec/amfenc_hevc.c
-@@ -104,6 +104,7 @@ static const AVOption options[] = {
+@@ -107,6 +107,7 @@ static const AVOption options[] = {
+     { "me_quarter_pel", "Enable ME Quarter Pixel ",                 OFFSET(me_quarter_pel),AV_OPT_TYPE_BOOL,{ .i64 = -1 },  -1, 1, VE },
  
+     { "forced_idr",     "Force I frames to be IDR frames",          OFFSET(forced_idr)    ,AV_OPT_TYPE_BOOL,{ .i64 = 0  }, 0, 1, VE },
++    { "query_timeout", "Timeout for QueryOutput call in ms",        OFFSET(query_timeout), AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, 1000, VE },
+     { "aud",            "Inserts AU Delimiter NAL unit",            OFFSET(aud)           ,AV_OPT_TYPE_BOOL,{ .i64 = -1 }, -1, 1, VE },
  
-     { "log_to_dbg",     "Enable AMF logging to debug output",   OFFSET(log_to_dbg), AV_OPT_TYPE_BOOL,{ .i64 = 0 }, 0, 1, VE },
-+    { "query_timeout", "Timeout for QueryOutput call in ms", OFFSET(query_timeout), AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, 1000, VE },
+     { "smart_access_video",     "Enable Smart Access Video to enhance  performance by utilizing both APU and dGPU memory access",        OFFSET(smart_access_video), AV_OPT_TYPE_BOOL, {.i64 = -1  }, -1, 1, VE},
+@@ -459,7 +460,7 @@ static av_cold int amf_encode_init_hevc(AVCodecContext *avctx)
+     }
  
-     //Pre Analysis options
-     { "preanalysis",                            "Enable preanalysis",                                           OFFSET(preanalysis),                            AV_OPT_TYPE_BOOL,   {.i64 = -1 }, -1, 1, VE },
-@@ -194,6 +195,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
+     // Wait inside QueryOutput() if supported by the driver
+-    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_QUERY_TIMEOUT, 1);
++    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_QUERY_TIMEOUT, ctx->query_timeout > 0 ? ctx->query_timeout : 1000);
+     res = ctx->encoder->pVtbl->GetProperty(ctx->encoder, AMF_VIDEO_ENCODER_HEVC_QUERY_TIMEOUT, &var);
+     ctx->query_timeout_supported = res == AMF_OK && var.int64Value;
  
-     AMF_ASSIGN_PROPERTY_RATE(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_FRAMERATE, framerate);
- 
-+    if (ctx->query_timeout >= 0)
-+        AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_QUERY_TIMEOUT, ctx->query_timeout);
-+
-     switch (avctx->profile) {
-     case AV_PROFILE_HEVC_MAIN:
-         profile = AMF_VIDEO_ENCODER_HEVC_PROFILE_MAIN;
 -- 
 2.43.0.windows.1
 

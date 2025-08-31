@@ -2,26 +2,21 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO ffmpeg/ffmpeg
     REF "n${VERSION}"
-    SHA512 3b273769ef1a1b63aed0691eef317a760f8c83b1d0e1c232b67bbee26db60b4864aafbc88df0e86d6bebf07185bbd057f33e2d5258fde6d97763b9994cd48b6f
+    SHA512 33d8102c0e2cca0fce2b737be3af114d3d39a30d0ed9d521ce02493fc10ec1f22af07747346a56371d748e5914b6f8069fdf4e2e6c87c7f472953e92a43d0010
     HEAD_REF master
     PATCHES
     0001-create-lib-libraries.patch
     0002-fix-msvc-link.patch
     0003-fix-windowsinclude.patch
-    0004-dependencies.patch
     0005-fix-nasm.patch
     0007-fix-lib-naming.patch
     0013-define-WINVER.patch
     0020-fix-aarch64-libswscale.patch
     0024-fix-osx-host-c11.patch
-    0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch # Do not remove this patch. It is required by chromium
-    0041-add-const-for-opengl-definition.patch
-    0043-fix-miss-head.patch
     patch/0001-avcodec-amfenc-add-query_timeout-option-for-h264-hev.patch
     patch/0002-libavcodec-amfenc-reconfig-when-bitrate-change.patch
     patch/0004-videotoolbox-changing-bitrate.patch
     patch/0005-mediacodec-changing-bitrate.patch
-    patch/0006-dlopen-libva.patch
     patch/0007-fix-linux-configure.patch
     patch/0008-remove-amf-loop-query.patch
     patch/0009-fix-nvenc-reconfigure-blur.patch
@@ -68,7 +63,6 @@ set(OPTIONS "\
 --disable-avfilter \
 --disable-swresample \
 --disable-swscale \
---disable-postproc \
 --enable-decoder=h264 \
 --enable-decoder=hevc \
 --enable-parser=h264 \

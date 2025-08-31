@@ -1,27 +1,26 @@
-From d74de94b49efcf7a0b25673ace6016938d1b9272 Mon Sep 17 00:00:00 2001
+From 47ce21a90d94c45e4cf78233c525e33cc30e7bd5 Mon Sep 17 00:00:00 2001
 From: 21pages <sunboeasy@gmail.com>
-Date: Tue, 10 Dec 2024 14:12:01 +0800
-Subject: [PATCH 3/5] videotoolbox changing bitrate
+Date: Sun, 31 Aug 2025 15:29:27 +0800
+Subject: [PATCH 3/8] videotoolbox changing bitrate
 
 Signed-off-by: 21pages <sunboeasy@gmail.com>
 ---
- libavcodec/videotoolboxenc.c | 40 ++++++++++++++++++++++++++++++++++++
- 1 file changed, 40 insertions(+)
+ libavcodec/videotoolboxenc.c | 38 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
 
 diff --git a/libavcodec/videotoolboxenc.c b/libavcodec/videotoolboxenc.c
-index da7b291b03..3c866177f5 100644
+index b748ecda61..7953d93066 100644
 --- a/libavcodec/videotoolboxenc.c
 +++ b/libavcodec/videotoolboxenc.c
-@@ -279,6 +279,8 @@ typedef struct VTEncContext {
+@@ -288,6 +288,7 @@ typedef struct VTEncContext {
      int max_slice_bytes;
      int power_efficient;
      int max_ref_frames;
-+
 +    int last_bit_rate;
+     int spatialaq;
  } VTEncContext;
  
- static void vtenc_free_buf_node(BufNode *info)
-@@ -1180,6 +1182,7 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
+@@ -1195,6 +1196,7 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
      int64_t      one_second_value = 0;
      void         *nums[2];
  
@@ -29,7 +28,7 @@ index da7b291b03..3c866177f5 100644
      int status = VTCompressionSessionCreate(kCFAllocatorDefault,
                                              avctx->width,
                                              avctx->height,
-@@ -2638,6 +2641,42 @@ out:
+@@ -2662,6 +2664,41 @@ out:
      return status;
  }
  
@@ -68,11 +67,10 @@ index da7b291b03..3c866177f5 100644
 +    }
 +}
 +
-+
  static av_cold int vtenc_frame(
      AVCodecContext *avctx,
      AVPacket       *pkt,
-@@ -2650,6 +2689,7 @@ static av_cold int vtenc_frame(
+@@ -2674,6 +2711,7 @@ static av_cold int vtenc_frame(
      CMSampleBufferRef buf = NULL;
      ExtraSEI sei = {0};
  

@@ -1,5 +1,15 @@
+From 833d68cb083daa3a5a3185c3f84ea98a00b4304a Mon Sep 17 00:00:00 2001
+From: 21pages <sunboeasy@gmail.com>
+Date: Sun, 31 Aug 2025 15:51:09 +0800
+Subject: [PATCH 8/8] disable-loading-DLLs-from-app-dir
+
+Signed-off-by: 21pages <sunboeasy@gmail.com>
+---
+ compat/w32dlfcn.h | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
 diff --git a/compat/w32dlfcn.h b/compat/w32dlfcn.h
-index ac20e83..1e83aa6 100644
+index ac20e83a7a..1e83aa6ac1 100644
 --- a/compat/w32dlfcn.h
 +++ b/compat/w32dlfcn.h
 @@ -76,6 +76,7 @@ static inline HMODULE win32_dlopen(const char *name)
@@ -29,3 +39,6 @@ index ac20e83..1e83aa6 100644
      /* filename may be be in CP_ACP */
      if (!name_w)
          return LoadLibraryExA(name, NULL, LOAD_FLAGS);
+-- 
+2.43.0.windows.1
+

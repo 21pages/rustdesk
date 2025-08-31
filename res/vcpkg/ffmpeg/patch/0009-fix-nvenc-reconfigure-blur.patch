@@ -1,7 +1,7 @@
-From bec8d49e75b37806e1cff39c75027860fde0bfa2 Mon Sep 17 00:00:00 2001
+From d3355148e0a315ab2ba770c44a2a5ff8dbcf35e6 Mon Sep 17 00:00:00 2001
 From: 21pages <sunboeasy@gmail.com>
 Date: Fri, 27 Dec 2024 08:43:12 +0800
-Subject: [PATCH] fix nvenc reconfigure blur
+Subject: [PATCH 7/8] fix nvenc reconfigure blur
 
 Signed-off-by: 21pages <sunboeasy@gmail.com>
 ---
@@ -9,10 +9,10 @@ Signed-off-by: 21pages <sunboeasy@gmail.com>
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/libavcodec/nvenc.c b/libavcodec/nvenc.c
-index 2cce478be0..f4c559b7ce 100644
+index d81be00314..4cf48b937b 100644
 --- a/libavcodec/nvenc.c
 +++ b/libavcodec/nvenc.c
-@@ -2741,8 +2741,8 @@ static void reconfig_encoder(AVCodecContext *avctx, const AVFrame *frame)
+@@ -2994,8 +2994,8 @@ static void reconfig_encoder(AVCodecContext *avctx, const AVFrame *frame)
          }
  
          if (reconfig_bitrate) {
