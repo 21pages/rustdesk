@@ -1698,20 +1698,6 @@ jobs:
                wget \
                xz-utils \
                zip
-            # arm-linux needs CMake and vcokg built from source as there
-            # are no prebuilts available from Kitware and Microsoft
-            if [ "${{ matrix.job.vcpkg-triplet }}" = "arm-linux" ]; then
-              # install gcc/g++ 8 for vcpkg and OpenSSL headers for CMake
-              apt-get install -y gcc-8 g++-8 libssl-dev
-              # bootstrap CMake amd add it to PATH
-              git clone --depth 1 https://github.com/kitware/cmake -b "v${{ env.SCITER_ARMV7_CMAKE_VERSION }}" /tmp/cmake
-              pushd /tmp/cmake
-              ./bootstrap --generator='Unix Makefiles' "--prefix=/opt/cmake-${{ env.SCITER_ARMV7_CMAKE_VERSION }}-linux-armhf"
-              make -j1 install
-              popd
-              rm -rf /tmp/cmake
-              export PATH="/opt/cmake-${{ env.SCITER_ARMV7_CMAKE_VERSION }}-linux-armhf/bin:$PATH"
-            fi
             # bootstrap vcpkg and set VCPKG_ROOT
             export VCPKG_ROOT=/opt/artifacts/vcpkg
             mkdir -p /opt/artifacts
@@ -1748,10 +1734,6 @@ jobs:
             # set python3.7 as default python3
             update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.7 1
             # add built CMake to PATH and set VCPKG_FORCE_SYSTEM_BINARIES Afor arm-linux
-            if [ "${{ matrix.job.vcpkg-triplet }}" = "arm-linux" ]; then
-              export PATH="/opt/cmake-${{ env.SCITER_ARMV7_CMAKE_VERSION }}-linux-armhf/bin:$PATH"
-              export VCPKG_FORCE_SYSTEM_BINARIES=1
-            fi
             # edit cargo config
             mkdir -p ~/.cargo/
             echo """
