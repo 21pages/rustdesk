@@ -1642,6 +1642,14 @@ jobs:
           df -h
           free -m
 
+      - name: Setup vcpkg with Github Actions binary cache
+        if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -1663,8 +1671,10 @@ jobs:
           githubToken: ${{ github.token }}
           setup: |
             ls -l "${PWD}"
+            ls -l /opt/artifacts/vcpkg/installed
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
+            --volume "/opt/artifacts:/opt/artifacts"
           shell: /bin/bash
           install: |
             apt-get update
@@ -1723,7 +1733,7 @@ jobs:
             git clone https://github.com/microsoft/vcpkg
             pushd vcpkg
             git reset --hard ${{ env.VCPKG_COMMIT_ID }}
-            sh bootstrap-vcpkg.sh -disableMetrics
+            # sh bootstrap-vcpkg.sh -disableMetrics
             ls -al
             popd
             popd
@@ -1742,6 +1752,8 @@ jobs:
             dpkg -i nasm.deb
             rm -f nasm.deb
           run: |
+            ls -al /opt/artifacts/vcpkg
+            /opt/artifacts/vcpkg/vcpkg version
             # disable git safe.directory
             git config --global --add safe.directory "*"
             # set python3.7 as default python3
