@@ -65,6 +65,7 @@ jobs:
     name: ${{ matrix.job.target }}
     needs: [build-RustDeskTempTopMostWindow, generate-bridge]
     runs-on: ${{ matrix.job.os }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -286,6 +287,7 @@ jobs:
     runs-on: ${{ matrix.job.os }}
     # Temporarily disable this action due to additional test is needed.
     # if: false
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -425,7 +427,7 @@ jobs:
             ./SignOutput/rustdesk-*.exe
 
   build-rustdesk-ios:
-    if: ${{ inputs.upload-artifact }}
+    if: false
     name: build rustdesk ios ipa
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -548,6 +550,7 @@ jobs:
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -791,6 +794,7 @@ jobs:
     needs: [generate-bridge]
     name: build rustdesk android apk ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -1080,7 +1084,7 @@ jobs:
   build-rustdesk-android-universal:
     needs: [build-rustdesk-android]
     name: build rustdesk android universal apk
-    if: ${{ inputs.upload-artifact }}
+    if: false
     runs-on: ubuntu-24.04
     env:
       reltype: release
@@ -1263,19 +1267,12 @@ jobs:
     needs: [generate-bridge]
     name: build rustdesk linux ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.on }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
         # use a high level qemu-user-static
         job:
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              distro: ubuntu18.04,
-              on: ubuntu-22.04,
-              deb_arch: amd64,
-              vcpkg-triplet: x64-linux,
-            }
           - {
               arch: aarch64,
               target: aarch64-unknown-linux-gnu,
@@ -1604,16 +1601,16 @@ jobs:
       matrix:
         # use a high level qemu-user-static
         job:
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              on: ubuntu-22.04,
-              distro: ubuntu18.04,
-              deb_arch: amd64,
-              sciter_arch: x64,
-              vcpkg-triplet: x64-linux,
-              extra_features: ",hwcodec,unix-file-copy-paste",
-            }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-unknown-linux-gnu,
+          #     on: ubuntu-22.04,
+          #     distro: ubuntu18.04,
+          #     deb_arch: amd64,
+          #     sciter_arch: x64,
+          #     vcpkg-triplet: x64-linux,
+          #     extra_features: ",hwcodec,unix-file-copy-paste",
+          #   }
           - {
               arch: armv7,
               target: armv7-unknown-linux-gnueabihf,
@@ -1816,7 +1813,7 @@ jobs:
     name: Build appimage ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ubuntu-22.04
-    if: ${{ inputs.upload-artifact }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -1868,7 +1865,7 @@ jobs:
       - build-rustdesk-linux
       - build-rustdesk-linux-sciter
     runs-on: ${{ matrix.job.on }}
-    if: ${{ inputs.upload-artifact }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
