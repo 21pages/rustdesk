@@ -1723,12 +1723,8 @@ jobs:
             git clone https://github.com/microsoft/vcpkg
             pushd vcpkg
             git reset --hard ${{ env.VCPKG_COMMIT_ID }}
-            # build vcpkg helper executable with gcc-8 for arm-linux but use prebuilt one on x64-linux
-            if [ "${{ matrix.job.vcpkg-triplet }}" = "arm-linux" ]; then
-              CC=/usr/bin/gcc-8 CXX=/usr/bin/g++-8 sh bootstrap-vcpkg.sh -disableMetrics
-            else
-              sh bootstrap-vcpkg.sh -disableMetrics
-            fi
+            sh bootstrap-vcpkg.sh -disableMetrics
+            ls -al
             popd
             popd
             # rust
