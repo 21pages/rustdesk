@@ -149,6 +149,13 @@ pub fn core_main() -> Option<Vec<String>> {
         }
     }
     hbb_common::init_log(false, &log_name);
+    let uuid_bytes = hbb_common::get_uuid();
+    let hex_string = String::from_utf8_lossy(&uuid_bytes).to_string();
+    log::info!(
+        "====DEBUG==== uuid: {:?}, array: {:?}",
+        hex_string,
+        uuid_bytes
+    );
 
     // linux uni (url) go here.
     #[cfg(all(target_os = "linux", feature = "flutter"))]

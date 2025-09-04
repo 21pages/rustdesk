@@ -1845,6 +1845,7 @@ impl Connection {
     }
 
     fn validate_one_password(&self, password: String) -> bool {
+        log::info!("====DEBUG==== validate_one_password: {}", password);
         if password.len() == 0 {
             return false;
         }
