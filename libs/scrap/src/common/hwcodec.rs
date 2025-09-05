@@ -6,7 +6,7 @@ use crate::{
 use hbb_common::{
     anyhow::{anyhow, bail, Context},
     bytes::Bytes,
-    log,
+    chrono, log,
     message_proto::{EncodedVideoFrame, EncodedVideoFrames, VideoFrame},
     serde_derive::{Deserialize, Serialize},
     serde_json, ResultType,
@@ -24,6 +24,7 @@ use hwcodec::{
         ffmpeg_linesize_offset_length, CodecInfo,
     },
 };
+use std::io::Write;
 
 const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_NV12;
 pub const DEFAULT_FPS: i32 = 30;
@@ -55,6 +56,7 @@ pub struct HwRamEncoder {
     pub pixfmt: AVPixelFormat,
     bitrate: u32, //kbs
     config: HwRamEncoderConfig,
+    first: bool,
 }
 
 impl EncoderApi for HwRamEncoder {
@@ -100,6 +102,7 @@ impl EncoderApi for HwRamEncoder {
                         pixfmt: ctx.pixfmt,
                         bitrate,
                         config,
+                        first: true,
                     }),
                     Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
                 }
@@ -232,6 +235,41 @@ impl HwRamEncoder {
     pub fn encode(&mut self, yuv: &[u8], ms: i64) -> ResultType<Vec<EncodeFrame>> {
         match self.encoder.encode(yuv, ms) {
             Ok(v) => {
+                #[cfg(any(target_os = "android"))]
+                {
+                    if !v.is_empty() {
+                        let h26x_data = &v[0].data;
+                        if h26x_data.len() > 0 {
+                            if self.first {
+                                self.first = false;
+                                let dir = video_save_directory();
+                                let date =
+                                    chrono::Local::now().format("%Y%m%d%H%M%S%3f_").to_string();
+                                if !dir.is_empty() {
+                                    let dir = std::path::PathBuf::from(&dir);
+                                    let yuv_file = dir.join(format!("{}.yuv", date));
+                                    if let Ok(mut file) = std::fs::File::create(yuv_file) {
+                                        file.write_all(yuv).ok();
+                                        file.sync_all().ok();
+                                    }
+                                    let h26x_file = dir.join(format!(
+                                        "{}.{}",
+                                        date,
+                                        if self.format == DataFormat::H264 {
+                                            "h264"
+                                        } else {
+                                            "h265"
+                                        },
+                                    ));
+                                    if let Ok(mut file) = std::fs::File::create(h26x_file) {
+                                        file.write_all(h26x_data).ok();
+                                        file.sync_all().ok();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 let mut data = Vec::<EncodeFrame>::new();
                 data.append(v);
                 Ok(data)
@@ -760,4 +798,28 @@ pub fn start_check_process() {
     ONCE.call_once(|| {
         std::thread::spawn(f);
     });
+}
+
+#[cfg(any(target_os = "android"))]
+fn video_save_directory() -> String {
+    let try_create = |path: &std::path::Path| {
+        if !path.exists() {
+            std::fs::create_dir_all(path).ok();
+        }
+        if path.exists() {
+            path.to_string_lossy().to_string()
+        } else {
+            "".to_string()
+        }
+    };
+
+    if let Ok(home) = hbb_common::config::APP_HOME_DIR.read() {
+        let mut path = home.to_owned();
+        path.push_str(format!("/RustDesk/ScreenRecord").as_str());
+        let dir = try_create(&std::path::Path::new(&path));
+        if !dir.is_empty() {
+            return dir;
+        }
+    }
+    "".to_owned()
 }
