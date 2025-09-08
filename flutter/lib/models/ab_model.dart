@@ -780,8 +780,15 @@ class AbModel {
     try {
       if (profile.info is Map) {
         final password = (profile.info as Map)['password'];
-        if (password is String && password.isNotEmpty) {
-          return password;
+        if (withPublic()) {
+          final hashSalt = HashSalt.fromJson(password);
+          if (hashSalt.hash.isNotEmpty && hashSalt.salt.isNotEmpty) {
+            return jsonEncode(hashSalt.toJson());
+          }
+        } else {
+          if (password is String && password.isNotEmpty) {
+            return password;
+          }
         }
       }
       return null;

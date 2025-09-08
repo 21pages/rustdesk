@@ -370,8 +370,7 @@ class _ConnectionPageState extends State<ConnectionPage>
                         tags: [],
                         hash: '',
                         password: '',
-                        sharedPassword:
-                            SharedPassword(hash: Uint8List(0), salt: ''),
+                        sharedPassword: HashSalt(hash: Uint8List(0), salt: ''),
                         forceAlwaysRelay: false,
                         rdpPort: '',
                         rdpUsername: '',

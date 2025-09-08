@@ -6,13 +6,13 @@ import 'platform_model.dart';
 // ignore: depend_on_referenced_packages
 import 'package:collection/collection.dart';
 
-class SharedPassword {
+class HashSalt {
   late final Uint8List hash;
   late final String salt;
 
-  SharedPassword({required this.hash, required this.salt});
+  HashSalt({required this.hash, required this.salt});
 
-  SharedPassword.fromJson(dynamic v) {
+  HashSalt.fromJson(dynamic v) {
     if (v is Map<String, dynamic>) {
       final hashValue = v['hash'];
       if (hashValue is Uint8List) {
@@ -41,7 +41,7 @@ class Peer {
   final String id;
   String hash; // personal ab hash password
   String password; // shared ab password
-  SharedPassword sharedPassword;
+  HashSalt sharedPassword;
   String username; // pc username
   String hostname;
   String platform;
@@ -67,7 +67,7 @@ class Peer {
       : id = json['id'] ?? '',
         hash = json['hash'] ?? '',
         password = json['password'] ?? '',
-        sharedPassword = SharedPassword.fromJson(json['shared_password']),
+        sharedPassword = HashSalt.fromJson(json['shared_password']),
         username = json['username'] ?? '',
         hostname = json['hostname'] ?? '',
         platform = json['platform'] ?? '',
@@ -153,7 +153,7 @@ class Peer {
           id: '...',
           hash: '',
           password: '',
-          sharedPassword: SharedPassword(hash: Uint8List(0), salt: ''),
+          sharedPassword: HashSalt(hash: Uint8List(0), salt: ''),
           username: '...',
           hostname: '...',
           platform: '...',
