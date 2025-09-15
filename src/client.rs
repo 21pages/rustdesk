@@ -708,6 +708,7 @@ impl Client {
             Err(e) => (Err(e), None, ""),
         };
 
+        log::debug!("conn is err: {}", conn.is_err());
         let mut direct = !conn.is_err();
         if interface.is_force_relay() || conn.is_err() {
             if !relay_server.is_empty() {
@@ -3822,6 +3823,8 @@ lazy_static::lazy_static! {
 /// * `msgtype` - The message type.
 /// * `title` - The title of the message.
 /// * `text` - The text of the message.
+///
+/// Don't forget to modify the code of web.
 #[inline]
 pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: bool) -> bool {
     msgtype == "error"
