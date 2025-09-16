@@ -1772,7 +1772,7 @@ pub fn verify_login(_raw: &str, _id: &str) -> bool {
 
 #[inline]
 pub fn is_udp_disabled() -> bool {
-    get_builtin_option(keys::OPTION_DISABLE_UDP) == "Y"
+    true //get_builtin_option(keys::OPTION_DISABLE_UDP) == "Y"
 }
 
 // this crate https://github.com/yoshd/stun-client supports nat type
