@@ -841,20 +841,20 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - {
-              arch: aarch64,
-              target: aarch64-linux-android,
-              os: ubuntu-24.04,
-              reltype: release,
-              suffix: "",
-            }
           # - {
-          #     arch: armv7,
-          #     target: armv7-linux-androideabi,
+          #     arch: aarch64,
+          #     target: aarch64-linux-android,
           #     os: ubuntu-24.04,
           #     reltype: release,
           #     suffix: "",
           #   }
+          - {
+              arch: armv7,
+              target: armv7-linux-androideabi,
+              os: ubuntu-24.04,
+              reltype: release,
+              suffix: "",
+            }
           # - {
           #     arch: x86_64,
           #     target: x86_64-linux-android,
@@ -977,8 +977,8 @@ jobs:
         uses: thedoctor0/zip-release@0.7.1
         with:
           type: 'zip'
-          filename: arm64-android.zip
-          path: /opt/artifacts/vcpkg/installed/arm64-android
+          filename: arm-android.zip
+          path: /opt/artifacts/vcpkg/installed/arm-android
 
       - name: Upload vcpkg Archive
         uses: softprops/action-gh-release@v1
@@ -986,7 +986,7 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: | 
-            arm64-android.zip
+            arm-android.zip
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
