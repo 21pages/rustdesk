@@ -795,13 +795,13 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - {
-              arch: aarch64,
-              target: aarch64-linux-android,
-              os: ubuntu-24.04,
-              reltype: release,
-              suffix: "",
-            }
+          # - {
+          #     arch: aarch64,
+          #     target: aarch64-linux-android,
+          #     os: ubuntu-24.04,
+          #     reltype: release,
+          #     suffix: "",
+          #   }
           - {
               arch: armv7,
               target: armv7-linux-androideabi,
@@ -809,13 +809,13 @@ jobs:
               reltype: release,
               suffix: "",
             }
-          - {
-              arch: x86_64,
-              target: x86_64-linux-android,
-              os: ubuntu-24.04,
-              reltype: release,
-              suffix: "",
-            }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-linux-android,
+          #     os: ubuntu-24.04,
+          #     reltype: release,
+          #     suffix: "",
+          #   }
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -927,6 +927,21 @@ jobs:
           fi
         shell: bash
 
+      - name: Create vcpkg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: 'zip'
+          filename: arm-android.zip
+          path: /opt/artifacts/vcpkg/installed/arm-android
+
+      - name: Upload vcpkg Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            arm-android.zip  
+        
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
