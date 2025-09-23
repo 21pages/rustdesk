@@ -12,6 +12,6 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "nightly"
+      upload-tag: "saas_build"
       appname: "RustDesk"
       appname-lower: "rustdesk"

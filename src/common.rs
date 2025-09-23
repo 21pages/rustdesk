@@ -1048,6 +1048,9 @@ fn get_api_server_(api: String, custom: String) -> String {
 #[inline]
 pub fn is_public(url: &str) -> bool {
     url.contains("rustdesk.com")
+        || url.contains("192")
+        || url.contains("saas")
+        || url.contains("127")
 }
 
 pub fn with_public() -> bool {
@@ -1087,7 +1090,7 @@ pub fn get_local_option(key: &str) -> String {
 pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
     let url = get_api_server(api, custom);
     // TODO: remove is_public in the future
-    if url.is_empty() || is_public(&url) {
+    if url.is_empty() {
         return "".to_owned();
     }
     format!("{}/api/audit/{}", url, typ)

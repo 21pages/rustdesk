@@ -8,7 +8,7 @@ on:
         default: true
       upload-tag:
         type: string
-        default: "nightly"
+        default: "saas_build"
       appname:
         type: string
         default: "RustDesk"
