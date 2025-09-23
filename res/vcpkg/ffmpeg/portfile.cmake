@@ -177,6 +177,7 @@ elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Android")
     string(APPEND OPTIONS "\
 --target-os=android \
 --disable-asm \
+--disable-iconv \
 --enable-jni \
 --enable-mediacodec \
 --disable-hwaccels \
