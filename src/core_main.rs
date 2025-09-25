@@ -507,6 +507,11 @@ pub fn core_main() -> Option<Vec<String>> {
                     if pos < max {
                         device_group_name = Some(args[pos + 1].to_owned());
                     }
+                    let mut note = None;
+                    let pos = args.iter().position(|x| x == "--note").unwrap_or(max);
+                    if pos < max {
+                        note = Some(args[pos + 1].to_owned());
+                    }
                     let mut body = serde_json::json!({
                         "id": id,
                         "uuid": uuid,
@@ -516,9 +521,10 @@ pub fn core_main() -> Option<Vec<String>> {
                         && strategy_name.is_none()
                         && address_book_name.is_none()
                         && device_group_name.is_none()
+                        && note.is_none()
                     {
                         println!(
-                            "--user_name or --strategy_name or --address_book_name or --device_group_name is required!"
+                            "--user_name or --strategy_name or --address_book_name or --device_group_name or --note is required!"
                         );
                     } else {
                         if let Some(name) = user_name {
@@ -538,6 +544,9 @@ pub fn core_main() -> Option<Vec<String>> {
                         }
                         if let Some(name) = device_group_name {
                             body["device_group_name"] = serde_json::json!(name);
+                        }
+                        if let Some(name) = note {
+                            body["note"] = serde_json::json!(name);
                         }
                         let url = crate::ui_interface::get_api_server() + "/api/devices/cli";
                         match crate::post_request_sync(url, body.to_string(), &header) {
