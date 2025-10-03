@@ -8,7 +8,7 @@ on:
         default: true
       upload-tag:
         type: string
-        default: "nightly"
+        default: "before_pulse_audio_delay_9b854d3_build"
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
