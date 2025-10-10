@@ -319,8 +319,8 @@ class AbModel {
 // #endregion
 
 // #region peer
-  Future<String?> addIdToCurrent(
-      String id, String alias, String password, List<dynamic> tags) async {
+  Future<String?> addIdToCurrent(String id, String alias, String password,
+      List<dynamic> tags, String note) async {
     if (currentAbPeers.where((element) => element.id == id).isNotEmpty) {
       return "$id already exists in address book $_currentName";
     }
@@ -332,6 +332,9 @@ class AbModel {
     // avoid set existing password to empty
     if (password.isNotEmpty) {
       peer['password'] = password;
+    }
+    if (note.isNotEmpty) {
+      peer['note'] = note;
     }
     final ret = await addPeersTo([peer], _currentName.value);
     _syncAllFromRecent = true;

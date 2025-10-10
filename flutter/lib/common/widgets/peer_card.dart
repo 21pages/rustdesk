@@ -127,6 +127,12 @@ class _PeerCardState extends State<_PeerCard>
     );
   }
 
+  bool _showNote(Peer peer) {
+    return (widget.tab == PeerTabIndex.ab ||
+            widget.tab == PeerTabIndex.group) &&
+        peer.note.isNotEmpty;
+  }
+
   makeChild(bool isPortrait, Peer peer) {
     final name = hideUsernameOnCard == true
         ? peer.hostname
@@ -134,6 +140,15 @@ class _PeerCardState extends State<_PeerCard>
     final greyStyle = TextStyle(
         fontSize: 11,
         color: Theme.of(context).textTheme.titleLarge?.color?.withOpacity(0.6));
+    final showNote = _showNote(peer);
+    Widget expensiveIntrinsicWidthWrapper({required Widget child}) {
+      if (showNote) {
+        return IntrinsicWidth(child: child);
+      } else {
+        return child;
+      }
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.max,
       children: [
@@ -185,14 +200,42 @@ class _PeerCardState extends State<_PeerCard>
                           style: Theme.of(context).textTheme.titleSmall,
                         )),
                       ]).marginOnly(top: isPortrait ? 0 : 2),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          name,
-                          style: isPortrait ? null : greyStyle,
-                          textAlign: TextAlign.start,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                              fit: FlexFit.loose,
+                              child: expensiveIntrinsicWidthWrapper(
+                                child: Tooltip(
+                                  message: name,
+                                  waitDuration: const Duration(seconds: 1),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      name,
+                                      style: isPortrait ? null : greyStyle,
+                                      textAlign: TextAlign.start,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              )),
+                          if (showNote)
+                            Expanded(
+                              child: Tooltip(
+                                message: peer.note,
+                                waitDuration: const Duration(seconds: 1),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    peer.note,
+                                    style: isPortrait ? null : greyStyle,
+                                    textAlign: TextAlign.start,
+                                    overflow: TextOverflow.ellipsis,
+                                  ).marginOnly(left: 8),
+                                ),
+                              ),
+                            )
+                        ],
                       ),
                     ],
                   ).marginOnly(top: 2),
@@ -278,7 +321,7 @@ class _PeerCardState extends State<_PeerCard>
                                 padding: const EdgeInsets.all(6),
                                 child:
                                     getPlatformImage(peer.platform, size: 60),
-                              ).marginOnly(top: 4),
+                              ).marginOnly(top: 3),
                               Row(
                                 children: [
                                   Expanded(
@@ -297,8 +340,25 @@ class _PeerCardState extends State<_PeerCard>
                                   ),
                                 ],
                               ),
+                              if (_showNote(peer))
+                                Row(
+                                  children: [
+                                    Expanded(
+                                        child: Tooltip(
+                                      message: peer.note,
+                                      waitDuration: const Duration(seconds: 1),
+                                      child: Text(
+                                        peer.note,
+                                        style: const TextStyle(
+                                            color: Colors.white38, fontSize: 8),
+                                        textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ))
+                                  ],
+                                ),
                             ],
-                          ).paddingAll(4.0),
+                          ).paddingOnly(top: 4.0, left: 4.0, right: 4.0),
                         ),
                       ],
                     ),
