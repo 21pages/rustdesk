@@ -12,7 +12,7 @@ build = "build.rs"
 brotli = "3.4"
 dirs = "5.0"
 md5 = "0.7"
-winapi = { version = "0.3", features = ["winbase"] }
+winapi = { version = "0.3", features = ["winbase", "wincon"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 native-windows-gui = {version = "1.0", default-features = false, features = ["animation-timer", "image-decoder"]}
@@ -26,6 +26,6 @@ FileDescription = "RustDesk Remote Desktop"
 
 [target.'cfg(target_os="windows")'.build-dependencies]
 winres = "0.1"
-winapi = { version = "0.3", features = [ "winnt", "pdh", "synchapi", "wincon" ] }
+winapi = { version = "0.3", features = [ "winnt", "pdh", "synchapi" ] }
 
 

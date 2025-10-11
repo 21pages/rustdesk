@@ -170,6 +170,7 @@ fn main() {
             args = vec!["--quick_support".to_owned()];
         }
         execute(exe, args, ui);
+        std::thread::sleep(std::time::Duration::from_millis(2000));
     }
 }
 
