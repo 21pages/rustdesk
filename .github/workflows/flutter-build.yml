@@ -8,7 +8,7 @@ on:
         default: true
       upload-tag:
         type: string
-        default: "nightly"
+        default: "andriod_websocket_with_native_tls_build"
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -992,6 +992,8 @@ jobs:
           case ${{ matrix.job.target }} in
             aarch64-linux-android)
               mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
+              curl -L -o ./flutter/android/app/src/main/jniLibs/arm64-v8a/libssl.so https://raw.githubusercontent.com/Kingtous/rustdesk_thirdparty_lib/main/android/app/src/main/jniLibs/arm64-v8a/libssl.so
+              curl -L -o ./flutter/android/app/src/main/jniLibs/arm64-v8a/libcrypto.so https://raw.githubusercontent.com/Kingtous/rustdesk_thirdparty_lib/main/android/app/src/main/jniLibs/arm64-v8a/libcrypto.so
               cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/
               cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
               # build flutter
@@ -1001,6 +1003,8 @@ jobs:
             ;;
             armv7-linux-androideabi)
               mkdir -p ./flutter/android/app/src/main/jniLibs/armeabi-v7a
+              curl -L -o ./flutter/android/app/src/main/jniLibs/armeabi-v7a/libssl.so https://raw.githubusercontent.com/Kingtous/rustdesk_thirdparty_lib/main/android/app/src/main/jniLibs/armeabi-v7a/libssl.so
+              curl -L -o ./flutter/android/app/src/main/jniLibs/armeabi-v7a/libcrypto.so https://raw.githubusercontent.com/Kingtous/rustdesk_thirdparty_lib/main/android/app/src/main/jniLibs/armeabi-v7a/libcrypto.so
               cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libc++_shared.so ./flutter/android/app/src/main/jniLibs/armeabi-v7a/
               cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/armeabi-v7a/librustdesk.so
               # build flutter
