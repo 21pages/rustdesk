@@ -8,7 +8,7 @@ on:
         default: true
       upload-tag:
         type: string
-        default: "nightly"
+        default: "andriod_websocket_only_webpki_roots_build"
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!

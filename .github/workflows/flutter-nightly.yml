@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "nightly"
+      upload-tag: "andriod_websocket_only_webpki_roots_build"
