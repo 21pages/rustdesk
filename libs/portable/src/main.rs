@@ -117,6 +117,7 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
 
     cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name);
     if cfg!(windows) {
+        println!("setting stdin, stdout, stderr to null");
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
@@ -134,6 +135,7 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
                 winapi::um::winuser::AllowSetForegroundWindow(child.id() as u32);
             },
             Err(e) => {
+                println!("error spawning child: {:?}", e);
                 eprintln!("{:?}", e);
             }
         }
