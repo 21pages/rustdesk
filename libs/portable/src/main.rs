@@ -1,5 +1,3 @@
-#![windows_subsystem = "windows"]
-
 use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -135,6 +133,8 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
 }
 
 fn main() {
+    #[cfg(windows)]
+    win_compat::hide_console_if_needed();
     let mut args = Vec::new();
     let mut arg_exe = Default::default();
     let mut i = 0;
@@ -193,5 +193,20 @@ mod windows {
             .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
             .output();
         let _allow_err = std::fs::copy(src, &format!("{}\\{}", dir.to_string_lossy(), tgt));
+    }
+}
+
+#[cfg(windows)]
+mod win_compat {
+    use winapi::um::wincon::GetConsoleWindow;
+    use winapi::um::winuser::{ShowWindow, SW_HIDE};
+
+    pub fn hide_console_if_needed() {
+        unsafe {
+            let hwnd = GetConsoleWindow();
+            if !hwnd.is_null() {
+                ShowWindow(hwnd, SW_HIDE);
+            }
+        }
     }
 }
