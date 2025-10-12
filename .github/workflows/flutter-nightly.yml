@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "win7_32_cmd_build"
+      upload-tag: "win7_32_cmd_remove_subsystem_build"
