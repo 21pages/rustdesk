@@ -106,6 +106,12 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     // run executable
     let mut cmd = Command::new(path);
     cmd.args(args);
+
+    #[cfg(windows)]
+    let has_console = win_compat::has_console();
+    #[cfg(not(windows))]
+    let has_console = true;
+
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -114,12 +120,21 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
             cmd.env(SET_FOREGROUND_WINDOW_ENV_KEY, "1");
         }
     }
-    let _child = cmd
-        .env(APPNAME_RUNTIME_ENV_KEY, exe_name)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn();
+
+    cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name);
+
+    // Use inherit if we have a console, otherwise use null to avoid spawn failure on Win7
+    if has_console {
+        cmd.stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+    } else {
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    }
+
+    let _child = cmd.spawn();
 
     #[cfg(windows)]
     if _ui {
@@ -135,6 +150,8 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
 }
 
 fn main() {
+    // #[cfg(windows)]
+    // win_compat::hide_console_if_needed();
     let mut args = Vec::new();
     let mut arg_exe = Default::default();
     let mut i = 0;
@@ -194,4 +211,26 @@ mod windows {
             .output();
         let _allow_err = std::fs::copy(src, &format!("{}\\{}", dir.to_string_lossy(), tgt));
     }
+}
+
+#[cfg(windows)]
+mod win_compat {
+    use winapi::um::wincon::GetConsoleWindow;
+    use winapi::um::winuser::{ShowWindow, SW_HIDE};
+
+    pub fn has_console() -> bool {
+        unsafe {
+            let hwnd = GetConsoleWindow();
+            !hwnd.is_null()
+        }
+    }
+
+    // pub fn hide_console_if_needed() {
+    //     unsafe {
+    //         let hwnd = GetConsoleWindow();
+    //         if !hwnd.is_null() {
+    //             ShowWindow(hwnd, SW_HIDE);
+    //         }
+    //     }
+    // }
 }
