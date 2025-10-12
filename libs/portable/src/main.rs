@@ -107,10 +107,8 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        use winapi::um::wincon::GetConsoleWindow;
 
-        let has_console = unsafe { GetConsoleWindow() != std::ptr::null_mut() };
-        if !has_console || _ui {
+        if _ui {
             cmd.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
         }
 
