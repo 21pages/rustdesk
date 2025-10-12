@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -133,6 +135,8 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
 }
 
 fn main() {
+    #[cfg(windows)]
+    win_compat::init_hidden_window();
     let mut args = Vec::new();
     let mut arg_exe = Default::default();
     let mut i = 0;
@@ -191,5 +195,50 @@ mod windows {
             .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
             .output();
         let _allow_err = std::fs::copy(src, &format!("{}\\{}", dir.to_string_lossy(), tgt));
+    }
+}
+
+#[cfg(windows)]
+mod win_compat {
+    use winapi::um::libloaderapi::GetModuleHandleW;
+    use winapi::um::winuser::*;
+
+    pub fn init_hidden_window() {
+        unsafe {
+            let class_name: Vec<u16> = "RustDeskPortableHiddenWin\0".encode_utf16().collect();
+            let h_instance = GetModuleHandleW(std::ptr::null());
+
+            let wnd_class = WNDCLASSW {
+                lpfnWndProc: Some(DefWindowProcW),
+                hInstance: h_instance,
+                lpszClassName: class_name.as_ptr(),
+                ..std::mem::zeroed()
+            };
+            RegisterClassW(&wnd_class);
+
+            let hwnd = CreateWindowExW(
+                0,
+                class_name.as_ptr(),
+                class_name.as_ptr(),
+                WS_OVERLAPPEDWINDOW,
+                0,
+                0,
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                h_instance,
+                std::ptr::null_mut(),
+            );
+
+            if !hwnd.is_null() {
+                let mut msg: MSG = std::mem::zeroed();
+                while PeekMessageW(&mut msg, hwnd, 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+                ShowWindow(hwnd, SW_HIDE);
+            }
+        }
     }
 }
