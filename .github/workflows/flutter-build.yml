@@ -8,7 +8,7 @@ on:
         default: true
       upload-tag:
         type: string
-        default: "win7_32_cmd_build"
+        default: "win7_32_cmd_remove_std_build"
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!

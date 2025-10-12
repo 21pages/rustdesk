@@ -109,10 +109,8 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        use winapi::um::wincon::GetConsoleWindow;
 
-        let has_console = unsafe { GetConsoleWindow() != std::ptr::null_mut() };
-        if !has_console || _ui {
+        if _ui {
             cmd.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
         }
 
@@ -120,12 +118,7 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
             cmd.env(SET_FOREGROUND_WINDOW_ENV_KEY, "1");
         }
     }
-    let _child = cmd
-        .env(APPNAME_RUNTIME_ENV_KEY, exe_name)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn();
+    let _child = cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name).spawn();
 
     #[cfg(windows)]
     if _ui {
