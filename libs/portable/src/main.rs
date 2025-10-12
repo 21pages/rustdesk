@@ -102,7 +102,9 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     println!("executing {}", path.display());
     // setup env
     let exe = std::env::current_exe().unwrap_or_default();
+    println!("exe: {}", exe.display());
     let exe_name = exe.file_name().unwrap_or_default();
+    println!("exe_name: {}", exe_name.to_string_lossy());
     // run executable
     let mut cmd = Command::new(path);
     cmd.args(args);
@@ -111,23 +113,34 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
         if _ui {
+            println!("set foreground window: {}", SET_FOREGROUND_WINDOW_ENV_KEY);
             cmd.env(SET_FOREGROUND_WINDOW_ENV_KEY, "1");
         }
     }
+    println!("before inherit");
+    let in_cfg = Stdio::inherit();
+    println!("stdin ok");
+    let out_cfg = Stdio::inherit();
+    println!("stdout ok");
+    let err_cfg = Stdio::inherit();
+    println!("stderr ok");
     let _child = cmd
         .env(APPNAME_RUNTIME_ENV_KEY, exe_name)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdin(in_cfg)
+        .stdout(out_cfg)
+        .stderr(err_cfg)
         .spawn();
+    println!("after spawn");
 
     #[cfg(windows)]
     if _ui {
         match _child {
             Ok(child) => unsafe {
+                println!("allow set foreground window: {}", child.id() as u32);
                 winapi::um::winuser::AllowSetForegroundWindow(child.id() as u32);
             },
             Err(e) => {
+                println!("error: {:?}", e);
                 eprintln!("{:?}", e);
             }
         }
