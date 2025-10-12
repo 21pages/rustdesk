@@ -98,6 +98,53 @@ fn setup(
     Some(dir.join(&reader.exe))
 }
 
+fn use_null_stdio() -> bool {
+    #[cfg(windows)]
+    {
+        let is_windows_7 = is_windows_7();
+        log_to_file(&format!("is_windows_7: {}", is_windows_7));
+        // On Win7, use null stdio to avoid spawn failure when using windows_subsystem = "windows"
+        return is_windows_7;
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+fn log_to_file(s: &str) {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("portable.log")
+    {
+        let _ = writeln!(file, "{}", s);
+    }
+}
+
+#[cfg(windows)]
+fn is_windows_7() -> bool {
+    use std::mem;
+    use winapi::um::sysinfoapi::GetVersionExW;
+    use winapi::um::winnt::OSVERSIONINFOW;
+
+    unsafe {
+        let mut version_info: OSVERSIONINFOW = mem::zeroed();
+        version_info.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOW>() as u32;
+
+        if GetVersionExW(&mut version_info) != 0 {
+            // Windows 7 is version 6.1
+            log_to_file(&format!(
+                "GetVersionExW:  dwMajorVersion: {}, dwMinorVersion: {}",
+                version_info.dwMajorVersion, version_info.dwMinorVersion
+            ));
+            return version_info.dwMajorVersion == 6 && version_info.dwMinorVersion == 1;
+        }
+    }
+    false
+}
+
 fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     println!("executing {}", path.display());
     // setup env
@@ -106,6 +153,7 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     // run executable
     let mut cmd = Command::new(path);
     cmd.args(args);
+
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -114,20 +162,36 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
             cmd.env(SET_FOREGROUND_WINDOW_ENV_KEY, "1");
         }
     }
-    let _child = cmd
-        .env(APPNAME_RUNTIME_ENV_KEY, exe_name)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn();
+
+    cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name);
+
+    // Use null stdio only on Win7 32-bit to avoid spawn failure
+    if use_null_stdio() {
+        println!("Using null stdio (Win7 workaround)");
+        log_to_file("Using null stdio (Win7 workaround)");
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    } else {
+        log_to_file("Using inherit stdio");
+        cmd.stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+    }
+
+    let _child = cmd.spawn();
 
     #[cfg(windows)]
     if _ui {
         match _child {
             Ok(child) => unsafe {
+                log_to_file("spawned ok");
+                println!("allow set foreground window: {}", child.id() as u32);
                 winapi::um::winuser::AllowSetForegroundWindow(child.id() as u32);
             },
             Err(e) => {
+                log_to_file(&format!("error: {:?}", e));
+                println!("error: {:?}", e);
                 eprintln!("{:?}", e);
             }
         }
@@ -135,6 +199,8 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
 }
 
 fn main() {
+    // #[cfg(windows)]
+    // win_compat::hide_console_if_needed();
     let mut args = Vec::new();
     let mut arg_exe = Default::default();
     let mut i = 0;
