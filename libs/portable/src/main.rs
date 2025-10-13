@@ -114,12 +114,18 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
             cmd.env(SET_FOREGROUND_WINDOW_ENV_KEY, "1");
         }
     }
-    let _child = cmd
-        .env(APPNAME_RUNTIME_ENV_KEY, exe_name)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn();
+
+    cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name);
+    if cfg!(windows) {
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    } else {
+        cmd.stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+    }
+    let _child = cmd.spawn();
 
     #[cfg(windows)]
     if _ui {
