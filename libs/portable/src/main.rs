@@ -98,6 +98,47 @@ fn setup(
     Some(dir.join(&reader.exe))
 }
 
+fn use_null_stdio() -> bool {
+    #[cfg(windows)]
+    {
+        // When running in CMD on Windows 7, using Stdio::inherit() with spawn returns an "invalid handle" error.
+        // Since using Stdio::null() didn’t cause any issues, and determining whether the program is launched from CMD or by double-clicking would require calling more APIs during startup, we also use Stdio::null() when launched by double-clicking on Windows 7.
+        let is_windows_7 = is_windows_7();
+        println!("is windows7: {}", is_windows_7);
+        return is_windows_7;
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+#[cfg(windows)]
+fn is_windows_7() -> bool {
+    use std::mem;
+    use winapi::um::winnt::OSVERSIONINFOW;
+
+    // RtlGetVersion is not directly exposed in winapi, so we need to define it
+    #[link(name = "ntdll")]
+    extern "system" {
+        fn RtlGetVersion(lpVersionInformation: *mut OSVERSIONINFOW) -> i32;
+    }
+
+    unsafe {
+        let mut version_info: OSVERSIONINFOW = mem::zeroed();
+        version_info.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOW>() as u32;
+
+        // RtlGetVersion returns 0 (STATUS_SUCCESS) on success
+        if RtlGetVersion(&mut version_info) == 0 {
+            // Windows 7 is version 6.1
+            println!(
+                "RtlGetVersion: {}.{}",
+                version_info.dwMajorVersion, version_info.dwMinorVersion
+            );
+            return version_info.dwMajorVersion == 6 && version_info.dwMinorVersion == 1;
+        }
+    }
+    false
+}
+
 fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     println!("executing {}", path.display());
     // setup env
@@ -114,12 +155,18 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
             cmd.env(SET_FOREGROUND_WINDOW_ENV_KEY, "1");
         }
     }
-    let _child = cmd
-        .env(APPNAME_RUNTIME_ENV_KEY, exe_name)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn();
+
+    cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name);
+    if use_null_stdio() {
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    } else {
+        cmd.stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+    }
+    let _child = cmd.spawn();
 
     #[cfg(windows)]
     if _ui {
