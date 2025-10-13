@@ -114,20 +114,31 @@ fn use_null_stdio() -> bool {
 #[cfg(windows)]
 fn is_windows_7() -> bool {
     use std::mem;
+    use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryA};
     use winapi::um::winnt::OSVERSIONINFOW;
 
-    // RtlGetVersion is not directly exposed in winapi, so we need to define it
-    #[link(name = "ntdll")]
-    extern "system" {
-        fn RtlGetVersion(lpVersionInformation: *mut OSVERSIONINFOW) -> i32;
-    }
+    type RtlGetVersion = unsafe extern "system" fn(*mut OSVERSIONINFOW) -> i32;
 
     unsafe {
+        let h_module = LoadLibraryA(b"ntdll.dll\0".as_ptr() as *const i8);
+        if h_module.is_null() {
+            return false;
+        }
+
+        let f_rtl_get_version: RtlGetVersion = mem::transmute(GetProcAddress(
+            h_module,
+            b"RtlGetVersion\0".as_ptr() as *const i8,
+        ));
+
+        if f_rtl_get_version as usize == 0 {
+            return false;
+        }
+
         let mut version_info: OSVERSIONINFOW = mem::zeroed();
         version_info.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOW>() as u32;
 
         // RtlGetVersion returns 0 (STATUS_SUCCESS) on success
-        if RtlGetVersion(&mut version_info) == 0 {
+        if f_rtl_get_version(&mut version_info) == 0 {
             // Windows 7 is version 6.1
             println!(
                 "RtlGetVersion: {}.{}",

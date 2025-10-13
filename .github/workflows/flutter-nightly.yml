@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "RtlGetVersion_build"
+      upload-tag: "RtlGetVersion_dyn_build"
