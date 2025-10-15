@@ -9,15 +9,34 @@ macro_rules! configure_http_client {
         // https://github.com/rustdesk/rustdesk/issues/11569
         // https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html#method.no_proxy
         let mut builder = $builder.no_proxy();
+
+        // Add custom root certificate if configured
+        let ca = Config::get_option("root-ca");
+        if !ca.is_empty() {
+            match reqwest::Certificate::from_pem(ca.as_bytes()) {
+                Ok(cert) => {
+                    builder = builder.add_root_certificate(cert);
+                }
+                Err(e) => {
+                    info!("Failed to load custom root certificate: {}", e);
+                }
+            }
+        }
         let client = if let Some(conf) = Config::get_socks() {
             let proxy_result = Proxy::from_conf(&conf, None);
 
             match proxy_result {
                 Ok(proxy) => {
                     let proxy_setup = match &proxy.intercept {
-                        ProxyScheme::Http { host, .. } =>{ reqwest::Proxy::all(format!("http://{}", host))},
-                        ProxyScheme::Https { host, .. } => {reqwest::Proxy::all(format!("https://{}", host))},
-                        ProxyScheme::Socks5 { addr, .. } => { reqwest::Proxy::all(&format!("socks5://{}", addr)) }
+                        ProxyScheme::Http { host, .. } => {
+                            reqwest::Proxy::all(format!("http://{}", host))
+                        }
+                        ProxyScheme::Https { host, .. } => {
+                            reqwest::Proxy::all(format!("https://{}", host))
+                        }
+                        ProxyScheme::Socks5 { addr, .. } => {
+                            reqwest::Proxy::all(&format!("socks5://{}", addr))
+                        }
                     };
 
                     match proxy_setup {
@@ -28,12 +47,9 @@ macro_rules! configure_http_client {
                                     format!("Basic {}", auth.get_basic_authorization());
                                 if let Ok(auth) = basic_auth.parse() {
                                     builder = builder.default_headers(
-                                        vec![(
-                                            reqwest::header::PROXY_AUTHORIZATION,
-                                            auth,
-                                        )]
-                                        .into_iter()
-                                        .collect(),
+                                        vec![(reqwest::header::PROXY_AUTHORIZATION, auth)]
+                                            .into_iter()
+                                            .collect(),
                                     );
                                 }
                             }
