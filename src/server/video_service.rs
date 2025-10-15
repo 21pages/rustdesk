@@ -476,7 +476,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let _wayland_call_on_ret = {
         // Increment active display count when starting
         let _display_count = super::wayland::increment_active_display_count();
-        
+
         SimpleCallOnReturn {
             b: true,
             f: Box::new(|| {
@@ -586,7 +586,10 @@ fn run(vs: VideoService) -> ResultType<()> {
     let capture_height = c.height;
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
 
+    let mut debug_instance = Instant::now();
     while sp.ok() {
+        log::info!("begin");
+        debug_instance = Instant::now();
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
         check_qos(
@@ -598,6 +601,8 @@ fn run(vs: VideoService) -> ResultType<()> {
             &mut second_instant,
             &sp.name(),
         )?;
+        log::info!("check qos: {:?}", debug_instance.elapsed());
+        debug_instance = Instant::now();
         if sp.is_option_true(OPTION_REFRESH) {
             if vs.source.is_monitor() {
                 let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
@@ -605,6 +610,8 @@ fn run(vs: VideoService) -> ResultType<()> {
             log::info!("switch to refresh");
             bail!("SWITCH");
         }
+        log::info!("check refresh: {:?}", debug_instance.elapsed());
+        debug_instance = Instant::now();
         if codec_format != Encoder::negotiated_codec() {
             log::info!(
                 "switch due to codec changed, {:?} -> {:?}",
@@ -613,6 +620,8 @@ fn run(vs: VideoService) -> ResultType<()> {
             );
             bail!("SWITCH");
         }
+        log::info!("check codec: {:?}", debug_instance.elapsed());
+        debug_instance = Instant::now();
         #[cfg(windows)]
         if last_portable_service_running != crate::portable_service::client::running() {
             log::info!("switch due to portable service running changed");
@@ -622,6 +631,8 @@ fn run(vs: VideoService) -> ResultType<()> {
             log::info!("switch due to i444 changed");
             bail!("SWITCH");
         }
+        log::info!("check i444: {:?}", debug_instance.elapsed());
+        debug_instance = Instant::now();
         #[cfg(all(windows, feature = "vram"))]
         if c.is_gdi() && encoder.input_texture() {
             log::info!("changed to gdi when using vram");
@@ -631,6 +642,8 @@ fn run(vs: VideoService) -> ResultType<()> {
         if vs.source.is_monitor() {
             check_privacy_mode_changed(&sp, display_idx, &c)?;
         }
+        log::info!("check privacy mode: {:?}", debug_instance.elapsed());
+        debug_instance = Instant::now();
         #[cfg(windows)]
         {
             if crate::platform::windows::desktop_changed()
@@ -646,13 +659,17 @@ fn run(vs: VideoService) -> ResultType<()> {
             // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
             try_broadcast_display_changed(&sp, display_idx, &c, false)?;
         }
-
+        log::info!("before reset");
+        debug_instance = Instant::now();
         frame_controller.reset();
-
+        log::info!("after reset: {:?}", debug_instance.elapsed());
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
+        debug_instance = Instant::now();
+        log::info!("before frame");
         let res = match c.frame(spf) {
             Ok(frame) => {
+                log::info!("frame: {:?}", debug_instance.elapsed());
                 repeat_encode_counter = 0;
                 if frame.valid() {
                     let screenshot = SCREENSHOTS.lock().unwrap().remove(&display_idx);
@@ -698,7 +715,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
 
+                    debug_instance = Instant::now();
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    log::info!("frame to yuv: {:?}", debug_instance.elapsed());
+                    debug_instance = Instant::now();
                     let send_conn_ids = handle_one_frame(
                         display_idx,
                         &sp,
@@ -711,7 +731,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_width,
                         capture_height,
                     )?;
+                    log::info!("handle one frame: {:?}", debug_instance.elapsed());
+                    debug_instance = Instant::now();
                     frame_controller.set_send(now, send_conn_ids);
+                    log::info!("set send: {:?}", debug_instance.elapsed());
                     send_counter += 1;
                 }
                 #[cfg(windows)]
@@ -724,7 +747,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                 }
                 Ok(())
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                log::info!("frame error: {:?}", err);
+                Err(err)
+            }
         };
 
         match res {
@@ -758,6 +784,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                     // yun.len() > 0 means the frame is not texture.
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
+                        debug_instance = Instant::now();
                         let send_conn_ids = handle_one_frame(
                             display_idx,
                             &sp,
@@ -770,7 +797,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                             capture_width,
                             capture_height,
                         )?;
+                        log::info!("handle one frame 2: {:?}", debug_instance.elapsed());
+                        debug_instance = Instant::now();
                         frame_controller.set_send(now, send_conn_ids);
+                        log::info!("set send 2: {:?}", debug_instance.elapsed());
                         send_counter += 1;
                     }
                 }
@@ -778,9 +808,15 @@ fn run(vs: VideoService) -> ResultType<()> {
             Err(err) => {
                 // This check may be redundant, but it is better to be safe.
                 // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
+                log::info!("would block error: {:?}", err);
+                debug_instance = Instant::now();
                 if vs.source.is_monitor() {
                     try_broadcast_display_changed(&sp, display_idx, &c, true)?;
                 }
+                log::info!(
+                    "try broadcast display changed 2: {:?}",
+                    debug_instance.elapsed()
+                );
 
                 #[cfg(windows)]
                 if !c.is_gdi() {
@@ -801,6 +837,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         let mut fetched_conn_ids = HashSet::new();
         let timeout_millis = 3_000u64;
         let wait_begin = Instant::now();
+        debug_instance = Instant::now();
         while wait_begin.elapsed().as_millis() < timeout_millis as _ {
             if vs.source.is_monitor() {
                 check_privacy_mode_changed(&sp, display_idx, &c)?;
@@ -811,13 +848,16 @@ fn run(vs: VideoService) -> ResultType<()> {
                 break;
             }
         }
+        log::info!("wait next: {:?}", debug_instance.elapsed());
 
         let elapsed = now.elapsed();
         // may need to enable frame(timeout)
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {
+            log::info!("sleep: {:?}", spf - elapsed);
             std::thread::sleep(spf - elapsed);
         }
+        log::info!("end");
     }
 
     Ok(())
