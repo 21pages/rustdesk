@@ -533,6 +533,7 @@ impl VideoQoS {
 
         // Ensure fps stays within valid range
         self.fps = fps.clamp(MIN_FPS, highest_fps);
+        log::info!("adjust_fps: fps: {}, highest_fps: {}", fps, highest_fps);
     }
 }
 

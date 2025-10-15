@@ -147,8 +147,13 @@ impl<T: Subscriber + From<ConnInner>> Service for ServiceTmpl<T> {
 
     #[inline]
     fn ok(&self) -> bool {
+        let start = std::time::Instant::now();
         let lock = self.0.read().unwrap();
-        lock.active && lock.has_subscribes()
+        log::info!("ok read lock: {:?}", start.elapsed());
+        let start = std::time::Instant::now();
+        let result = lock.active && lock.has_subscribes();
+        log::info!("ok has subscribes: {:?}", start.elapsed());
+        result
     }
 }
 
