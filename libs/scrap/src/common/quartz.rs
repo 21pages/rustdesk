@@ -1,6 +1,9 @@
+use hbb_common::log;
+
 use crate::{quartz, Frame, Pixfmt};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
+use std::time::Instant;
 use std::{io, mem};
 
 pub struct Capturer {
@@ -46,15 +49,22 @@ impl Capturer {
 
 impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
+        let start = Instant::now();
         match self.frame.try_lock() {
             Ok(mut handle) => {
+                log::info!("try_lock: {:?}", start.elapsed());
                 let mut frame = None;
+                let start = Instant::now();
                 mem::swap(&mut frame, &mut handle);
-
+                log::info!("mem::swap: {:?}", start.elapsed());
                 match frame {
                     Some(mut frame) => {
+                        let start = Instant::now();
                         crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())?;
+                        log::info!("would_block_if_equal: {:?}", start.elapsed());
+                        let start = Instant::now();
                         frame.surface_to_bgra(self.height());
+                        log::info!("surface_to_bgra: {:?}", start.elapsed());
                         Ok(Frame::PixelBuffer(PixelBuffer {
                             frame,
                             data: PhantomData,
