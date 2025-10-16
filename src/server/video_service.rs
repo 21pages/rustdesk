@@ -476,7 +476,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let _wayland_call_on_ret = {
         // Increment active display count when starting
         let _display_count = super::wayland::increment_active_display_count();
-        
+
         SimpleCallOnReturn {
             b: true,
             f: Box::new(|| {
@@ -816,8 +816,10 @@ fn run(vs: VideoService) -> ResultType<()> {
         // may need to enable frame(timeout)
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {
+            log::info!("sleep: {:?}", spf - elapsed);
             std::thread::sleep(spf - elapsed);
         }
+        log::info!("end");
     }
 
     Ok(())

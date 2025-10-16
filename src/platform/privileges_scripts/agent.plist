@@ -31,10 +31,5 @@
         </array>
         <key>WorkingDirectory</key>
         <string>/Applications/RustDesk.app/Contents/MacOS/</string>
-        <key>EnvironmentVariables</key>
-        <dict>
-            <key>NSAppSleepDisabled</key>
-            <string>true</string>
-        </dict>
     </dict>
 </plist>
