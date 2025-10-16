@@ -200,6 +200,7 @@ impl RendezvousMediator {
                     n = 3000;
                 }
                 if (latency - old_latency).abs() > n || old_latency <= 0 {
+                    log::info!("update latency in start_udp: {}ms", latency as f64 / 1000.);
                     Config::update_latency(&host, latency);
                     log::debug!("Latency of {}: {}ms", host, latency as f64 / 1000.);
                     old_latency = latency;
@@ -239,6 +240,7 @@ impl RendezvousMediator {
                         if timeout {
                             fails += 1;
                             if fails >= MAX_FAILS2 {
+                                log::info!("update latency in start_udp: -1ms");
                                 Config::update_latency(&host, -1);
                                 old_latency = 0;
                                 if last_dns_check.elapsed().as_millis() as i64 > DNS_INTERVAL {
@@ -252,6 +254,7 @@ impl RendezvousMediator {
                                     last_dns_check = Instant::now();
                                 }
                             } else if fails >= MAX_FAILS1 {
+                                log::info!("update latency in start_udp: 0ms");
                                 Config::update_latency(&host, 0);
                                 old_latency = 0;
                             }
@@ -361,6 +364,7 @@ impl RendezvousMediator {
                     .map(|x| x.elapsed().as_micros() as i64)
                     .unwrap_or(0);
                 Config::update_latency(&host, latency);
+                log::info!("update latency in start_tcp: {}ms", latency as f64 / 1000.);
                 log::debug!("Latency of {}: {}ms", host, latency as f64 / 1000.);
             };
             select! {
@@ -642,6 +646,7 @@ impl RendezvousMediator {
     }
 
     async fn register_pk(&mut self, socket: Sink<'_>) -> ResultType<()> {
+        log::info!("register_pk in rendezvous_mediator");
         let mut msg_out = Message::new();
         let pk = Config::get_key_pair().1;
         let uuid = hbb_common::get_uuid();
@@ -673,8 +678,10 @@ impl RendezvousMediator {
     }
 
     async fn register_peer(&mut self, socket: Sink<'_>) -> ResultType<()> {
+        log::info!("register_peer in rendezvous_mediator");
         let solving = SOLVING_PK_MISMATCH.lock().await;
         if !(solving.is_empty() || *solving == self.host) {
+            log::info!("register_peer in rendezvous_mediator: skip");
             return Ok(());
         }
         drop(solving);

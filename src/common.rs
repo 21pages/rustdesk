@@ -713,8 +713,10 @@ async fn test_rendezvous_server_() {
             .is_ok()
             {
                 let elapsed = tm.elapsed().as_micros();
+                log::info!("update in test_rendezvous_server");
                 Config::update_latency(&host, elapsed as _);
             } else {
+                log::info!("update in test_rendezvous_server");
                 Config::update_latency(&host, -1);
             }
         }));
