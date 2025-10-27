@@ -912,7 +912,8 @@ pub fn check_software_update() {
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     let (request, url) =
         hbb_common::version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
-    let latest_release_response = create_http_client_async()
+    let latest_release_response = create_http_client_async(&url)
+        .await?
         .post(url)
         .json(&request)
         .send()
@@ -1067,7 +1068,13 @@ pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
 }
 
 pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
-    let mut req = create_http_client_async().post(url);
+    let response = post_request_exec(url, body, header).await;
+    log::info!("post_request response: {:?}", response);
+    response
+}
+
+pub async fn post_request_exec(url: String, body: String, header: &str) -> ResultType<String> {
+    let mut req = create_http_client_async(&url).await?.post(url);
     if !header.is_empty() {
         let tmp: Vec<&str> = header.split(": ").collect();
         if tmp.len() == 2 {
@@ -1091,7 +1098,7 @@ pub async fn http_request_sync(
     body: Option<String>,
     header: String,
 ) -> ResultType<String> {
-    let http_client = create_http_client_async();
+    let http_client = create_http_client_async(&url).await?;
     let mut http_client = match method.as_str() {
         "get" => http_client.get(url),
         "post" => http_client.post(url),
