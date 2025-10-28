@@ -95,6 +95,7 @@ async fn start_hbbs_sync_async() {
         tokio::select! {
             _ = interval.tick() => {
                 let url = heartbeat_url();
+                log::info!("heartbeat url: {}", url);
                 let id = Config::get_id();
                 if url.is_empty() {
                     *PRO.lock().unwrap() = false;
@@ -191,6 +192,7 @@ async fn start_hbbs_sync_async() {
                             // When the api doesn't exist, Ok("") will be returned in test.
                             let samever = match crate::post_request(url.replace("heartbeat", "sysinfo_ver"), "".to_owned(), "").await {
                                 Ok(x)  => {
+                                    log::info!("sysinfo_ver: {:?}", x);
                                     sysinfo_ver = x.clone();
                                     *PRO.lock().unwrap() = true;
                                     x == ver
@@ -207,8 +209,10 @@ async fn start_hbbs_sync_async() {
                             }
                         }
                     }
+                    log::info!("before sysinfo post request");
                     match crate::post_request(url.replace("heartbeat", "sysinfo"), v, "").await {
                         Ok(x)  => {
+                            log::info!("sysinfo post response: {:?}", x);
                             if x == "SYSINFO_UPDATED" {
                                 info_uploaded = InfoUploaded::uploaded(url.clone(), id.clone(), sys_username);
                                 log::info!("sysinfo updated");
@@ -224,6 +228,7 @@ async fn start_hbbs_sync_async() {
                             }
                         }
                         _ => {
+                            log::info!("sysinfo post request failed");
                             info_uploaded.last_uploaded = Some(Instant::now());
                         }
                     }
@@ -241,7 +246,9 @@ async fn start_hbbs_sync_async() {
                 }
                 let modified_at = LocalConfig::get_option("strategy_timestamp").parse::<i64>().unwrap_or(0);
                 v["modified_at"] = json!(modified_at);
+                log::info!("before heartbeat post request");
                 if let Ok(s) = crate::post_request(url.clone(), v.to_string(), "").await {
+                    log::info!("heartbeat post response: {:?}", s);
                     if let Ok(mut rsp) = serde_json::from_str::<HashMap::<&str, Value>>(&s) {
                         if rsp.remove("sysinfo").is_some() {
                             info_uploaded.uploaded = false;
@@ -267,6 +274,8 @@ async fn start_hbbs_sync_async() {
                             }
                         }
                     }
+                } else {
+                    log::info!("heartbeat post request failed");
                 }
             }
         }
