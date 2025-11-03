@@ -59,8 +59,9 @@ gstreamer-app = { version = "0.16", features = ["v1_10"], optional = true }
 gstreamer-video = { version = "0.16", optional = true }
 
 [dependencies.hwcodec]
-git = "https://github.com/rustdesk-org/hwcodec"
+git = "https://github.com/21pages/hwcodec"
 optional = true
+branch = "intel_mac_encode"
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
 nokhwa = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fix_from_raw_parts", features = ["input-native"] }
