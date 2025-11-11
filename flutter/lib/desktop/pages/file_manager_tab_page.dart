@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/desktop/pages/file_manager_page.dart';
@@ -40,7 +41,10 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
         label: params['id'],
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
-        onTabCloseButton: () => tabController.closeBy(params['id']),
+        onTabCloseButton: () async {
+          await tryShowTabAuditDialog(params['id']);
+          tabController.closeBy(params['id']);
+        },
         page: FileManagerPage(
           key: ValueKey(params['id']),
           id: params['id'],
@@ -69,7 +73,10 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
             label: id,
             selectedIcon: selectedIcon,
             unselectedIcon: unselectedIcon,
-            onTabCloseButton: () => tabController.closeBy(id),
+            onTabCloseButton: () async {
+              await tryShowTabAuditDialog(id);
+              tabController.closeBy(id);
+            },
             page: FileManagerPage(
               key: ValueKey(id),
               id: id,
@@ -132,6 +139,9 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
 
   Future<bool> handleWindowCloseButton() async {
     final connLength = tabController.state.value.tabs.length;
+    if (connLength == 1) {
+      await tryShowTabAuditDialog(tabController.state.value.tabs[0].key);
+    }
     if (connLength <= 1) {
       tabController.clear();
       return true;
@@ -147,6 +157,20 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
         tabController.clear();
       }
       return res;
+    }
+  }
+
+  Future<void> tryShowTabAuditDialog(String id) async {
+    try {
+      final page = tabController.state.value.tabs
+          .firstWhere((tab) => tab.key == id)
+          .page;
+      if (page is FileManagerPage) {
+        final ffi = page.ffi;
+        await showConnEndAuditDialog(ffi);
+      }
+    } catch (e) {
+      debugPrint('Failed to show audit dialog: $e');
     }
   }
 }

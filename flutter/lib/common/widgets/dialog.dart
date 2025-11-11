@@ -18,9 +18,15 @@ import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import 'address_book.dart';
 
-void clientClose(SessionID sessionId, OverlayDialogManager dialogManager) {
+void clientClose(SessionID sessionId, FFI ffi) {
+  final auditGuid = (isMobile || isWeb) &&
+          allowAskForNoteAtEndOfConnection(sessionId) &&
+          ffi.auditNote.isEmpty
+      ? ffi.auditGuid
+      : null;
   msgBox(sessionId, 'info', 'Close', 'Are you sure to close the connection?',
-      '', dialogManager);
+      '', ffi.dialogManager,
+      auditGuid: auditGuid);
 }
 
 abstract class ValidationRule {
@@ -1551,8 +1557,8 @@ showAuditDialog(FFI ffi) async {
             autofocus: true,
             keyboardType: TextInputType.multiline,
             textInputAction: TextInputAction.newline,
-            decoration: const InputDecoration.collapsed(
-              hintText: 'input note here',
+            decoration: InputDecoration.collapsed(
+              hintText: translate('input note here'),
             ),
             maxLines: null,
             maxLength: 256,
@@ -1563,6 +1569,115 @@ showAuditDialog(FFI ffi) async {
         dialogButton('Cancel', onPressed: close, isOutline: true),
         dialogButton('OK', onPressed: submit)
       ],
+      onSubmit: submit,
+      onCancel: close,
+    );
+  });
+}
+
+Future<void> showConnEndAuditDialog(FFI ffi) async {
+  final showDialog = allowAskForNoteAtEndOfConnection(ffi.sessionId) &&
+      ffi.auditNote.isEmpty &&
+      ffi.auditGuid.isNotEmpty;
+  if (!showDialog) {
+    return;
+  }
+  ffi.dialogManager.dismissAll();
+  final controller = TextEditingController(text: ffi.auditNote);
+  bool askForNote =
+      mainGetLocalBoolOptionSync(kOptionAllowAskForNoteAtEndOfConnection);
+  final isOptFixed = isOptionFixed(kOptionAllowAskForNoteAtEndOfConnection);
+  return await ffi.dialogManager.show((setState, close, context) {
+    submit() async {
+      var text = controller.text;
+      await updateAuditNoteByGuid(ffi.auditGuid, text);
+      ffi.auditNote = text;
+      // Save the "ask for note" preference
+      if (!isOptFixed) {
+        await mainSetLocalBoolOption(
+            kOptionAllowAskForNoteAtEndOfConnection, askForNote);
+      }
+
+      close();
+    }
+
+    late final focusNode = FocusNode(
+      onKey: (FocusNode node, RawKeyEvent evt) {
+        if (evt.logicalKey.keyLabel == 'Enter') {
+          if (evt is RawKeyDownEvent) {
+            int pos = controller.selection.base.offset;
+            controller.text =
+                '${controller.text.substring(0, pos)}\n${controller.text.substring(pos)}';
+            controller.selection =
+                TextSelection.fromPosition(TextPosition(offset: pos + 1));
+          }
+          return KeyEventResult.handled;
+        }
+        if (evt.logicalKey.keyLabel == 'Esc') {
+          if (evt is RawKeyDownEvent) {
+            close();
+          }
+          return KeyEventResult.handled;
+        } else {
+          return KeyEventResult.ignored;
+        }
+      },
+    );
+
+    return CustomAlertDialog(
+      title: Text(translate('Close')),
+      content: SizedBox(
+          width: 350,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 120,
+                child: TextField(
+                  autofocus: true,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration.collapsed(
+                    hintText: translate('input note here'),
+                  ),
+                  maxLines: null,
+                  maxLength: 256,
+                  controller: controller,
+                  focusNode: focusNode,
+                ).workaroundFreezeLinuxMint(),
+              ),
+              if (!isOptFixed) ...[
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      askForNote = !askForNote;
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: askForNote,
+                        onChanged: (value) {
+                          setState(() {
+                            askForNote = value ?? false;
+                          });
+                        },
+                      ),
+                      Expanded(
+                        child: Text(
+                          translate('conn-end-note-option-tip'),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          )),
+      actions: [dialogButton('OK', onPressed: submit)],
       onSubmit: submit,
       onCancel: close,
     );

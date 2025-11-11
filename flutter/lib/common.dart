@@ -1162,17 +1162,89 @@ Widget createDialogContent(String text) {
   );
 }
 
+/// Build note editing widget for msgBox
+/// Returns a widget that allows user to edit audit notes with an "ask for note" option
+Widget _buildNoteEditingWidget(
+  StateSetter setState,
+  TextEditingController noteController,
+  RxBool askForNote,
+  bool isOptFixed,
+) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      const SizedBox(height: 16),
+      SizedBox(
+        height: 100,
+        child: TextField(
+          controller: noteController,
+          keyboardType: TextInputType.multiline,
+          maxLines: null,
+          maxLength: 256,
+          decoration: InputDecoration.collapsed(
+            hintText: translate('input note here'),
+          ),
+        ),
+      ),
+      if (!isOptFixed) ...[
+        const SizedBox(height: 8),
+        Obx(() => GestureDetector(
+              onTap: () {
+                askForNote.value = !askForNote.value;
+              },
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: askForNote.value,
+                    onChanged: (value) {
+                      askForNote.value = value ?? false;
+                    },
+                  ),
+                  Expanded(
+                    child: Text(
+                      translate('conn-end-note-option-tip'),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            )),
+      ],
+    ],
+  );
+}
+
 void msgBox(SessionID sessionId, String type, String title, String text,
     String link, OverlayDialogManager dialogManager,
     {bool? hasCancel,
     ReconnectHandle? reconnect,
     int? reconnectTimeout,
     VoidCallback? onSubmit,
-    int? submitTimeout}) {
+    int? submitTimeout,
+    String? auditGuid}) {
   dialogManager.dismissAll();
   List<Widget> buttons = [];
   bool hasOk = false;
-  submit() {
+  TextEditingController? noteController;
+  final askForNote =
+      mainGetLocalBoolOptionSync(kOptionAllowAskForNoteAtEndOfConnection).obs;
+  final isOptFixed = isOptionFixed(kOptionAllowAskForNoteAtEndOfConnection);
+
+  tryUpdateAuditNote() async {
+    if (auditGuid != null && noteController != null) {
+      if (noteController.text.isNotEmpty) {
+        await updateAuditNoteByGuid(auditGuid, noteController.text);
+      }
+      if (!isOptFixed) {
+        await mainSetLocalBoolOption(
+            kOptionAllowAskForNoteAtEndOfConnection, askForNote.value);
+      }
+    }
+  }
+
+  submit() async {
+    await tryUpdateAuditNote();
     dialogManager.dismissAll();
     if (onSubmit != null) {
       onSubmit.call();
@@ -1184,7 +1256,8 @@ void msgBox(SessionID sessionId, String type, String title, String text,
     }
   }
 
-  cancel() {
+  cancel() async {
+    await tryUpdateAuditNote();
     dialogManager.dismissAll();
   }
 
@@ -1244,14 +1317,38 @@ void msgBox(SessionID sessionId, String type, String title, String text,
   if (link.isNotEmpty) {
     buttons.insert(0, dialogButton('JumpLink', onPressed: jumplink));
   }
+
+  final showNoteEdit = auditGuid != null && auditGuid.isNotEmpty;
+  if (showNoteEdit) {
+    noteController = TextEditingController(text: '');
+  }
+
   dialogManager.show(
-    (setState, close, context) => CustomAlertDialog(
-      title: null,
-      content: SelectionArea(child: msgboxContent(type, title, text)),
-      actions: buttons,
-      onSubmit: hasOk ? submit : null,
-      onCancel: hasCancel == true ? cancel : null,
-    ),
+    (setState, close, context) {
+      Widget contentWidget;
+
+      if (showNoteEdit && noteController != null) {
+        contentWidget = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SelectionArea(child: msgboxContent(type, title, text)),
+            _buildNoteEditingWidget(
+                setState, noteController, askForNote, isOptFixed),
+          ],
+        );
+      } else {
+        contentWidget = SelectionArea(child: msgboxContent(type, title, text));
+      }
+
+      return CustomAlertDialog(
+        title: null,
+        content: contentWidget,
+        actions: buttons,
+        onSubmit: hasOk ? submit : null,
+        onCancel: hasCancel == true ? cancel : null,
+      );
+    },
     tag: '$sessionId-$type-$title-$text-$link',
   );
 }
@@ -1681,13 +1778,12 @@ class LastWindowPosition {
       this.offsetHeight, this.isMaximized, this.isFullscreen);
 
   bool equals(LastWindowPosition other) {
-    return (
-      (width == other.width) &&
-      (height == other.height) &&
-      (offsetWidth == other.offsetWidth) &&
-      (offsetHeight == other.offsetHeight) &&
-      (isMaximized == other.isMaximized) &&
-      (isFullscreen == other.isFullscreen));
+    return ((width == other.width) &&
+        (height == other.height) &&
+        (offsetWidth == other.offsetWidth) &&
+        (offsetHeight == other.offsetHeight) &&
+        (isMaximized == other.isMaximized) &&
+        (isFullscreen == other.isFullscreen));
   }
 
   Map<String, dynamic> toJson() {
@@ -1815,7 +1911,8 @@ Future<void> saveWindowPosition(WindowType type,
 
   final WindowKey key = (type: type, windowId: windowId);
 
-  final bool haveNewWindowPosition = (_lastWindowPosition == null) || !pos.equals(_lastWindowPosition!);
+  final bool haveNewWindowPosition =
+      (_lastWindowPosition == null) || !pos.equals(_lastWindowPosition!);
   final bool isPreviousNewWindowPositionPending = _saveWindowDebounce.isRunning;
 
   if (haveNewWindowPosition || isPreviousNewWindowPositionPending) {
@@ -1841,10 +1938,11 @@ Future<void> _saveWindowPositionActual(WindowKey key) async {
     await bind.setLocalFlutterOption(
         k: windowFramePrefix + key.type.name, v: pos.toString());
 
-    if ((key.type == WindowType.RemoteDesktop || key.type == WindowType.ViewCamera) &&
+    if ((key.type == WindowType.RemoteDesktop ||
+            key.type == WindowType.ViewCamera) &&
         key.windowId != null) {
-      await _saveSessionWindowPosition(
-          key.type, key.windowId!, pos.isMaximized ?? false, pos.isFullscreen ?? false, pos);
+      await _saveSessionWindowPosition(key.type, key.windowId!,
+          pos.isMaximized ?? false, pos.isFullscreen ?? false, pos);
     }
   }
 }
@@ -4023,4 +4121,44 @@ String decode_http_response(http.Response resp) {
 
 bool peerTabShowNote(PeerTabIndex peerTabIndex) {
   return peerTabIndex == PeerTabIndex.ab || peerTabIndex == PeerTabIndex.group;
+}
+
+Future<void> updateAuditNoteByGuid(String auditGuid, String note) async {
+  debugPrint('Updating audit note for GUID: $auditGuid, note: $note');
+  try {
+    final apiServer = await bind.mainGetApiServer();
+    if (apiServer.isEmpty) {
+      debugPrint('API server is empty, cannot update audit note');
+      return;
+    }
+    final url = '$apiServer/api/audit';
+    var headers = getHttpHeaders();
+    headers['Content-Type'] = "application/json";
+    final body = jsonEncode({
+      'guid': auditGuid,
+      'note': note,
+    });
+
+    final response = await http.put(
+      Uri.parse(url),
+      headers: headers,
+      body: body,
+    );
+
+    if (response.statusCode == 200) {
+      debugPrint('Successfully updated audit note for GUID: $auditGuid');
+    } else {
+      debugPrint(
+          'Failed to update audit note. Status: ${response.statusCode}, Body: ${response.body}');
+    }
+  } catch (e) {
+    debugPrint('Error updating audit note: $e');
+  }
+}
+
+bool allowAskForNoteAtEndOfConnection(SessionID sessionId) {
+  return mainGetLocalBoolOptionSync(kOptionAllowAskForNoteAtEndOfConnection) &&
+      bind
+          .sessionGetAuditServerSync(sessionId: sessionId, typ: "conn")
+          .isNotEmpty;
 }

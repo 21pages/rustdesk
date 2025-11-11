@@ -1979,5 +1979,23 @@ class RustdeskImpl {
         ]));
   }
 
+  Future<int?> sessionGetEdgeScrollEdgeThickness(
+      {required UuidValue sessionId, dynamic hint}) {
+    final thickness = js.context.callMethod(
+        'getByName', ['option:session', 'edge-scroll-edge-thickness']);
+    return Future(() => int.tryParse(thickness) ?? 100);
+  }
+
+  Future<void> sessionSetEdgeScrollEdgeThickness(
+      {required UuidValue sessionId, required int value, dynamic hint}) {
+    return Future(() => js.context.callMethod('setByName',
+        ['option:session', 'edge-scroll-edge-thickness', value.toString()]));
+  }
+
+  String sessionGetConnSessionId({required UuidValue sessionId, dynamic hint}) {
+    return js.context
+        .callMethod('getByName', ['conn_session_id', sessionId.toString()]);
+  }
+
   void dispose() {}
 }

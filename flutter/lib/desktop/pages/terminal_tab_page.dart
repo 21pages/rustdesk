@@ -4,6 +4,7 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
@@ -62,13 +63,15 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
   }) {
     final tabKey = '${peerId}_$terminalId';
     final alias = bind.mainGetPeerOptionSync(id: peerId, key: 'alias');
-    final tabLabel = alias.isNotEmpty ? '$alias #$terminalId' : '$peerId #$terminalId';
+    final tabLabel =
+        alias.isNotEmpty ? '$alias #$terminalId' : '$peerId #$terminalId';
     return TabInfo(
       key: tabKey,
       label: tabLabel,
       selectedIcon: selectedIcon,
       unselectedIcon: unselectedIcon,
       onTabCloseButton: () async {
+        await tryShowTabAuditDialog(tabKey);
         // Close the terminal session first
         final ffi = TerminalConnectionManager.getExistingConnection(peerId);
         if (ffi != null) {
@@ -409,6 +412,9 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
 
   Future<bool> handleWindowCloseButton() async {
     final connLength = tabController.state.value.tabs.length;
+    if (connLength == 1) {
+      await tryShowTabAuditDialog(tabController.state.value.tabs[0].key);
+    }
     if (connLength <= 1) {
       tabController.clear();
       return true;
@@ -424,6 +430,20 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
         tabController.clear();
       }
       return res;
+    }
+  }
+
+  Future<void> tryShowTabAuditDialog(String key) async {
+    try {
+      final page = tabController.state.value.tabs
+          .firstWhere((tab) => tab.key == key)
+          .page;
+      if (page is TerminalPage) {
+        final ffi = page.ffi;
+        await showConnEndAuditDialog(ffi);
+      }
+    } catch (e) {
+      debugPrint('Failed to show audit dialog: $e');
     }
   }
 }

@@ -6,6 +6,7 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
+import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -79,7 +80,10 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         label: peerId!,
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
-        onTabCloseButton: () => tabController.closeBy(peerId),
+        onTabCloseButton: () async {
+          await tryShowTabAuditDialog(peerId!);
+          tabController.closeBy(peerId!);
+        },
         page: ViewCameraPage(
           key: ValueKey(peerId),
           id: peerId!,
@@ -340,6 +344,9 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
 
   Future<bool> handleWindowCloseButton() async {
     final connLength = tabController.length;
+    if (connLength == 1) {
+      await tryShowTabAuditDialog(tabController.state.value.tabs[0].key);
+    }
     if (connLength <= 1) {
       tabController.clear();
       return true;
@@ -393,7 +400,10 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         label: id,
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
-        onTabCloseButton: () => tabController.closeBy(id),
+        onTabCloseButton: () async {
+          await tryShowTabAuditDialog(id);
+          tabController.closeBy(id);
+        },
         page: ViewCameraPage(
           key: ValueKey(id),
           id: id,
@@ -487,5 +497,19 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
     }
     _update_remote_count();
     return returnValue;
+  }
+
+  Future<void> tryShowTabAuditDialog(String id) async {
+    try {
+      final page = tabController.state.value.tabs
+          .firstWhere((tab) => tab.key == id)
+          .page;
+      if (page is ViewCameraPage) {
+        final ffi = page.ffi;
+        await showConnEndAuditDialog(ffi);
+      }
+    } catch (e) {
+      debugPrint('Failed to show audit dialog: $e');
+    }
   }
 }

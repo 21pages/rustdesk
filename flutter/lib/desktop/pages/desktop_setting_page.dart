@@ -561,6 +561,12 @@ class _GeneralState extends State<_General> {
       children.add(_OptionCheckBox(
           context, 'Allow linux headless', kOptionAllowLinuxHeadless));
     }
+    children.add(_OptionCheckBox(
+      context,
+      'conn-end-note-option-tip',
+      kOptionAllowAskForNoteAtEndOfConnection,
+      isServer: false,
+    ));
     return _Card(title: 'Other', children: children);
   }
 

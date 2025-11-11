@@ -80,7 +80,10 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         label: peerId!,
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
-        onTabCloseButton: () => tabController.closeBy(peerId),
+        onTabCloseButton: () async {
+          await tryShowTabAuditDialog(peerId!);
+          tabController.closeBy(peerId!);
+        },
         page: RemotePage(
           key: ValueKey(peerId),
           id: peerId!,
@@ -316,7 +319,8 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           translate('Close'),
           style: style,
         ),
-        proc: () {
+        proc: () async {
+          await tryShowTabAuditDialog(key);
           tabController.closeBy(key);
           cancelFunc();
         },
@@ -369,6 +373,9 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
 
   Future<bool> handleWindowCloseButton() async {
     final connLength = tabController.length;
+    if (connLength == 1) {
+      await tryShowTabAuditDialog(tabController.state.value.tabs[0].key);
+    }
     if (connLength <= 1) {
       tabController.clear();
       return true;
@@ -423,7 +430,10 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         label: id,
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
-        onTabCloseButton: () => tabController.closeBy(id),
+        onTabCloseButton: () async {
+          await tryShowTabAuditDialog(id);
+          tabController.closeBy(id);
+        },
         page: RemotePage(
           key: ValueKey(id),
           id: id,
@@ -516,5 +526,19 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     }
     _update_remote_count();
     return returnValue;
+  }
+
+  Future<void> tryShowTabAuditDialog(String id) async {
+    try {
+      final page = tabController.state.value.tabs
+          .firstWhere((tab) => tab.key == id)
+          .page;
+      if (page is RemotePage) {
+        final ffi = page.ffi;
+        await showConnEndAuditDialog(ffi);
+      }
+    } catch (e) {
+      debugPrint('Failed to show audit dialog: $e');
+    }
   }
 }
