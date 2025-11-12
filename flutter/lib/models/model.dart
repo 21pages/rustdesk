@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bot_toast/bot_toast.dart';
+import 'package:http/http.dart' as http;
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -933,11 +934,21 @@ class FfiModel with ChangeNotifier {
   /// Show a message box with [type], [title] and [text].
   showMsgBox(SessionID sessionId, String type, String title, String text,
       String link, bool hasRetry, OverlayDialogManager dialogManager,
-      {bool? hasCancel}) {
-    msgBox(sessionId, type, title, text, link, dialogManager,
-        hasCancel: hasCancel,
-        reconnect: hasRetry ? reconnect : null,
-        reconnectTimeout: hasRetry ? _reconnects : null);
+      {bool? hasCancel}) async {
+    final showNoteEdit = parent.target != null &&
+        allowAskForNoteAtEndOfConnection(parent.target, false) &&
+        title == "Connection Error" &&
+        !hasRetry;
+    if (showNoteEdit) {
+      await showConnEndAuditDialogCloseCanceled(
+          ffi: parent.target!, type: type, title: title, text: text);
+      closeConnection();
+    } else {
+      msgBox(sessionId, type, title, text, link, dialogManager,
+          hasCancel: hasCancel,
+          reconnect: hasRetry ? reconnect : null,
+          reconnectTimeout: hasRetry ? _reconnects : null);
+    }
     _timer?.cancel();
     if (hasRetry) {
       _timer = Timer(Duration(seconds: _reconnects), () {
@@ -1064,9 +1075,88 @@ class FfiModel with ChangeNotifier {
     }
   }
 
+  void _queryAuditGuid(String peerId) async {
+    try {
+      if (parent.target?.auditGuid.isNotEmpty == true) {
+        debugPrint('Audit GUID already exists, skipping query');
+        return;
+      }
+      final url = bind.sessionGetAuditServerSync(
+          sessionId: sessionId, typ: "conn/active");
+      if (url.isEmpty) {
+        return;
+      }
+      final initialConnSessionId =
+          bind.sessionGetConnSessionId(sessionId: sessionId);
+      final connType = switch (parent.target?.connType) {
+        ConnType.defaultConn => 0,
+        ConnType.fileTransfer => 1,
+        ConnType.portForward => 2,
+        ConnType.rdp => 2,
+        ConnType.viewCamera => 3,
+        ConnType.terminal => 4,
+        _ => 0,
+      };
+
+      const retryIntervals = [1, 1, 2, 2, 3, 3];
+
+      for (int attempt = 1; attempt <= retryIntervals.length; attempt++) {
+        final currentConnSessionId =
+            bind.sessionGetConnSessionId(sessionId: sessionId);
+        if (currentConnSessionId != initialConnSessionId) {
+          debugPrint('connSessionId changed, stopping audit GUID query');
+          return;
+        }
+
+        final fullUrl =
+            '$url?id=$peerId&session_id=$currentConnSessionId&conn_type=$connType';
+
+        debugPrint(
+            'Querying audit GUID, attempt $attempt/${retryIntervals.length}');
+        try {
+          var headers = getHttpHeaders();
+          headers['Content-Type'] = "application/json";
+
+          final response = await http.get(
+            Uri.parse(fullUrl),
+            headers: headers,
+          );
+
+          if (response.statusCode == 200) {
+            final guid = jsonDecode(response.body) as String?;
+            if (guid != null && guid.isNotEmpty) {
+              parent.target?.auditGuid = guid;
+              debugPrint('Successfully retrieved audit GUID');
+              return;
+            }
+          } else {
+            debugPrint(
+                'Failed to query audit GUID. Status: ${response.statusCode}, Body: ${response.body}');
+          }
+        } catch (e) {
+          debugPrint('Error querying audit GUID (attempt $attempt): $e');
+        }
+
+        if (attempt < retryIntervals.length) {
+          await Future.delayed(Duration(seconds: retryIntervals[attempt - 1]));
+        }
+      }
+
+      debugPrint(
+          'Failed to retrieve audit GUID after ${retryIntervals.length} attempts');
+    } catch (e) {
+      debugPrint('Error in _queryAuditGuid: $e');
+    }
+  }
+
   /// Handle the peer info event based on [evt].
   handlePeerInfo(Map<String, dynamic> evt, String peerId, bool isCache) async {
     parent.target?.chatModel.voiceCallStatus.value = VoiceCallStatus.notStarted;
+
+    // Query audit GUID when not loading from cache
+    if (!isCache) {
+      _queryAuditGuid(peerId);
+    }
 
     // This call is to ensuer the keyboard mode is updated depending on the peer version.
     parent.target?.inputModel.updateKeyboardMode();
@@ -2096,9 +2186,8 @@ class CanvasModel with ChangeNotifier {
   Future<void> updateScrollStyle() async {
     final style = await bind.sessionGetScrollStyle(sessionId: sessionId);
 
-    _scrollStyle = style != null
-        ? ScrollStyle.fromString(style)
-        : ScrollStyle.scrollauto;
+    _scrollStyle =
+        style != null ? ScrollStyle.fromString(style) : ScrollStyle.scrollauto;
 
     if (_scrollStyle != ScrollStyle.scrollauto) {
       _resetScroll();
@@ -2108,7 +2197,8 @@ class CanvasModel with ChangeNotifier {
   }
 
   Future<void> initializeEdgeScrollEdgeThickness() async {
-    final savedValue = await bind.sessionGetEdgeScrollEdgeThickness(sessionId: sessionId);
+    final savedValue =
+        await bind.sessionGetEdgeScrollEdgeThickness(sessionId: sessionId);
 
     if (savedValue != null) {
       _edgeScrollEdgeThickness = savedValue;
@@ -2223,12 +2313,12 @@ class CanvasModel with ChangeNotifier {
 
   (Vector2, Vector2) getScrollInfo() {
     final scrollPixel = Vector2(
-      _horizontal.hasClients ? _horizontal.position.pixels : 0,
-      _vertical.hasClients ? _vertical.position.pixels : 0);
+        _horizontal.hasClients ? _horizontal.position.pixels : 0,
+        _vertical.hasClients ? _vertical.position.pixels : 0);
 
     final max = Vector2(
-      _horizontal.hasClients ? _horizontal.position.maxScrollExtent : 0,
-      _vertical.hasClients ? _vertical.position.maxScrollExtent : 0);
+        _horizontal.hasClients ? _horizontal.position.maxScrollExtent : 0,
+        _vertical.hasClients ? _vertical.position.maxScrollExtent : 0);
 
     return (scrollPixel, max);
   }
@@ -3311,6 +3401,7 @@ class FFI {
   var connType = ConnType.defaultConn;
   var closed = false;
   var auditNote = '';
+  var auditGuid = '';
 
   /// dialogManager use late to ensure init after main page binding [globalKey]
   late final dialogManager = OverlayDialogManager();
@@ -3402,6 +3493,7 @@ class FFI {
   }) {
     closed = false;
     auditNote = '';
+    auditGuid = '';
     if (isMobile) mobileReset();
     assert(
         (!(isPortForward && isViewCamera)) &&

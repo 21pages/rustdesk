@@ -355,7 +355,10 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn save_edge_scroll_edge_thickness(&self, value: i32) {
-        self.lc.write().unwrap().save_edge_scroll_edge_thickness(value);
+        self.lc
+            .write()
+            .unwrap()
+            .save_edge_scroll_edge_thickness(value);
     }
 
     pub fn save_flutter_option(&self, k: String, v: String) {
@@ -562,9 +565,6 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn get_audit_server(&self, typ: String) -> String {
-        if LocalConfig::get_option("access_token").is_empty() {
-            return "".to_owned();
-        }
         crate::get_audit_server(
             Config::get_option("api-server"),
             Config::get_option("custom-rendezvous-server"),
