@@ -937,7 +937,7 @@ class FfiModel with ChangeNotifier {
       {bool? hasCancel}) async {
     final showNoteEdit = parent.target != null &&
         allowAskForNoteAtEndOfConnection(parent.target, false) &&
-        title == "Connection Error" &&
+        (title == "Connection Error" || type == "restarting") &&
         !hasRetry;
     if (showNoteEdit) {
       await showConnEndAuditDialogCloseCanceled(
@@ -969,8 +969,27 @@ class FfiModel with ChangeNotifier {
         onCancel: closeConnection);
   }
 
-  void showRelayHintDialog(SessionID sessionId, String type, String title,
-      String text, OverlayDialogManager dialogManager, String peerId) {
+  Future<void> showRelayHintDialog(
+      SessionID sessionId,
+      String type,
+      String title,
+      String text,
+      OverlayDialogManager dialogManager,
+      String peerId) async {
+    var hint = "\n\n${translate('relay_hint_tip')}";
+
+    if (parent.target != null &&
+        allowAskForNoteAtEndOfConnection(parent.target, false) &&
+        pi.isSet.isTrue) {
+      await showConnEndAuditDialogCloseCanceled(
+          ffi: parent.target!,
+          type: type,
+          title: title,
+          text: "${translate(text)}$hint");
+      closeConnection();
+      return;
+    }
+
     dialogManager.show(tag: '$sessionId-$type', (setState, close, context) {
       onClose() {
         closeConnection();
@@ -979,7 +998,6 @@ class FfiModel with ChangeNotifier {
 
       final style =
           ElevatedButton.styleFrom(backgroundColor: Colors.green[700]);
-      var hint = "\n\n${translate('relay_hint_tip')}";
       if (text.contains("10054") || text.contains("104")) {
         hint = "";
       }
