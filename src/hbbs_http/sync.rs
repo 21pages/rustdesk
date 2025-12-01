@@ -96,7 +96,9 @@ async fn start_hbbs_sync_async() {
             _ = interval.tick() => {
                 let url = heartbeat_url();
                 let id = Config::get_id();
+                log::info!("heartbeat url: {}", url);
                 if url.is_empty() {
+                    log::info!("heartbeat url is empty");
                     *PRO.lock().unwrap() = false;
                     continue;
                 }
@@ -274,10 +276,19 @@ async fn start_hbbs_sync_async() {
 }
 
 fn heartbeat_url() -> String {
+    log::info!(
+        "heartbeat_url api-server: {}",
+        Config::get_option("api-server")
+    );
+    log::info!(
+        "heartbeat_url custom-rendezvous-server: {}",
+        Config::get_option("custom-rendezvous-server")
+    );
     let url = crate::common::get_api_server(
         Config::get_option("api-server"),
         Config::get_option("custom-rendezvous-server"),
     );
+    log::info!("heartbeat_url url: {}", url);
     if url.is_empty() || url.contains("rustdesk.com") {
         return "".to_owned();
     }
