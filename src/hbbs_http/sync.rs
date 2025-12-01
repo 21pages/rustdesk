@@ -96,6 +96,7 @@ async fn start_hbbs_sync_async() {
             _ = interval.tick() => {
                 let url = heartbeat_url();
                 let id = Config::get_id();
+                log::info!("heartbeat url: {}", url);
                 if url.is_empty() {
                     *PRO.lock().unwrap() = false;
                     continue;

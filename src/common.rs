@@ -1092,7 +1092,13 @@ pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
     format!("{}/api/audit/{}", url, typ)
 }
 
-pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
+pub async fn post_request_exec(url: String, body: String, header: &str) -> ResultType<String> {
+    log::info!(
+        "post_request_exec url: {}, body: {}, header: {}",
+        url,
+        body,
+        header
+    );
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
@@ -1107,7 +1113,14 @@ pub async fn post_request(url: String, body: String, header: &str) -> ResultType
         danger_accept_invalid_cert,
     )
     .await?;
+    log::info!("post_request_exec response status: {:?}", response.status());
     Ok(response.text().await?)
+}
+
+pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
+    let res = post_request_exec(url, body, header).await;
+    log::info!("post_request result: {:?}", res);
+    res
 }
 
 #[async_recursion]
