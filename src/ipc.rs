@@ -23,10 +23,16 @@ pub use clipboard::ClipboardFile;
 use hbb_common::{
     allow_err, bail, bytes,
     bytes_codec::BytesCodec,
-    config::{self, keys::OPTION_ALLOW_WEBSOCKET, Config, Config2},
+    config::{
+        self,
+        keys::{self, OPTION_ALLOW_WEBSOCKET},
+        Config, Config2,
+    },
     futures::StreamExt as _,
     futures_util::sink::SinkExt,
-    log, password_security as password, timeout,
+    log, password_security as password,
+    rendezvous_proto::policy,
+    timeout,
     tokio::{
         self,
         io::{AsyncRead, AsyncWrite},
@@ -291,6 +297,7 @@ pub enum Data {
     SocksWs(Option<Box<(Option<config::Socks5Server>, String)>>),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Whiteboard((String, crate::whiteboard::CustomEvent)),
+    Policy(String),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -769,6 +776,28 @@ async fn handle(data: Data, stream: &mut Connection) {
                 // Port forward session count is only a get value.
             }
         },
+        Data::Policy(policy) => {
+            let mut value = String::new();
+            if policy == keys::OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION {
+                let allow_remote_modify = match crate::server::get_remote_modify_policy() {
+                    policy::Switch::FORCE_DISABLED => false,
+                    policy::Switch::FORCE_ENABLED => true,
+                    policy::Switch::USE_CLIENT_CONFIG => {
+                        // Check if remote modification can be blocked based on client config
+                        let access_mode = Config::get_option(keys::OPTION_ACCESS_MODE);
+                        let custom_access_mode = access_mode != "full" && access_mode != "view";
+                        let allow_remote_modify_option =
+                            Config::get_bool_option(keys::OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION);
+                        // If access_mode is "view" or (access_mode is custom and option is disabled), block remote modify
+                        let can_be_blocked = access_mode == "view"
+                            || (custom_access_mode && !allow_remote_modify_option);
+                        !can_be_blocked
+                    }
+                };
+                value = allow_remote_modify.to_string();
+            }
+            allow_err!(stream.send(&Data::Policy(value)).await);
+        }
         _ => {}
     }
 }
@@ -1006,6 +1035,17 @@ async fn set_data_async(data: &Data) -> ResultType<()> {
     let mut c = connect(1000, "").await?;
     c.send(data).await?;
     Ok(())
+}
+
+#[tokio::main(flavor = "current_thread")]
+pub async fn get_data(data: &Data) -> ResultType<Option<Data>> {
+    get_data_async(data).await
+}
+
+async fn get_data_async(data: &Data) -> ResultType<Option<Data>> {
+    let mut c = connect(1000, "").await?;
+    c.send(data).await?;
+    c.next_timeout(1000).await
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -1450,6 +1490,16 @@ pub async fn set_install_option(k: String, v: String) -> ResultType<()> {
         c.next_timeout(1000).await.ok();
     }
     Ok(())
+}
+
+pub fn get_policy(policy: &str) -> ResultType<String> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    match get_data(&Data::Policy(policy.to_string()))? {
+        Some(Data::Policy(value)) => Ok(value),
+        _ => Ok(String::new()),
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    Ok(String::new())
 }
 
 #[cfg(test)]

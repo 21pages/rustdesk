@@ -1541,3 +1541,14 @@ pub fn clear_trusted_devices() {
 pub fn max_encrypt_len() -> usize {
     hbb_common::config::ENCRYPT_MAX_LEN
 }
+
+#[cfg(not(any(target_os = "ios")))]
+pub fn allow_remote_config_modification() -> bool {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return false;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    match ipc::get_policy(OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION) {
+        Ok(value) => value == "true",
+        Err(_) => false,
+    }
+}
