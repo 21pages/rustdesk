@@ -33,6 +33,7 @@ use hbb_common::{
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
     password_security::{self as password, ApproveMode},
+    rendezvous_proto::policy::Switch,
     sha2::{Digest, Sha256},
     sleep, timeout,
     tokio::{
@@ -72,6 +73,7 @@ lazy_static::lazy_static! {
     static ref SESSIONS: Arc::<Mutex<HashMap<SessionKey, Session>>> = Default::default();
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
+    static ref POLICIES: Arc::<Mutex<Vec<(i32, Policy)>>> = Default::default();
     static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
 }
@@ -227,6 +229,7 @@ pub struct Connection {
     restart: bool,
     recording: bool,
     block_input: bool,
+    policy: Option<Policy>,
     last_test_delay: Option<Instant>,
     network_delay: u32,
     lock_after_session_end: bool,
@@ -345,8 +348,10 @@ impl Connection {
         stream: super::Stream,
         id: i32,
         server: super::ServerPtrWeak,
+        policy: Option<Policy>,
     ) {
         let _raii_id = raii::ConnectionID::new(id);
+        let _raii_policy_id = raii::PolicyID::new(id, &policy);
         let hash = Hash {
             salt: Config::get_salt(),
             challenge: Config::get_auto_password(6),
@@ -397,14 +402,15 @@ impl Connection {
             port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
-            keyboard: Connection::permission("enable-keyboard"),
-            clipboard: Connection::permission("enable-clipboard"),
-            audio: Connection::permission("enable-audio"),
+            keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &policy),
+            clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &policy),
+            audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &policy),
             // to-do: make sure is the option correct here
-            file: Connection::permission(keys::OPTION_ENABLE_FILE_TRANSFER),
-            restart: Connection::permission("enable-remote-restart"),
-            recording: Connection::permission("enable-record-session"),
-            block_input: Connection::permission("enable-block-input"),
+            file: Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &policy),
+            restart: Self::permission(keys::OPTION_ENABLE_REMOTE_RESTART, &policy),
+            recording: Self::permission(keys::OPTION_ENABLE_RECORD_SESSION, &policy),
+            block_input: Self::permission(keys::OPTION_ENABLE_BLOCK_INPUT, &policy),
+            policy,
             last_test_delay: None,
             network_delay: 0,
             lock_after_session_end: false,
@@ -472,6 +478,7 @@ impl Connection {
             sleep(1.).await;
             return;
         }
+
         #[cfg(target_os = "android")]
         start_channel(rx_to_cm, tx_from_cm);
         #[cfg(target_os = "android")]
@@ -850,7 +857,7 @@ impl Connection {
                     match data {
                         #[cfg(all(target_os = "windows", feature = "flutter"))]
                         ipc::Data::PrinterData(data) => {
-                            if config::Config::get_bool_option(config::keys::OPTION_ENABLE_REMOTE_PRINTER) {
+                            if Self::permission(keys::OPTION_ENABLE_REMOTE_PRINTER, &conn.policy) {
                                 conn.send_printer_request(data).await;
                             } else {
                                 conn.send_remote_printing_disallowed().await;
@@ -1665,7 +1672,7 @@ impl Connection {
                 let mut s = s.write().unwrap();
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 let _h = try_start_record_cursor_pos();
-                self.auto_disconnect_timer = Self::get_auto_disconenct_timer();
+                self.auto_disconnect_timer = self.get_auto_disconenct_timer();
                 s.try_add_primay_video_service();
                 s.add_connection(self.inner.clone(), &noperms);
             }
@@ -1770,6 +1777,7 @@ impl Connection {
             recording: self.recording,
             block_input: self.block_input,
             from_switch: self.from_switch,
+            enforce_approve_mode: self.enforce_approve_mode(),
         });
     }
 
@@ -1865,7 +1873,7 @@ impl Connection {
     }
 
     fn validate_password(&mut self) -> bool {
-        if password::temporary_enabled() {
+        if self.temporary_password_enabled() {
             let password = password::temporary_password();
             if self.validate_one_password(password.clone()) {
                 raii::AuthedConnID::update_or_insert_session(
@@ -1876,7 +1884,7 @@ impl Connection {
                 return true;
             }
         }
-        if password::permanent_enabled() {
+        if self.permanent_password_enabled() {
             if self.validate_one_password(Config::get_permanent_password()) {
                 return true;
             }
@@ -1907,7 +1915,8 @@ impl Connection {
         false
     }
 
-    pub fn permission(enable_prefix_option: &str) -> bool {
+    #[inline]
+    fn local_permission(enable_prefix_option: &str) -> bool {
         #[cfg(feature = "flutter")]
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
@@ -1922,6 +1931,96 @@ impl Connection {
             enable_prefix_option,
             &Config::get_option(enable_prefix_option),
         )
+    }
+
+    fn permission(enable_prefix_option: &str, policy: &Option<Policy>) -> bool {
+        match policy {
+            Some(policy) => {
+                let server_policy = match enable_prefix_option {
+                    keys::OPTION_ENABLE_KEYBOARD => Some(policy.keyboard),
+                    keys::OPTION_ENABLE_REMOTE_PRINTER => Some(policy.remote_printer),
+                    keys::OPTION_ENABLE_CLIPBOARD => Some(policy.clipboard),
+                    keys::OPTION_ENABLE_FILE_TRANSFER => Some(policy.file), // todo
+                    keys::OPTION_ENABLE_AUDIO => Some(policy.audio),
+                    keys::OPTION_ENABLE_CAMERA => Some(policy.camera),
+                    keys::OPTION_ENABLE_TERMINAL => Some(policy.terminal),
+                    keys::OPTION_ENABLE_TUNNEL => Some(policy.tunnel),
+                    keys::OPTION_ENABLE_REMOTE_RESTART => Some(policy.restart),
+                    keys::OPTION_ENABLE_RECORD_SESSION => Some(policy.recording),
+                    keys::OPTION_ENABLE_BLOCK_INPUT => Some(policy.block_input),
+                    _ => None,
+                };
+                match server_policy {
+                    Some(policy_value) => match policy_value.enum_value().ok() {
+                        Some(Switch::DISABLE) => false,
+                        Some(Switch::ENABLE) => true,
+                        Some(Switch::SWITCH_NONE) | None => {
+                            Self::local_permission(enable_prefix_option)
+                        }
+                    },
+                    None => Self::local_permission(enable_prefix_option),
+                }
+            }
+            None => Self::local_permission(enable_prefix_option),
+        }
+    }
+
+    fn approve_mode(&self) -> ApproveMode {
+        let local = password::approve_mode();
+        match self.policy.as_ref() {
+            Some(policy) => match policy.approve_mode.enum_value().ok() {
+                Some(policy::ApproveMode::APPROVE_MODE_NONE) | None => local,
+                Some(policy::ApproveMode::PASSWORD) => ApproveMode::Password,
+                Some(policy::ApproveMode::CLICK) => ApproveMode::Click,
+                Some(policy::ApproveMode::BOTH) => ApproveMode::Both,
+            },
+            None => local,
+        }
+    }
+
+    fn enforce_approve_mode(&self) -> String {
+        match self.policy.as_ref() {
+            Some(policy) => match policy.approve_mode.enum_value().ok() {
+                Some(policy::ApproveMode::APPROVE_MODE_NONE) | None => "".to_owned(),
+                Some(policy::ApproveMode::PASSWORD) => "password".to_owned(),
+                Some(policy::ApproveMode::CLICK) => "click".to_owned(),
+                Some(policy::ApproveMode::BOTH) => "password-click".to_owned(),
+            },
+            None => "".to_owned(),
+        }
+    }
+
+    fn temporary_password_enabled(&self) -> bool {
+        match self.policy.as_ref() {
+            Some(policy) => match policy.verification_method.enum_value().ok() {
+                Some(policy::VerificationMethod::ONLY_USE_TEMPORARY_PASSWORD) => true,
+                Some(policy::VerificationMethod::ONLY_USE_PERMANENT_PASSWORD) => false,
+                Some(policy::VerificationMethod::USE_BOTH_PASSWORDS) => true,
+                Some(policy::VerificationMethod::VERIFICATION_METHOD_NONE) | None => {
+                    password::temporary_enabled()
+                }
+            },
+            None => password::temporary_enabled(),
+        }
+    }
+
+    fn permanent_password_enabled(&self) -> bool {
+        match self.policy.as_ref() {
+            Some(policy) => match policy.verification_method.enum_value().ok() {
+                Some(policy::VerificationMethod::ONLY_USE_PERMANENT_PASSWORD) => true,
+                Some(policy::VerificationMethod::ONLY_USE_TEMPORARY_PASSWORD) => false,
+                Some(policy::VerificationMethod::USE_BOTH_PASSWORDS) => true,
+                Some(policy::VerificationMethod::VERIFICATION_METHOD_NONE) | None => {
+                    password::permanent_enabled()
+                }
+            },
+            None => password::permanent_enabled(),
+        }
+    }
+
+    fn has_valid_password(&self) -> bool {
+        self.temporary_password_enabled() && !password::temporary_password().is_empty()
+            || self.permanent_password_enabled() && !Config::get_permanent_password().is_empty()
     }
 
     fn update_codec_on_login(&self) {
@@ -2019,7 +2118,7 @@ impl Connection {
             }
             match lr.union {
                 Some(login_request::Union::FileTransfer(ft)) => {
-                    if !Connection::permission(keys::OPTION_ENABLE_FILE_TRANSFER) {
+                    if !Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &self.policy) {
                         self.send_login_error("No permission of file transfer")
                             .await;
                         sleep(1.).await;
@@ -2028,7 +2127,7 @@ impl Connection {
                     self.file_transfer = Some((ft.dir, ft.show_hidden));
                 }
                 Some(login_request::Union::ViewCamera(_vc)) => {
-                    if !Connection::permission(keys::OPTION_ENABLE_CAMERA) {
+                    if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.policy) {
                         self.send_login_error("No permission of viewing camera")
                             .await;
                         sleep(1.).await;
@@ -2037,7 +2136,7 @@ impl Connection {
                     self.view_camera = true;
                 }
                 Some(login_request::Union::Terminal(terminal)) => {
-                    if !Connection::permission(keys::OPTION_ENABLE_TERMINAL) {
+                    if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.policy) {
                         self.send_login_error("No permission of terminal").await;
                         sleep(1.).await;
                         return false;
@@ -2085,7 +2184,7 @@ impl Connection {
                     }
                 }
                 Some(login_request::Union::PortForward(mut pf)) => {
-                    if !Connection::permission("enable-tunnel") {
+                    if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.policy) {
                         self.send_login_error("No permission of IP tunneling").await;
                         sleep(1.).await;
                         return false;
@@ -2170,10 +2269,10 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
-            } else if (password::approve_mode() == ApproveMode::Click
+            } else if (self.approve_mode() == ApproveMode::Click
                 && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon()))
-                || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
+                || self.approve_mode() == ApproveMode::Both && !self.has_valid_password()
             {
                 self.try_start_cm(lr.my_id, lr.my_name, false);
                 if hbb_common::get_version_number(&lr.version)
@@ -4094,15 +4193,34 @@ impl Connection {
         self.pressed_modifiers.clear();
     }
 
-    fn get_auto_disconenct_timer() -> Option<(Instant, u64)> {
-        if Config::get_option("allow-auto-disconnect") == "Y" {
-            let mut minute: u64 = Config::get_option("auto-disconnect-timeout")
+    fn get_auto_disconenct_timer(&self) -> Option<(Instant, u64)> {
+        let local_option = Config::get_bool_option(keys::OPTION_ALLOW_AUTO_DISCONNECT);
+        let option = match self.policy.as_ref() {
+            Some(policy) => match policy.auto_disconnect.enum_value().ok() {
+                Some(Switch::DISABLE) => false,
+                Some(Switch::ENABLE) => true,
+                Some(Switch::SWITCH_NONE) | None => local_option,
+            },
+            None => local_option,
+        };
+        if option {
+            let local_minute = Config::get_option(keys::OPTION_AUTO_DISCONNECT_TIMEOUT)
                 .parse()
                 .unwrap_or(10);
+            let mut minute = match self.policy.as_ref() {
+                Some(policy) => {
+                    if policy.auto_disconnect_timeout > 0 {
+                        policy.auto_disconnect_timeout
+                    } else {
+                        local_minute
+                    }
+                }
+                None => local_minute,
+            };
             if minute == 0 {
                 minute = 10;
             }
-            Some((Instant::now(), minute))
+            Some((Instant::now(), minute as u64))
         } else {
             None
         }
@@ -4822,6 +4940,7 @@ pub struct AuthedConn {
 mod raii {
     // ALIVE_CONNS: all connections, including unauthorized connections
     // AUTHED_CONNS: all authorized connections
+    // POLICIES: all non-None policies
 
     use super::*;
     pub struct ConnectionID(i32);
@@ -5012,6 +5131,74 @@ mod raii {
             }
         }
     }
+
+    pub struct PolicyID {
+        id: i32,
+        policy: Policy,
+    }
+
+    impl Drop for PolicyID {
+        fn drop(&mut self) {
+            let mut policies_lock = POLICIES.lock().unwrap();
+            policies_lock.retain(|(conn_id, _)| *conn_id != self.id);
+        }
+    }
+
+    impl PolicyID {
+        pub fn new(id: i32, policy: &Option<Policy>) -> Option<Self> {
+            let Some(policy) = policy else {
+                return None;
+            };
+            POLICIES.lock().unwrap().push((id, policy.clone()));
+            Some(Self {
+                id,
+                policy: policy.clone(),
+            })
+        }
+    }
+}
+
+pub fn get_allow_remote_config_modification() -> bool {
+    let get_policy = || {
+        let policies = POLICIES.lock().unwrap();
+        let mut has_disabled = false;
+        let mut has_enabled = false;
+
+        for (_, policy) in policies.iter() {
+            match policy.remote_modify.enum_value() {
+                Ok(Switch::DISABLE) => has_disabled = true,
+                Ok(Switch::ENABLE) => has_enabled = true,
+                _ => {}
+            }
+        }
+
+        // If any policy has force disabled, return disabled (highest priority)
+        if has_disabled {
+            return Switch::DISABLE;
+        }
+        // If any policy has force enabled, return enabled
+        if has_enabled {
+            return Switch::ENABLE;
+        }
+        // Otherwise return none
+        Switch::SWITCH_NONE
+    };
+    let remote_modify = match get_policy() {
+        Switch::DISABLE => false,
+        Switch::ENABLE => true,
+        Switch::SWITCH_NONE => {
+            // Check if remote modification can be blocked based on client config
+            let access_mode = Config::get_option(keys::OPTION_ACCESS_MODE);
+            let custom_access_mode = access_mode != "full" && access_mode != "view";
+            let allow_remote_modify_option =
+                Config::get_bool_option(keys::OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION);
+            // If access_mode is "view" or (access_mode is custom and option is disabled), block remote modify
+            let can_be_blocked =
+                access_mode == "view" || (custom_access_mode && !allow_remote_modify_option);
+            !can_be_blocked
+        }
+    };
+    remote_modify
 }
 
 mod test {

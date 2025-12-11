@@ -1012,7 +1012,7 @@ class _CmControlPanel extends StatelessWidget {
     final showElevation = canElevate &&
         model.showElevation &&
         client.type_() == ClientType.remote;
-    final showAccept = model.approveMode != 'password';
+    final showAccept = model.showAcceptButton(client);
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [

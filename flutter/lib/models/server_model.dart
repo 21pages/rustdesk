@@ -613,12 +613,12 @@ class ServerModel with ChangeNotifier {
   void showLoginDialog(Client client) {
     showClientDialog(
       client,
-      client.isFileTransfer 
-          ? "Transfer file" 
+      client.isFileTransfer
+          ? "Transfer file"
           : client.isViewCamera
               ? "View camera"
-              : client.isTerminal 
-                  ? "Terminal" 
+              : client.isTerminal
+                  ? "Terminal"
                   : "Share screen",
       'Do you accept?',
       'android_new_connection_tip',
@@ -677,7 +677,7 @@ class ServerModel with ChangeNotifier {
         ),
         actions: [
           dialogButton("Dismiss", onPressed: cancel, isOutline: true),
-          if (approveMode != 'password')
+          if (showAcceptButton(client))
             dialogButton("Accept", onPressed: submit),
         ],
         onSubmit: submit,
@@ -805,6 +805,17 @@ class ServerModel with ChangeNotifier {
       }
     }
   }
+
+  bool showAcceptButton(Client client) {
+    if (client.enforceApproveMode == 'password') {
+      return false;
+    } else if (client.enforceApproveMode == 'click' ||
+        client.enforceApproveMode == 'password-click') {
+      return true;
+    } else {
+      return approveMode != 'password';
+    }
+  }
 }
 
 enum ClientType {
@@ -833,6 +844,7 @@ class Client {
   bool blockInput = false;
   bool disconnected = false;
   bool fromSwitch = false;
+  String enforceApproveMode = "";
   bool inVoiceCall = false;
   bool incomingVoiceCall = false;
 
@@ -860,6 +872,7 @@ class Client {
     blockInput = json['block_input'];
     disconnected = json['disconnected'];
     fromSwitch = json['from_switch'];
+    enforceApproveMode = json['enforce_approve_mode'];
     inVoiceCall = json['in_voice_call'];
     incomingVoiceCall = json['incoming_voice_call'];
   }
@@ -883,6 +896,7 @@ class Client {
     data['block_input'] = blockInput;
     data['disconnected'] = disconnected;
     data['from_switch'] = fromSwitch;
+    data['enforce_approve_mode'] = enforceApproveMode;
     data['in_voice_call'] = inVoiceCall;
     data['incoming_voice_call'] = incomingVoiceCall;
     return data;

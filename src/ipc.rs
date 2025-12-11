@@ -23,10 +23,16 @@ pub use clipboard::ClipboardFile;
 use hbb_common::{
     allow_err, bail, bytes,
     bytes_codec::BytesCodec,
-    config::{self, keys::OPTION_ALLOW_WEBSOCKET, Config, Config2},
+    config::{
+        self,
+        keys::{self, OPTION_ALLOW_WEBSOCKET},
+        Config, Config2,
+    },
     futures::StreamExt as _,
     futures_util::sink::SinkExt,
-    log, password_security as password, timeout,
+    log, password_security as password,
+    rendezvous_proto::policy,
+    timeout,
     tokio::{
         self,
         io::{AsyncRead, AsyncWrite},
@@ -206,6 +212,7 @@ pub enum Data {
         recording: bool,
         block_input: bool,
         from_switch: bool,
+        enforce_approve_mode: String,
     },
     ChatMessage {
         text: String,
@@ -291,6 +298,7 @@ pub enum Data {
     SocksWs(Option<Box<(Option<config::Socks5Server>, String)>>),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Whiteboard((String, crate::whiteboard::CustomEvent)),
+    PolicyStatus(Option<crate::ui_interface::PolicyStatus>),
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -769,6 +777,16 @@ async fn handle(data: Data, stream: &mut Connection) {
                 // Port forward session count is only a get value.
             }
         },
+        Data::PolicyStatus(_) => {
+            let remote_modify = crate::server::get_allow_remote_config_modification();
+            allow_err!(
+                stream
+                    .send(&Data::PolicyStatus(Some(
+                        crate::ui_interface::PolicyStatus { remote_modify }
+                    )))
+                    .await
+            );
+        }
         _ => {}
     }
 }

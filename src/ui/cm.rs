@@ -35,7 +35,8 @@ impl InvokeUiCM for SciterHandler {
                 client.file,
                 client.restart,
                 client.recording,
-                client.block_input
+                client.block_input,
+                client.enforce_approve_mode.clone()
             ),
         );
     }
