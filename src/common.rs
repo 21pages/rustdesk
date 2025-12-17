@@ -1207,6 +1207,7 @@ async fn get_http_response_async(
     danger_accept_invalid_cert: Option<bool>,
     original_danger_accept_invalid_cert: Option<bool>,
 ) -> ResultType<reqwest::Response> {
+    log::info!("=====DEBUG===== get_http_response_async is called, tls_type is {:?}, danger_accept_invalid_cert is {:?}, original_danger_accept_invalid_cert is {:?}", tls_type, danger_accept_invalid_cert, original_danger_accept_invalid_cert);
     let http_client = create_http_client_async(
         tls_type.unwrap_or(TlsType::Rustls),
         danger_accept_invalid_cert.unwrap_or(false),
@@ -1245,7 +1246,10 @@ async fn get_http_response_async(
                 );
                 Ok(resp)
             }
-            Err(e) => Err(anyhow!("{:?}", e)),
+            Err(e) => {
+                log::error!("=====DEBUG===== get_http_response_async error 1: {:?}", e);
+                Err(anyhow!("{:?}", e))
+            }
         }
     } else {
         if let Some(b) = body.clone() {
@@ -1266,6 +1270,7 @@ async fn get_http_response_async(
                 Ok(resp)
             }
             Err(e) => {
+                log::error!("=====DEBUG===== get_http_response_async error 2: {:?}", e);
                 if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
                     if danger_accept_invalid_cert.is_none() {
                         log::warn!(
@@ -1298,6 +1303,7 @@ async fn get_http_response_async(
                         .await
                     }
                 } else {
+                    log::error!("=====DEBUG===== get_http_response_async error 3: {:?}", e);
                     Err(anyhow!("{:?}", e))
                 }
             }
@@ -1316,6 +1322,11 @@ pub async fn http_request_sync(
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
     let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
+    log::info!(
+        "=====DEBUG===== get_cached_tls_type is {:?}, danger_accept_invalid_cert is {:?}",
+        tls_type,
+        danger_accept_invalid_cert
+    );
     let response = get_http_response_async(
         &url,
         tls_url,
@@ -1327,6 +1338,10 @@ pub async fn http_request_sync(
         danger_accept_invalid_cert,
     )
     .await?;
+    log::info!(
+        "=====DEBUG===== response status code is {:?}",
+        response.status().as_u16(),
+    );
     // Serialize response headers
     let mut response_headers = serde_json::map::Map::new();
     for (key, value) in response.headers() {
@@ -1338,6 +1353,7 @@ pub async fn http_request_sync(
 
     let status_code = response.status().as_u16();
     let response_body = response.text().await?;
+    log::info!("=====DEBUG===== response body is {:?}", response_body);
 
     // Construct the JSON object
     let mut result = serde_json::map::Map::new();
