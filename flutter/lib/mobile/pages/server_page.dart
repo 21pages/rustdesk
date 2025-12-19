@@ -148,7 +148,8 @@ class _DropDownAction extends StatelessWidget {
             }
 
             if (value == kUsePermanentPassword &&
-                (await bind.mainGetPermanentPassword()).isEmpty) {
+                (await bind.mainGetPermanentPassword()).isEmpty &&
+                !bind.mainHasPresetHashedPassword()) {
               setPasswordDialog(notEmptyCallback: callback);
             } else {
               callback();

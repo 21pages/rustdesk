@@ -262,5 +262,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("disable-udp-tip", "Controls whether to use TCP only.\nWhen this option enabled, RustDesk will not use UDP 21116 any more, TCP 21116 will be used instead."),
         ("server-oss-not-support-tip", "NOTE: RustDesk server OSS doesn't include this feature."),
         ("note-at-conn-end-tip", "Ask for note at end of connection"),
+        ("currently_using_preset_password", "Currently using preset password"),
     ].iter().cloned().collect();
 }

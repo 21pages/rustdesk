@@ -348,7 +348,11 @@ impl Connection {
     ) {
         let _raii_id = raii::ConnectionID::new(id);
         let hash = Hash {
-            salt: Config::get_salt(),
+            salt: if Self::use_preset_salt() {
+                Config::get_preset_password_salt()
+            } else {
+                Config::get_salt()
+            },
             challenge: Config::get_auto_password(6),
             ..Default::default()
         };
@@ -1877,11 +1881,32 @@ impl Connection {
             }
         }
         if password::permanent_enabled() {
-            if self.validate_one_password(Config::get_permanent_password()) {
-                return true;
+            let password = Config::get_permanent_password();
+            if !password.is_empty() {
+                if self.validate_one_password(password) {
+                    return true;
+                }
+            } else if Self::use_preset_salt() {
+                if self.validate_prehashed_password(Config::get_preset_hashed_password()) {
+                    return true;
+                }
             }
         }
         false
+    }
+
+    fn validate_prehashed_password(&self, hash_bytes: Vec<u8>) -> bool {
+        if hash_bytes.is_empty() {
+            return false;
+        }
+        let mut hasher = Sha256::new();
+        hasher.update(&hash_bytes);
+        hasher.update(&self.hash.challenge);
+        hasher.finalize()[..] == self.lr.password[..]
+    }
+
+    fn use_preset_salt() -> bool {
+        Config::has_preset_hashed_password()
     }
 
     fn is_recent_session(&mut self, tfa: bool) -> bool {

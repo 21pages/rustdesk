@@ -1163,6 +1163,10 @@ class RustdeskImpl {
     return Future.value('');
   }
 
+  bool mainHasPresetHashedPassword({dynamic hint}) {
+    return false;
+  }
+
   Future<String> mainGetFingerprint({dynamic hint}) {
     return Future.value('');
   }

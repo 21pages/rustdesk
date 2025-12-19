@@ -1909,6 +1909,23 @@ pub fn read_custom_client(config: &str) {
             true,
         );
     }
+    if let Some(hashed_password) = data.remove("password-hashed") {
+        if let Some(hashed_password) = hashed_password.as_str() {
+            if let Ok(bytes) = decode64(hashed_password) {
+                if bytes.len() == 32 {
+                    if let Some(salt) = data.remove("password-salt") {
+                        if let Some(salt) = salt.as_str() {
+                            if !salt.is_empty() {
+                                *config::PRESET_HASHED_PASSWORD.write().unwrap() = bytes;
+                                *config::PRESET_PASSWORD_SALT.write().unwrap() = salt.to_owned();
+                                data.remove("password");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     for (k, v) in data {
         if let Some(v) = v.as_str() {
             config::HARD_SETTINGS

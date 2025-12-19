@@ -1633,6 +1633,10 @@ pub fn main_get_permanent_password() -> String {
     ui_interface::permanent_password()
 }
 
+pub fn main_has_preset_hashed_password() -> SyncReturn<bool> {
+    SyncReturn(config::Config::has_preset_hashed_password())
+}
+
 pub fn main_get_fingerprint() -> String {
     get_fingerprint()
 }

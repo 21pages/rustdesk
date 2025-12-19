@@ -18,6 +18,7 @@ void _showError() {
 
 void setPermanentPasswordDialog(OverlayDialogManager dialogManager) async {
   final pw = await bind.mainGetPermanentPassword();
+  final hasPresetPassword = pw.isEmpty && bind.mainHasPresetHashedPassword();
   final p0 = TextEditingController(text: pw);
   final p1 = TextEditingController(text: pw);
   var validateLength = false;
@@ -46,6 +47,17 @@ void setPermanentPasswordDialog(OverlayDialogManager dialogManager) async {
       content: Form(
           autovalidateMode: AutovalidateMode.onUserInteraction,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (hasPresetPassword)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Text(
+                  translate("currently_using_preset_password"),
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
             TextFormField(
               autofocus: true,
               obscureText: true,

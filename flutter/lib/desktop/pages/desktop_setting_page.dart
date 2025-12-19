@@ -1081,7 +1081,8 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                                     passwordValues[passwordKeys
                                         .indexOf(kUsePermanentPassword)] &&
                                 (await bind.mainGetPermanentPassword())
-                                    .isEmpty) {
+                                    .isEmpty &&
+                                !bind.mainHasPresetHashedPassword()) {
                               setPasswordDialog(notEmptyCallback: callback);
                             } else {
                               await callback();

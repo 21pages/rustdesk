@@ -903,6 +903,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
 void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
   final pw = await bind.mainGetPermanentPassword();
+  final hasPresetPassword = pw.isEmpty && bind.mainHasPresetHashedPassword();
   final p0 = TextEditingController(text: pw);
   final p1 = TextEditingController(text: pw);
   var errMsg0 = "";
@@ -955,6 +956,17 @@ void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (hasPresetPassword)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Text(
+                  translate("currently_using_preset_password"),
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
             const SizedBox(
               height: 8.0,
             ),
