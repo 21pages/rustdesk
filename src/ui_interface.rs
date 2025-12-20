@@ -809,11 +809,16 @@ pub fn http_request(url: String, method: String, body: Option<String>, header: S
     std::thread::spawn(move || {
         let res = match crate::http_request_sync(url.clone(), method, body, header) {
             Err(err) => {
-                log::error!("{}", err);
+                log::error!("====DEBUG====ui_interface http_request error: {}", err);
                 err.to_string()
             }
             Ok(text) => text,
         };
+        log::info!(
+            "====DEBUG====ui_interface http_request after http_request_sync: url: {}, res: {}",
+            url,
+            res
+        );
         current_request.lock().unwrap().insert(url, res);
     });
 }

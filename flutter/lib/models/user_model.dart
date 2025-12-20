@@ -154,10 +154,14 @@ class UserModel {
 
   /// throw [RequestException]
   Future<LoginResponse> login(LoginRequest loginRequest) async {
+    logToRust("login request: $loginRequest");
     final url = await bind.mainGetApiServer();
+    logToRust("login url: $url");
+    logToRust("login request toJson: ${loginRequest.toJson()}");
+    logToRust("login body: ${jsonEncode(loginRequest.toJson())}");
     final resp = await http.post(Uri.parse('$url/api/login'),
         body: jsonEncode(loginRequest.toJson()));
-
+    logToRust("login resp: $resp");
     final Map<String, dynamic> body;
     try {
       body = jsonDecode(decode_http_response(resp));

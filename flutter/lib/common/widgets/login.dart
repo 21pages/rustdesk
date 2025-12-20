@@ -499,7 +499,9 @@ Future<bool?> loginDialog() async {
             uuid: await bind.mainGetUuid(),
             autoLogin: true,
             type: HttpType.kAuthReqTypeAccount));
+        logToRust("login response: $resp");
         await handleLoginResponse(resp, true, close);
+        logToRust("login response handled");
       } on RequestException catch (err) {
         passwordMsg = translate(err.cause);
       } catch (err) {

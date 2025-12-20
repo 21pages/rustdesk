@@ -1102,7 +1102,15 @@ pub fn main_get_api_server() -> String {
 }
 
 pub fn main_http_request(url: String, method: String, body: Option<String>, header: String) {
-    http_request(url, method, body, header)
+    log::info!(
+        "====DEBUG====main_http_request: url: {}, method: {}, body: {:?}, header: {}",
+        url,
+        method,
+        body,
+        header
+    );
+    http_request(url, method, body, header);
+    log::info!("====DEBUG====main_http_request after http_request");
 }
 
 pub fn main_get_local_option(key: String) -> SyncReturn<String> {
@@ -2760,6 +2768,8 @@ pub fn main_set_common(_key: String, _value: String) {
         crate::hbbs_http::downloader::remove(&_value);
     } else if _key == "cancel-downloader" {
         crate::hbbs_http::downloader::cancel(&_value);
+    } else if _key == "log" {
+        log::info!("====DEBUG===={}", _value);
     }
 }
 

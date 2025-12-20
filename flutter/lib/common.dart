@@ -4025,3 +4025,7 @@ String decode_http_response(http.Response resp) {
 bool peerTabShowNote(PeerTabIndex peerTabIndex) {
   return peerTabIndex == PeerTabIndex.ab || peerTabIndex == PeerTabIndex.group;
 }
+
+void logToRust(String message) {
+  bind.mainSetCommon(key: "log", value: message);
+}

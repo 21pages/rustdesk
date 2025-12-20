@@ -1225,6 +1225,10 @@ async fn get_http_response_async(
             http_client = http_client.header(key, value.as_str().unwrap_or_default());
         }
     } else {
+        log::error!(
+            "====DEBUG====http_request_sync header information parsing failed! header: {}",
+            header
+        );
         return Err(anyhow!("HTTP header information parsing failed!"));
     }
 
@@ -1245,7 +1249,13 @@ async fn get_http_response_async(
                 );
                 Ok(resp)
             }
-            Err(e) => Err(anyhow!("{:?}", e)),
+            Err(e) => {
+                log::error!(
+                    "====DEBUG====http_request_sync send request fail 1 ! error: {:?}",
+                    e
+                );
+                Err(anyhow!("{:?}", e))
+            }
         }
     } else {
         if let Some(b) = body.clone() {
@@ -1266,6 +1276,10 @@ async fn get_http_response_async(
                 Ok(resp)
             }
             Err(e) => {
+                log::error!(
+                    "====DEBUG====http_request_sync send request failed 2 ! error: {:?}",
+                    e
+                );
                 if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
                     if danger_accept_invalid_cert.is_none() {
                         log::warn!(
@@ -1298,6 +1312,10 @@ async fn get_http_response_async(
                         .await
                     }
                 } else {
+                    log::error!(
+                        "====DEBUG====http_request_sync send request failed 3 ! error: {:?}",
+                        e
+                    );
                     Err(anyhow!("{:?}", e))
                 }
             }
@@ -1316,6 +1334,13 @@ pub async fn http_request_sync(
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
     let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
+    log::info!(
+        "====DEBUG====http_request_sync: url: {}, method: {}, body: {:?}, header: {}",
+        url,
+        method,
+        body,
+        header
+    );
     let response = get_http_response_async(
         &url,
         tls_url,
@@ -1327,6 +1352,10 @@ pub async fn http_request_sync(
         danger_accept_invalid_cert,
     )
     .await?;
+    log::info!(
+        "====DEBUG====http_request_sync response status: {}",
+        response.status()
+    );
     // Serialize response headers
     let mut response_headers = serde_json::map::Map::new();
     for (key, value) in response.headers() {
@@ -1338,6 +1367,10 @@ pub async fn http_request_sync(
 
     let status_code = response.status().as_u16();
     let response_body = response.text().await?;
+    log::info!(
+        "====DEBUG====http_request_sync response body: {}",
+        response_body
+    );
 
     // Construct the JSON object
     let mut result = serde_json::map::Map::new();

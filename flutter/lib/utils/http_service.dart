@@ -34,14 +34,20 @@ class HttpService {
 
     String headersJson = jsonEncode(headers);
     String methodName = method.toString().split('.').last;
+    logToRust(
+        "http service sendRequest: $url, $methodName, $body, $headersJson");
     await bind.mainHttpRequest(
         url: url.toString(),
         method: methodName.toLowerCase(),
         body: body,
         header: headersJson);
 
+    logToRust("http service sendRequest after mainHttpRequest");
     var resJson = await _pollForResponse(url.toString());
-    return _parseHttpResponse(resJson);
+    logToRust("http service sendRequest after pollForResponse: $resJson");
+    var res = _parseHttpResponse(resJson);
+    logToRust("http service sendRequest after parseHttpResponse: $res");
+    return res;
   }
 
   Future<http.Response> _pollFlutterHttp(
@@ -73,28 +79,37 @@ class HttpService {
   }
 
   Future<String> _pollForResponse(String url) async {
+    logToRust("http service _pollForResponse: $url");
     String? responseJson = " ";
     while (responseJson == " ") {
       responseJson = await bind.mainGetHttpStatus(url: url);
       if (responseJson == null) {
+        logToRust("http service _pollForResponse responseJson is null");
         throw Exception('The HTTP request failed');
       }
       if (responseJson == " ") {
         await Future.delayed(const Duration(milliseconds: 100));
       }
     }
+    logToRust("http service _pollForResponse responseJson: $responseJson");
     return responseJson!;
   }
 
   http.Response _parseHttpResponse(String responseJson) {
     try {
+      logToRust("http service _parseHttpResponse: $responseJson");
       var parsedJson = jsonDecode(responseJson);
+      logToRust("http service _parseHttpResponse parsedJson: $parsedJson");
       String body = parsedJson['body'];
+      logToRust("http service _parseHttpResponse body: $body");
       Map<String, String> headers = {};
+      logToRust(
+          "http service _parseHttpResponse headers: ${parsedJson['headers']}");
       for (var key in parsedJson['headers'].keys) {
         headers[key] = parsedJson['headers'][key];
       }
       int statusCode = parsedJson['status_code'];
+      logToRust("http service _parseHttpResponse statusCode: $statusCode");
       return http.Response(body, statusCode, headers: headers);
     } catch (e) {
       print('Failed to parse response\n$responseJson\nError:\n$e');
