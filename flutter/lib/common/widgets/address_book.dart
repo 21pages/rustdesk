@@ -48,6 +48,8 @@ class _AddressBookState extends State<AddressBook> {
         } else {
           return Column(
             children: [
+              // Debug log area for diagnosing _personalAbGuid issues
+              _buildDebugLogArea(),
               // NOT use Offstage to wrap LinearProgressIndicator
               if (gFFI.abModel.currentAbLoading.value &&
                   gFFI.abModel.currentAbEmpty)
@@ -71,6 +73,63 @@ class _AddressBookState extends State<AddressBook> {
           );
         }
       });
+
+  Widget _buildDebugLogArea() {
+    return Obx(() {
+      final logs = gFFI.abModel.debugLogs;
+      if (logs.isEmpty) return const SizedBox.shrink();
+      return Container(
+        height: 120,
+        margin: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[700]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Debug Logs (legacyMode=${gFFI.abModel.legacyMode.value})',
+                  style: const TextStyle(
+                    color: Colors.amber,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.clear, size: 16, color: Colors.grey),
+                  onPressed: () => gFFI.abModel.clearLogs(),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+            const Divider(height: 8, color: Colors.grey),
+            Expanded(
+              child: ListView.builder(
+                itemCount: logs.length,
+                itemBuilder: (context, index) {
+                  return Text(
+                    logs[index],
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 10,
+                      fontFamily: 'monospace',
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
 
   Widget _buildAddressBookLandscape() {
     return Row(
