@@ -202,7 +202,7 @@ class AbModel {
       final api = "${await bind.mainGetApiServer()}/api/ab/settings";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
-      final resp = await http.post(Uri.parse(api), headers: headers);
+      final resp = await http.post(Uri.parse(api), headers: headers, body: '{}');
       if (resp.statusCode == 404) {
         debugPrint("HTTP 404, api server doesn't support shared address book");
         return false;
@@ -228,7 +228,7 @@ class AbModel {
       final api = "${await bind.mainGetApiServer()}/api/ab/personal";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
-      final resp = await http.post(Uri.parse(api), headers: headers);
+      final resp = await http.post(Uri.parse(api), headers: headers, body: '{}');
       if (resp.statusCode == 404) {
         debugPrint("HTTP 404, current api server is legacy mode");
         return false;
@@ -269,7 +269,7 @@ class AbModel {
             });
         var headers = getHttpHeaders();
         headers['Content-Type'] = "application/json";
-        final resp = await http.post(uri, headers: headers);
+        final resp = await http.post(uri, headers: headers, body: '{}');
         Map<String, dynamic> json =
             _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
         if (json.containsKey('error')) {
@@ -1406,7 +1406,7 @@ class Ab extends BaseAb {
             });
         var headers = getHttpHeaders();
         headers['Content-Type'] = "application/json";
-        final resp = await http.post(uri, headers: headers);
+        final resp = await http.post(uri, headers: headers, body: '{}');
         statusCode = resp.statusCode;
         Map<String, dynamic> json =
             _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
@@ -1463,7 +1463,7 @@ class Ab extends BaseAb {
       );
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
-      final resp = await http.post(uri, headers: headers);
+      final resp = await http.post(uri, headers: headers, body: '{}');
       statusCode = resp.statusCode;
       List<dynamic> json =
           _jsonDecodeRespList(decode_http_response(resp), resp.statusCode);
