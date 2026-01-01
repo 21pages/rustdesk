@@ -202,6 +202,7 @@ class AbModel {
       final api = "${await bind.mainGetApiServer()}/api/ab/settings";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
+      headers['Content-Length'] = '0';
       final resp = await http.post(Uri.parse(api), headers: headers);
       if (resp.statusCode == 404) {
         debugPrint("HTTP 404, api server doesn't support shared address book");
@@ -228,6 +229,7 @@ class AbModel {
       final api = "${await bind.mainGetApiServer()}/api/ab/personal";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
+      headers['Content-Length'] = '0';
       final resp = await http.post(Uri.parse(api), headers: headers);
       if (resp.statusCode == 404) {
         debugPrint("HTTP 404, current api server is legacy mode");
@@ -269,6 +271,7 @@ class AbModel {
             });
         var headers = getHttpHeaders();
         headers['Content-Type'] = "application/json";
+        headers['Content-Length'] = '0';
         final resp = await http.post(uri, headers: headers);
         Map<String, dynamic> json =
             _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
@@ -1406,6 +1409,7 @@ class Ab extends BaseAb {
             });
         var headers = getHttpHeaders();
         headers['Content-Type'] = "application/json";
+        headers['Content-Length'] = '0';
         final resp = await http.post(uri, headers: headers);
         statusCode = resp.statusCode;
         Map<String, dynamic> json =
@@ -1463,6 +1467,7 @@ class Ab extends BaseAb {
       );
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
+      headers['Content-Length'] = '0';
       final resp = await http.post(uri, headers: headers);
       statusCode = resp.statusCode;
       List<dynamic> json =
