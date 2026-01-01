@@ -192,6 +192,8 @@ impl VideoFrameController {
     }
 }
 
+
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VideoSource {
     Monitor,
@@ -719,8 +721,11 @@ fn run(vs: VideoService) -> ResultType<()> {
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
         let res = match c.frame(spf) {
             Ok(frame) => {
-                repeat_encode_counter = 0;
-                if frame.valid() {
+                if !frame.valid() {
+                    Err(std::io::Error::new(WouldBlock, "empty frame"))
+                } else {
+                    repeat_encode_counter = 0;
+
                     let screenshot = SCREENSHOTS.lock().unwrap().remove(&display_idx);
                     if let Some(mut screenshot) = screenshot {
                         let restore_vram = screenshot.restore_vram;
@@ -779,16 +784,18 @@ fn run(vs: VideoService) -> ResultType<()> {
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
                     send_counter += 1;
-                }
-                #[cfg(windows)]
-                {
-                    #[cfg(feature = "vram")]
-                    if try_gdi == 1 && !c.is_gdi() {
-                        VRamEncoder::set_fallback_gdi(sp.name(), false);
+
+                    #[cfg(windows)]
+                    {
+                        #[cfg(feature = "vram")]
+                        if try_gdi == 1 && !c.is_gdi() {
+                            VRamEncoder::set_fallback_gdi(sp.name(), false);
+                        }
+                        try_gdi = 0;
                     }
-                    try_gdi = 0;
+
+                    Ok(())
                 }
-                Ok(())
             }
             Err(err) => Err(err),
         };
@@ -1417,3 +1424,5 @@ fn handle_screenshot(screenshot: Screenshot, msg: String, w: usize, h: usize, da
         log::error!("Failed to send screenshot, {}", e);
     }
 }
+
+
