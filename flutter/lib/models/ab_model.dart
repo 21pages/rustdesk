@@ -58,6 +58,15 @@ class AbModel {
   String? _personalAbGuid;
   RxBool legacyMode = false.obs;
 
+  // Debug logs for diagnosing _personalAbGuid issues
+  final RxList<String> debugLogs = <String>[].obs;
+  void _addLog(String msg) {
+    final timestamp = DateTime.now().toString().substring(11, 23);
+    debugLogs.add('[$timestamp] $msg');
+  }
+
+  void clearLogs() => debugLogs.clear();
+
   // Only handles peers add/remove
   final Map<String, VoidCallback> _peerIdUpdateListeners = {};
 
@@ -121,18 +130,35 @@ class AbModel {
 
   Future<void> _pullAb(
       {required ForcePullAb? force, required bool quiet}) async {
-    if (bind.isDisableAb()) return;
-    if (!gFFI.userModel.isLogin) return;
-    if (gFFI.userModel.networkError.isNotEmpty) return;
-    if (force == null && listInitialized && current.initialized) return;
+    _addLog('_pullAb called: force=$force, quiet=$quiet');
+    if (bind.isDisableAb()) {
+      _addLog('AB is disabled, returning');
+      return;
+    }
+    if (!gFFI.userModel.isLogin) {
+      _addLog('User not logged in, returning');
+      return;
+    }
+    if (gFFI.userModel.networkError.isNotEmpty) {
+      _addLog('Network error: ${gFFI.userModel.networkError}');
+      return;
+    }
+    if (force == null && listInitialized && current.initialized) {
+      _addLog('Already initialized, returning');
+      return;
+    }
     debugPrint("pullAb, force: $force, quiet: $quiet");
+    _addLog('listInitialized=$listInitialized, force=$force');
     if (!listInitialized || force == ForcePullAb.listAndCurrent) {
       try {
         // Read personal guid every time to avoid upgrading the server without closing the main window
         _personalAbGuid = null;
+        _addLog('Calling _getPersonalAbGuid...');
         await _getPersonalAbGuid();
+        _addLog('After _getPersonalAbGuid: _personalAbGuid=$_personalAbGuid');
         // Determine legacy mode based on whether _personalAbGuid is null
         legacyMode.value = _personalAbGuid == null;
+        _addLog('legacyMode set to ${legacyMode.value}');
         if (!legacyMode.value && _maxPeerOneAb == 0) {
           await _getAbSettings();
         }
@@ -226,26 +252,34 @@ class AbModel {
 
   Future<bool> _getPersonalAbGuid() async {
     try {
-      final api = "${await bind.mainGetApiServer()}/api/ab/personal";
+      final apiServer = await bind.mainGetApiServer();
+      final api = "$apiServer/api/ab/personal";
+      _addLog('_getPersonalAbGuid: api=$api');
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
       headers['Content-Length'] = '0';
       final resp = await http.post(Uri.parse(api), headers: headers);
       if (resp.statusCode == 404) {
         debugPrint("HTTP 404, current api server is legacy mode");
+        _addLog('_getPersonalAbGuid: 404 - legacy mode');
         return false;
       }
       Map<String, dynamic> json =
           _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
+      _addLog('_getPersonalAbGuid: json keys=${json.keys.toList()}');
       if (json.containsKey('error')) {
+        _addLog('_getPersonalAbGuid: error=${json['error']}');
         throw json['error'];
       }
       if (resp.statusCode != 200) {
+        _addLog('_getPersonalAbGuid: HTTP ${resp.statusCode}');
         throw 'HTTP ${resp.statusCode}';
       }
       _personalAbGuid = json['guid'];
+      _addLog('_getPersonalAbGuid: got guid=$_personalAbGuid');
       return true;
     } catch (err) {
+      _addLog('_getPersonalAbGuid: exception=$err');
       debugPrint('get personal ab err: ${err.toString()}');
     }
     return false;
