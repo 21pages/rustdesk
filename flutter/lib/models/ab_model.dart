@@ -58,6 +58,15 @@ class AbModel {
   String? _personalAbGuid;
   RxBool legacyMode = false.obs;
 
+  // Debug logs for diagnosing _personalAbGuid issues
+  final RxList<String> debugLogs = <String>[].obs;
+  void _addLog(String msg) {
+    final timestamp = DateTime.now().toString().substring(11, 23);
+    debugLogs.add('[$timestamp] $msg');
+  }
+
+  void clearLogs() => debugLogs.clear();
+
   // Only handles peers add/remove
   final Map<String, VoidCallback> _peerIdUpdateListeners = {};
 
@@ -130,9 +139,12 @@ class AbModel {
       try {
         // Read personal guid every time to avoid upgrading the server without closing the main window
         _personalAbGuid = null;
+        _addLog('Calling _getPersonalAbGuid...');
         await _getPersonalAbGuid();
+        _addLog('After _getPersonalAbGuid: _personalAbGuid=$_personalAbGuid');
         // Determine legacy mode based on whether _personalAbGuid is null
         legacyMode.value = _personalAbGuid == null;
+        _addLog('legacyMode set to ${legacyMode.value}');
         if (!legacyMode.value && _maxPeerOneAb == 0) {
           await _getAbSettings();
         }
@@ -226,6 +238,7 @@ class AbModel {
 
   Future<bool> _getPersonalAbGuid() async {
     try {
+      _addLog('_getPersonalAbGuid');
       final api = "${await bind.mainGetApiServer()}/api/ab/personal";
       var headers = getHttpHeaders();
       headers['Content-Type'] = "application/json";
@@ -233,19 +246,25 @@ class AbModel {
       final resp = await http.post(Uri.parse(api), headers: headers);
       if (resp.statusCode == 404) {
         debugPrint("HTTP 404, current api server is legacy mode");
+        _addLog('_getPersonalAbGuid: 404 - legacy mode');
         return false;
       }
       Map<String, dynamic> json =
           _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
+      _addLog('_getPersonalAbGuid: json keys=${json.keys.toList()}');
       if (json.containsKey('error')) {
+        _addLog('_getPersonalAbGuid: error=${json['error']}');
         throw json['error'];
       }
       if (resp.statusCode != 200) {
+        _addLog('_getPersonalAbGuid: HTTP ${resp.statusCode}');
         throw 'HTTP ${resp.statusCode}';
       }
       _personalAbGuid = json['guid'];
+      _addLog('_getPersonalAbGuid: got guid=$_personalAbGuid');
       return true;
     } catch (err) {
+      _addLog('_getPersonalAbGuid: exception=$err');
       debugPrint('get personal ab err: ${err.toString()}');
     }
     return false;
