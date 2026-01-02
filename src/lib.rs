@@ -66,6 +66,7 @@ mod ui_interface;
 mod ui_session_interface;
 
 mod hbbs_http;
+pub mod http_proxy;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub mod clipboard_file;

@@ -1101,6 +1101,35 @@ pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
 }
 
 pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
+    // Check if HTTP proxy via TCP is enabled
+    if crate::http_proxy::is_http_proxy_enabled() {
+        // Extract path from URL for proxy request
+        let path = if let Ok(parsed) = url::Url::parse(&url) {
+            let mut path = parsed.path().to_string();
+            if let Some(query) = parsed.query() {
+                path.push('?');
+                path.push_str(query);
+            }
+            path
+        } else {
+            url.clone()
+        };
+
+        // Determine content type from header or default to application/json
+        let content_type = if !header.is_empty() && header.to_lowercase().contains("content-type") {
+            let tmp: Vec<&str> = header.split(": ").collect();
+            if tmp.len() == 2 {
+                tmp[1].to_string()
+            } else {
+                "application/json".to_string()
+            }
+        } else {
+            "application/json".to_string()
+        };
+
+        return crate::http_proxy::post_via_tcp(&path, body, &content_type).await;
+    }
+
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
