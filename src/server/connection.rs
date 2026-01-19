@@ -5017,11 +5017,15 @@ fn start_wakelock_thread() -> std::sync::mpsc::Sender<(usize, usize)> {
         loop {
             match rx.recv() {
                 Ok((conn_count, remote_count)) => {
-                    let keep_awake = config::Config::get_bool_option("keep-awake-during-incoming-sessions");
-                    if conn_count == 0 && wakeLock.is_some() {
-                        wakelock = None;
-                        log::info!("drop wakelock");
-                    } else if keep_awake {
+                    let keep_awake = config::Config::get_bool_option(
+                        keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS,
+                    );
+                    if conn_count == 0 || !keep_awake {
+                        if wakelock.is_some() {
+                            wakelock = None;
+                            log::info!("drop wakelock");
+                        }
+                    } else {
                         let mut display = remote_count > 0;
                         if let Some(_w) = wakelock.as_mut() {
                             if display != last_display {
