@@ -81,37 +81,13 @@ def get_admin_role_by_name(url, token, name):
     return None
 
 
-def add_admin_role(url, token, name, role_type, permissions, note=None, user_groups=None, device_groups=None, unassigned=None):
-    """Add a new admin role"""
-    print(f"Adding admin role '{name}'")
-    headers = {"Authorization": f"Bearer {token}"}
-
-    payload = {
-        "name": name,
-        "type": role_type,
-        "permissions": permissions if isinstance(permissions, list) else [permissions],
-    }
-
-    if note:
-        payload["note"] = note
-    if user_groups:
-        payload["user_groups"] = user_groups if isinstance(user_groups, list) else [user_groups]
-    if device_groups:
-        payload["device_groups"] = device_groups if isinstance(device_groups, list) else [device_groups]
-    if unassigned is not None:
-        payload["unassigned"] = unassigned
-
-    response = requests.post(f"{url}/api/admin-roles", headers=headers, json=payload)
-    return check_response(response)
-
-
-def update_admin_role(url, token, guid, name=None, note=None, permissions=None, user_groups=None, device_groups=None, unassigned=None):
+def update_admin_role(url, token, guid, name=None, note=None, user_groups=None, device_groups=None, unassigned=None):
     """Update an admin role"""
     print(f"Updating admin role {guid}")
     headers = {"Authorization": f"Bearer {token}"}
 
     # Check if at least one parameter is provided for update
-    update_params = [name, note, permissions, user_groups, device_groups, unassigned]
+    update_params = [name, note, user_groups, device_groups, unassigned]
     if all(param is None for param in update_params):
         return "Error: At least one parameter must be specified for update"
 
@@ -121,8 +97,6 @@ def update_admin_role(url, token, guid, name=None, note=None, permissions=None, 
         payload["name"] = name
     if note is not None:
         payload["note"] = note
-    if permissions is not None:
-        payload["permissions"] = permissions if isinstance(permissions, list) else [permissions]
     if user_groups is not None:
         payload["user_groups"] = user_groups if isinstance(user_groups, list) else [user_groups]
     if device_groups is not None:
@@ -176,7 +150,7 @@ def main():
     # Required arguments
     parser.add_argument(
         "command",
-        choices=["view", "get", "add", "update", "delete", "add-users", "remove-users"],
+        choices=["view", "get", "update", "delete", "add-users", "remove-users"],
         help="Command to execute",
     )
 
@@ -192,7 +166,6 @@ def main():
     parser.add_argument("--update-name", help="New admin role name (for update)")
     parser.add_argument("--note", help="Note field")
     parser.add_argument("--type", type=int, choices=[1, 2, 3], help="Role type (1=Global, 2=Individual, 3=GroupScoped)")
-    parser.add_argument("--permissions", help="Permissions (comma-separated list of permission IDs)")
     parser.add_argument("--user-groups", help="User groups (comma-separated list of group names)")
     parser.add_argument("--device-groups", help="Device groups (comma-separated list of group names)")
     parser.add_argument("--unassigned", type=lambda x: x.lower() == 'true', help="Unassigned devices flag (true/false)")
@@ -231,38 +204,6 @@ def main():
 
         print(json.dumps(role, indent=2))
 
-    elif args.command == "add":
-        # Add new admin role
-        if not args.name:
-            print("Error: --name is required for add command")
-            return
-        if not args.type:
-            print("Error: --type is required for add command")
-            return
-        if not args.permissions:
-            print("Error: --permissions is required for add command")
-            return
-
-        # Parse permissions
-        permissions = [int(p.strip()) for p in args.permissions.split(",")]
-
-        # Parse groups
-        user_groups = [g.strip() for g in args.user_groups.split(",")] if args.user_groups else None
-        device_groups = [g.strip() for g in args.device_groups.split(",")] if args.device_groups else None
-
-        result = add_admin_role(
-            args.url,
-            args.token,
-            args.name,
-            args.type,
-            permissions,
-            args.note,
-            user_groups,
-            device_groups,
-            args.unassigned
-        )
-        print(f"Result: {result}")
-
     elif args.command == "update":
         # Update admin role
         if not args.name and not args.guid:
@@ -283,11 +224,6 @@ def main():
         else:
             guid = args.guid
 
-        # Parse permissions if provided
-        permissions = None
-        if args.permissions:
-            permissions = [int(p.strip()) for p in args.permissions.split(",")]
-
         # Parse groups if provided
         user_groups = None
         if args.user_groups:
@@ -303,7 +239,6 @@ def main():
             guid,
             args.update_name,
             args.note,
-            permissions,
             user_groups,
             device_groups,
             args.unassigned

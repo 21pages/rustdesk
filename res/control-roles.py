@@ -81,34 +81,13 @@ def get_control_role_by_name(url, token, name):
     return None
 
 
-def add_control_role(url, token, name, note=None, proto=None):
-    """Add a new control role"""
-    print(f"Adding control role '{name}'")
-    headers = {"Authorization": f"Bearer {token}"}
-
-    payload = {
-        "name": name,
-    }
-
-    if note:
-        payload["note"] = note
-    if proto:
-        # proto is expected to be a base64-encoded protobuf bytes
-        payload["info"] = {
-            "proto": proto
-        }
-
-    response = requests.post(f"{url}/api/control-roles", headers=headers, json=payload)
-    return check_response(response)
-
-
-def update_control_role(url, token, guid, name=None, note=None, proto=None):
+def update_control_role(url, token, guid, name=None, note=None):
     """Update a control role"""
     print(f"Updating control role {guid}")
     headers = {"Authorization": f"Bearer {token}"}
 
     # Check if at least one parameter is provided for update
-    update_params = [name, note, proto]
+    update_params = [name, note]
     if all(param is None for param in update_params):
         return "Error: At least one parameter must be specified for update"
 
@@ -118,11 +97,6 @@ def update_control_role(url, token, guid, name=None, note=None, proto=None):
         payload["name"] = name
     if note is not None:
         payload["note"] = note
-    if proto is not None:
-        # proto is expected to be a base64-encoded protobuf bytes
-        payload["info"] = {
-            "proto": proto
-        }
 
     response = requests.put(f"{url}/api/control-roles/{guid}", headers=headers, json=payload)
     return check_response(response)
@@ -186,7 +160,7 @@ def main():
     # Required arguments
     parser.add_argument(
         "command",
-        choices=["view", "get", "add", "update", "delete", "enable", "disable", "assign-users", "remove-users"],
+        choices=["view", "get", "update", "delete", "enable", "disable", "assign-users", "remove-users"],
         help="Command to execute",
     )
 
@@ -201,7 +175,6 @@ def main():
     # Role management arguments
     parser.add_argument("--update-name", help="New control role name (for update)")
     parser.add_argument("--note", help="Note field")
-    parser.add_argument("--proto", help="Protobuf data (base64-encoded bytes)")
     parser.add_argument("--status", type=int, choices=[0, 1], help="Status filter (0=Disabled, 1=Enabled)")
 
     # User management arguments
@@ -238,21 +211,6 @@ def main():
 
         print(json.dumps(role, indent=2))
 
-    elif args.command == "add":
-        # Add new control role
-        if not args.name:
-            print("Error: --name is required for add command")
-            return
-
-        result = add_control_role(
-            args.url,
-            args.token,
-            args.name,
-            args.note,
-            args.proto
-        )
-        print(f"Result: {result}")
-
     elif args.command == "update":
         # Update control role
         if not args.name and not args.guid:
@@ -278,8 +236,7 @@ def main():
             args.token,
             guid,
             args.update_name,
-            args.note,
-            args.proto
+            args.note
         )
         print(f"Result: {result}")
 
