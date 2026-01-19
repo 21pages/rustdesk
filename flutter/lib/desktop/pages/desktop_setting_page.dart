@@ -481,6 +481,8 @@ class _GeneralState extends State<_General> {
             kOptionEnableConfirmClosingTabs,
             isServer: false),
       _OptionCheckBox(context, 'Adaptive bitrate', kOptionEnableAbr),
+      _OptionCheckBox(context, 'Allow realtime sync hostname change',
+          kOptionAllowRealtimeSyncHostnameChange),
       if (!isWeb) wallpaper(),
       if (!isWeb && !bind.isIncomingOnly()) ...[
         _OptionCheckBox(

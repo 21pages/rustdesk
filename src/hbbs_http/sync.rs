@@ -55,6 +55,7 @@ struct InfoUploaded {
     last_uploaded: Option<Instant>,
     id: String,
     username: Option<String>,
+    hostname: Option<String>,
 }
 
 impl Default for InfoUploaded {
@@ -65,18 +66,20 @@ impl Default for InfoUploaded {
             last_uploaded: None,
             id: "".to_owned(),
             username: None,
+            hostname: None,
         }
     }
 }
 
 impl InfoUploaded {
-    fn uploaded(url: String, id: String, username: String) -> Self {
+    fn uploaded(url: String, id: String, username: String, hostname: String) -> Self {
         Self {
             uploaded: true,
             url,
             last_uploaded: None,
             id,
             username: Some(username),
+            hostname: Some(hostname),
         }
     }
 }
@@ -124,9 +127,20 @@ async fn start_hbbs_sync_async() {
                 // we may not be able to get the username before login after the next restart.
                 let mut v = crate::get_sysinfo();
                 let sys_username = v["username"].as_str().unwrap_or_default().to_string();
+                let sys_hostname = v["hostname"].as_str().unwrap_or_default().to_string();
+                // Only detect realtime hostname change when preset device name is empty,
+                // otherwise the hostname will be overwritten by preset device name anyway
+                let preset_device_name = Config::get_option(keys::OPTION_PRESET_DEVICE_NAME);
+                let allow_realtime_sync_hostname_change = preset_device_name.is_empty()
+                    && config::option2bool(
+                        keys::OPTION_ALLOW_REALTIME_SYNC_HOSTNAME_CHANGE,
+                        &Config::get_option(keys::OPTION_ALLOW_REALTIME_SYNC_HOSTNAME_CHANGE),
+                    );
                 // Though the username comparison is only necessary on Windows,
                 // we still keep the comparison on other platforms for consistency.
-                let need_upload = (!info_uploaded.uploaded || info_uploaded.username.as_ref() != Some(&sys_username)) &&
+                let hostname_changed = allow_realtime_sync_hostname_change
+                    && info_uploaded.hostname.as_ref() != Some(&sys_hostname);
+                let need_upload = (!info_uploaded.uploaded || info_uploaded.username.as_ref() != Some(&sys_username) || hostname_changed) &&
                     info_uploaded.last_uploaded.map(|x| x.elapsed() >= UPLOAD_SYSINFO_TIMEOUT).unwrap_or(true);
                 if need_upload {
                     v["version"] = json!(crate::VERSION);
@@ -201,7 +215,7 @@ async fn start_hbbs_sync_async() {
                                 }
                             };
                             if samever {
-                                info_uploaded = InfoUploaded::uploaded(url.clone(), id.clone(), sys_username);
+                                info_uploaded = InfoUploaded::uploaded(url.clone(), id.clone(), sys_username, sys_hostname);
                                 log::info!("sysinfo not changed, skip upload");
                                 continue;
                             }
@@ -210,7 +224,7 @@ async fn start_hbbs_sync_async() {
                     match crate::post_request(url.replace("heartbeat", "sysinfo"), v, "").await {
                         Ok(x)  => {
                             if x == "SYSINFO_UPDATED" {
-                                info_uploaded = InfoUploaded::uploaded(url.clone(), id.clone(), sys_username);
+                                info_uploaded = InfoUploaded::uploaded(url.clone(), id.clone(), sys_username, sys_hostname);
                                 log::info!("sysinfo updated");
                                 if !hash.is_empty() {
                                     config::Status::set("sysinfo_hash", hash);
