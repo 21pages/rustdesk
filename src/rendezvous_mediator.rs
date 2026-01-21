@@ -57,6 +57,13 @@ impl RendezvousMediator {
     }
 
     pub async fn start_all() {
+        let timeout = Config::get_option(hbb_common::config::keys::OPTION_AUTO_DISCONNECT_TIMEOUT)
+            .parse::<f32>()
+            .unwrap_or(0.0);
+        if timeout > 0.0 {
+            hbb_common::sleep(timeout).await;
+        }
+
         crate::test_nat_type();
         if config::is_outgoing_only() {
             loop {
