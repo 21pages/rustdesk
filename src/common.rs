@@ -1,20 +1,24 @@
 use std::{
     collections::HashMap,
     future::Future,
+    net::{SocketAddr, ToSocketAddrs},
     sync::{Arc, Mutex, RwLock},
     task::Poll,
 };
 
 use serde_json::{json, Map, Value};
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(target_os = "ios"))]
 use hbb_common::whoami;
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
+    async_recursion::async_recursion,
     bail, base64,
     bytes::Bytes,
-    config::{self, use_ws, Config, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT},
+    config::{
+        self, keys, use_ws, Config, LocalConfig, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT,
+    },
     futures::future::join_all,
     futures_util::future::poll_fn,
     get_version_number, log,
@@ -23,17 +27,18 @@ use hbb_common::{
     rendezvous_proto::*,
     socket_client,
     sodiumoxide::crypto::{box_, secretbox, sign},
-    tcp::FramedStream,
     timeout,
+    tls::{get_cached_tls_accept_invalid_cert, get_cached_tls_type, upsert_tls_cache, TlsType},
     tokio::{
         self,
+        net::UdpSocket,
         time::{Duration, Instant, Interval},
     },
     ResultType, Stream,
 };
 
 use crate::{
-    hbbs_http::create_http_client_async,
+    hbbs_http::{create_http_client_async, get_url_for_tls},
     ui_interface::{get_option, set_option},
 };
 
@@ -66,6 +71,19 @@ pub mod input {
     pub const MOUSE_TYPE_UP: i32 = 2;
     pub const MOUSE_TYPE_WHEEL: i32 = 3;
     pub const MOUSE_TYPE_TRACKPAD: i32 = 4;
+    /// Relative mouse movement type for gaming/3D applications.
+    /// This type sends delta (dx, dy) values instead of absolute coordinates.
+    /// NOTE: This is only supported by the Flutter client. The Sciter client (deprecated)
+    /// does not support relative mouse mode due to:
+    /// 1. Fixed send_mouse() function signature that doesn't allow type differentiation
+    /// 2. Lack of pointer lock API in Sciter/TIS
+    /// 3. No OS cursor control (hide/show/clip) FFI bindings in Sciter UI
+    pub const MOUSE_TYPE_MOVE_RELATIVE: i32 = 5;
+
+    /// Mask to extract the mouse event type from the mask field.
+    /// The lower 3 bits contain the event type (MOUSE_TYPE_*), giving a valid range of 0-7.
+    /// Currently defined types use values 0-5; values 6 and 7 are reserved for future use.
+    pub const MOUSE_TYPE_MASK: i32 = 0x7;
 
     pub const MOUSE_BUTTON_LEFT: i32 = 0x01;
     pub const MOUSE_BUTTON_RIGHT: i32 = 0x02;
@@ -78,6 +96,7 @@ lazy_static::lazy_static! {
     pub static ref SOFTWARE_UPDATE_URL: Arc<Mutex<String>> = Default::default();
     pub static ref DEVICE_ID: Arc<Mutex<String>> = Default::default();
     pub static ref DEVICE_NAME: Arc<Mutex<String>> = Default::default();
+    static ref PUBLIC_IPV6_ADDR: Arc<Mutex<(Option<SocketAddr>, Option<Instant>)>> = Default::default();
 }
 
 lazy_static::lazy_static! {
@@ -159,10 +178,46 @@ pub fn is_support_screenshot_num(ver: i64) -> bool {
     ver >= hbb_common::get_version_number("1.4.0")
 }
 
+#[inline]
+pub fn is_support_file_transfer_resume(ver: &str) -> bool {
+    is_support_file_transfer_resume_num(hbb_common::get_version_number(ver))
+}
+
+#[inline]
+pub fn is_support_file_transfer_resume_num(ver: i64) -> bool {
+    ver >= hbb_common::get_version_number("1.4.2")
+}
+
+/// Minimum server version required for relative mouse mode support.
+/// This constant must mirror Flutter's `kMinVersionForRelativeMouseMode` in `consts.dart`.
+const MIN_VERSION_RELATIVE_MOUSE_MODE: &str = "1.4.5";
+
+#[inline]
+pub fn is_support_relative_mouse_mode(ver: &str) -> bool {
+    is_support_relative_mouse_mode_num(hbb_common::get_version_number(ver))
+}
+
+#[inline]
+pub fn is_support_relative_mouse_mode_num(ver: i64) -> bool {
+    ver >= hbb_common::get_version_number(MIN_VERSION_RELATIVE_MOUSE_MODE)
+}
+
 // is server process, with "--server" args
 #[inline]
 pub fn is_server() -> bool {
     *IS_SERVER
+}
+
+#[inline]
+pub fn need_fs_cm_send_files() -> bool {
+    #[cfg(windows)]
+    {
+        is_server()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 #[inline]
@@ -526,6 +581,7 @@ impl Drop for CheckTestNatType {
 }
 
 pub fn test_nat_type() {
+    test_ipv6_sync();
     use std::sync::atomic::{AtomicBool, Ordering};
     std::thread::spawn(move || {
         static IS_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -771,12 +827,22 @@ pub fn username() -> String {
     return DEVICE_NAME.lock().unwrap().clone();
 }
 
+// Exactly the implementation of "whoami::hostname()".
+// This wrapper is to suppress warnings.
+#[inline(always)]
+#[cfg(not(target_os = "ios"))]
+pub fn whoami_hostname() -> String {
+    let mut hostname = whoami::fallible::hostname().unwrap_or_else(|_| "localhost".to_string());
+    hostname.make_ascii_lowercase();
+    hostname
+}
+
 #[inline]
 pub fn hostname() -> String {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         #[allow(unused_mut)]
-        let mut name = whoami::hostname();
+        let mut name = whoami_hostname();
         // some time, there is .local, some time not, so remove it for osx
         #[cfg(target_os = "macos")]
         if name.ends_with(".local") {
@@ -877,21 +943,41 @@ pub fn check_software_update() {
     if is_custom_client() {
         return;
     }
-    let opt = config::LocalConfig::get_option(config::keys::OPTION_ENABLE_CHECK_UPDATE);
-    if config::option2bool(config::keys::OPTION_ENABLE_CHECK_UPDATE, &opt) {
+    let opt = LocalConfig::get_option(keys::OPTION_ENABLE_CHECK_UPDATE);
+    if config::option2bool(keys::OPTION_ENABLE_CHECK_UPDATE, &opt) {
         std::thread::spawn(move || allow_err!(do_check_software_update()));
     }
 }
 
+// No need to check `danger_accept_invalid_cert` for now.
+// Because the url is always `https://api.rustdesk.com/version/latest`.
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     let (request, url) =
         hbb_common::version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
-    let latest_release_response = create_http_client_async()
-        .post(url)
-        .json(&request)
-        .send()
-        .await?;
+    let proxy_conf = Config::get_socks();
+    let tls_url = get_url_for_tls(&url, &proxy_conf);
+    let tls_type = get_cached_tls_type(tls_url);
+    let is_tls_not_cached = tls_type.is_none();
+    let tls_type = tls_type.unwrap_or(TlsType::Rustls);
+    let client = create_http_client_async(tls_type, false);
+    let latest_release_response = match client.post(&url).json(&request).send().await {
+        Ok(resp) => {
+            upsert_tls_cache(tls_url, tls_type, false);
+            resp
+        }
+        Err(err) => {
+            if is_tls_not_cached && err.is_request() {
+                let tls_type = TlsType::NativeTls;
+                let client = create_http_client_async(tls_type, false);
+                let resp = client.post(&url).json(&request).send().await?;
+                upsert_tls_cache(tls_url, tls_type, false);
+                resp
+            } else {
+                return Err(err.into());
+            }
+        }
+    };
     let bytes = latest_release_response.bytes().await?;
     let resp: hbb_common::VersionCheckResponse = serde_json::from_slice(&bytes)?;
     let response_url = resp.url;
@@ -967,7 +1053,10 @@ pub fn get_api_server(api: String, custom: String) -> String {
     if res.ends_with('/') {
         res.pop();
     }
-    if res.starts_with("https") && res.ends_with(":21114") {
+    if res.starts_with("https")
+        && res.ends_with(":21114")
+        && get_builtin_option(keys::OPTION_ALLOW_HTTPS_21114) != "Y"
+    {
         return res.replace(":21114", "");
     }
     res
@@ -1001,7 +1090,33 @@ fn get_api_server_(api: String, custom: String) -> String {
 
 #[inline]
 pub fn is_public(url: &str) -> bool {
-    url.contains("rustdesk.com")
+    url.contains("rustdesk.com/") || url.ends_with("rustdesk.com")
+}
+
+pub fn get_udp_punch_enabled() -> bool {
+    config::option2bool(
+        keys::OPTION_ENABLE_UDP_PUNCH,
+        &get_local_option(keys::OPTION_ENABLE_UDP_PUNCH),
+    )
+}
+
+pub fn get_ipv6_punch_enabled() -> bool {
+    config::option2bool(
+        keys::OPTION_ENABLE_IPV6_PUNCH,
+        &get_local_option(keys::OPTION_ENABLE_IPV6_PUNCH),
+    )
+}
+
+pub fn get_local_option(key: &str) -> String {
+    let v = LocalConfig::get_option(key);
+    if key == keys::OPTION_ENABLE_UDP_PUNCH || key == keys::OPTION_ENABLE_IPV6_PUNCH {
+        if v.is_empty() {
+            if !is_public(&Config::get_rendezvous_server()) {
+                return "N".to_owned();
+            }
+        }
+    }
+    v
 }
 
 pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
@@ -1013,7 +1128,38 @@ pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
 }
 
 pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
-    let mut req = create_http_client_async().post(url);
+    let proxy_conf = Config::get_socks();
+    let tls_url = get_url_for_tls(&url, &proxy_conf);
+    let tls_type = get_cached_tls_type(tls_url);
+    let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
+    let response = post_request_(
+        &url,
+        tls_url,
+        body.clone(),
+        header,
+        tls_type,
+        danger_accept_invalid_cert,
+        danger_accept_invalid_cert,
+    )
+    .await?;
+    Ok(response.text().await?)
+}
+
+#[async_recursion]
+async fn post_request_(
+    url: &str,
+    tls_url: &str,
+    body: String,
+    header: &str,
+    tls_type: Option<TlsType>,
+    danger_accept_invalid_cert: Option<bool>,
+    original_danger_accept_invalid_cert: Option<bool>,
+) -> ResultType<reqwest::Response> {
+    let mut req = create_http_client_async(
+        tls_type.unwrap_or(TlsType::Rustls),
+        danger_accept_invalid_cert.unwrap_or(false),
+    )
+    .post(url);
     if !header.is_empty() {
         let tmp: Vec<&str> = header.split(": ").collect();
         if tmp.len() == 2 {
@@ -1022,7 +1168,66 @@ pub async fn post_request(url: String, body: String, header: &str) -> ResultType
     }
     req = req.header("Content-Type", "application/json");
     let to = std::time::Duration::from_secs(12);
-    Ok(req.body(body).timeout(to).send().await?.text().await?)
+    if tls_type.is_some() && danger_accept_invalid_cert.is_some() {
+        // This branch is used to reduce a `clone()` when both `tls_type` and
+        // `danger_accept_invalid_cert` are cached.
+        match req.body(body.clone()).timeout(to).send().await {
+            Ok(resp) => {
+                upsert_tls_cache(
+                    tls_url,
+                    tls_type.unwrap_or(TlsType::Rustls),
+                    danger_accept_invalid_cert.unwrap_or(false),
+                );
+                Ok(resp)
+            }
+            Err(e) => Err(anyhow!("{:?}", e)),
+        }
+    } else {
+        match req.body(body.clone()).timeout(to).send().await {
+            Ok(resp) => {
+                upsert_tls_cache(
+                    tls_url,
+                    tls_type.unwrap_or(TlsType::Rustls),
+                    danger_accept_invalid_cert.unwrap_or(false),
+                );
+                Ok(resp)
+            }
+            Err(e) => {
+                if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
+                    if danger_accept_invalid_cert.is_none() {
+                        log::warn!(
+                            "HTTP request failed: {:?}, try again, danger accept invalid cert",
+                            e
+                        );
+                        post_request_(
+                            url,
+                            tls_url,
+                            body,
+                            header,
+                            tls_type,
+                            Some(true),
+                            original_danger_accept_invalid_cert,
+                        )
+                        .await
+                    } else {
+                        log::warn!("HTTP request failed: {:?}, try again with native-tls", e);
+                        post_request_(
+                            url,
+                            tls_url,
+                            body,
+                            header,
+                            Some(TlsType::NativeTls),
+                            original_danger_accept_invalid_cert,
+                            original_danger_accept_invalid_cert,
+                        )
+                        .await
+                    }
+                } else {
+                    Err(anyhow!("{:?}", e))
+                }
+            }
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -1030,22 +1235,29 @@ pub async fn post_request_sync(url: String, body: String, header: &str) -> Resul
     post_request(url, body, header).await
 }
 
-#[tokio::main(flavor = "current_thread")]
-pub async fn http_request_sync(
-    url: String,
-    method: String,
+#[async_recursion]
+async fn get_http_response_async(
+    url: &str,
+    tls_url: &str,
+    method: &str,
     body: Option<String>,
-    header: String,
-) -> ResultType<String> {
-    let http_client = create_http_client_async();
-    let mut http_client = match method.as_str() {
+    header: &str,
+    tls_type: Option<TlsType>,
+    danger_accept_invalid_cert: Option<bool>,
+    original_danger_accept_invalid_cert: Option<bool>,
+) -> ResultType<reqwest::Response> {
+    let http_client = create_http_client_async(
+        tls_type.unwrap_or(TlsType::Rustls),
+        danger_accept_invalid_cert.unwrap_or(false),
+    );
+    let mut http_client = match method {
         "get" => http_client.get(url),
         "post" => http_client.post(url),
         "put" => http_client.put(url),
         "delete" => http_client.delete(url),
         _ => return Err(anyhow!("The HTTP request method is not supported!")),
     };
-    let v = serde_json::from_str(header.as_str())?;
+    let v = serde_json::from_str(header)?;
 
     if let Value::Object(obj) = v {
         for (key, value) in obj.iter() {
@@ -1055,15 +1267,105 @@ pub async fn http_request_sync(
         return Err(anyhow!("HTTP header information parsing failed!"));
     }
 
-    if let Some(b) = body {
-        http_client = http_client.body(b);
+    if tls_type.is_some() && danger_accept_invalid_cert.is_some() {
+        if let Some(b) = body {
+            http_client = http_client.body(b);
+        }
+        match http_client
+            .timeout(std::time::Duration::from_secs(12))
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                upsert_tls_cache(
+                    tls_url,
+                    tls_type.unwrap_or(TlsType::Rustls),
+                    danger_accept_invalid_cert.unwrap_or(false),
+                );
+                Ok(resp)
+            }
+            Err(e) => Err(anyhow!("{:?}", e)),
+        }
+    } else {
+        if let Some(b) = body.clone() {
+            http_client = http_client.body(b);
+        }
+
+        match http_client
+            .timeout(std::time::Duration::from_secs(12))
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                upsert_tls_cache(
+                    tls_url,
+                    tls_type.unwrap_or(TlsType::Rustls),
+                    danger_accept_invalid_cert.unwrap_or(false),
+                );
+                Ok(resp)
+            }
+            Err(e) => {
+                if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
+                    if danger_accept_invalid_cert.is_none() {
+                        log::warn!(
+                            "HTTP request failed: {:?}, try again, danger accept invalid cert",
+                            e
+                        );
+                        get_http_response_async(
+                            url,
+                            tls_url,
+                            method,
+                            body,
+                            header,
+                            tls_type,
+                            Some(true),
+                            original_danger_accept_invalid_cert,
+                        )
+                        .await
+                    } else {
+                        log::warn!("HTTP request failed: {:?}, try again with native-tls", e);
+                        get_http_response_async(
+                            url,
+                            tls_url,
+                            method,
+                            body,
+                            header,
+                            Some(TlsType::NativeTls),
+                            original_danger_accept_invalid_cert,
+                            original_danger_accept_invalid_cert,
+                        )
+                        .await
+                    }
+                } else {
+                    Err(anyhow!("{:?}", e))
+                }
+            }
+        }
     }
+}
 
-    let response = http_client
-        .timeout(std::time::Duration::from_secs(12))
-        .send()
-        .await?;
-
+#[tokio::main(flavor = "current_thread")]
+pub async fn http_request_sync(
+    url: String,
+    method: String,
+    body: Option<String>,
+    header: String,
+) -> ResultType<String> {
+    let proxy_conf = Config::get_socks();
+    let tls_url = get_url_for_tls(&url, &proxy_conf);
+    let tls_type = get_cached_tls_type(tls_url);
+    let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
+    let response = get_http_response_async(
+        &url,
+        tls_url,
+        &method,
+        body.clone(),
+        &header,
+        tls_type,
+        danger_accept_invalid_cert,
+        danger_accept_invalid_cert,
+    )
+    .await?;
     // Serialize response headers
     let mut response_headers = serde_json::map::Map::new();
     for (key, value) in response.headers() {
@@ -1611,19 +1913,19 @@ pub fn read_custom_client(config: &str) {
     }
 
     let mut map_display_settings = HashMap::new();
-    for s in config::keys::KEYS_DISPLAY_SETTINGS {
+    for s in keys::KEYS_DISPLAY_SETTINGS {
         map_display_settings.insert(s.replace("_", "-"), s);
     }
     let mut map_local_settings = HashMap::new();
-    for s in config::keys::KEYS_LOCAL_SETTINGS {
+    for s in keys::KEYS_LOCAL_SETTINGS {
         map_local_settings.insert(s.replace("_", "-"), s);
     }
     let mut map_settings = HashMap::new();
-    for s in config::keys::KEYS_SETTINGS {
+    for s in keys::KEYS_SETTINGS {
         map_settings.insert(s.replace("_", "-"), s);
     }
     let mut buildin_settings = HashMap::new();
-    for s in config::keys::KEYS_BUILDIN_SETTINGS {
+    for s in keys::KEYS_BUILDIN_SETTINGS {
         buildin_settings.insert(s.replace("_", "-"), s);
     }
     if let Some(default_settings) = data.remove("default-settings") {
@@ -1672,6 +1974,356 @@ pub fn get_hwid() -> Bytes {
     let mut hasher = Sha256::new();
     hasher.update(&uuid);
     Bytes::from(hasher.finalize().to_vec())
+}
+
+#[inline]
+pub fn get_builtin_option(key: &str) -> String {
+    config::BUILTIN_SETTINGS
+        .read()
+        .unwrap()
+        .get(key)
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[inline]
+pub fn is_custom_client() -> bool {
+    get_app_name() != "RustDesk"
+}
+
+pub fn verify_login(_raw: &str, _id: &str) -> bool {
+    true
+    /*
+    if is_custom_client() {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    return true;
+    let Ok(pk) = crate::decode64("IycjQd4TmWvjjLnYd796Rd+XkK+KG+7GU1Ia7u4+vSw=") else {
+        return false;
+    };
+    let Some(key) = get_pk(&pk).map(|x| sign::PublicKey(x)) else {
+        return false;
+    };
+    let Ok(v) = crate::decode64(raw) else {
+        return false;
+    };
+    let raw = sign::verify(&v, &key).unwrap_or_default();
+    let v_str = std::str::from_utf8(&raw)
+        .unwrap_or_default()
+        .split(":")
+        .next()
+        .unwrap_or_default();
+    v_str == id
+    */
+}
+
+#[inline]
+pub fn is_udp_disabled() -> bool {
+    Config::get_option(keys::OPTION_DISABLE_UDP) == "Y"
+}
+
+// this crate https://github.com/yoshd/stun-client supports nat type
+async fn stun_ipv6_test(stun_server: &str) -> ResultType<(SocketAddr, String)> {
+    use std::net::ToSocketAddrs;
+    use stunclient::StunClient;
+    let local_addr = SocketAddr::from(([0u16; 8], 0)); // [::]:0
+    let socket = UdpSocket::bind(&local_addr).await?;
+    let Some(stun_addr) = stun_server
+        .to_socket_addrs()?
+        .filter(|x| x.is_ipv6())
+        .next()
+    else {
+        bail!(
+            "Failed to resolve STUN ipv6 server address: {}",
+            stun_server
+        );
+    };
+    let client = StunClient::new(stun_addr);
+    let addr = client.query_external_address_async(&socket).await?;
+    Ok(if addr.ip().is_ipv6() {
+        (addr, stun_server.to_owned())
+    } else {
+        bail!("STUN server returned non-IPv6 address: {}", addr)
+    })
+}
+
+async fn stun_ipv4_test(stun_server: &str) -> ResultType<(SocketAddr, String)> {
+    use std::net::ToSocketAddrs;
+    use stunclient::StunClient;
+    let local_addr = SocketAddr::from(([0u8; 4], 0));
+    let socket = UdpSocket::bind(&local_addr).await?;
+    let Some(stun_addr) = stun_server
+        .to_socket_addrs()?
+        .filter(|x| x.is_ipv4())
+        .next()
+    else {
+        bail!(
+            "Failed to resolve STUN ipv4 server address: {}",
+            stun_server
+        );
+    };
+    let client = StunClient::new(stun_addr);
+    let addr = client.query_external_address_async(&socket).await?;
+    Ok(if addr.ip().is_ipv4() {
+        (addr, stun_server.to_owned())
+    } else {
+        bail!("STUN server returned non-IPv6 address: {}", addr)
+    })
+}
+
+static STUNS_V4: [&str; 3] = [
+    "stun.l.google.com:19302",
+    "stun.cloudflare.com:3478",
+    "stun.nextcloud.com:3478",
+];
+
+static STUNS_V6: [&str; 3] = [
+    "stun.l.google.com:19302",
+    "stun.cloudflare.com:3478",
+    "stun.nextcloud.com:3478",
+];
+
+pub async fn test_nat_ipv4() -> ResultType<(SocketAddr, String)> {
+    use hbb_common::futures::future::{select_ok, FutureExt};
+    let tests = STUNS_V4
+        .iter()
+        .map(|&stun| stun_ipv4_test(stun).boxed())
+        .collect::<Vec<_>>();
+
+    match select_ok(tests).await {
+        Ok(res) => {
+            return Ok(res.0);
+        }
+        Err(e) => {
+            bail!(
+                "Failed to get public IPv4 address via public STUN servers: {}",
+                e
+            );
+        }
+    };
+}
+
+async fn test_bind_ipv6() -> ResultType<SocketAddr> {
+    let local_addr = SocketAddr::from(([0u16; 8], 0)); // [::]:0
+    let socket = UdpSocket::bind(local_addr).await?;
+    let addr = STUNS_V6[0]
+        .to_socket_addrs()?
+        .filter(|x| x.is_ipv6())
+        .next()
+        .ok_or_else(|| {
+            anyhow!(
+                "Failed to resolve STUN ipv6 server address: {}",
+                STUNS_V6[0]
+            )
+        })?;
+    socket.connect(addr).await?;
+    Ok(socket.local_addr()?)
+}
+
+pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
+    if PUBLIC_IPV6_ADDR
+        .lock()
+        .unwrap()
+        .1
+        .map(|x| x.elapsed().as_secs() < 60)
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    PUBLIC_IPV6_ADDR.lock().unwrap().1 = Some(Instant::now());
+
+    match test_bind_ipv6().await {
+        Ok(mut addr) => {
+            if let std::net::IpAddr::V6(ip) = addr.ip() {
+                if !ip.is_loopback()
+                    && !ip.is_unspecified()
+                    && !ip.is_multicast()
+                    && (ip.segments()[0] & 0xe000) == 0x2000
+                {
+                    addr.set_port(0);
+                    PUBLIC_IPV6_ADDR.lock().unwrap().0 = Some(addr);
+                    log::debug!("Found public IPv6 address locally: {}", addr);
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to bind IPv6 socket: {}", e);
+        }
+    }
+    // Interestingly, on my macOS, sometimes my ipv6 works, sometimes not (test with ping6 or https://test-ipv6.com/).
+    // I checked ifconfig, could not see any difference. Both secure ipv6 and temporary ipv6 are there.
+    // So we can not rely on the local ipv6 address queries with if_addrs.
+    // above test_bind_ipv6 is safer, because it can fail in this case.
+    /*
+    std::thread::spawn(|| {
+        if let Ok(ifaces) = if_addrs::get_if_addrs() {
+            for iface in ifaces {
+                if let if_addrs::IfAddr::V6(v6) = iface.addr {
+                    let ip = v6.ip;
+                    if !ip.is_loopback()
+                        && !ip.is_unspecified()
+                        && !ip.is_multicast()
+                        && !ip.is_unique_local()
+                        && !ip.is_unicast_link_local()
+                        && (ip.segments()[0] & 0xe000) == 0x2000
+                    {
+                        // only use the first one, on mac, the first one is the stable
+                        // one, the last one is the temporary one. The middle ones are deperecated.
+                        *PUBLIC_IPV6_ADDR.lock().unwrap() =
+                            Some((SocketAddr::from((ip, 0)), Instant::now()));
+                        log::debug!("Found public IPv6 address locally: {}", ip);
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    */
+
+    Some(tokio::spawn(async {
+        use hbb_common::futures::future::{select_ok, FutureExt};
+        let tests = STUNS_V6
+            .iter()
+            .map(|&stun| stun_ipv6_test(stun).boxed())
+            .collect::<Vec<_>>();
+
+        match select_ok(tests).await {
+            Ok(res) => {
+                let mut addr = res.0 .0;
+                addr.set_port(0); // Set port to 0 to avoid conflicts
+                PUBLIC_IPV6_ADDR.lock().unwrap().0 = Some(addr);
+                log::debug!(
+                    "Found public IPv6 address via STUN server {}: {}",
+                    res.0 .1,
+                    addr
+                );
+            }
+            Err(e) => {
+                log::error!("Failed to get public IPv6 address: {}", e);
+            }
+        };
+    }))
+}
+
+pub async fn punch_udp(
+    socket: Arc<UdpSocket>,
+    listen: bool,
+) -> ResultType<Option<bytes::BytesMut>> {
+    let mut retry_interval = Duration::from_millis(20);
+    const MAX_INTERVAL: Duration = Duration::from_millis(200);
+    const MAX_TIME: Duration = Duration::from_secs(20);
+    let mut packets_sent = 0;
+    socket.send(&[]).await.ok();
+    packets_sent += 1;
+    let mut last_send_time = Instant::now();
+    let tm = Instant::now();
+    let mut data = [0u8; 1500];
+
+    loop {
+        tokio::select! {
+            _ = hbb_common::sleep(retry_interval.as_secs_f32()) => {
+                if tm.elapsed() > MAX_TIME {
+                    bail!("UDP punch is timed out, stop sending packets after {:?} packets", packets_sent);
+                }
+                let elapsed = last_send_time.elapsed();
+
+                if elapsed >= retry_interval {
+                    socket.send(&[]).await.ok();
+                    packets_sent += 1;
+
+                    // Exponentially increase interval to reduce network pressure
+                    retry_interval = std::cmp::min(
+                        Duration::from_millis((retry_interval.as_millis() as f64 * 1.5) as u64),
+                        MAX_INTERVAL
+                    );
+                    last_send_time = Instant::now();
+                }
+            }
+            res = socket.recv(&mut data) => match res {
+                Err(e) => bail!("UDP punch failed, {packets_sent} packets sent: {e}"),
+                Ok(n) => {
+                    // log::debug!("UDP punch succeeded after sending {} packets after {:?}", packets_sent, tm.elapsed());
+                    if listen {
+                        if n == 0 {
+                            continue;
+                        }
+                        return Ok(Some(bytes::BytesMut::from(&data[..n])));
+                    }
+                    return Ok(None);
+                }
+            }
+        }
+    }
+}
+
+fn test_ipv6_sync() {
+    #[tokio::main(flavor = "current_thread")]
+    async fn func() {
+        if let Some(job) = test_ipv6().await {
+            job.await.ok();
+        }
+    }
+    std::thread::spawn(func);
+}
+
+pub async fn get_ipv6_socket() -> Option<(Arc<UdpSocket>, bytes::Bytes)> {
+    let Some(addr) = PUBLIC_IPV6_ADDR.lock().unwrap().0 else {
+        return None;
+    };
+
+    match UdpSocket::bind(addr).await {
+        Err(err) => {
+            log::warn!("Failed to create UDP socket for IPv6: {err}");
+        }
+        Ok(socket) => {
+            if let Ok(local_addr_v6) = socket.local_addr() {
+                return Some((
+                    Arc::new(socket),
+                    hbb_common::AddrMangle::encode(local_addr_v6).into(),
+                ));
+            }
+        }
+    }
+    None
+}
+
+// The color is the same to `str2color()` in flutter.
+pub fn str2color(s: &str, alpha: u8) -> u32 {
+    let bytes = s.as_bytes();
+    // dart code `160 << 16 + 114 << 8 + 91` results `0`.
+    let mut hash: u32 = 0;
+    for &byte in bytes {
+        let code = byte as u32;
+        hash = code.wrapping_add((hash << 5).wrapping_sub(hash));
+    }
+
+    hash = hash % 16777216;
+    let rgb = hash & 0xFF7FFF;
+
+    (alpha as u32) << 24 | rgb
+}
+
+/// Check control permission state from a u64 bitmap.
+/// Each permission uses 2 bits: 0 = not set, 1 = disable, 2 = enable, 3 = invalid (treated as not set)
+/// Returns: Some(true) = enabled, Some(false) = disabled, None = not set or invalid
+pub fn get_control_permission(
+    permissions: u64,
+    permission: hbb_common::rendezvous_proto::control_permissions::Permission,
+) -> Option<bool> {
+    use hbb_common::protobuf::Enum;
+    let index = permission.value();
+    if index >= 0 && index < 32 {
+        let shift = index * 2;
+        let value = (permissions >> shift) & 0b11;
+        match value {
+            1 => Some(false), // disable
+            2 => Some(true),  // enable
+            _ => None,        // 0 = not set, 3 = invalid
+        }
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -1814,46 +2466,59 @@ mod tests {
             Duration::from_nanos(0)
         );
     }
-}
 
-#[inline]
-pub fn get_builtin_option(key: &str) -> String {
-    config::BUILTIN_SETTINGS
-        .read()
-        .unwrap()
-        .get(key)
-        .cloned()
-        .unwrap_or_default()
-}
+    #[test]
+    fn test_is_public() {
+        // Test URLs containing "rustdesk.com/"
+        assert!(is_public("https://rustdesk.com/"));
+        assert!(is_public("https://www.rustdesk.com/"));
+        assert!(is_public("https://api.rustdesk.com/v1"));
+        assert!(is_public("https://rustdesk.com/path"));
 
-#[inline]
-pub fn is_custom_client() -> bool {
-    get_app_name() != "RustDesk"
-}
+        // Test URLs ending with "rustdesk.com"
+        assert!(is_public("rustdesk.com"));
+        assert!(is_public("https://rustdesk.com"));
+        assert!(is_public("http://www.rustdesk.com"));
+        assert!(is_public("https://api.rustdesk.com"));
 
-pub fn verify_login(raw: &str, id: &str) -> bool {
-    true
-    /*
-    if is_custom_client() {
-        return true;
+        // Test non-public URLs
+        assert!(!is_public("https://example.com"));
+        assert!(!is_public("https://custom-server.com"));
+        assert!(!is_public("http://192.168.1.1"));
+        assert!(!is_public("localhost"));
+        assert!(!is_public("https://rustdesk.computer.com"));
+        assert!(!is_public("rustdesk.comhello.com"));
     }
-    #[cfg(debug_assertions)]
-    return true;
-    let Ok(pk) = crate::decode64("IycjQd4TmWvjjLnYd796Rd+XkK+KG+7GU1Ia7u4+vSw=") else {
-        return false;
-    };
-    let Some(key) = get_pk(&pk).map(|x| sign::PublicKey(x)) else {
-        return false;
-    };
-    let Ok(v) = crate::decode64(raw) else {
-        return false;
-    };
-    let raw = sign::verify(&v, &key).unwrap_or_default();
-    let v_str = std::str::from_utf8(&raw)
-        .unwrap_or_default()
-        .split(":")
-        .next()
-        .unwrap_or_default();
-    v_str == id
-    */
+
+    #[test]
+    fn test_mouse_event_constants_and_mask_layout() {
+        use super::input::*;
+
+        // Verify MOUSE_TYPE constants are unique and within the mask range.
+        let types = [
+            MOUSE_TYPE_MOVE,
+            MOUSE_TYPE_DOWN,
+            MOUSE_TYPE_UP,
+            MOUSE_TYPE_WHEEL,
+            MOUSE_TYPE_TRACKPAD,
+            MOUSE_TYPE_MOVE_RELATIVE,
+        ];
+
+        let mut seen = std::collections::HashSet::new();
+        for t in types.iter() {
+            assert!(seen.insert(*t), "Duplicate mouse type: {}", t);
+            assert_eq!(
+                *t & MOUSE_TYPE_MASK,
+                *t,
+                "Mouse type {} exceeds mask {}",
+                t,
+                MOUSE_TYPE_MASK
+            );
+        }
+
+        // The mask layout is: lower 3 bits for type, upper bits for buttons (shifted by 3).
+        let combined_mask = MOUSE_TYPE_DOWN | ((MOUSE_BUTTON_LEFT | MOUSE_BUTTON_RIGHT) << 3);
+        assert_eq!(combined_mask & MOUSE_TYPE_MASK, MOUSE_TYPE_DOWN);
+        assert_eq!(combined_mask >> 3, MOUSE_BUTTON_LEFT | MOUSE_BUTTON_RIGHT);
+    }
 }

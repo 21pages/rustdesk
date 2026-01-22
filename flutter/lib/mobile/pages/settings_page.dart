@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
-import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:settings_ui/settings_ui.dart';
@@ -72,6 +71,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _ignoreBatteryOpt = false;
   var _enableStartOnBoot = false;
   var _checkUpdateOnStartup = false;
+  var _showTerminalExtraKeys = false;
   var _floatingWindowDisabled = false;
   var _keepScreenOn = KeepScreenOn.duringControlled; // relay on floating window
   var _enableAbr = false;
@@ -94,6 +94,13 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _hideNetwork = false;
   var _hideWebSocket = false;
   var _enableTrustedDevices = false;
+  var _enableUdpPunch = false;
+  var _allowInsecureTlsFallback = false;
+  var _disableUdp = false;
+  var _enableIpv6Punch = false;
+  var _isUsingPublicServer = false;
+  var _allowAskForNoteAtEndOfConnection = false;
+  var _preventSleepWhileConnected = true;
 
   _SettingsState() {
     _enableAbr = option2bool(
@@ -108,6 +115,9 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     _enableHardwareCodec = option2bool(kOptionEnableHwcodec,
         bind.mainGetOptionSync(key: kOptionEnableHwcodec));
     _allowWebSocket = mainGetBoolOptionSync(kOptionAllowWebSocket);
+    _allowInsecureTlsFallback =
+        mainGetBoolOptionSync(kOptionAllowInsecureTLSFallback);
+    _disableUdp = bind.mainGetOptionSync(key: kOptionDisableUdp) == 'Y';
     _autoRecordIncomingSession = option2bool(kOptionAllowAutoRecordIncoming,
         bind.mainGetOptionSync(key: kOptionAllowAutoRecordIncoming));
     _autoRecordOutgoingSession = option2bool(kOptionAllowAutoRecordOutgoing,
@@ -124,8 +134,17 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     _hideNetwork =
         bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) == 'Y';
     _hideWebSocket =
-        bind.mainGetBuildinOption(key: kOptionHideWebSocketSetting) == 'Y' || isWeb;
+        bind.mainGetBuildinOption(key: kOptionHideWebSocketSetting) == 'Y' ||
+            isWeb;
     _enableTrustedDevices = mainGetBoolOptionSync(kOptionEnableTrustedDevices);
+    _enableUdpPunch = mainGetLocalBoolOptionSync(kOptionEnableUdpPunch);
+    _enableIpv6Punch = mainGetLocalBoolOptionSync(kOptionEnableIpv6Punch);
+    _allowAskForNoteAtEndOfConnection =
+        mainGetLocalBoolOptionSync(kOptionAllowAskForNoteAtEndOfConnection);
+    _preventSleepWhileConnected =
+        mainGetLocalBoolOptionSync(kOptionKeepAwakeDuringOutgoingSessions);
+    _showTerminalExtraKeys =
+        mainGetLocalBoolOptionSync(kOptionEnableShowTerminalExtraKeys);
   }
 
   @override
@@ -196,6 +215,13 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         update = true;
         _buildDate = buildDate;
       }
+
+      final isUsingPublicServer = await bind.mainIsUsingPublicServer();
+      if (_isUsingPublicServer != isUsingPublicServer) {
+        update = true;
+        _isUsingPublicServer = isUsingPublicServer;
+      }
+
       if (update) {
         setState(() {});
       }
@@ -374,7 +400,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         },
       ),
       SettingsTile.switchTile(
-        title: Text('${translate('Adaptive bitrate')} (beta)'),
+        title: Text(translate('Adaptive bitrate')),
         initialValue: _enableAbr,
         onToggle: isOptionFixed(kOptionEnableAbr)
             ? null
@@ -536,7 +562,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     enhancementsTiles.add(SettingsTile.switchTile(
         initialValue: _enableStartOnBoot,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text("${translate('Start on boot')} (beta)"),
+          Text(translate('Start on boot')),
           Text(
               '* ${translate('Start the screen sharing service on boot, requires special permissions')}',
               style: Theme.of(context).textTheme.bodySmall),
@@ -581,6 +607,23 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         ),
       );
     }
+
+    enhancementsTiles.add(
+      SettingsTile.switchTile(
+        initialValue: _showTerminalExtraKeys,
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(translate('Show terminal extra keys')),
+        ]),
+        onToggle: (bool v) async {
+          await mainSetLocalBoolOption(kOptionEnableShowTerminalExtraKeys, v);
+          final newValue =
+            mainGetLocalBoolOptionSync(kOptionEnableShowTerminalExtraKeys);
+          setState(() {
+            _showTerminalExtraKeys = newValue;
+          });
+        },
+      ),
+    );
 
     onFloatingWindowChanged(bool toValue) async {
       if (toValue) {
@@ -663,9 +706,12 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 title: Text(translate('ID/Relay Server')),
                 leading: Icon(Icons.cloud),
                 onPressed: (context) {
-                  showServerSettings(gFFI.dialogManager);
+                  showServerSettings(gFFI.dialogManager, (callback) async {
+                    _isUsingPublicServer = await bind.mainIsUsingPublicServer();
+                    setState(callback);
+                  });
                 }),
-          if (!isIOS && !_hideNetwork && !_hideProxy)
+          if (!_hideNetwork && !_hideProxy)
             SettingsTile(
                 title: Text(translate('Socks5/Http(s) Proxy')),
                 leading: Icon(Icons.network_ping),
@@ -687,6 +733,64 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                       });
                     },
             ),
+          if (!_isUsingPublicServer)
+            SettingsTile.switchTile(
+              title: Text(translate('Allow insecure TLS fallback')),
+              initialValue: _allowInsecureTlsFallback,
+              onToggle: isOptionFixed(kOptionAllowInsecureTLSFallback)
+                  ? null
+                  : (v) async {
+                      await mainSetBoolOption(
+                          kOptionAllowInsecureTLSFallback, v);
+                      final newValue = mainGetBoolOptionSync(
+                          kOptionAllowInsecureTLSFallback);
+                      setState(() {
+                        _allowInsecureTlsFallback = newValue;
+                      });
+                    },
+            ),
+          if (isAndroid && !outgoingOnly && !_isUsingPublicServer)
+            SettingsTile.switchTile(
+              title: Text(translate('Disable UDP')),
+              initialValue: _disableUdp,
+              onToggle: isOptionFixed(kOptionDisableUdp)
+                  ? null
+                  : (v) async {
+                      await bind.mainSetOption(
+                          key: kOptionDisableUdp, value: v ? 'Y' : 'N');
+                      final newValue =
+                          bind.mainGetOptionSync(key: kOptionDisableUdp) == 'Y';
+                      setState(() {
+                        _disableUdp = newValue;
+                      });
+                    },
+            ),
+          if (!incomingOnly)
+            SettingsTile.switchTile(
+              title: Text(translate('Enable UDP hole punching')),
+              initialValue: _enableUdpPunch,
+              onToggle: (v) async {
+                await mainSetLocalBoolOption(kOptionEnableUdpPunch, v);
+                final newValue =
+                    mainGetLocalBoolOptionSync(kOptionEnableUdpPunch);
+                setState(() {
+                  _enableUdpPunch = newValue;
+                });
+              },
+            ),
+          if (!incomingOnly)
+            SettingsTile.switchTile(
+              title: Text(translate('Enable IPv6 P2P connection')),
+              initialValue: _enableIpv6Punch,
+              onToggle: (v) async {
+                await mainSetLocalBoolOption(kOptionEnableIpv6Punch, v);
+                final newValue =
+                    mainGetLocalBoolOptionSync(kOptionEnableIpv6Punch);
+                setState(() {
+                  _enableIpv6Punch = newValue;
+                });
+              },
+            ),
           SettingsTile(
               title: Text(translate('Language')),
               leading: Icon(Icons.translate),
@@ -704,7 +808,36 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
             onPressed: (context) {
               showThemeSettings(gFFI.dialogManager);
             },
-          )
+          ),
+          if (!bind.isDisableAccount())
+            SettingsTile.switchTile(
+              title: Text(translate('note-at-conn-end-tip')),
+              initialValue: _allowAskForNoteAtEndOfConnection,
+              onToggle: (v) async {
+                if (v && !gFFI.userModel.isLogin) {
+                  final res = await loginDialog();
+                  if (res != true) return;
+                }
+                await mainSetLocalBoolOption(
+                    kOptionAllowAskForNoteAtEndOfConnection, v);
+                final newValue = mainGetLocalBoolOptionSync(
+                    kOptionAllowAskForNoteAtEndOfConnection);
+                setState(() {
+                  _allowAskForNoteAtEndOfConnection = newValue;
+                });
+              },
+            ),
+          if (!incomingOnly)
+            SettingsTile.switchTile(
+              title: Text(translate('keep-awake-during-outgoing-sessions-label')),
+              initialValue: _preventSleepWhileConnected,
+              onToggle: (v) async {
+                await mainSetLocalBoolOption(kOptionKeepAwakeDuringOutgoingSessions, v);
+                setState(() {
+                  _preventSleepWhileConnected = v;
+                });
+              },
+            ),
         ]),
         if (isAndroid)
           SettingsSection(title: Text(translate('Hardware Codec')), tiles: [
@@ -785,7 +918,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
             !outgoingOnly &&
             !hideSecuritySettings)
           SettingsSection(
-            title: Text(translate("Share Screen")),
+            title: Text(translate("Share screen")),
             tiles: shareScreenTiles,
           ),
         if (!bind.isIncomingOnly()) defaultDisplaySection(),

@@ -3,10 +3,7 @@ use hbb_common::password_security;
 use hbb_common::{
     allow_err,
     bytes::Bytes,
-    config::{
-        self, keys::*, option2bool, Config, LocalConfig, PeerConfig, CONNECT_TIMEOUT,
-        RENDEZVOUS_PORT,
-    },
+    config::{self, keys::*, Config, LocalConfig, PeerConfig, CONNECT_TIMEOUT, RENDEZVOUS_PORT},
     directories_next,
     futures::future::join_all,
     log,
@@ -72,6 +69,7 @@ lazy_static::lazy_static! {
     static ref ASYNC_JOB_STATUS : Arc<Mutex<String>> = Default::default();
     static ref ASYNC_HTTP_STATUS : Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref TEMPORARY_PASSWD : Arc<Mutex<String>> = Arc::new(Mutex::new("".to_owned()));
+    static ref IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS : Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -80,6 +78,11 @@ lazy_static::lazy_static! {
     static ref OPTIONS : Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(Config::get_options()));
     pub static ref SENDER : Mutex<mpsc::UnboundedSender<ipc::Data>> = Mutex::new(check_connect_status(true));
     static ref CHILDREN : Children = Default::default();
+}
+
+#[cfg(target_os = "windows")]
+lazy_static::lazy_static! {
+    pub static ref IS_FILE_TRANSFER_ENABLED: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 }
 
 const INIT_ASYNC_JOB_STATUS: &str = " ";
@@ -207,8 +210,21 @@ pub fn use_texture_render() -> bool {
 }
 
 #[inline]
+pub fn is_option_fixed(key: &str) -> bool {
+    config::OVERWRITE_DISPLAY_SETTINGS
+        .read()
+        .unwrap()
+        .contains_key(key)
+        || config::OVERWRITE_LOCAL_SETTINGS
+            .read()
+            .unwrap()
+            .contains_key(key)
+        || config::OVERWRITE_SETTINGS.read().unwrap().contains_key(key)
+}
+
+#[inline]
 pub fn get_local_option(key: String) -> String {
-    LocalConfig::get_option(&key)
+    crate::get_local_option(&key)
 }
 
 #[inline]
@@ -455,10 +471,8 @@ pub fn install_options() -> String {
 pub fn get_socks() -> Vec<String> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let s = ipc::get_socks();
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     let s = Config::get_socks();
-    #[cfg(target_os = "ios")]
-    let s: Option<config::Socks5Server> = None;
     match s {
         None => Vec::new(),
         Some(s) => {
@@ -480,7 +494,7 @@ pub fn set_socks(proxy: String, username: String, password: String) {
     };
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     ipc::set_socks(socks).ok();
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _nat = crate::CheckTestNatType::new();
         if socks.proxy.is_empty() {
@@ -488,8 +502,11 @@ pub fn set_socks(proxy: String, username: String, password: String) {
         } else {
             Config::set_socks(Some(socks));
         }
-        crate::RendezvousMediator::restart();
         log::info!("socks updated");
+    }
+    #[cfg(target_os = "android")]
+    {
+        crate::RendezvousMediator::restart();
     }
 }
 
@@ -816,6 +833,7 @@ pub fn get_async_http_status(url: String) -> Option<String> {
 }
 
 #[inline]
+#[cfg(not(feature = "flutter"))]
 pub fn post_request(url: String, body: String, header: String) {
     *ASYNC_JOB_STATUS.lock().unwrap() = " ".to_owned();
     std::thread::spawn(move || {
@@ -863,7 +881,7 @@ pub fn video_save_directory(root: bool) -> String {
         {
             let drive = std::env::var("SystemDrive").unwrap_or("C:".to_owned());
             let dir =
-                std::path::PathBuf::from(format!("{drive}\\ProgramData\\RustDesk\\recording",));
+                std::path::PathBuf::from(format!("{drive}\\ProgramData\\{appname}\\recording",));
             return dir.to_string_lossy().to_string();
         }
     }
@@ -878,7 +896,7 @@ pub fn video_save_directory(root: bool) -> String {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     if let Ok(home) = config::APP_HOME_DIR.read() {
         let mut path = home.to_owned();
-        path.push_str("/RustDesk/ScreenRecord");
+        path.push_str(format!("/{appname}/ScreenRecord").as_str());
         let dir = try_create(&std::path::Path::new(&path));
         if !dir.is_empty() {
             return dir;
@@ -1154,8 +1172,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
     let mut video_conn_count = 0;
     #[cfg(not(feature = "flutter"))]
     let mut id = "".to_owned();
-    #[cfg(target_os = "windows")]
-    let mut enable_file_transfer = "".to_owned();
     let is_cm = crate::common::is_cm();
 
     loop {
@@ -1180,15 +1196,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                             Ok(Some(ipc::Data::Options(Some(v)))) => {
                                 *OPTIONS.lock().unwrap() = v;
                                 *OPTION_SYNCED.lock().unwrap() = true;
-
-                                #[cfg(target_os = "windows")]
-                                {
-                                    let b = OPTIONS.lock().unwrap().get(OPTION_ENABLE_FILE_TRANSFER).map(|x| x.to_string()).unwrap_or_default();
-                                    if b != enable_file_transfer {
-                                        clipboard::ContextSend::enable(option2bool(OPTION_ENABLE_FILE_TRANSFER, &b));
-                                        enable_file_transfer = b;
-                                    }
-                                }
                             }
                             Ok(Some(ipc::Data::Config((name, Some(value))))) => {
                                 if name == "id" {
@@ -1224,6 +1231,19 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                     video_conn_count,
                                 };
                             }
+                            Ok(Some(ipc::Data::ControlPermissionsRemoteModify(v))) => {
+                                *IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS.lock().unwrap() = v;
+                            }
+                            #[cfg(target_os = "windows")]
+                            Ok(Some(ipc::Data::FileTransferEnabledState(v))) => {
+                                if let Some(enabled) = v {
+                                    let mut lock = IS_FILE_TRANSFER_ENABLED.lock().unwrap();
+                                    if *lock != v {
+                                        clipboard::ContextSend::enable(enabled);
+                                        *lock = v;
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -1237,6 +1257,9 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                         c.send(&ipc::Data::Config(("temporary-password".to_owned(), None))).await.ok();
                         #[cfg(feature = "flutter")]
                         c.send(&ipc::Data::VideoConnCount(None)).await.ok();
+                        c.send(&ipc::Data::ControlPermissionsRemoteModify(None)).await.ok();
+                        #[cfg(target_os = "windows")]
+                        c.send(&ipc::Data::FileTransferEnabledState(None)).await.ok();
                     }
                 }
             }
@@ -1297,6 +1320,13 @@ pub async fn change_id_shared(id: String, old_id: String) -> String {
 
 pub async fn change_id_shared_(id: String, old_id: String) -> &'static str {
     if !hbb_common::is_valid_custom_id(&id) {
+        log::debug!(
+            "debugging invalid id: \"{id}\", len: {}, base64: \"{}\"",
+            id.len(),
+            crate::encode64(&id)
+        );
+        let bom = id.trim_start_matches('\u{FEFF}');
+        log::debug!("bom: {}", hbb_common::is_valid_custom_id(&bom));
         return INVALID_FORMAT;
     }
 
@@ -1521,4 +1551,10 @@ pub fn clear_trusted_devices() {
 #[cfg(feature = "flutter")]
 pub fn max_encrypt_len() -> usize {
     hbb_common::config::ENCRYPT_MAX_LEN
+}
+
+pub fn is_remote_modify_enabled_by_control_permissions() -> Option<bool> {
+    *IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS
+        .lock()
+        .unwrap()
 }

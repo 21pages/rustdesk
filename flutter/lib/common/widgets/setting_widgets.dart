@@ -230,7 +230,6 @@ List<(String, String)> otherDefaultSettings() {
     ('Disable clipboard', kOptionDisableClipboard),
     ('Lock after session end', kOptionLockAfterSessionEnd),
     ('Privacy mode', kOptionPrivacyMode),
-    if (isMobile) ('Touch mode', kOptionTouchMode),
     ('True color (4:4:4)', kOptionI444),
     ('Reverse mouse wheel', kKeyReverseMouseWheel),
     ('swap-left-right-mouse', kOptionSwapLeftRightMouse),
@@ -243,7 +242,8 @@ List<(String, String)> otherDefaultSettings() {
       (
         'Use all my displays for the remote session',
         kKeyUseAllMyDisplaysForTheRemoteSession
-      )
+      ),
+    ('Keep terminal sessions on disconnect', kOptionTerminalPersistent),
   ];
 
   return v;

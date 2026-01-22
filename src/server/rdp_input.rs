@@ -71,6 +71,7 @@ pub mod client {
         stream: PwStreamInfo,
         resolution: (usize, usize),
         scale: Option<f64>,
+        position: (f64, f64),
     }
 
     impl RdpInputMouse {
@@ -83,7 +84,7 @@ pub mod client {
             // https://github.com/rustdesk/rustdesk/pull/9019#issuecomment-2295252388
             // There may be a bug in Rdp input on Gnome util Ubuntu 24.04 (Gnome 46)
             //
-            // eg. Resultion 800x600, Fractional scale: 200% (logic size: 400x300)
+            // eg. Resolution 800x600, Fractional scale: 200% (logic size: 400x300)
             // https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.RemoteDesktop.html#:~:text=new%20pointer%20position-,in%20the%20streams%20logical%20coordinate%20space,-.
             // Then (x,y) in `mouse_move_to()` and `mouse_move_relative()` should be scaled to the logic size(stream.get_size()), which is from (0,0) to (400,300).
             // For Ubuntu 24.04(Gnome 46), (x,y) is restricted from (0,0) to (400,300), but the actual range in screen is:
@@ -98,12 +99,14 @@ pub mod client {
             } else {
                 None
             };
+            let pos = stream.get_position();
             Ok(Self {
                 conn,
                 session,
                 stream,
                 resolution,
                 scale,
+                position: (pos.0 as f64, pos.1 as f64),
             })
         }
     }
@@ -128,6 +131,8 @@ pub mod client {
             } else {
                 y as f64
             };
+            let x = x - self.position.0;
+            let y = y - self.position.1;
             let portal = get_portal(&self.conn);
             let _ = remote_desktop_portal::notify_pointer_motion_absolute(
                 &portal,

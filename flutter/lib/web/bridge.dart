@@ -81,6 +81,7 @@ class RustdeskImpl {
       required bool isViewCamera,
       required bool isPortForward,
       required bool isRdp,
+      required bool isTerminal,
       required String switchUuid,
       required bool forceRelay,
       required String password,
@@ -94,7 +95,8 @@ class RustdeskImpl {
         'password': password,
         'is_shared_password': isSharedPassword,
         'isFileTransfer': isFileTransfer,
-        'isViewCamera': isViewCamera
+        'isViewCamera': isViewCamera,
+        'isTerminal': isTerminal
       })
     ]);
   }
@@ -810,7 +812,7 @@ class RustdeskImpl {
   }
 
   String mainGetAppNameSync({dynamic hint}) {
-    return 'RustDesk';
+    return js.context.callMethod('getByName', ['app-name']);
   }
 
   String mainUriPrefixSync({dynamic hint}) {
@@ -906,8 +908,18 @@ class RustdeskImpl {
     return js.context.callMethod('getByName', ['option:local', key]);
   }
 
+  // Do not return the real environment variables.
+  // Use the global variable as the environment variable in web.
   String mainGetEnv({required String key, dynamic hint}) {
-    throw UnimplementedError("mainGetEnv");
+    return js.context.callMethod('getByName', ['envvar', key]);
+  }
+
+  // Use the global variable as the environment variable in web.
+  void mainSetEnv({required String key, String? value, dynamic hint}) {
+    js.context.callMethod('setByName', [
+      'envvar',
+      jsonEncode({'name': key, 'value': value})
+    ]);
   }
 
   Future<void> mainSetLocalOption(
@@ -1597,23 +1609,28 @@ class RustdeskImpl {
   }
 
   bool isCustomClient({dynamic hint}) {
-    return false;
+    // is_custom_client() checks if app name is not "RustDesk"
+    return mainGetAppNameSync(hint: hint) != "RustDesk";
   }
 
   bool isDisableSettings({dynamic hint}) {
-    return false;
+    // Checks HARD_SETTINGS["disable-settings"] == "Y"
+    return mainGetHardOption(key: "disable-settings", hint: hint) == "Y";
   }
 
   bool isDisableAb({dynamic hint}) {
-    return false;
+    // Checks HARD_SETTINGS["disable-ab"] == "Y"
+    return mainGetHardOption(key: "disable-ab", hint: hint) == "Y";
   }
 
   bool isDisableGroupPanel({dynamic hint}) {
-    return false;
+    // Checks LocalConfig::get_option("disable-group-panel") == "Y"
+    return mainGetLocalOption(key: "disable-group-panel", hint: hint) == "Y";
   }
 
   bool isDisableAccount({dynamic hint}) {
-    return false;
+    // Checks HARD_SETTINGS["disable-account"] == "Y"
+    return mainGetHardOption(key: "disable-account", hint: hint) == "Y";
   }
 
   bool isDisableInstallation({dynamic hint}) {
@@ -1736,7 +1753,7 @@ class RustdeskImpl {
   }
 
   String mainGetHardOption({required String key, dynamic hint}) {
-    throw UnimplementedError("mainGetHardOption");
+    return mainGetLocalOption(key: key, hint: hint);
   }
 
   Future<void> mainCheckHwcodec({dynamic hint}) {
@@ -1809,7 +1826,7 @@ class RustdeskImpl {
   }
 
   String mainGetBuildinOption({required String key, dynamic hint}) {
-    return '';
+    return mainGetLocalOption(key: key, hint: hint);
   }
 
   String installInstallOptions({dynamic hint}) {
@@ -1909,6 +1926,112 @@ class RustdeskImpl {
   Future<void> sessionTakeScreenshot(
       {required UuidValue sessionId, required int display, dynamic hint}) {
     throw UnimplementedError("sessionTakeScreenshot");
+  }
+
+  Future<void> sessionOpenTerminal(
+      {required UuidValue sessionId,
+      required int terminalId,
+      required int rows,
+      required int cols,
+      dynamic hint}) {
+    return Future(() => js.context.callMethod('setByName', [
+          'open_terminal',
+          jsonEncode({
+            'terminal_id': terminalId,
+            'rows': rows,
+            'cols': cols,
+          })
+        ]));
+  }
+
+  Future<void> sessionSendTerminalInput(
+      {required UuidValue sessionId,
+      required int terminalId,
+      required String data,
+      dynamic hint}) {
+    return Future(() => js.context.callMethod('setByName', [
+          'send_terminal_input',
+          jsonEncode({
+            'terminal_id': terminalId,
+            'data': data,
+          })
+        ]));
+  }
+
+  Future<void> sessionResizeTerminal(
+      {required UuidValue sessionId,
+      required int terminalId,
+      required int rows,
+      required int cols,
+      dynamic hint}) {
+    return Future(() => js.context.callMethod('setByName', [
+          'resize_terminal',
+          jsonEncode({
+            'terminal_id': terminalId,
+            'rows': rows,
+            'cols': cols,
+          })
+        ]));
+  }
+
+  Future<void> sessionCloseTerminal(
+      {required UuidValue sessionId, required int terminalId, dynamic hint}) {
+    return Future(() => js.context.callMethod('setByName', [
+          'close_terminal',
+          jsonEncode({
+            'terminal_id': terminalId,
+          })
+        ]));
+  }
+
+  Future<int?> sessionGetEdgeScrollEdgeThickness(
+      {required UuidValue sessionId, dynamic hint}) {
+    final thickness = js.context.callMethod(
+        'getByName', ['option:session', 'edge-scroll-edge-thickness']);
+    return Future(() => int.tryParse(thickness) ?? 100);
+  }
+
+  Future<void> sessionSetEdgeScrollEdgeThickness(
+      {required UuidValue sessionId, required int value, dynamic hint}) {
+    return Future(() => js.context.callMethod('setByName',
+        ['option:session', 'edge-scroll-edge-thickness', value.toString()]));
+  }
+
+  String sessionGetConnSessionId({required UuidValue sessionId, dynamic hint}) {
+    return js.context.callMethod('getByName', ['conn_session_id']);
+  }
+
+  bool willSessionCloseCloseSession(
+      {required UuidValue sessionId, dynamic hint}) {
+    return true;
+  }
+
+  String sessionGetLastAuditNote({required UuidValue sessionId, dynamic hint}) {
+    return js.context.callMethod('getByName', ['last_audit_note']);
+  }
+
+  Future<void> sessionSetAuditGuid(
+      {required UuidValue sessionId, required String guid, dynamic hint}) {
+    return Future(
+        () => js.context.callMethod('setByName', ['audit_guid', guid]));
+  }
+
+  String sessionGetAuditGuid({required UuidValue sessionId, dynamic hint}) {
+    return js.context.callMethod('getByName', ['audit_guid']);
+  }
+
+  bool mainSetCursorPosition({required int x, required int y, dynamic hint}) {
+    return false;
+  }
+
+  bool mainClipCursor(
+      {required int left,
+      required int top,
+      required int right,
+      required int bottom,
+      required bool enable,
+      dynamic hint}) {
+    return false;
   }
 
   void dispose() {}

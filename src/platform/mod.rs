@@ -26,12 +26,13 @@ pub mod linux_desktop_manager;
 #[cfg(target_os = "linux")]
 pub mod gtk_sudo;
 
+#[cfg(all(
+    not(all(target_os = "windows", not(target_pointer_width = "64"))),
+    not(any(target_os = "android", target_os = "ios"))
+))]
+use hbb_common::sysinfo::System;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::{
-    message_proto::CursorData,
-    sysinfo::{Pid, System},
-    ResultType,
-};
+use hbb_common::{message_proto::CursorData, sysinfo::Pid, ResultType};
 use std::sync::{Arc, Mutex};
 #[cfg(not(any(target_os = "macos", target_os = "android", target_os = "ios")))]
 pub const SERVICE_INTERVAL: u64 = 300;
@@ -119,16 +120,18 @@ pub fn get_wakelock(_display: bool) -> WakeLock {
     return crate::platform::WakeLock::new(_display, true, false);
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub(crate) struct InstallingService; // please use new
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 impl InstallingService {
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
     pub fn new() -> Self {
         *INSTALLING_SERVICE.lock().unwrap() = true;
         Self
     }
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 impl Drop for InstallingService {
     fn drop(&mut self) {
         *INSTALLING_SERVICE.lock().unwrap() = false;
@@ -144,6 +147,7 @@ pub fn is_prelogin() -> bool {
 // Note: This method is inefficient on Windows. It will get all the processes.
 // It should only be called when performance is not critical.
 // If we wanted to get the command line ourselves, there would be a lot of new code.
+#[allow(dead_code)]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn get_pids_of_process_with_args<S1: AsRef<str>, S2: AsRef<str>>(
     name: S1,
