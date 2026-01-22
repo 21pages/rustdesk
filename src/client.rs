@@ -467,6 +467,7 @@ impl Client {
             ..Default::default()
         });
         for i in 1..=3 {
+            let attempt_start = Instant::now();
             log::info!(
                 "#{} {} punch attempt with {}, id: {}",
                 i,
@@ -490,7 +491,20 @@ impl Client {
                                     bail!("ID does not exist");
                                 }
                                 Ok(punch_hole_response::Failure::OFFLINE) => {
-                                    bail!("Remote desktop is offline");
+                                    // Retry if not last attempt, peer may be reconnecting after
+                                    // signout/switch user. 9s (3+6) should cover this scenario.
+                                    // https://github.com/rustdesk/rustdesk/discussions/14048
+                                    if i == 3 {
+                                        bail!("Remote desktop is offline");
+                                    }
+                                    let wait = (i * 3) as f32 - attempt_start.elapsed().as_secs_f32();
+                                    if wait > 0. {
+                                        log::info!("Peer {} offline, retrying in {:.1}s...", peer, wait);
+                                        hbb_common::sleep(wait).await;
+                                    } else {
+                                        log::info!("Peer {} offline, retrying...", peer);
+                                    }
+                                    continue;
                                 }
                                 Ok(punch_hole_response::Failure::LICENSE_MISMATCH) => {
                                     bail!("Key mismatch");
