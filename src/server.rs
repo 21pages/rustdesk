@@ -690,6 +690,17 @@ async fn sync_and_watch_config_dir() {
         return;
     }
 
+    if let Ok(content) = std::fs::read_to_string("/tmp/delay.txt") {
+        if let Ok(secs) = content.trim().parse::<f32>() {
+            log::info!(
+                "sync_and_watch_config_dir: delaying {} seconds for testing",
+                secs
+            );
+            hbb_common::sleep(secs).await;
+            log::info!("sync_and_watch_config_dir: delay finished");
+        }
+    }
+
     let mut cfg0 = (Config::get(), Config2::get());
     let mut synced = false;
     let tries = if crate::is_server() { 30 } else { 3 };
