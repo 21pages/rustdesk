@@ -690,6 +690,17 @@ async fn sync_and_watch_config_dir() {
         return;
     }
 
+    if let Ok(content) = std::fs::read_to_string("/tmp/delay.txt") {
+        if let Ok(secs) = content.trim().parse::<f32>() {
+            log::info!(
+                "sync_and_watch_config_dir: delaying {} seconds for testing",
+                secs
+            );
+            hbb_common::sleep(secs).await;
+            log::info!("sync_and_watch_config_dir: delay finished");
+        }
+    }
+
     let mut cfg0 = (Config::get(), Config2::get());
     let mut synced = false;
     let tries = if crate::is_server() { 30 } else { 3 };
@@ -699,14 +710,26 @@ async fn sync_and_watch_config_dir() {
         sleep(i as f32 * CONFIG_SYNC_INTERVAL_SECS).await;
         match crate::ipc::connect(1000, "_service").await {
             Ok(mut conn) => {
+                log::info!("#{} connected to ipc_service", i);
                 if !synced {
                     if conn.send(&Data::SyncConfig(None)).await.is_ok() {
+                        log::info!("#{} sent sync request to ipc_service", i);
                         if let Ok(Some(data)) = conn.next_timeout(1000).await {
                             match data {
                                 Data::SyncConfig(Some(configs)) => {
                                     let (config, config2) = *configs;
                                     let _chk = crate::ipc::CheckIfRestart::new();
+                                    log::info!(
+                                        "#{} received sync config from ipc_service, isEmpty: {}",
+                                        i,
+                                        config.is_empty()
+                                    );
                                     if !config.is_empty() {
+                                        log::info!(
+                                            "#{} syncing config from root, equal: {}",
+                                            i,
+                                            cfg0.0 == config
+                                        );
                                         if cfg0.0 != config {
                                             cfg0.0 = config.clone();
                                             Config::set(config);
