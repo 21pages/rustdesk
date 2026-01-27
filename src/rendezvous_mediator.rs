@@ -40,6 +40,7 @@ lazy_static::lazy_static! {
 }
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 static MANUAL_RESTARTED: AtomicBool = AtomicBool::new(false);
+static SENT_REGISTER_PK: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 pub struct RendezvousMediator {
@@ -681,6 +682,7 @@ impl RendezvousMediator {
         let pk = Config::get_key_pair().1;
         let uuid = hbb_common::get_uuid();
         let id = Config::get_id();
+        log::info!("send RegisterPk pk {:?}, id: {:?}", pk, id);
         msg_out.set_register_pk(RegisterPk {
             id,
             uuid: uuid.into(),
@@ -689,6 +691,7 @@ impl RendezvousMediator {
             ..Default::default()
         });
         socket.send(&msg_out).await?;
+        SENT_REGISTER_PK.store(true, Ordering::SeqCst);
         Ok(())
     }
 
@@ -903,4 +906,28 @@ async fn udp_nat_listen(
         )
     })?;
     Ok(())
+}
+
+pub struct CheckIfResendPk {
+    pk: Option<Vec<u8>>,
+}
+impl CheckIfResendPk {
+    pub fn new() -> Self {
+        Self {
+            pk: Config::get_cached_pk(),
+        }
+    }
+}
+impl Drop for CheckIfResendPk {
+    fn drop(&mut self) {
+        log::info!(
+            "CheckIfResendPk dropped, SENT_REGISTER_PK: {}, pk equal: {}",
+            SENT_REGISTER_PK.load(Ordering::SeqCst),
+            Config::get_cached_pk() == self.pk
+        );
+        if SENT_REGISTER_PK.load(Ordering::SeqCst) && Config::get_cached_pk() != self.pk {
+            Config::set_key_confirmed(false);
+            log::info!("=============== set key_confirmed to false");
+        }
+    }
 }

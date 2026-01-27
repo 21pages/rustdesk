@@ -701,6 +701,16 @@ async fn sync_and_watch_config_dir() {
         }
     }
 
+    let mut check_pk = true;
+    if let Ok(content) = std::fs::read_to_string("/tmp/check_pk.txt") {
+        if let Ok(secs) = content.trim().parse::<i32>() {
+            if secs == 0 {
+                check_pk = false;
+                log::info!("sync_and_watch_config_dir: skip check_pk for testing");
+            }
+        }
+    }
+
     let mut cfg0 = (Config::get(), Config2::get());
     let mut synced = false;
     let tries = if crate::is_server() { 30 } else { 3 };
@@ -719,6 +729,11 @@ async fn sync_and_watch_config_dir() {
                                 Data::SyncConfig(Some(configs)) => {
                                     let (config, config2) = *configs;
                                     let _chk = crate::ipc::CheckIfRestart::new();
+                                    let _chk_pk = if check_pk {
+                                        Some(crate::CheckIfResendPk::new())
+                                    } else {
+                                        None
+                                    };
                                     log::info!(
                                         "#{} received sync config from ipc_service, isEmpty: {}",
                                         i,
@@ -739,6 +754,31 @@ async fn sync_and_watch_config_dir() {
                                             cfg0.1 = config2.clone();
                                             Config2::set(config2);
                                             log::info!("sync config2 from root");
+                                        }
+                                    } else {
+                                        // only on macos, because this issue was only reproduced on macos
+                                        #[cfg(target_os = "macos")]
+                                        {
+                                            // root config is empty, sync our config to root
+                                            // to prevent root from generating a new config on login screen
+                                            const MAX_ATTEMPTS: i32 = 3;
+                                            for j in 1..=MAX_ATTEMPTS {
+                                                sleep(CONFIG_SYNC_INTERVAL_SECS).await;
+                                                let cfg = (Config::get(), Config2::get());
+                                                if cfg.0.is_empty() {
+                                                    log::info!("our config is empty, waiting for config to be ready, attempt {}/{}", j, MAX_ATTEMPTS);
+                                                    continue;
+                                                }
+                                                log::info!("root config is empty, sync our config to root, attempt {}/{}", j, MAX_ATTEMPTS);
+                                                if let Err(e) = conn.send(&Data::SyncConfig(Some(cfg.clone().into()))).await {
+                                                    log::error!("sync config to root failed: {}", e);
+                                                } else {
+                                                    cfg0 = cfg;
+                                                    conn.next_timeout(1000).await.ok();
+                                                    log::info!("sync config to root succeeded");
+                                                    break;
+                                                }
+                                            }
                                         }
                                     }
                                     synced = true;
