@@ -18,8 +18,30 @@ pub struct HwRamEncoderConfig {
 
 // Add new helper methods to HwRamEncoder implementation
 impl HwRamEncoder {
-    // NEW: Calculate appropriate QP range based on encoder and codec type
-    // Based on Sunshine's implementation and empirical testing
+    /// Calculate appropriate QP (Quantization Parameter) range based on encoder and codec type.
+    ///
+    /// QP controls the amount of quantization applied during encoding. Lower QP = higher quality
+    /// but also higher bitrate. The range is typically 0-51 for H.264, 0-51 for HEVC.
+    ///
+    /// # Purpose
+    /// Setting a minimum QP prevents the encoder from wasting bits on imperceptible quality
+    /// improvements. This is especially important at lower frame rates where the encoder
+    /// might use very low QP values that don't provide visible quality gains.
+    ///
+    /// # Parameters
+    /// * `encoder_name` - The name of the hardware encoder (e.g., "h264_nvenc", "hevc_qsv")
+    ///
+    /// # Returns
+    /// A tuple of (min_qp, max_qp) where:
+    /// - min_qp: Minimum QP value allowed (-1 means no minimum)
+    /// - max_qp: Maximum QP value allowed (-1 means no maximum)
+    ///
+    /// # Values Based On
+    /// These values are based on Sunshine's empirical testing and provide a good balance
+    /// between quality and bitrate efficiency:
+    /// - H.264: min_qp=18-19 (quality imperceptible below this)
+    /// - HEVC: min_qp=22-23 (HEVC more efficient, can use higher QP)
+    /// - AV1: min_qp=22-23 (most efficient codec)
     fn calculate_qp_range(encoder_name: &str) -> (i32, i32) {
         // min_qp prevents the encoder from using too-low QP values
         // which waste bits on imperceptible quality improvements
@@ -75,8 +97,32 @@ impl HwRamEncoder {
         (-1, -1)
     }
     
-    // NEW: Calculate VBV buffer size for rate control
-    // Returns buffer size in kilobits per second
+    /// Calculate VBV (Video Buffering Verifier) buffer size for rate control.
+    ///
+    /// # Purpose
+    /// VBV buffer size controls how much the encoder can deviate from the target bitrate
+    /// over time. A smaller buffer means tighter bitrate control but may limit quality
+    /// flexibility. A larger buffer allows more variation but can cause latency.
+    ///
+    /// # Why Single-Frame Buffering?
+    /// For low-latency streaming (like remote desktop), we use single-frame VBV:
+    /// - Minimizes latency (no multi-frame buffering)
+    /// - Prevents large bitrate spikes
+    /// - Provides smoother bitrate distribution
+    /// - Improves quality at lower frame rates
+    ///
+    /// # Parameters
+    /// * `bitrate_kbps` - Target bitrate in kilobits per second
+    /// * `fps` - Frame rate in frames per second
+    ///
+    /// # Returns
+    /// VBV buffer size in kilobits per second, or -1 if fps is invalid
+    ///
+    /// # Example
+    /// At 2000 kbps and 10 FPS: buffer = 2000/10 = 200 kbps (25 KB per frame)
+    /// At 2000 kbps and 30 FPS: buffer = 2000/30 = 66.7 kbps (8.3 KB per frame)
+    ///
+    /// This allows lower FPS to allocate more bits per frame, improving quality.
     fn calculate_rc_buffer_size(bitrate_kbps: u32, fps: i32) -> i32 {
         if fps <= 0 {
             return -1;  // Invalid FPS, let encoder decide
