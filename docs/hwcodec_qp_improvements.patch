@@ -21,7 +21,7 @@ index 1234567..abcdefg 100644
 +    } else if (fps > 0) {
 +      // Default: single-frame VBV for low-latency streaming
 +      // This prevents large bitrate spikes and provides smoother bitrate distribution
-+      // Note: fps > 0 check above prevents division by zero
++      // Note: The 'fps > 0' condition above prevents division by zero
 +      c->rc_buffer_size = (kbs * 1000) / fps;
 +    }
 +    

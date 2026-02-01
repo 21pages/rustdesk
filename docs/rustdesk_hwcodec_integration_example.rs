@@ -4,6 +4,10 @@
 // Add to the imports section:
 // (no changes needed to imports)
 
+// Constants referenced in this example (defined elsewhere in actual implementation)
+const DEFAULT_FPS: i32 = 30;  // Default frame rate if not specified
+const DEFAULT_GOP: i32 = i32::MAX;  // Default GOP size (keyframe interval)
+
 // Modified HwRamEncoderConfig structure to include FPS
 #[derive(Debug, Clone)]
 pub struct HwRamEncoderConfig {
@@ -140,6 +144,8 @@ impl HwRamEncoder {
         //   Buffer = 2000 / 30 = 66.7 kbps = 8.3 KB per frame
         //
         // Lower FPS gets more bits per frame, which improves quality
+        // 
+        // Note: fps > 0 is guaranteed by the early return above, preventing division by zero
         (bitrate_kbps / fps as u32) as i32
     }
 }
