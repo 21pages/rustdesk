@@ -46,6 +46,10 @@ impl HwRamEncoder {
     /// - H.264: min_qp=18-19 (quality imperceptible below this)
     /// - HEVC: min_qp=22-23 (HEVC more efficient, can use higher QP)
     /// - AV1: min_qp=22-23 (most efficient codec)
+    ///
+    /// # References
+    /// - Sunshine NVENC QP values: https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h#L37-L44
+    /// - FFmpeg QP documentation: https://trac.ffmpeg.org/wiki/Encode/H.264#crf
     fn calculate_qp_range(encoder_name: &str) -> (i32, i32) {
         // min_qp prevents the encoder from using too-low QP values
         // which waste bits on imperceptible quality improvements
@@ -53,6 +57,7 @@ impl HwRamEncoder {
         
         if encoder_name.contains("nvenc") {
             // NVIDIA NVENC encoder
+            // Reference: Sunshine NVENC configuration - https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h#L37-L44
             if encoder_name.contains("h264") {
                 // H.264: min QP 19 (Sunshine's value)
                 // At QP < 19, quality improvements are barely perceptible
@@ -68,6 +73,7 @@ impl HwRamEncoder {
             }
         } else if encoder_name.contains("qsv") {
             // Intel Quick Sync Video encoder
+            // Reference: FFmpeg QSV encoder documentation - https://trac.ffmpeg.org/wiki/Hardware/QuickSync
             if encoder_name.contains("h264") {
                 // QSV H.264: slightly lower than NVENC for compatibility
                 return (18, -1);
@@ -80,6 +86,7 @@ impl HwRamEncoder {
             }
         } else if encoder_name.contains("amf") {
             // AMD AMF encoder
+            // Reference: AMD AMF SDK - https://github.com/GPUOpen-LibrariesAndSDKs/AMF
             if encoder_name.contains("h264") {
                 return (18, -1);
             } else if encoder_name.contains("hevc") {
@@ -90,10 +97,12 @@ impl HwRamEncoder {
             // VAAPI typically uses VBR mode with quality parameter
             // QP control only works in CQP mode, which we don't use for streaming
             // So we don't set QP limits for VAAPI
+            // Reference: Sunshine VAAPI implementation - https://github.com/LizardByte/Sunshine/blob/master/src/platform/linux/vaapi.cpp#L423-L457
             return (-1, -1);
         } else if encoder_name.contains("videotoolbox") {
             // Apple VideoToolbox
             // VideoToolbox has its own quality control mechanism
+            // Reference: Apple VideoToolbox documentation - https://developer.apple.com/documentation/videotoolbox
             return (-1, -1);
         }
         
@@ -127,6 +136,10 @@ impl HwRamEncoder {
     /// At 2000 kbps and 30 FPS: buffer = 2000/30 = 66.7 kbps (8.3 KB per frame)
     ///
     /// This allows lower FPS to allocate more bits per frame, improving quality.
+    ///
+    /// # References
+    /// - Sunshine VBV buffer calculation: https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp#L1746
+    /// - FFmpeg rate control guide: https://slhck.info/video/2017/03/01/rate-control.html
     fn calculate_rc_buffer_size(bitrate_kbps: u32, fps: i32) -> i32 {
         if fps <= 0 {
             return -1;  // Invalid FPS, let encoder decide
@@ -242,3 +255,40 @@ let config = HwRamEncoderConfig {
 
 let encoder = HwRamEncoder::new(EncoderCfg::HWRAM(config), false)?;
 */
+
+// ============================================================================
+// REFERENCES
+// ============================================================================
+//
+// This implementation is based on analysis of Sunshine's encoder configuration:
+//
+// Primary References:
+// - Sunshine source code: https://github.com/LizardByte/Sunshine
+// - Sunshine NVENC config: https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h
+// - Sunshine NVENC implementation: https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_base.cpp
+// - Sunshine video encoder: https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp
+// - Sunshine VAAPI implementation: https://github.com/LizardByte/Sunshine/blob/master/src/platform/linux/vaapi.cpp
+//
+// Hardware Encoder Documentation:
+// - NVIDIA NVENC: https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
+// - Intel QSV: https://www.intel.com/content/www/us/en/developer/articles/technical/quick-sync-video-and-ffmpeg-getting-started.html
+// - AMD AMF: https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+// - Apple VideoToolbox: https://developer.apple.com/documentation/videotoolbox
+//
+// FFmpeg Documentation:
+// - Rate control guide: https://slhck.info/video/2017/03/01/rate-control.html
+// - H.264 encoding: https://trac.ffmpeg.org/wiki/Encode/H.264
+// - QSV encoding: https://trac.ffmpeg.org/wiki/Hardware/QuickSync
+//
+// Technical Background:
+// - QP (Quantization Parameter): Controls compression vs quality trade-off
+// - VBV (Video Buffering Verifier): Controls bitrate variation over time
+// - CBR (Constant Bitrate): Maintains fixed bitrate (less quality variation)
+// - VBR (Variable Bitrate): Allows bitrate to vary for better quality
+//
+// Key Findings from Sunshine:
+// - Min QP values prevent wasting bits on imperceptible quality at low FPS
+// - Single-frame VBV (rc_buffer_size = bitrate / fps) improves low FPS quality
+// - QSV CBR-with-VBR mode provides best quality for Intel encoders
+// - VAAPI uses VBR mode instead of QP control for better results
+

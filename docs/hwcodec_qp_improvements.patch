@@ -1,3 +1,35 @@
+# Hardware Encoder Quality Improvements - QP Control and VBV Buffer Optimization
+#
+# RATIONALE:
+# Hardware encoders (NVENC, QSV, AMF, VAAPI) produce poor quality at low FPS (10-15)
+# because they don't set min/max QP values and lack proper VBV buffer configuration.
+# At low FPS without QP limits, encoders use very low QP (near 0), wasting bits on
+# imperceptible quality instead of distributing them efficiently.
+#
+# SOLUTION:
+# 1. Set minimum QP values to prevent wasting bits (based on Sunshine's empirical testing)
+# 2. Use single-frame VBV buffer (rc_buffer_size = bitrate / framerate) for better rate control
+# 3. Make encoder FPS-aware for correct buffer calculations
+#
+# PRIMARY REFERENCE:
+# Sunshine project - https://github.com/LizardByte/Sunshine
+# - NVENC QP values: https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h#L37-L44
+# - VBV buffer calc: https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp#L1746
+# - NVENC implementation: https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_base.cpp#L288-L378
+# - VAAPI implementation: https://github.com/LizardByte/Sunshine/blob/master/src/platform/linux/vaapi.cpp
+#
+# ADDITIONAL REFERENCES:
+# - FFmpeg rate control guide: https://slhck.info/video/2017/03/01/rate-control.html
+# - NVENC API guide: https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
+# - Intel QSV guide: https://www.intel.com/content/www/us/en/developer/articles/technical/quick-sync-video-and-ffmpeg-getting-started.html
+# - AMD AMF SDK: https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+#
+# EXPECTED RESULTS:
+# - 10 FPS @ 2 Mbps: Significant quality improvement (comparable to software encoding)
+# - 15-20 FPS: Moderate quality improvement
+# - 30+ FPS: Minimal change (already good)
+# - Bandwidth and latency unchanged
+#
 diff --git a/cpp/common/util.cpp b/cpp/common/util.cpp
 index 1234567..abcdefg 100644
 --- a/cpp/common/util.cpp
@@ -16,6 +48,8 @@ index 1234567..abcdefg 100644
      c->bit_rate = kbs * 1000;
 +    
 +    // Set VBV buffer size for better rate control
++    // Reference: Sunshine's VBV buffer calculation - https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp#L1746
++    // Reference: FFmpeg rate control - https://slhck.info/video/2017/03/01/rate-control.html
 +    if (rc_buffer_size > 0) {
 +      c->rc_buffer_size = rc_buffer_size * 1000;
 +    } else if (fps > 0) {
@@ -26,6 +60,9 @@ index 1234567..abcdefg 100644
 +    }
 +    
      if (name.find("qsv") != std::string::npos) {
++      // QSV CBR-with-VBR mode: set rc_max_rate equal to bit_rate, then reduce bit_rate by 1
++      // This forces VBR mode while maintaining CBR-like behavior for better quality
++      // Reference: Sunshine QSV configuration - https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp#L1729
        c->rc_max_rate = c->bit_rate;
        c->bit_rate--; // cbr with vbr
      }
@@ -44,10 +81,13 @@ index 1234567..abcdefg 100644
 +  // Setting min/max QP helps maintain consistent quality especially at lower frame rates
 +  // Min QP prevents the encoder from wasting bits on imperceptible quality improvements
 +  // Max QP prevents the encoder from degrading quality too much
++  // Reference: Sunshine implementation - https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_base.cpp#L288-L294
++  // Reference: FFmpeg rate control guide - https://slhck.info/video/2017/03/01/rate-control.html
 +  
 +  if (name.find("nvenc") != std::string::npos) {
 +    // NVENC supports qmin/qmax for all frame types (I, P, B)
 +    // Format: "qpI,qpP,qpB" but we use same value for all
++    // Reference: NVENC Video Encoder API - https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
 +    if (min_qp >= 0) {
 +      char qp_str[32];
 +      snprintf(qp_str, sizeof(qp_str), "%d,%d,%d", min_qp, min_qp, min_qp);
@@ -70,6 +110,7 @@ index 1234567..abcdefg 100644
 +  
 +  if (name.find("qsv") != std::string::npos) {
 +    // Intel QSV uses qmin/qmax as integer options
++    // Reference: Intel Quick Sync Video - https://www.intel.com/content/www/us/en/developer/articles/technical/quick-sync-video-and-ffmpeg-getting-started.html
 +    if (min_qp >= 0) {
 +      if ((ret = av_opt_set_int(priv_data, "qmin", min_qp, 0)) < 0) {
 +        LOG_WARN(std::string("qsv set qmin failed, ret = ") + av_err2str(ret));
@@ -88,6 +129,7 @@ index 1234567..abcdefg 100644
 +  
 +  if (name.find("amf") != std::string::npos) {
 +    // AMD AMF uses qp_min/qp_max (note: might not be supported on all versions)
++    // Reference: AMD Advanced Media Framework - https://github.com/GPUOpen-LibrariesAndSDKs/AMF
 +    if (min_qp >= 0) {
 +      if ((ret = av_opt_set_int(priv_data, "qp_min", min_qp, 0)) < 0) {
 +        LOG_WARN(std::string("amf set qp_min failed (might not be supported), ret = ") + av_err2str(ret));
@@ -108,6 +150,7 @@ index 1234567..abcdefg 100644
 +    // VAAPI typically uses VBR mode with quality parameter instead of QP control
 +    // QP control only works in CQP (Constant QP) mode which we don't use for streaming
 +    // So we skip QP setting for VAAPI and rely on bitrate-based VBR instead
++    // Reference: Sunshine VAAPI implementation - https://github.com/LizardByte/Sunshine/blob/master/src/platform/linux/vaapi.cpp#L423-L457
 +    if (min_qp >= 0 || max_qp >= 0) {
 +      LOG_INFO(std::string("vaapi: QP range not applicable in VBR mode"));
 +    }

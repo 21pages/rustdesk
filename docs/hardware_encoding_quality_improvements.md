@@ -18,20 +18,20 @@ At the same bitrate, hardware encoding currently uses less bandwidth than softwa
 Sunshine (https://github.com/LizardByte/Sunshine) maintains good image quality at 2 Mbps even at 10 FPS using:
 
 1. **Min QP Controls** (prevents too-low QP which wastes bits on imperceptible quality):
-   - H.264 NVENC: min_qp = 19
-   - HEVC NVENC: min_qp = 23
-   - AV1 NVENC: min_qp = 23
+   - H.264 NVENC: min_qp = 19 [(Source)](https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h#L38)
+   - HEVC NVENC: min_qp = 23 [(Source)](https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h#L41)
+   - AV1 NVENC: min_qp = 23 [(Source)](https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h#L44)
 
-2. **VBV Buffer Size** for proper rate control:
+2. **VBV Buffer Size** for proper rate control [(Source)](https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp#L1746):
    ```cpp
    // Single-frame VBV for better rate control
    ctx->rc_buffer_size = bitrate / framerate;
    ```
 
 3. **Encoder-Specific Options**:
-   - NVENC: Uses VBR with optional VBV percentage increase
-   - QSV: Uses CBR-with-VBR mode (bit_rate = rc_max_rate - 1)
-   - VAAPI: Uses VBR with single-frame VBV for Intel GPUs and AV1
+   - NVENC: Uses VBR with optional VBV percentage increase [(Source)](https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp#L1749-L1751)
+   - QSV: Uses CBR-with-VBR mode (bit_rate = rc_max_rate - 1) [(Source)](https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp#L1729)
+   - VAAPI: Uses VBR with single-frame VBV for Intel GPUs and AV1 [(Source)](https://github.com/LizardByte/Sunshine/blob/master/src/platform/linux/vaapi.cpp#L423-L457)
 
 ## Required Changes
 
@@ -302,7 +302,37 @@ impl HwRamEncoder {
 
 ## References
 
-- Sunshine encoder implementation: https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp
-- FFmpeg rate control documentation: https://slhck.info/video/2017/03/01/rate-control.html
-- NVENC programming guide: https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
-- QSV documentation: https://www.intel.com/content/www/us/en/developer/articles/technical/quick-sync-video-and-ffmpeg-getting-started.html
+### Primary Implementation Reference
+- **Sunshine Project**: https://github.com/LizardByte/Sunshine
+  - Main video encoder: https://github.com/LizardByte/Sunshine/blob/master/src/video.cpp
+  - NVENC configuration: https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_config.h
+  - NVENC implementation: https://github.com/LizardByte/Sunshine/blob/master/src/nvenc/nvenc_base.cpp
+  - VAAPI implementation: https://github.com/LizardByte/Sunshine/blob/master/src/platform/linux/vaapi.cpp
+
+### Hardware Encoder Documentation
+- **NVIDIA NVENC**:
+  - Programming Guide: https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
+  - QP Control: https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/#quality-control
+- **Intel Quick Sync Video (QSV)**:
+  - Getting Started: https://www.intel.com/content/www/us/en/developer/articles/technical/quick-sync-video-and-ffmpeg-getting-started.html
+  - FFmpeg Integration: https://trac.ffmpeg.org/wiki/Hardware/QuickSync
+- **AMD AMF**:
+  - SDK Repository: https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+  - Documentation: https://gpuopen.com/advanced-media-framework/
+- **VAAPI (Linux)**:
+  - FFmpeg VAAPI: https://trac.ffmpeg.org/wiki/Hardware/VAAPI
+
+### FFmpeg and Rate Control
+- **Rate Control Fundamentals**: https://slhck.info/video/2017/03/01/rate-control.html
+- **H.264 Encoding Guide**: https://trac.ffmpeg.org/wiki/Encode/H.264
+- **HEVC Encoding Guide**: https://trac.ffmpeg.org/wiki/Encode/H.265
+- **FFmpeg Rate Control Options**: https://ffmpeg.org/ffmpeg-codecs.html#Options-27
+
+### Technical Background
+- **QP (Quantization Parameter)**:
+  - H.264 QP range: 0-51 (lower = higher quality)
+  - Purpose: Controls compression vs quality trade-off
+  - Reference: https://en.wikipedia.org/wiki/Quantization_(image_processing)#Quantization_in_image_processing
+- **VBV (Video Buffering Verifier)**:
+  - Controls bitrate variation over time
+  - Reference: https://en.wikipedia.org/wiki/Video_Buffering_Verifier
