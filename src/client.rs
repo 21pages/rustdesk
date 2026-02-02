@@ -204,6 +204,7 @@ impl Client {
         debug_assert!(peer == interface.get_id());
         interface.update_direct(None);
         interface.update_received(false);
+        interface.clear_easy_access_challenge();
         match Self::_start(peer, key, token, conn_type, interface.clone()).await {
             Err(err) => {
                 let err_str = err.to_string();
@@ -340,7 +341,9 @@ impl Client {
             contained,
         );
         if udp.0.is_none() {
-            return fut.await;
+            let conn = fut.await?;
+            interface.get_lch().write().unwrap().controller_config = conn.3;
+            return Ok((conn.0, conn.1, conn.2));
         }
         let mut connect_futures = Vec::new();
         connect_futures.push(fut.boxed());
@@ -349,7 +352,7 @@ impl Client {
             key.to_owned(),
             token.to_owned(),
             conn_type,
-            interface,
+            interface.clone(),
             (None, None),
             None,
             rendezvous_server,
@@ -358,7 +361,10 @@ impl Client {
         );
         connect_futures.push(fut.boxed());
         match select_ok(connect_futures).await {
-            Ok(conn) => Ok((conn.0 .0, conn.0 .1, conn.0 .2)),
+            Ok(conn) => {
+                interface.get_lch().write().unwrap().controller_config = conn.0 .3;
+                Ok((conn.0 .0, conn.0 .1, conn.0 .2))
+            }
             Err(e) => Err(e),
         }
     }
@@ -384,6 +390,7 @@ impl Client {
         ),
         (i32, String),
         bool,
+        Option<ControllerConfig>,
     )> {
         let mut start = Instant::now();
         let mut socket = connect_tcp(&*rendezvous_server, CONNECT_TIMEOUT).await;
@@ -454,6 +461,7 @@ impl Client {
         };
         let udp_nat_port = udp.1.map(|x| *x.lock().unwrap()).unwrap_or(0);
         let punch_type = if udp_nat_port > 0 { "UDP" } else { "TCP" };
+        let mut controller_config = None;
         msg_out.set_punch_hole_request(PunchHoleRequest {
             id: peer.to_owned(),
             token: token.to_owned(),
@@ -507,6 +515,7 @@ impl Client {
                             relay_server = ph.relay_server;
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
                             feedback = ph.feedback;
+                            controller_config = ph.controller_config.into_option();
                             let s = udp.0.take();
                             if ph.is_udp && s.is_some() {
                                 if let Some(s) = s {
@@ -546,6 +555,7 @@ impl Client {
                             }
                         }
                         signed_id_pk = rr.pk().into();
+                        controller_config = rr.controller_config.into_option();
                         let fut = Self::create_relay(
                             &peer,
                             rr.uuid,
@@ -576,6 +586,7 @@ impl Client {
                             (conn, typ == "IPv6", pk, kcp, typ),
                             (feedback, rendezvous_server),
                             false,
+                            controller_config,
                         ));
                     }
                     _ => {
@@ -619,10 +630,12 @@ impl Client {
                 udp.0,
                 ipv6.0,
                 punch_type,
+                &mut controller_config,
             )
             .await?,
             (feedback, rendezvous_server),
             true,
+            controller_config,
         ))
     }
 
@@ -645,6 +658,7 @@ impl Client {
         udp_socket_nat: Option<Arc<UdpSocket>>,
         udp_socket_v6: Option<Arc<UdpSocket>>,
         punch_type: &str,
+        controller_config: &mut Option<ControllerConfig>,
     ) -> ResultType<(
         Stream,
         bool,
@@ -719,6 +733,7 @@ impl Client {
                     key,
                     token,
                     conn_type,
+                    controller_config,
                 )
                 .await;
                 if let Err(e) = conn {
@@ -839,6 +854,7 @@ impl Client {
         key: &str,
         token: &str,
         conn_type: ConnType,
+        controller_config: &mut Option<ControllerConfig>,
     ) -> ResultType<Stream> {
         let mut succeed = false;
         let mut uuid = "".to_owned();
@@ -883,6 +899,7 @@ impl Client {
                     if !rs.refuse_reason.is_empty() {
                         bail!(rs.refuse_reason);
                     }
+                    *controller_config = rs.controller_config.into_option();
                     succeed = true;
                     break;
                 }
@@ -1755,6 +1772,7 @@ pub struct LoginConfigHandler {
     pub enable_trusted_devices: bool,
     pub record_state: bool,
     pub record_permission: bool,
+    pub controller_config: Option<ControllerConfig>,
 }
 
 impl Deref for LoginConfigHandler {
@@ -2610,7 +2628,7 @@ impl LoginConfigHandler {
 
     /// Create a [`Message`] for login.
     fn create_login_msg(
-        &self,
+        &mut self,
         os_username: String,
         os_password: String,
         password: Vec<u8>,
@@ -2682,6 +2700,11 @@ impl LoginConfigHandler {
         } else {
             Bytes::new()
         };
+        let easy_access_challenge: Bytes = self
+            .controller_config
+            .as_ref()
+            .map(|config| config.easy_access_challenge.clone())
+            .unwrap_or_default();
         let mut lr = LoginRequest {
             username: pure_id,
             password: password.into(),
@@ -2699,6 +2722,7 @@ impl LoginConfigHandler {
             .into(),
             hwid,
             avatar,
+            easy_access_challenge,
             ..Default::default()
         };
         match self.conn_type {
@@ -3533,7 +3557,7 @@ async fn send_login(
     peer: &mut Stream,
 ) {
     let msg_out = lc
-        .read()
+        .write()
         .unwrap()
         .create_login_msg(os_username, os_password, password);
     allow_err!(peer.send(&msg_out).await);
@@ -3593,7 +3617,7 @@ async fn send_switch_login_request(
     msg_out.set_switch_sides_response(SwitchSidesResponse {
         uuid: Bytes::from(uuid.as_bytes().to_vec()),
         lr: hbb_common::protobuf::MessageField::some(
-            lc.read()
+            lc.write()
                 .unwrap()
                 .create_login_msg("".to_owned(), "".to_owned(), vec![])
                 .login_request()
@@ -3645,6 +3669,12 @@ pub trait Interface: Send + Clone + 'static + Sized {
 
     fn update_received(&self, received: bool) {
         self.get_lch().write().unwrap().received = received;
+    }
+
+    fn clear_easy_access_challenge(&self) {
+        if let Some(config) = self.get_lch().write().unwrap().controller_config.as_mut() {
+            config.easy_access_challenge = Default::default();
+        }
     }
 
     fn on_establish_connection_error(&self, err: String) {
