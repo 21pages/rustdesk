@@ -33,8 +33,15 @@ use hbb_common::{
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
     password_security::{self as password, ApproveMode},
+    rand,
+    rendezvous_proto::EasyAccessManagerApproval,
     sha2::{Digest, Sha256},
-    sleep, timeout,
+    sleep,
+    sodiumoxide::crypto::{
+        box_,
+        sign::{self, ed25519},
+    },
+    timeout,
     tokio::{
         net::TcpStream,
         sync::mpsc,
@@ -45,7 +52,7 @@ use hbb_common::{
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
 use scrap::camera;
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::{json, value::Value};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::sync::atomic::Ordering;
@@ -71,7 +78,7 @@ lazy_static::lazy_static! {
     static ref SESSIONS: Arc::<Mutex<HashMap<SessionKey, Session>>> = Default::default();
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
-    pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
+    pub static ref CONTROLLED_CONFIG_ARRAY: Arc::<Mutex<Vec<(i32, ControlledConfig)>>> = Default::default();
     static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
@@ -228,7 +235,7 @@ pub struct Connection {
     restart: bool,
     recording: bool,
     block_input: bool,
-    control_permissions: Option<ControlPermissions>,
+    controlled_config: Option<ControlledConfig>,
     last_test_delay: Option<Instant>,
     network_delay: u32,
     lock_after_session_end: bool,
@@ -352,14 +359,16 @@ impl Connection {
         stream: super::Stream,
         id: i32,
         server: super::ServerPtrWeak,
-        control_permissions: Option<ControlPermissions>,
+        controlled_config: Option<ControlledConfig>,
     ) {
-        // Android is not supported yet, so we always set control_permissions to None.
+        // Android does not support control_permissions yet.
         #[cfg(target_os = "android")]
-        let control_permissions = None;
+        let controlled_config = controlled_config.map(|mut c| {
+            c.control_permissions = 0;
+            c
+        });
         let _raii_id = raii::ConnectionID::new(id);
-        let _raii_control_permissions_id =
-            raii::ControlPermissionsID::new(id, &control_permissions);
+        let _raii_controlled_config_id = raii::ControlledConfigID::new(id, &controlled_config);
         let hash = Hash {
             salt: Config::get_salt(),
             challenge: Config::get_auto_password(6),
@@ -410,15 +419,15 @@ impl Connection {
             port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
-            keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
-            clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
-            audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
+            keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &controlled_config),
+            clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &controlled_config),
+            audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &controlled_config),
             // to-do: make sure is the option correct here
-            file: Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &control_permissions),
-            restart: Self::permission(keys::OPTION_ENABLE_REMOTE_RESTART, &control_permissions),
-            recording: Self::permission(keys::OPTION_ENABLE_RECORD_SESSION, &control_permissions),
-            block_input: Self::permission(keys::OPTION_ENABLE_BLOCK_INPUT, &control_permissions),
-            control_permissions,
+            file: Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &controlled_config),
+            restart: Self::permission(keys::OPTION_ENABLE_REMOTE_RESTART, &controlled_config),
+            recording: Self::permission(keys::OPTION_ENABLE_RECORD_SESSION, &controlled_config),
+            block_input: Self::permission(keys::OPTION_ENABLE_BLOCK_INPUT, &controlled_config),
+            controlled_config,
             last_test_delay: None,
             network_delay: 0,
             lock_after_session_end: false,
@@ -897,7 +906,7 @@ impl Connection {
                     match data {
                         #[cfg(all(target_os = "windows", feature = "flutter"))]
                         ipc::Data::PrinterData(data) => {
-                            if Self::permission(keys::OPTION_ENABLE_REMOTE_PRINTER, &conn.control_permissions) {
+                            if Self::permission(keys::OPTION_ENABLE_REMOTE_PRINTER, &conn.controlled_config) {
                                 conn.send_printer_request(data).await;
                             } else {
                                 conn.send_remote_printing_disallowed().await;
@@ -1437,6 +1446,9 @@ impl Connection {
             return false;
         }
         self.authorized = true;
+        if let Some(c) = self.controlled_config.as_mut() {
+            c.easy_access_grant = Default::default();
+        }
         let (conn_type, auth_conn_type) = if self.file_transfer.is_some() {
             (1, AuthConnType::FileTransfer)
         } else if self.port_forward_socket.is_some() {
@@ -2045,10 +2057,10 @@ impl Connection {
 
     fn permission(
         enable_prefix_option: &str,
-        control_permissions: &Option<ControlPermissions>,
+        controlled_config: &Option<ControlledConfig>,
     ) -> bool {
-        use hbb_common::rendezvous_proto::control_permissions::Permission;
-        if let Some(control_permissions) = control_permissions {
+        use hbb_common::rendezvous_proto::controlled_config::Permission;
+        if let Some(controlled_config) = controlled_config {
             let permission = match enable_prefix_option {
                 keys::OPTION_ENABLE_KEYBOARD => Some(Permission::keyboard),
                 keys::OPTION_ENABLE_REMOTE_PRINTER => Some(Permission::remote_printer),
@@ -2065,13 +2077,357 @@ impl Connection {
             };
             if let Some(permission) = permission {
                 if let Some(enabled) =
-                    crate::get_control_permission(control_permissions.permissions, permission)
+                    crate::get_control_permission(controlled_config.control_permissions, permission)
                 {
                     return enabled;
                 }
             }
         }
         Self::is_permission_enabled_locally(enable_prefix_option)
+    }
+
+    async fn verify_easy_access(&self) -> bool {
+        const EASY_ACCESS_GRANT_VERSION: u32 = 1;
+
+        fn open_easy_access_device_bound_proof(
+            proof: &[u8],
+            server_approval_signature: &[u8],
+            server_pk: &sign::PublicKey,
+            target_sk: &[u8],
+        ) -> Option<Vec<u8>> {
+            const EASY_ACCESS_DEVICE_PROOF_NONCE_DOMAIN: &[u8] =
+                b"easy-access-device-proof-nonce/v1";
+
+            fn derive_easy_access_device_bound_nonce(
+                server_approval_signature: &[u8],
+            ) -> Option<box_::Nonce> {
+                let mut hasher = Sha256::new();
+                hasher.update(EASY_ACCESS_DEVICE_PROOF_NONCE_DOMAIN);
+                hasher.update(server_approval_signature);
+                let digest = hasher.finalize();
+                box_::Nonce::from_slice(&digest[..box_::NONCEBYTES])
+            }
+
+            let target_sign_sk = sign::SecretKey::from_slice(target_sk)?;
+            let target_box_sk = ed25519::to_curve25519_sk(&target_sign_sk).ok()?;
+            let server_box_pk = ed25519::to_curve25519_pk(server_pk).ok()?;
+            let nonce = derive_easy_access_device_bound_nonce(server_approval_signature)?;
+            box_::open(proof, &nonce, &server_box_pk, &target_box_sk).ok()
+        }
+
+        fn serialize_easy_access_consume_decision(
+            grant_id: &[u8],
+            device_nonce: &[u8],
+            approved: bool,
+        ) -> Vec<u8> {
+            const EASY_ACCESS_CONSUME_DECISION_DOMAIN: &[u8] =
+                b"easy-access-consume-decision/v1";
+
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(EASY_ACCESS_CONSUME_DECISION_DOMAIN);
+            bytes.extend_from_slice(&(grant_id.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(grant_id);
+            bytes.extend_from_slice(&(device_nonce.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(device_nonce);
+            bytes.push(u8::from(approved));
+            bytes
+        }
+
+        #[derive(Serialize)]
+        struct EasyAccessGrantConsumeDeviceAuthPayload {
+            uuid: String,
+            grant_id: String,
+            device_nonce: String,
+        }
+
+        #[derive(Serialize)]
+        struct EasyAccessGrantConsumeRequest {
+            id: String,
+            ciphertext: String,
+        }
+
+        #[derive(Deserialize)]
+        struct EasyAccessGrantConsumeResponse {
+            grant_id: String,
+            device_nonce: String,
+            approved: bool,
+            signature: String,
+        }
+
+        async fn consume_easy_access_grant(
+            grant_id: &[u8],
+            target_uuid: &[u8],
+            target_sk: &[u8],
+            server_pk: &sign::PublicKey,
+        ) -> bool {
+            let api_server = crate::get_api_server(
+                Config::get_option("api-server"),
+                Config::get_option("custom-rendezvous-server"),
+            );
+            if api_server.is_empty() {
+                log::warn!("Easy access consume skipped: api server missing");
+                return false;
+            }
+            let Some(device_sign_sk) = sign::SecretKey::from_slice(target_sk) else {
+                log::warn!("Easy access consume failed: target private key invalid");
+                return false;
+            };
+            let Ok(device_box_sk) = ed25519::to_curve25519_sk(&device_sign_sk) else {
+                log::warn!("Easy access consume failed: target box private key invalid");
+                return false;
+            };
+            let Ok(server_box_pk) = ed25519::to_curve25519_pk(server_pk) else {
+                log::warn!("Easy access consume failed: server box public key invalid");
+                return false;
+            };
+            let device_nonce: [u8; 32] = rand::random();
+            let plaintext = match serde_json::to_vec(&EasyAccessGrantConsumeDeviceAuthPayload {
+                uuid: crate::encode64(target_uuid),
+                grant_id: crate::encode64(grant_id),
+                device_nonce: crate::encode64(device_nonce),
+            }) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    log::warn!("Easy access consume payload serialize failed: {}", err);
+                    return false;
+                }
+            };
+            let nonce = box_::gen_nonce();
+            let ciphertext = box_::seal(&plaintext, &nonce, &server_box_pk, &device_box_sk);
+            let mut proof = Vec::with_capacity(box_::NONCEBYTES + ciphertext.len());
+            proof.extend_from_slice(nonce.as_ref());
+            proof.extend_from_slice(&ciphertext);
+            let body = match serde_json::to_string(&EasyAccessGrantConsumeRequest {
+                id: Config::get_id(),
+                ciphertext: crate::encode64(proof),
+            }) {
+                Ok(body) => body,
+                Err(err) => {
+                    log::warn!("Easy access consume request serialize failed: {}", err);
+                    return false;
+                }
+            };
+            let url = format!("{}/api/devices/consume-easy-access-grant", api_server);
+            let response = match crate::post_request(url, body, "").await {
+                Ok(response) => response,
+                Err(err) => {
+                    log::warn!("Easy access consume request failed: {}", err);
+                    return false;
+                }
+            };
+            let response: EasyAccessGrantConsumeResponse = match serde_json::from_str(&response) {
+                Ok(response) => response,
+                Err(err) => {
+                    log::warn!("Easy access consume response parse failed: {}", err);
+                    return false;
+                }
+            };
+            let response_grant_id = match crate::decode64(&response.grant_id) {
+                Ok(grant_id) => grant_id,
+                Err(err) => {
+                    log::warn!("Easy access consume response grant_id invalid: {}", err);
+                    return false;
+                }
+            };
+            let response_device_nonce = match crate::decode64(&response.device_nonce) {
+                Ok(device_nonce) => device_nonce,
+                Err(err) => {
+                    log::warn!("Easy access consume response device_nonce invalid: {}", err);
+                    return false;
+                }
+            };
+            if response_grant_id.as_slice() != grant_id {
+                log::warn!("Easy access consume response grant_id mismatch");
+                return false;
+            }
+            if response_device_nonce.as_slice() != device_nonce.as_slice() {
+                log::warn!("Easy access consume response device_nonce mismatch");
+                return false;
+            }
+            let signature = match crate::decode64(&response.signature)
+                .ok()
+                .and_then(|bytes| sign::Signature::from_bytes(&bytes).ok())
+            {
+                Some(signature) => signature,
+                None => {
+                    log::warn!("Easy access consume response signature invalid");
+                    return false;
+                }
+            };
+            if !sign::verify_detached(
+                &signature,
+                &serialize_easy_access_consume_decision(
+                    &response_grant_id,
+                    &response_device_nonce,
+                    response.approved,
+                ),
+                server_pk,
+            ) {
+                log::warn!("Easy access consume response signature verify failed");
+                return false;
+            }
+            if !response.approved {
+                log::warn!("Easy access consume denied by server");
+                return false;
+            }
+            true
+        }
+
+        if !hbb_common::config::is_allow_easy_access() {
+            return false;
+        }
+        let Some(ticket) = self
+            .controlled_config
+            .as_ref()
+            .and_then(|c| c.easy_access_grant.as_ref().cloned())
+        else {
+            return false;
+        };
+        if ticket.version != EASY_ACCESS_GRANT_VERSION {
+            log::warn!("Easy access grant version invalid: {}", ticket.version);
+            return false;
+        }
+        if ticket.server_approval_signature.is_empty() {
+            log::warn!("Easy access server approval signature missing");
+            return false;
+        }
+        if ticket.device_bound_proof.is_empty() {
+            log::warn!("Easy access device-bound proof missing");
+            return false;
+        }
+        let lr_challenge_bytes = self.lr.easy_access_challenge.clone();
+        if lr_challenge_bytes.is_empty() {
+            return false;
+        }
+        let target_uuid = hbb_common::get_uuid();
+        if target_uuid.is_empty() {
+            log::warn!("Easy access target uuid missing");
+            return false;
+        }
+        let (target_sk, target_pk) = Config::get_key_pair();
+        if target_sk.is_empty() {
+            log::warn!("Easy access target private key missing");
+            return false;
+        }
+        if target_pk.is_empty() {
+            log::warn!("Easy access target public key missing");
+            return false;
+        }
+        let server_key = crate::common::get_key(true).await;
+        let server_pk = match crate::common::get_rs_pk(&server_key) {
+            Some(pk) => pk,
+            None => {
+                log::warn!("Easy access server public key invalid");
+                return false;
+            }
+        };
+        let manager_approval_bytes = match open_easy_access_device_bound_proof(
+            &ticket.device_bound_proof,
+            &ticket.server_approval_signature,
+            &server_pk,
+            &target_sk,
+        ) {
+            Some(proof) => proof,
+            None => {
+                log::warn!("Easy access device-bound proof open failed");
+                return false;
+            }
+        };
+        let server_approval_signature =
+            match sign::Signature::from_bytes(&ticket.server_approval_signature) {
+                Ok(sig) => sig,
+                Err(_) => {
+                    log::warn!("Easy access server approval signature invalid");
+                    return false;
+                }
+            };
+        if !sign::verify_detached(
+            &server_approval_signature,
+            &manager_approval_bytes,
+            &server_pk,
+        ) {
+            log::warn!("Easy access server approval signature verify failed");
+            return false;
+        }
+        let manager_approval =
+            match EasyAccessManagerApproval::parse_from_bytes(&manager_approval_bytes) {
+                Ok(approval) => approval,
+                Err(_) => {
+                    log::warn!("Easy access manager approval parse failed");
+                    return false;
+                }
+            };
+        let Some(target_binding) = manager_approval.target_binding.as_ref() else {
+            log::warn!("Easy access target binding missing");
+            return false;
+        };
+        if manager_approval.manager_signing_pk.is_empty() {
+            log::warn!("Easy access manager signing public key missing");
+            return false;
+        }
+        if manager_approval.manager_approval_signature.is_empty() {
+            log::warn!("Easy access manager approval signature missing");
+            return false;
+        }
+        if target_binding.challenge.as_ref() != lr_challenge_bytes.as_ref() {
+            log::warn!("Easy access challenge mismatch");
+            return false;
+        }
+        if target_binding.target_uuid.as_ref() != target_uuid.as_slice() {
+            log::warn!("Easy access target uuid mismatch");
+            return false;
+        }
+        if target_binding.target_pk.as_ref() != target_pk.as_slice() {
+            log::warn!("Easy access target public key mismatch");
+            return false;
+        }
+        if target_binding.grant_id.is_empty() {
+            log::warn!("Easy access grant id missing");
+            return false;
+        }
+        let manager_signing_pk =
+            match sign::PublicKey::from_slice(&manager_approval.manager_signing_pk) {
+                Some(pk) => pk,
+                None => {
+                    log::warn!("Easy access manager signing public key invalid");
+                    return false;
+                }
+            };
+        let manager_approval_signature =
+            match sign::Signature::from_bytes(&manager_approval.manager_approval_signature) {
+                Ok(sig) => sig,
+                Err(_) => {
+                    log::warn!("Easy access manager approval signature invalid");
+                    return false;
+                }
+            };
+        let target_binding_bytes = match target_binding.write_to_bytes().ok() {
+            Some(bytes) => bytes,
+            None => {
+                log::warn!("Easy access target binding serialization failed");
+                return false;
+            }
+        };
+        if !sign::verify_detached(
+            &manager_approval_signature,
+            &target_binding_bytes,
+            &manager_signing_pk,
+        ) {
+            log::warn!("Easy access manager approval signature verify failed");
+            return false;
+        }
+        if !consume_easy_access_grant(
+            target_binding.grant_id.as_ref(),
+            target_uuid.as_slice(),
+            &target_sk,
+            &server_pk,
+        )
+        .await
+        {
+            return false;
+        }
+        log::info!("Easy access grant verified");
+        true
     }
 
     fn update_codec_on_login(&self) {
@@ -2169,10 +2525,8 @@ impl Connection {
             }
             match lr.union {
                 Some(login_request::Union::FileTransfer(ft)) => {
-                    if !Self::permission(
-                        keys::OPTION_ENABLE_FILE_TRANSFER,
-                        &self.control_permissions,
-                    ) {
+                    if !Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &self.controlled_config)
+                    {
                         self.send_login_error("No permission of file transfer")
                             .await;
                         sleep(1.).await;
@@ -2181,7 +2535,7 @@ impl Connection {
                     self.file_transfer = Some((ft.dir, ft.show_hidden));
                 }
                 Some(login_request::Union::ViewCamera(_vc)) => {
-                    if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.control_permissions) {
+                    if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.controlled_config) {
                         self.send_login_error("No permission of viewing camera")
                             .await;
                         sleep(1.).await;
@@ -2190,7 +2544,7 @@ impl Connection {
                     self.view_camera = true;
                 }
                 Some(login_request::Union::Terminal(terminal)) => {
-                    if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.control_permissions) {
+                    if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.controlled_config) {
                         self.send_login_error("No permission of terminal").await;
                         sleep(1.).await;
                         return false;
@@ -2238,7 +2592,7 @@ impl Connection {
                     }
                 }
                 Some(login_request::Union::PortForward(mut pf)) => {
-                    if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions) {
+                    if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.controlled_config) {
                         self.send_login_error("No permission of IP tunneling").await;
                         sleep(1.).await;
                         return false;
@@ -2297,6 +2651,18 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
+            } else if self.verify_easy_access().await {
+                // Easy access: token verified, skip password validation and click accept
+                if err_msg.is_empty() {
+                    #[cfg(target_os = "linux")]
+                    self.linux_headless_handle.wait_desktop_cm_ready().await;
+                    if !self.send_logon_response_and_keep_alive().await {
+                        return false;
+                    }
+                    self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
+                } else {
+                    self.send_login_error(err_msg).await;
+                }
             } else if (password::approve_mode() == ApproveMode::Click
                 && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon()))
@@ -5278,17 +5644,17 @@ impl Retina {
     }
 }
 
-/// Get control permission state from CONTROL_PERMISSIONS_ARRAY.
+/// Get control permission state from CONNECTION_CONFIG_ARRAY.
 /// Returns: Some(false) if any disable, Some(true) if any enable (and no disable), None if not set.
 pub fn get_control_permission_state(
-    permission: hbb_common::rendezvous_proto::control_permissions::Permission,
+    permission: hbb_common::rendezvous_proto::controlled_config::Permission,
     disable_if_has_disabled: bool,
 ) -> Option<bool> {
-    let control_permissions = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
+    let controlled_configs = CONTROLLED_CONFIG_ARRAY.lock().unwrap();
     let mut has_enable = false;
     let mut has_disable = false;
-    for (_, cp) in control_permissions.iter() {
-        match crate::get_control_permission(cp.permissions, permission) {
+    for (_, cc) in controlled_configs.iter() {
+        match crate::get_control_permission(cc.control_permissions, permission) {
             Some(false) => has_disable = true,
             Some(true) => has_enable = true,
             None => {}
@@ -5528,30 +5894,30 @@ mod raii {
         }
     }
 
-    pub struct ControlPermissionsID {
+    pub struct ControlledConfigID {
         id: i32,
-        control_permissions: Option<ControlPermissions>,
+        controlled_config: Option<ControlledConfig>,
     }
 
-    impl Drop for ControlPermissionsID {
+    impl Drop for ControlledConfigID {
         fn drop(&mut self) {
-            if self.control_permissions.is_some() {
-                let mut lock = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
+            if self.controlled_config.is_some() {
+                let mut lock = CONTROLLED_CONFIG_ARRAY.lock().unwrap();
                 lock.retain(|(conn_id, _)| *conn_id != self.id);
             }
         }
     }
-    impl ControlPermissionsID {
-        pub fn new(id: i32, control_permissions: &Option<ControlPermissions>) -> Self {
-            if let Some(s) = control_permissions {
-                CONTROL_PERMISSIONS_ARRAY
+    impl ControlledConfigID {
+        pub fn new(id: i32, controlled_config: &Option<ControlledConfig>) -> Self {
+            if let Some(s) = controlled_config {
+                CONTROLLED_CONFIG_ARRAY
                     .lock()
                     .unwrap()
                     .push((id, s.clone()));
             }
             Self {
                 id,
-                control_permissions: control_permissions.clone(),
+                controlled_config: controlled_config.clone(),
             }
         }
     }
