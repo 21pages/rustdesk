@@ -71,7 +71,7 @@ lazy_static::lazy_static! {
     static ref SESSIONS: Arc::<Mutex<HashMap<SessionKey, Session>>> = Default::default();
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
-    pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
+    pub static ref CONNECTION_CONFIG_ARRAY: Arc::<Mutex<Vec<(i32, ConnectionConfig)>>> = Default::default();
     static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
@@ -228,7 +228,7 @@ pub struct Connection {
     restart: bool,
     recording: bool,
     block_input: bool,
-    control_permissions: Option<ControlPermissions>,
+    conn_config: Option<ConnectionConfig>,
     last_test_delay: Option<Instant>,
     network_delay: u32,
     lock_after_session_end: bool,
@@ -352,14 +352,16 @@ impl Connection {
         stream: super::Stream,
         id: i32,
         server: super::ServerPtrWeak,
-        control_permissions: Option<ControlPermissions>,
+        conn_config: Option<ConnectionConfig>,
     ) {
-        // Android is not supported yet, so we always set control_permissions to None.
+        // Android does not support control_permissions yet.
         #[cfg(target_os = "android")]
-        let control_permissions = None;
+        let conn_config = conn_config.map(|mut c| {
+            c.control_permissions = 0;
+            c
+        });
         let _raii_id = raii::ConnectionID::new(id);
-        let _raii_control_permissions_id =
-            raii::ControlPermissionsID::new(id, &control_permissions);
+        let _raii_conn_config_id = raii::ConnectionConfigID::new(id, &conn_config);
         let hash = Hash {
             salt: Config::get_salt(),
             challenge: Config::get_auto_password(6),
@@ -410,15 +412,15 @@ impl Connection {
             port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
-            keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
-            clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
-            audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
+            keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &conn_config),
+            clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &conn_config),
+            audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &conn_config),
             // to-do: make sure is the option correct here
-            file: Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &control_permissions),
-            restart: Self::permission(keys::OPTION_ENABLE_REMOTE_RESTART, &control_permissions),
-            recording: Self::permission(keys::OPTION_ENABLE_RECORD_SESSION, &control_permissions),
-            block_input: Self::permission(keys::OPTION_ENABLE_BLOCK_INPUT, &control_permissions),
-            control_permissions,
+            file: Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &conn_config),
+            restart: Self::permission(keys::OPTION_ENABLE_REMOTE_RESTART, &conn_config),
+            recording: Self::permission(keys::OPTION_ENABLE_RECORD_SESSION, &conn_config),
+            block_input: Self::permission(keys::OPTION_ENABLE_BLOCK_INPUT, &conn_config),
+            conn_config,
             last_test_delay: None,
             network_delay: 0,
             lock_after_session_end: false,
@@ -1978,12 +1980,9 @@ impl Connection {
         )
     }
 
-    fn permission(
-        enable_prefix_option: &str,
-        control_permissions: &Option<ControlPermissions>,
-    ) -> bool {
-        use hbb_common::rendezvous_proto::control_permissions::Permission;
-        if let Some(control_permissions) = control_permissions {
+    fn permission(enable_prefix_option: &str, conn_config: &Option<ConnectionConfig>) -> bool {
+        use hbb_common::rendezvous_proto::connection_config::Permission;
+        if let Some(conn_config) = conn_config {
             let permission = match enable_prefix_option {
                 keys::OPTION_ENABLE_KEYBOARD => Some(Permission::keyboard),
                 keys::OPTION_ENABLE_REMOTE_PRINTER => Some(Permission::remote_printer),
@@ -2000,7 +1999,7 @@ impl Connection {
             };
             if let Some(permission) = permission {
                 if let Some(enabled) =
-                    crate::get_control_permission(control_permissions.permissions, permission)
+                    crate::get_control_permission(conn_config.control_permissions, permission)
                 {
                     return enabled;
                 }
@@ -2104,10 +2103,7 @@ impl Connection {
             }
             match lr.union {
                 Some(login_request::Union::FileTransfer(ft)) => {
-                    if !Self::permission(
-                        keys::OPTION_ENABLE_FILE_TRANSFER,
-                        &self.control_permissions,
-                    ) {
+                    if !Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &self.conn_config) {
                         self.send_login_error("No permission of file transfer")
                             .await;
                         sleep(1.).await;
@@ -2116,7 +2112,7 @@ impl Connection {
                     self.file_transfer = Some((ft.dir, ft.show_hidden));
                 }
                 Some(login_request::Union::ViewCamera(_vc)) => {
-                    if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.control_permissions) {
+                    if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.conn_config) {
                         self.send_login_error("No permission of viewing camera")
                             .await;
                         sleep(1.).await;
@@ -2125,7 +2121,7 @@ impl Connection {
                     self.view_camera = true;
                 }
                 Some(login_request::Union::Terminal(terminal)) => {
-                    if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.control_permissions) {
+                    if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.conn_config) {
                         self.send_login_error("No permission of terminal").await;
                         sleep(1.).await;
                         return false;
@@ -2173,7 +2169,7 @@ impl Connection {
                     }
                 }
                 Some(login_request::Union::PortForward(mut pf)) => {
-                    if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions) {
+                    if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.conn_config) {
                         self.send_login_error("No permission of IP tunneling").await;
                         sleep(1.).await;
                         return false;
@@ -2258,6 +2254,22 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
+            } else if hbb_common::config::is_allow_easy_access()
+                && self
+                    .conn_config
+                    .as_ref()
+                    .map(|c| c.easy_access)
+                    .unwrap_or(false)
+            {
+                // Easy access: skip password validation and click accept, but still require 2FA if enabled
+                if err_msg.is_empty() {
+                    #[cfg(target_os = "linux")]
+                    self.linux_headless_handle.wait_desktop_cm_ready().await;
+                    self.send_logon_response().await;
+                    self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
+                } else {
+                    self.send_login_error(err_msg).await;
+                }
             } else if (password::approve_mode() == ApproveMode::Click
                 && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon()))
@@ -5231,17 +5243,17 @@ impl Retina {
     }
 }
 
-/// Get control permission state from CONTROL_PERMISSIONS_ARRAY.
+/// Get control permission state from CONNECTION_CONFIG_ARRAY.
 /// Returns: Some(false) if any disable, Some(true) if any enable (and no disable), None if not set.
 pub fn get_control_permission_state(
-    permission: hbb_common::rendezvous_proto::control_permissions::Permission,
+    permission: hbb_common::rendezvous_proto::connection_config::Permission,
     disable_if_has_disabled: bool,
 ) -> Option<bool> {
-    let control_permissions = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
+    let conn_configs = CONNECTION_CONFIG_ARRAY.lock().unwrap();
     let mut has_enable = false;
     let mut has_disable = false;
-    for (_, cp) in control_permissions.iter() {
-        match crate::get_control_permission(cp.permissions, permission) {
+    for (_, cc) in conn_configs.iter() {
+        match crate::get_control_permission(cc.control_permissions, permission) {
             Some(false) => has_disable = true,
             Some(true) => has_enable = true,
             None => {}
@@ -5346,9 +5358,8 @@ mod raii {
         }
 
         pub fn check_wake_lock_on_setting_changed() {
-            let current = config::Config::get_bool_option(
-                keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS,
-            );
+            let current =
+                config::Config::get_bool_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS);
             let cached = *WAKELOCK_KEEP_AWAKE_OPTION.lock().unwrap();
             if cached != Some(current) {
                 Self::check_wake_lock();
@@ -5482,30 +5493,30 @@ mod raii {
         }
     }
 
-    pub struct ControlPermissionsID {
+    pub struct ConnectionConfigID {
         id: i32,
-        control_permissions: Option<ControlPermissions>,
+        conn_config: Option<ConnectionConfig>,
     }
 
-    impl Drop for ControlPermissionsID {
+    impl Drop for ConnectionConfigID {
         fn drop(&mut self) {
-            if self.control_permissions.is_some() {
-                let mut lock = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
+            if self.conn_config.is_some() {
+                let mut lock = CONNECTION_CONFIG_ARRAY.lock().unwrap();
                 lock.retain(|(conn_id, _)| *conn_id != self.id);
             }
         }
     }
-    impl ControlPermissionsID {
-        pub fn new(id: i32, control_permissions: &Option<ControlPermissions>) -> Self {
-            if let Some(s) = control_permissions {
-                CONTROL_PERMISSIONS_ARRAY
+    impl ConnectionConfigID {
+        pub fn new(id: i32, conn_config: &Option<ConnectionConfig>) -> Self {
+            if let Some(s) = conn_config {
+                CONNECTION_CONFIG_ARRAY
                     .lock()
                     .unwrap()
                     .push((id, s.clone()));
             }
             Self {
                 id,
-                control_permissions: control_permissions.clone(),
+                conn_config: conn_config.clone(),
             }
         }
     }

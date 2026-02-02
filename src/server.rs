@@ -158,7 +158,7 @@ async fn accept_connection_(
     server: ServerPtr,
     socket: Stream,
     secure: bool,
-    control_permissions: Option<ControlPermissions>,
+    conn_config: Option<ConnectionConfig>,
 ) -> ResultType<()> {
     let local_addr = socket.local_addr();
     drop(socket);
@@ -175,7 +175,7 @@ async fn accept_connection_(
             Stream::from(stream, stream_addr),
             addr,
             secure,
-            control_permissions,
+            conn_config,
         )
         .await?;
     }
@@ -187,7 +187,7 @@ pub async fn create_tcp_connection(
     stream: Stream,
     addr: SocketAddr,
     secure: bool,
-    control_permissions: Option<ControlPermissions>,
+    conn_config: Option<ConnectionConfig>,
 ) -> ResultType<()> {
     let mut stream = stream;
     let id = server.write().unwrap().get_new_id();
@@ -260,7 +260,7 @@ pub async fn create_tcp_connection(
         stream,
         id,
         Arc::downgrade(&server),
-        control_permissions,
+        conn_config,
     )
     .await;
     Ok(())
@@ -271,9 +271,9 @@ pub async fn accept_connection(
     socket: Stream,
     peer_addr: SocketAddr,
     secure: bool,
-    control_permissions: Option<ControlPermissions>,
+    conn_config: Option<ConnectionConfig>,
 ) {
-    if let Err(err) = accept_connection_(server, socket, secure, control_permissions).await {
+    if let Err(err) = accept_connection_(server, socket, secure, conn_config).await {
         log::warn!("Failed to accept connection from {}: {}", peer_addr, err);
     }
 }
@@ -285,7 +285,7 @@ pub async fn create_relay_connection(
     peer_addr: SocketAddr,
     secure: bool,
     ipv4: bool,
-    control_permissions: Option<ControlPermissions>,
+    conn_config: Option<ConnectionConfig>,
 ) {
     if let Err(err) = create_relay_connection_(
         server,
@@ -294,7 +294,7 @@ pub async fn create_relay_connection(
         peer_addr,
         secure,
         ipv4,
-        control_permissions,
+        conn_config,
     )
     .await
     {
@@ -314,7 +314,7 @@ async fn create_relay_connection_(
     peer_addr: SocketAddr,
     secure: bool,
     ipv4: bool,
-    control_permissions: Option<ControlPermissions>,
+    conn_config: Option<ConnectionConfig>,
 ) -> ResultType<()> {
     let mut stream = socket_client::connect_tcp(
         socket_client::ipv4_to_ipv6(crate::check_port(relay_server, RELAY_PORT), ipv4),
@@ -329,7 +329,7 @@ async fn create_relay_connection_(
         ..Default::default()
     });
     stream.send(&msg_out).await?;
-    create_tcp_connection(server, stream, peer_addr, secure, control_permissions).await?;
+    create_tcp_connection(server, stream, peer_addr, secure, conn_config).await?;
     Ok(())
 }
 
