@@ -31,10 +31,17 @@ use hbb_common::{
     fs::{self, can_enable_overwrite_detection, JobType},
     futures::{SinkExt, StreamExt},
     get_time, get_version_number,
+    message_proto::EasyAccessManagerApproval,
     message_proto::{option_message::BoolOption, permission_info::Permission},
     password_security::{self as password, ApproveMode},
+    rand,
     sha2::{Digest, Sha256},
-    sleep, timeout,
+    sleep,
+    sodiumoxide::crypto::{
+        box_,
+        sign::{self, ed25519},
+    },
+    timeout,
     tokio::{
         net::TcpStream,
         sync::mpsc,
@@ -45,7 +52,7 @@ use hbb_common::{
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
 use scrap::camera;
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::{json, value::Value};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::sync::atomic::Ordering;
@@ -345,6 +352,7 @@ const MILLI1: Duration = Duration::from_millis(1);
 const SEND_TIMEOUT_VIDEO: u64 = 12_000;
 const SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO * 10;
 const SESSION_TIMEOUT: Duration = Duration::from_secs(30);
+const EASY_ACCESS_CHALLENGE_LEN: usize = 32;
 
 impl Connection {
     pub async fn start(
@@ -360,9 +368,17 @@ impl Connection {
         let _raii_id = raii::ConnectionID::new(id);
         let _raii_control_permissions_id =
             raii::ControlPermissionsID::new(id, &control_permissions);
+        let easy_access_challenge = if hbb_common::config::is_allow_easy_access() {
+            rand::random::<[u8; EASY_ACCESS_CHALLENGE_LEN]>()
+                .to_vec()
+                .into()
+        } else {
+            Default::default()
+        };
         let hash = Hash {
             salt: Config::get_salt(),
             challenge: Config::get_auto_password(6),
+            easy_access_challenge,
             ..Default::default()
         };
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
@@ -2074,6 +2090,369 @@ impl Connection {
         Self::is_permission_enabled_locally(enable_prefix_option)
     }
 
+    async fn verify_easy_access(&self) -> bool {
+        const EASY_ACCESS_GRANT_VERSION: u32 = 1;
+
+        fn open_easy_access_device_bound_proof(
+            proof: &[u8],
+            server_approval_signature: &[u8],
+            server_pk: &sign::PublicKey,
+            target_sk: &[u8],
+        ) -> Option<Vec<u8>> {
+            const EASY_ACCESS_DEVICE_PROOF_NONCE_DOMAIN: &[u8] =
+                b"easy-access-device-proof-nonce/v1";
+
+            fn derive_easy_access_device_bound_nonce(
+                server_approval_signature: &[u8],
+            ) -> Option<box_::Nonce> {
+                let mut hasher = Sha256::new();
+                hasher.update(EASY_ACCESS_DEVICE_PROOF_NONCE_DOMAIN);
+                hasher.update(server_approval_signature);
+                let digest = hasher.finalize();
+                box_::Nonce::from_slice(&digest[..box_::NONCEBYTES])
+            }
+
+            let target_sign_sk = sign::SecretKey::from_slice(target_sk)?;
+            let target_box_sk = ed25519::to_curve25519_sk(&target_sign_sk).ok()?;
+            let server_box_pk = ed25519::to_curve25519_pk(server_pk).ok()?;
+            let nonce = derive_easy_access_device_bound_nonce(server_approval_signature)?;
+            box_::open(proof, &nonce, &server_box_pk, &target_box_sk).ok()
+        }
+
+        fn serialize_easy_access_consume_decision(
+            grant_id: &[u8],
+            device_nonce: &[u8],
+            approved: bool,
+        ) -> Vec<u8> {
+            const EASY_ACCESS_CONSUME_DECISION_DOMAIN: &[u8] = b"easy-access-consume-decision/v1";
+
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(EASY_ACCESS_CONSUME_DECISION_DOMAIN);
+            bytes.extend_from_slice(&(grant_id.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(grant_id);
+            bytes.extend_from_slice(&(device_nonce.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(device_nonce);
+            bytes.push(u8::from(approved));
+            bytes
+        }
+
+        #[derive(Serialize)]
+        struct EasyAccessGrantConsumeDeviceAuthPayload {
+            uuid: String,
+            grant_id: String,
+            device_nonce: String,
+        }
+
+        #[derive(Serialize)]
+        struct EasyAccessGrantConsumeRequest {
+            id: String,
+            ciphertext: String,
+        }
+
+        #[derive(Deserialize)]
+        struct EasyAccessGrantConsumeResponse {
+            grant_id: String,
+            device_nonce: String,
+            approved: bool,
+            signature: String,
+            grant: String,
+        }
+
+        async fn consume_easy_access_grant(
+            grant_id: &[u8],
+            target_uuid: &[u8],
+            target_sk: &[u8],
+            server_pk: &sign::PublicKey,
+        ) -> Option<EasyAccessGrant> {
+            let api_server = crate::get_api_server(
+                Config::get_option("api-server"),
+                Config::get_option("custom-rendezvous-server"),
+            );
+            if api_server.is_empty() || crate::is_public(&api_server) {
+                log::warn!("Easy access consume skipped: api server missing or public");
+                return None;
+            }
+            let Some(device_sign_sk) = sign::SecretKey::from_slice(target_sk) else {
+                log::warn!("Easy access consume failed: target private key invalid");
+                return None;
+            };
+            let Ok(device_box_sk) = ed25519::to_curve25519_sk(&device_sign_sk) else {
+                log::warn!("Easy access consume failed: target box private key invalid");
+                return None;
+            };
+            let Ok(server_box_pk) = ed25519::to_curve25519_pk(server_pk) else {
+                log::warn!("Easy access consume failed: server box public key invalid");
+                return None;
+            };
+            let device_nonce: [u8; 32] = rand::random();
+            let plaintext = match serde_json::to_vec(&EasyAccessGrantConsumeDeviceAuthPayload {
+                uuid: crate::encode64(target_uuid),
+                grant_id: crate::encode64(grant_id),
+                device_nonce: crate::encode64(device_nonce),
+            }) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    log::warn!("Easy access consume payload serialize failed: {}", err);
+                    return None;
+                }
+            };
+            let nonce = box_::gen_nonce();
+            let ciphertext = box_::seal(&plaintext, &nonce, &server_box_pk, &device_box_sk);
+            let mut proof = Vec::with_capacity(box_::NONCEBYTES + ciphertext.len());
+            proof.extend_from_slice(nonce.as_ref());
+            proof.extend_from_slice(&ciphertext);
+            let body = match serde_json::to_string(&EasyAccessGrantConsumeRequest {
+                id: Config::get_id(),
+                ciphertext: crate::encode64(proof),
+            }) {
+                Ok(body) => body,
+                Err(err) => {
+                    log::warn!("Easy access consume request serialize failed: {}", err);
+                    return None;
+                }
+            };
+            let url = format!("{}/api/easy_access/consume", api_server);
+            let response = match crate::post_request(url, body, "").await {
+                Ok(response) => response,
+                Err(err) => {
+                    log::warn!("Easy access consume request failed: {}", err);
+                    return None;
+                }
+            };
+            let response: EasyAccessGrantConsumeResponse = match serde_json::from_str(&response) {
+                Ok(response) => response,
+                Err(err) => {
+                    log::warn!("Easy access consume response parse failed: {}", err);
+                    return None;
+                }
+            };
+            let response_grant_id = match crate::decode64(&response.grant_id) {
+                Ok(grant_id) => grant_id,
+                Err(err) => {
+                    log::warn!("Easy access consume response grant_id invalid: {}", err);
+                    return None;
+                }
+            };
+            let response_device_nonce = match crate::decode64(&response.device_nonce) {
+                Ok(device_nonce) => device_nonce,
+                Err(err) => {
+                    log::warn!("Easy access consume response device_nonce invalid: {}", err);
+                    return None;
+                }
+            };
+            if response_grant_id.as_slice() != grant_id {
+                log::warn!("Easy access consume response grant_id mismatch");
+                return None;
+            }
+            if response_device_nonce.as_slice() != device_nonce.as_slice() {
+                log::warn!("Easy access consume response device_nonce mismatch");
+                return None;
+            }
+            let signature = match crate::decode64(&response.signature)
+                .ok()
+                .and_then(|bytes| sign::Signature::from_bytes(&bytes).ok())
+            {
+                Some(signature) => signature,
+                None => {
+                    log::warn!("Easy access consume response signature invalid");
+                    return None;
+                }
+            };
+            if !sign::verify_detached(
+                &signature,
+                &serialize_easy_access_consume_decision(
+                    &response_grant_id,
+                    &response_device_nonce,
+                    response.approved,
+                ),
+                server_pk,
+            ) {
+                log::warn!("Easy access consume response signature verify failed");
+                return None;
+            }
+            if !response.approved {
+                log::warn!("Easy access consume denied by server");
+                return None;
+            }
+            match crate::decode64(&response.grant) {
+                Ok(grant) if !grant.is_empty() => match EasyAccessGrant::parse_from_bytes(&grant) {
+                    Ok(grant) => Some(grant),
+                    Err(err) => {
+                        log::warn!("Easy access grant parse failed: {}", err);
+                        None
+                    }
+                },
+                Ok(_) => None,
+                Err(err) => {
+                    log::warn!("Easy access grant payload invalid: {}", err);
+                    None
+                }
+            }
+        }
+
+        if !hbb_common::config::is_allow_easy_access() {
+            return false;
+        }
+        if !self.stream.is_secured() {
+            log::warn!("Easy access requires a secured peer connection");
+            return false;
+        }
+
+        let grant_id = self.lr.easy_access_grant_id.clone();
+        if grant_id.is_empty() {
+            return false;
+        };
+        let target_challenge = self.hash.easy_access_challenge.clone();
+        if target_challenge.is_empty() {
+            log::warn!("Easy access target challenge missing");
+            return false;
+        }
+        let target_uuid = hbb_common::get_uuid();
+        if target_uuid.is_empty() {
+            log::warn!("Easy access target uuid missing");
+            return false;
+        }
+        let (target_sk, target_pk) = Config::get_key_pair();
+        if target_sk.is_empty() {
+            log::warn!("Easy access target private key missing");
+            return false;
+        }
+        if target_pk.is_empty() {
+            log::warn!("Easy access target public key missing");
+            return false;
+        }
+        let server_key = crate::common::get_key(true).await;
+        let server_pk = match crate::common::get_rs_pk(&server_key) {
+            Some(pk) => pk,
+            None => {
+                log::warn!("Easy access server public key invalid");
+                return false;
+            }
+        };
+        let Some(ticket) =
+            consume_easy_access_grant(&grant_id, target_uuid.as_slice(), &target_sk, &server_pk)
+                .await
+        else {
+            return false;
+        };
+        if ticket.version != EASY_ACCESS_GRANT_VERSION {
+            log::warn!("Easy access grant version invalid: {}", ticket.version);
+            return false;
+        }
+        if ticket.server_approval_signature.is_empty() {
+            log::warn!("Easy access server approval signature missing");
+            return false;
+        }
+        if ticket.device_bound_proof.is_empty() {
+            log::warn!("Easy access device-bound proof missing");
+            return false;
+        }
+        let manager_approval_bytes = match open_easy_access_device_bound_proof(
+            &ticket.device_bound_proof,
+            &ticket.server_approval_signature,
+            &server_pk,
+            &target_sk,
+        ) {
+            Some(proof) => proof,
+            None => {
+                log::warn!("Easy access device-bound proof open failed");
+                return false;
+            }
+        };
+        let server_approval_signature =
+            match sign::Signature::from_bytes(&ticket.server_approval_signature) {
+                Ok(sig) => sig,
+                Err(_) => {
+                    log::warn!("Easy access server approval signature invalid");
+                    return false;
+                }
+            };
+        if !sign::verify_detached(
+            &server_approval_signature,
+            &manager_approval_bytes,
+            &server_pk,
+        ) {
+            log::warn!("Easy access server approval signature verify failed");
+            return false;
+        }
+        let manager_approval =
+            match EasyAccessManagerApproval::parse_from_bytes(&manager_approval_bytes) {
+                Ok(approval) => approval,
+                Err(_) => {
+                    log::warn!("Easy access manager approval parse failed");
+                    return false;
+                }
+            };
+        let Some(target_binding) = manager_approval.target_binding.as_ref() else {
+            log::warn!("Easy access target binding missing");
+            return false;
+        };
+        if manager_approval.manager_pk.is_empty() {
+            log::warn!("Easy access manager public key missing");
+            return false;
+        }
+        if manager_approval.manager_approval_signature.is_empty() {
+            log::warn!("Easy access manager approval signature missing");
+            return false;
+        }
+        if manager_approval.manager_id.is_empty() {
+            log::warn!("Easy access manager id missing");
+            return false;
+        }
+        if target_binding.challenge.as_ref() != target_challenge.as_ref() {
+            log::warn!("Easy access challenge mismatch");
+            return false;
+        }
+        if target_binding.target_uuid.as_ref() != target_uuid.as_slice() {
+            log::warn!("Easy access target uuid mismatch");
+            return false;
+        }
+        if target_binding.target_pk.as_ref() != target_pk.as_slice() {
+            log::warn!("Easy access target public key mismatch");
+            return false;
+        }
+        if target_binding.grant_id.is_empty() {
+            log::warn!("Easy access grant id missing");
+            return false;
+        }
+        let manager_pk = match sign::PublicKey::from_slice(&manager_approval.manager_pk) {
+            Some(pk) => pk,
+            None => {
+                log::warn!("Easy access manager public key invalid");
+                return false;
+            }
+        };
+        let manager_approval_signature =
+            match sign::Signature::from_bytes(&manager_approval.manager_approval_signature) {
+                Ok(sig) => sig,
+                Err(_) => {
+                    log::warn!("Easy access manager approval signature invalid");
+                    return false;
+                }
+            };
+        let target_binding_bytes = match target_binding.write_to_bytes().ok() {
+            Some(bytes) => bytes,
+            None => {
+                log::warn!("Easy access target binding serialization failed");
+                return false;
+            }
+        };
+        if !sign::verify_detached(
+            &manager_approval_signature,
+            &target_binding_bytes,
+            &manager_pk,
+        ) {
+            log::warn!("Easy access manager approval signature verify failed");
+            return false;
+        }
+        if target_binding.grant_id.as_ref() != grant_id.as_ref() {
+            log::warn!("Easy access grant id mismatch");
+            return false;
+        }
+        log::info!("Easy access grant verified");
+        true
+    }
+
     fn update_codec_on_login(&self) {
         use scrap::codec::{Encoder, EncodingUpdate::*};
         if let Some(o) = self.lr.clone().option.as_ref() {
@@ -2297,6 +2676,19 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
+            } else if err_msg == crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY
+                && !lr.easy_access_grant_id.is_empty()
+            {
+                self.send_login_error(err_msg).await;
+                return true;
+            } else if self.verify_easy_access().await {
+                // Easy access: token verified, skip password validation and click accept
+                #[cfg(target_os = "linux")]
+                self.linux_headless_handle.wait_desktop_cm_ready().await;
+                if !self.send_logon_response_and_keep_alive().await {
+                    return false;
+                }
+                self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
             } else if (password::approve_mode() == ApproveMode::Click
                 && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon()))
