@@ -98,6 +98,7 @@ pub const MILLI1: Duration = Duration::from_millis(1);
 pub const SEC30: Duration = Duration::from_secs(30);
 pub const VIDEO_QUEUE_SIZE: usize = 120;
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
+const EASY_ACCESS_GRANT_ID_LEN: usize = 32;
 
 #[cfg(target_os = "linux")]
 pub const LOGIN_MSG_DESKTOP_NOT_INITED: &str = "Desktop env is not inited";
@@ -1761,6 +1762,7 @@ pub struct LoginConfigHandler {
     pub enable_trusted_devices: bool,
     pub record_state: bool,
     pub record_permission: bool,
+    easy_access_grant_id: Option<Vec<u8>>,
 }
 
 impl Deref for LoginConfigHandler {
@@ -1875,6 +1877,7 @@ impl LoginConfigHandler {
         self.shared_password = shared_password;
         self.record_state = false;
         self.record_permission = true;
+        self.easy_access_grant_id = None;
 
         // `std::env::remove_var("IS_TERMINAL_ADMIN");` is called in `session_add_sync()` - `flutter_ffi.rs`.
         let is_terminal_admin = conn_type == ConnType::TERMINAL
@@ -2638,7 +2641,7 @@ impl LoginConfigHandler {
 
     /// Create a [`Message`] for login.
     fn create_login_msg(
-        &self,
+        &mut self,
         os_username: String,
         os_password: String,
         password: Vec<u8>,
@@ -2655,16 +2658,15 @@ impl LoginConfigHandler {
         };
         let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
         if avatar.is_empty() {
-            avatar = serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option(
-                "user_info",
-            ))
-            .ok()
-            .and_then(|x| {
-                x.get("avatar")
-                    .and_then(|x| x.as_str())
-                    .map(|x| x.trim().to_owned())
-            })
-            .unwrap_or_default();
+            avatar =
+                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                    .ok()
+                    .and_then(|x| {
+                        x.get("avatar")
+                            .and_then(|x| x.as_str())
+                            .map(|x| x.trim().to_owned())
+                    })
+                    .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
@@ -2710,6 +2712,7 @@ impl LoginConfigHandler {
         } else {
             Bytes::new()
         };
+        let easy_access_grant_id = self.easy_access_grant_id.clone().unwrap_or_default().into();
         let mut lr = LoginRequest {
             username: pure_id,
             password: password.into(),
@@ -2727,6 +2730,7 @@ impl LoginConfigHandler {
             .into(),
             hwid,
             avatar,
+            easy_access_grant_id,
             ..Default::default()
         };
         match self.conn_type {
@@ -2752,6 +2756,105 @@ impl LoginConfigHandler {
         let mut msg_out = Message::new();
         msg_out.set_login_request(lr);
         msg_out
+    }
+
+    async fn request_easy_access_grant(
+        lc: Arc<RwLock<LoginConfigHandler>>,
+        hash: &Hash,
+        secure: bool,
+    ) {
+        let (peer, challenge, other_server) = {
+            let mut lc = lc.write().unwrap();
+            lc.easy_access_grant_id = None;
+            (
+                lc.id.clone(),
+                hash.easy_access_challenge.to_vec(),
+                lc.other_server.is_some(),
+            )
+        };
+        let grant_id =
+            Self::fetch_easy_access_grant_id(&peer, challenge, other_server, secure).await;
+        lc.write().unwrap().easy_access_grant_id = grant_id;
+    }
+
+    async fn fetch_easy_access_grant_id(
+        peer: &str,
+        challenge: Vec<u8>,
+        other_server: bool,
+        secure: bool,
+    ) -> Option<Vec<u8>> {
+        if other_server || !secure || challenge.is_empty() {
+            return None;
+        }
+        if hbb_common::is_ip_str(peer) || hbb_common::is_domain_port_str(peer) {
+            return None;
+        }
+        let access_token = LocalConfig::get_option("access_token");
+        if access_token.is_empty() {
+            return None;
+        }
+        let api_server = crate::get_api_server(
+            Config::get_option("api-server"),
+            Config::get_option("custom-rendezvous-server"),
+        );
+        if api_server.is_empty() || crate::is_public(&api_server) {
+            return None;
+        }
+
+        #[derive(Serialize)]
+        struct EasyAccessGrantRequest<'a> {
+            id: &'a str,
+            challenge: &'a str,
+        }
+
+        #[derive(Deserialize)]
+        struct EasyAccessGrantResponse {
+            #[serde(default)]
+            grant_id: String,
+        }
+
+        let challenge_base64 = crate::encode64(&challenge);
+        let body = match serde_json::to_string(&EasyAccessGrantRequest {
+            id: peer,
+            challenge: &challenge_base64,
+        }) {
+            Ok(body) => body,
+            Err(err) => {
+                log::warn!("Easy access grant request serialize failed: {}", err);
+                return None;
+            }
+        };
+        let url = format!("{}/api/easy_access/grant", api_server);
+        let header = format!("Authorization: Bearer {}", access_token);
+        let response = match crate::post_request(url, body, &header).await {
+            Ok(response) => response,
+            Err(err) => {
+                log::debug!("Easy access grant request failed: {}", err);
+                return None;
+            }
+        };
+        let response: EasyAccessGrantResponse = match serde_json::from_str(&response) {
+            Ok(response) => response,
+            Err(err) => {
+                log::warn!("Easy access grant response parse failed: {}", err);
+                return None;
+            }
+        };
+        let grant_id = match crate::decode64(&response.grant_id) {
+            Ok(grant_id) if grant_id.len() == EASY_ACCESS_GRANT_ID_LEN => grant_id,
+            Ok(grant_id) => {
+                log::warn!(
+                    "Easy access grant id has invalid length: {}",
+                    grant_id.len()
+                );
+                return None;
+            }
+            Err(err) => {
+                log::warn!("Easy access grant id invalid: {}", err);
+                return None;
+            }
+        };
+        Some(grant_id)
     }
 
     pub fn update_supported_decodings(&self) -> Message {
@@ -3449,6 +3552,7 @@ pub async fn handle_hash(
     peer: &mut Stream,
 ) {
     lc.write().unwrap().hash = hash.clone();
+    LoginConfigHandler::request_easy_access_grant(lc.clone(), &hash, peer.is_secured()).await;
     // Take care of password application order
 
     // switch_uuid
@@ -3601,7 +3705,7 @@ async fn send_login(
     peer: &mut Stream,
 ) {
     let msg_out = lc
-        .read()
+        .write()
         .unwrap()
         .create_login_msg(os_username, os_password, password);
     allow_err!(peer.send(&msg_out).await);
@@ -3661,7 +3765,7 @@ async fn send_switch_login_request(
     msg_out.set_switch_sides_response(SwitchSidesResponse {
         uuid: Bytes::from(uuid.as_bytes().to_vec()),
         lr: hbb_common::protobuf::MessageField::some(
-            lc.read()
+            lc.write()
                 .unwrap()
                 .create_login_msg("".to_owned(), "".to_owned(), vec![])
                 .login_request()

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
+import 'package:flutter_hbb/common/widgets/easy_access.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
@@ -843,6 +844,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               child: Column(children: [
                 permissions(context),
                 password(context),
+                if (isAllowEasyAccess()) easyAccess(context),
                 _Card(title: '2FA', children: [tfa()]),
                 if (!isChangeIdDisabled())
                   _Card(title: 'ID', children: [changeId()]),
@@ -1232,6 +1234,46 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
             if (usePassword) radios[2],
           ]);
         })));
+  }
+
+  Widget easyAccess(BuildContext context) {
+    return _Card(title: 'Easy Access', children: [
+      Text(
+        easyAccessDescriptionText,
+      ).marginOnly(
+        left: _kContentHMargin,
+        top: 12,
+        right: _kContentHMargin,
+        bottom: 8,
+      ),
+      _SubButton('View', showEasyAccessDialog, !locked).marginOnly(bottom: 12),
+    ]);
+  }
+
+  void showEasyAccessDialog() {
+    gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+        title: Text(translate('Easy Access')),
+        contentBoxConstraints: const BoxConstraints(
+          maxWidth: 430,
+          maxHeight: 330,
+        ),
+        content: SizedBox(
+          width: 430,
+          child: EasyAccessContent(
+            expandTabView: false,
+            entryBuilder: (context, entries, emptyText) {
+              return EasyAccessTable(
+                entries: entries,
+                emptyText: emptyText,
+              );
+            },
+          ),
+        ),
+        actions: [dialogButton('Close', onPressed: close)],
+        onCancel: close,
+      );
+    });
   }
 
   Widget more(BuildContext context) {
