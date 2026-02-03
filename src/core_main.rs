@@ -154,6 +154,12 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     hbb_common::init_log(false, &log_name);
 
+    // Periodically check machine_uid to detect failures
+    std::thread::spawn(|| loop {
+        let _ = hbb_common::get_uuid();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    });
+
     // linux uni (url) go here.
     #[cfg(all(target_os = "linux", feature = "flutter"))]
     if args.len() > 0 && args[0].starts_with(&crate::get_uri_prefix()) {
