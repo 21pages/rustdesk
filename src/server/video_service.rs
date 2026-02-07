@@ -651,8 +651,11 @@ fn run(vs: VideoService) -> ResultType<()> {
     let capture_width = c.width;
     let capture_height = c.height;
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
+    let mut frame_count: u64 = 0;
+    let mut fps_instant = Instant::now();
 
     while sp.ok() {
+        let loop_start = Instant::now();
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
         check_qos(
@@ -717,6 +720,9 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
+
+        // Capture timing
+        let capture_start = Instant::now();
         let res = match c.frame(spf) {
             Ok(frame) => {
                 repeat_encode_counter = 0;
@@ -764,7 +770,15 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
 
+                    let capture_elapsed = capture_start.elapsed();
+
+                    // YUV conversion timing
+                    let yuv_start = Instant::now();
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    let yuv_elapsed = yuv_start.elapsed();
+
+                    // Encoding timing
+                    let encode_start = Instant::now();
                     let send_conn_ids = handle_one_frame(
                         display_idx,
                         &sp,
@@ -777,6 +791,16 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_width,
                         capture_height,
                     )?;
+                    let encode_elapsed = encode_start.elapsed();
+
+                    frame_count += 1;
+                    log::info!(
+                        "[PERF] capture: {:?}, yuv: {:?}, encode: {:?}",
+                        capture_elapsed,
+                        yuv_elapsed,
+                        encode_elapsed
+                    );
+
                     frame_controller.set_send(now, send_conn_ids);
                     send_counter += 1;
                 }
@@ -883,7 +907,31 @@ fn run(vs: VideoService) -> ResultType<()> {
         // may need to enable frame(timeout)
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {
-            std::thread::sleep(spf - elapsed);
+            let expected_sleep = spf - elapsed;
+            let sleep_start = Instant::now();
+            std::thread::sleep(expected_sleep);
+            let actual_sleep = sleep_start.elapsed();
+            log::info!(
+                "[PERF] sleep expected: {:?}, actual: {:?}, loop_total: {:?}, spf: {:?}",
+                expected_sleep,
+                actual_sleep,
+                loop_start.elapsed(),
+                spf
+            );
+        } else {
+            log::info!(
+                "[PERF] NO sleep (elapsed >= spf), elapsed: {:?}, spf: {:?}, loop_total: {:?}",
+                elapsed,
+                spf,
+                loop_start.elapsed()
+            );
+        }
+
+        // FPS output every second
+        if fps_instant.elapsed() >= Duration::from_secs(1) {
+            log::info!("[PERF] FPS: {} frames/sec", frame_count);
+            frame_count = 0;
+            fps_instant = Instant::now();
         }
     }
 
