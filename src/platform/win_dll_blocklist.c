@@ -97,7 +97,7 @@ typedef struct {
  */
 
 static blocked_module_t blocked_modules[] = {
-	// Astril VPN Proxy, hooks stuff and crashes RustDesk
+	// Astrill VPN Proxy, hooks stuff and crashes RustDesk
 	// Reference: https://github.com/rustdesk/rustdesk/discussions/7010#discussioncomment-15739560
 	{L"\\asproxy64.dll", 0, 0, TS_IGNORE},
 
@@ -332,10 +332,15 @@ void install_dll_blocklist_hook(void)
 	}
 	
 	// Log that we're using fallback protection
-	FILE *log = fopen("C:\\Windows\\temp\\rustdesk_dll_blocklist.log", "w");
-	if (log) {
-		fprintf(log, "DLL blocklist initialized without Detours - using SetDefaultDllDirectories\n");
-		fclose(log);
+	wchar_t temp_path[MAX_PATH];
+	wchar_t log_path[MAX_PATH];
+	if (GetTempPathW(MAX_PATH, temp_path) > 0) {
+		swprintf(log_path, MAX_PATH, L"%srustdesk_dll_blocklist.log", temp_path);
+		FILE *log = _wfopen(log_path, L"w");
+		if (log) {
+			fprintf(log, "DLL blocklist initialized without Detours - using SetDefaultDllDirectories\n");
+			fclose(log);
+		}
 	}
 #endif
 }
@@ -343,7 +348,14 @@ void install_dll_blocklist_hook(void)
 void log_blocked_dlls(void)
 {
 #if USE_DETOURS
-	FILE *log = fopen("C:\\Windows\\temp\\rustdesk_dll_blocklist.log", "a");
+	wchar_t temp_path[MAX_PATH];
+	wchar_t log_path[MAX_PATH];
+	
+	if (GetTempPathW(MAX_PATH, temp_path) == 0)
+		return;
+	
+	swprintf(log_path, MAX_PATH, L"%srustdesk_dll_blocklist.log", temp_path);
+	FILE *log = _wfopen(log_path, L"a");
 	if (!log)
 		return;
 	
