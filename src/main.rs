@@ -7,6 +7,9 @@ use librustdesk::*;
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 fn main() {
+    #[cfg(windows)]
+    crate::platform::init_dll_blocklist();
+
     if !common::global_init() {
         eprintln!("Global initialization failed.");
         return;
@@ -14,6 +17,9 @@ fn main() {
     common::test_rendezvous_server();
     common::test_nat_type();
     common::global_clean();
+
+    #[cfg(windows)]
+    crate::platform::cleanup_dll_blocklist();
 }
 
 #[cfg(not(any(
@@ -23,6 +29,9 @@ fn main() {
     feature = "flutter"
 )))]
 fn main() {
+    #[cfg(windows)]
+    crate::platform::init_dll_blocklist();
+
     #[cfg(all(windows, not(feature = "inline")))]
     unsafe {
         winapi::um::shellscalingapi::SetProcessDpiAwareness(2);
@@ -31,10 +40,16 @@ fn main() {
         ui::start(args);
     }
     common::global_clean();
+
+    #[cfg(windows)]
+    crate::platform::cleanup_dll_blocklist();
 }
 
 #[cfg(feature = "cli")]
 fn main() {
+    #[cfg(windows)]
+    crate::platform::init_dll_blocklist();
+
     if !common::global_init() {
         return;
     }
@@ -101,4 +116,7 @@ fn main() {
         crate::start_server(true, false);
     }
     common::global_clean();
+
+    #[cfg(windows)]
+    crate::platform::cleanup_dll_blocklist();
 }

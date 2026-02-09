@@ -1,7 +1,10 @@
 use librustdesk::*;
 
 #[cfg(not(target_os = "macos"))]
-fn main() {}
+fn main() {
+    #[cfg(windows)]
+    crate::platform::init_dll_blocklist();
+}
 
 #[cfg(target_os = "macos")]
 fn main() {
