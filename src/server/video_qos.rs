@@ -187,9 +187,13 @@ impl VideoQoS {
 impl VideoQoS {
     // Initialize new user session
     pub fn on_connection_open(&mut self, id: i32) {
+        // Only reset new_user_instant when first user connects,
+        // so a late-joining user doesn't block bitrate decreases for existing users.
+        if self.users.is_empty() {
+            self.new_user_instant = Instant::now();
+        }
         self.users.insert(id, UserData::default());
         self.abr_config = Config::get_option("enable-abr") != "N";
-        self.new_user_instant = Instant::now();
     }
 
     // Clean up user session
@@ -507,15 +511,19 @@ impl VideoQoS {
             }
         }
 
+        // First, clamp the newly computed ratio to respect configured bounds
+        let clamped = v.clamp(min.min(max), max);
+
         // Protect new connections from bitrate decrease due to network fluctuation.
-        // User-initiated quality changes (e.g., Best -> Balanced) will still take effect.
+        // Compare against the current ratio also clamped to the same bounds,
+        // so user-initiated quality changes (e.g., Best -> Balanced) still take effect.
         let new_connection_protection =
             self.new_user_instant.elapsed().as_secs() < NEW_CONNECTION_PROTECT_SECS;
-        if new_connection_protection && v < current_ratio {
-            v = current_ratio;
-        }
-
-        self.ratio = v.clamp(min.min(max), max);
+        self.ratio = if new_connection_protection {
+            clamped.max(current_ratio.clamp(min.min(max), max))
+        } else {
+            clamped
+        };
         self.adjust_ratio_instant = Instant::now();
     }
 
