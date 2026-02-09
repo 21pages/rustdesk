@@ -34,7 +34,7 @@ use std::{
 };
 use wallpaper;
 #[cfg(not(debug_assertions))]
-use winapi::um::libloaderapi::{LoadLibraryExW, LOAD_LIBRARY_SEARCH_USER_DIRS};
+use winapi::um::libloaderapi::LoadLibraryExW;
 use winapi::{
     ctypes::c_void,
     shared::{minwindef::*, ntdef::NULL, windef::*, winerror::*},
@@ -1886,7 +1886,9 @@ unsafe fn set_default_dll_directories() -> bool {
             }
             type SetDefaultDllDirectories = unsafe extern "system" fn(DWORD) -> BOOL;
             let func: SetDefaultDllDirectories = std::mem::transmute(func);
-            if func(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS) == FALSE {
+            // Only search system directories to prevent DLL injection from third-party software
+            // such as Astrill VPN (ASProxy64.dll). See: https://github.com/rustdesk/rustdesk/discussions/7010#discussioncomment-15739560
+            if func(LOAD_LIBRARY_SEARCH_SYSTEM32) == FALSE {
                 eprintln!(
                     "SetDefaultDllDirectories failed: {}",
                     io::Error::last_os_error()
