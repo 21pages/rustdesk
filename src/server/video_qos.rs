@@ -45,7 +45,7 @@ const HISTORY_DELAY_LEN: usize = 2;
 const ADJUST_RATIO_INTERVAL: usize = 3; // Adjust quality ratio every 3 seconds
 const DYNAMIC_SCREEN_THRESHOLD: usize = 2; // Allow increase quality ratio if encode more than 2 times in one second
 const DELAY_THRESHOLD_150MS: u32 = 150; // 150ms is the threshold for good network condition
-const NEW_CONNECTION_PROTECT_SECS: u64 = RttCalculator::MIN_SAMPLES as u64 + 1; // Don't decrease bitrate within first N seconds of new connection.
+const NEW_CONNECTION_PROTECT_SECS: u64 = (2 * ADJUST_RATIO_INTERVAL) as u64; // Don't decrease bitrate within the first two ratio-adjust intervals of a new connection
 
 #[derive(Default, Debug, Clone)]
 struct UserDelay {
@@ -431,7 +431,7 @@ impl VideoQoS {
         };
 
         let target_quality = self.latest_quality();
-        let target_ratio = self.latest_quality().ratio();
+        let target_ratio = target_quality.ratio();
         let current_ratio = self.ratio;
         let current_bitrate = self.bitrate();
 
