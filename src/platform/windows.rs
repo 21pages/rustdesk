@@ -3416,6 +3416,12 @@ extern "C" {
     fn PrintXPSRawData(printer_name: *const u16, raw_data: *const u8, data_size: c_ulong) -> DWORD;
 }
 
+// DLL blocklist functions
+extern "C" {
+    fn install_dll_blocklist_hook();
+    fn log_blocked_dlls();
+}
+
 pub fn send_raw_data_to_printer(printer_name: Option<String>, data: Vec<u8>) -> ResultType<()> {
     let mut printer_name = printer_name.unwrap_or_default();
     if printer_name.is_empty() {
@@ -3463,6 +3469,20 @@ pub fn send_raw_data_to_printer(printer_name: Option<String>, data: Vec<u8>) -> 
     }
 
     Ok(())
+}
+
+/// Initialize DLL blocklist to prevent problematic DLL injections
+pub fn init_dll_blocklist() {
+    unsafe {
+        install_dll_blocklist_hook();
+    }
+}
+
+/// Log any DLLs that were blocked during execution
+pub fn cleanup_dll_blocklist() {
+    unsafe {
+        log_blocked_dlls();
+    }
 }
 
 fn get_pids<S: AsRef<str>>(name: S) -> ResultType<Vec<u32>> {
