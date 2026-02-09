@@ -564,6 +564,13 @@ extern "C" {
     fn is_service_running_w(svc_name: *const u16) -> bool;
 }
 
+// DLL blocklist functions - blocks problematic DLLs like Astrill VPN's ASProxy64.dll
+extern "C" {
+    fn install_dll_blocklist_hook();
+    #[allow(dead_code)]
+    fn log_blocked_dlls();
+}
+
 pub fn get_current_session_id(share_rdp: bool) -> DWORD {
     unsafe { get_current_session(if share_rdp { TRUE } else { FALSE }) }
 }
@@ -1825,6 +1832,12 @@ pub fn is_win_10_or_greater() -> bool {
 }
 
 pub fn bootstrap() -> bool {
+    // Install DLL blocklist hook as early as possible to prevent problematic DLLs
+    // from being loaded (e.g., Astrill VPN's ASProxy64.dll which causes crashes)
+    unsafe {
+        install_dll_blocklist_hook();
+    }
+
     if let Ok(lic) = get_license_from_exe_name() {
         *config::EXE_RENDEZVOUS_SERVER.write().unwrap() = lic.host.clone();
     }

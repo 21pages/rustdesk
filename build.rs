@@ -1,11 +1,48 @@
+/// Get vcpkg installed path for Windows target.
+/// Priority: VCPKG_INSTALLED_ROOT > VCPKG_ROOT/installed
+#[cfg(windows)]
+fn get_vcpkg_installed_path() -> std::path::PathBuf {
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let vcpkg_target = if target_arch == "x86_64" {
+        "x64-windows-static"
+    } else {
+        "x86-windows-static"
+    };
+
+    let mut path = if let Ok(vcpkg_installed) = std::env::var("VCPKG_INSTALLED_ROOT") {
+        std::path::PathBuf::from(vcpkg_installed)
+    } else {
+        let vcpkg_root = std::env::var("VCPKG_ROOT").unwrap_or_default();
+        std::path::PathBuf::from(vcpkg_root).join("installed")
+    };
+    path.push(vcpkg_target);
+    path
+}
+
 #[cfg(windows)]
 fn build_windows() {
     let file = "src/platform/windows.cc";
     let file2 = "src/platform/windows_delete_test_cert.cc";
-    cc::Build::new().file(file).file(file2).compile("windows");
+    let file3 = "src/platform/dll_blocklist.c";
+
+    let vcpkg_path = get_vcpkg_installed_path();
+    let vcpkg_include = vcpkg_path.join("include");
+    let vcpkg_lib = vcpkg_path.join("lib");
+
+    cc::Build::new()
+        .file(file)
+        .file(file2)
+        .file(file3)
+        .include(&vcpkg_include)
+        .compile("windows");
+
     println!("cargo:rustc-link-lib=WtsApi32");
+    println!("cargo:rustc-link-lib=psapi");
+    println!("cargo:rustc-link-search={}", vcpkg_lib.display());
+    println!("cargo:rustc-link-lib=static=detours");
     println!("cargo:rerun-if-changed={}", file);
     println!("cargo:rerun-if-changed={}", file2);
+    println!("cargo:rerun-if-changed={}", file3);
 }
 
 #[cfg(target_os = "macos")]

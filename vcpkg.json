@@ -5,6 +5,10 @@
       "host": true
     },
     {
+      "name": "detours",
+      "platform": "windows"
+    },
+    {
       "name": "aom",
       "host": false
     },
