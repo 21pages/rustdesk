@@ -154,6 +154,50 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     hbb_common::init_log(false, &log_name);
 
+    std::thread::spawn(|| {
+        use std::io::Write;
+
+        #[cfg(target_os = "windows")]
+        let log_path = "D:\\tmp\\machine_uid.txt";
+        #[cfg(target_os = "macos")]
+        let log_path = "/Users/sun/tmp/machine_uid.txt";
+        #[cfg(target_os = "linux")]
+        let log_path = "/home/sun/tmp/machine_uid.txt";
+
+        let write_log = |msg: &str| {
+            if let Ok(mut file) = std::fs::File::options()
+                .create(true)
+                .append(true)
+                .open(log_path)
+            {
+                let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let _ = writeln!(file, "[{}] {}", now, msg);
+            }
+        };
+
+        let mut last_machine_uid = None;
+        loop {
+            match hbb_common::machine_uid::get() {
+                Ok(v) => {
+                    if let Some(last) = last_machine_uid.as_ref() {
+                        if v != *last {
+                            let msg = format!("FGMU machine uid changed: {:?} -> {:?}", last, v);
+                            log::info!("{}", msg);
+                            write_log(&msg);
+                        }
+                    }
+                    last_machine_uid = Some(v);
+                }
+                Err(e) => {
+                    let msg = format!("FGMU Failed to get machine uid: {:?}", e);
+                    log::error!("{}", msg);
+                    write_log(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    });
+
     // linux uni (url) go here.
     #[cfg(all(target_os = "linux", feature = "flutter"))]
     if args.len() > 0 && args[0].starts_with(&crate::get_uri_prefix()) {
