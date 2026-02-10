@@ -37,8 +37,6 @@ pub const INIT_FPS: u32 = 15;
 // Bitrate ratio constants for different quality levels
 const BR_MAX: f32 = 40.0; // 2000 * 2 / 100
 const BR_MIN: f32 = 0.2; // Absolute minimum bitrate ratio (user can set this low)
-const BR_MIN_AUTO: f32 = 0.3; // Minimum bitrate ratio for auto adjustment
-const BR_MIN_HIGH_RESOLUTION: f32 = 0.1; // For high resolution, BR_MIN is still too high, so we set a lower limit
 const MAX_BR_MULTIPLE: f32 = 1.0;
 
 const HISTORY_DELAY_LEN: usize = 2;
@@ -160,7 +158,7 @@ impl VideoQoS {
 
     // Get current bitrate ratio with bounds checking
     pub fn ratio(&mut self) -> f32 {
-        if self.ratio < BR_MIN_HIGH_RESOLUTION || self.ratio > BR_MAX {
+        if self.ratio < BR_MIN || self.ratio > BR_MAX {
             self.ratio = BR_BALANCED;
         }
         self.ratio
@@ -435,13 +433,6 @@ impl VideoQoS {
         let current_ratio = self.ratio;
         let current_bitrate = self.bitrate();
 
-        // Calculate minimum ratio for high resolution (1Mbps baseline)
-        let ratio_1mbps = if current_bitrate > 0 {
-            Some((current_ratio * 1000.0 / current_bitrate as f32).max(BR_MIN_HIGH_RESOLUTION))
-        } else {
-            None
-        };
-
         // Calculate ratio for adding 150kbps bandwidth
         let ratio_add_150kbps = if current_bitrate > 0 {
             Some((current_bitrate + 150) as f32 * current_ratio / current_bitrate as f32)
@@ -450,30 +441,24 @@ impl VideoQoS {
         };
 
         // Set minimum ratio based on quality mode
+        // Best(0.6) > Balanced(0.4) > Low(0.25) >= Custom(0.2~0.6)
         let min = match target_quality {
-            Quality::Best => {
-                // For Best quality, ensure minimum 1Mbps for high resolution
-                let mut min = BR_BEST / 2.5;
-                if let Some(ratio_1mbps) = ratio_1mbps {
-                    if min > ratio_1mbps {
-                        min = ratio_1mbps;
-                    }
+            Quality::Best => BR_BEST / 2.5,
+            Quality::Balanced => BR_BALANCED / 2.5,
+            Quality::Low => BR_SPEED / 2.0,
+            Quality::Custom(v) => {
+                if v > BR_BEST {
+                    BR_BEST / 2.5
+                } else if v > BR_BALANCED {
+                    BR_BALANCED / 2.5
+                } else if v > BR_SPEED {
+                    BR_SPEED / 2.0
+                } else {
+                    BR_MIN
                 }
-                min.max(BR_MIN_AUTO)
             }
-            Quality::Balanced => {
-                let mut min = (BR_BALANCED / 2.0).min(0.4);
-                if let Some(ratio_1mbps) = ratio_1mbps {
-                    if min > ratio_1mbps {
-                        min = ratio_1mbps;
-                    }
-                }
-                min.max(BR_MIN_AUTO)
-            }
-            Quality::Low => BR_MIN_AUTO,
-            // User custom setting can go lower to BR_MIN
-            Quality::Custom(_) => BR_MIN,
-        };
+        }
+        .max(BR_MIN);
         let max = target_ratio * MAX_BR_MULTIPLE;
 
         let mut v = current_ratio;
