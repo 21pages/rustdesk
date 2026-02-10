@@ -501,6 +501,16 @@ impl VideoQoS {
         }
 
         self.ratio = v.clamp(min.min(max), max);
+        log::info!(
+            "ratio: {} -> {}, target_ratio: {}, delay: {}, fps: {}, min: {}, max: {}",
+            current_ratio,
+            self.ratio,
+            target_ratio,
+            max_delay,
+            self.fps,
+            min,
+            max
+        );
         self.adjust_ratio_instant = Instant::now();
     }
 
