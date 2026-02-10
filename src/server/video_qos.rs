@@ -1,5 +1,5 @@
 use super::*;
-use scrap::codec::{Quality, BR_BALANCED, BR_BEST, BR_SPEED};
+use scrap::codec::{EncoderCfg, Quality, BR_BALANCED, BR_BEST, BR_SPEED};
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -112,6 +112,9 @@ pub struct VideoQoS {
     adjust_ratio_instant: Instant,
     abr_config: bool,
     new_user_instant: Instant,
+    width: u32,
+    height: u32,
+    codec: Option<String>,
 }
 
 impl Default for VideoQoS {
@@ -125,6 +128,9 @@ impl Default for VideoQoS {
             adjust_ratio_instant: Instant::now(),
             abr_config: true,
             new_user_instant: Instant::now(),
+            width: 0,
+            height: 0,
+            codec: None,
         }
     }
 }
@@ -149,6 +155,15 @@ impl VideoQoS {
     // Store bitrate for later use
     pub fn store_bitrate(&mut self, bitrate: u32) {
         self.bitrate_store = bitrate;
+    }
+
+    pub fn store_resolution(&mut self, width: u32, height: u32) {
+        self.width = width;
+        self.height = height;
+    }
+
+    pub fn store_codec(&mut self, codec: String) {
+        self.codec = Some(codec);
     }
 
     // Get stored bitrate
@@ -501,6 +516,19 @@ impl VideoQoS {
         }
 
         self.ratio = v.clamp(min.min(max), max);
+        log::info!(
+            "====DEBUG==== ratio: {} -> {}, target_ratio: {}, delay: {}, fps: {}, min: {}, max: {}, last bitrate: {}, width: {}, height: {}",
+            current_ratio,
+            self.ratio,
+            target_ratio,
+            max_delay,
+            self.fps,
+            min,
+            max,
+            self.bitrate(),
+            self.width,
+            self.height,
+        );
         self.adjust_ratio_instant = Instant::now();
     }
 

@@ -652,6 +652,15 @@ fn run(vs: VideoService) -> ResultType<()> {
     let capture_height = c.height;
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
 
+    VIDEO_QOS
+        .lock()
+        .unwrap()
+        .store_resolution(capture_width as _, capture_height as _);
+    VIDEO_QOS
+        .lock()
+        .unwrap()
+        .store_codec(format!("{:?}", encoder_cfg));
+    log::info!("====DEBUG=====, encoder_cfg: {:?}", encoder_cfg);
     while sp.ok() {
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
