@@ -695,27 +695,62 @@ fn init_plugins(args: &Vec<String>) {
 
 fn import_config(path: &str) {
     use hbb_common::{config::*, get_exe_time, get_modified_time};
+    use std::time::SystemTime;
     let path2 = path.replace(".toml", "2.toml");
     let path2 = std::path::Path::new(&path2);
     let path = std::path::Path::new(path);
+    let fmt_local_time = |t: SystemTime| -> String {
+        let dt: chrono::DateTime<chrono::Local> = t.into();
+        dt.format("%Y-%m-%d %H:%M:%S%.3f %:z").to_string()
+    };
     log::info!("import config from {:?} and {:?}", path, path2);
     let config: Config = load_path(path.into());
     if config.is_empty() {
         log::info!("Empty source config, skipped");
         return;
     }
-    if get_modified_time(&path) > get_modified_time(&Config::file())
-        && get_modified_time(&path) < get_exe_time()
-    {
+    let src_mtime = get_modified_time(&path);
+    let dst_path = Config::file();
+    let dst_mtime = get_modified_time(&dst_path);
+    let exe_time = get_exe_time();
+    let source_newer_than_target = src_mtime > dst_mtime;
+    let source_older_than_exe = src_mtime < exe_time;
+    log::info!(
+        "import_config time check(local): src={:?} mtime={}, dst={:?} mtime={}, exe_time={}, src>dst={}, src<exe={}",
+        path,
+        fmt_local_time(src_mtime),
+        dst_path,
+        fmt_local_time(dst_mtime),
+        fmt_local_time(exe_time),
+        source_newer_than_target,
+        source_older_than_exe
+    );
+    if source_newer_than_target && source_older_than_exe {
         if store_path(Config::file(), config).is_err() {
             log::info!("config written");
         }
+    } else {
+        log::info!("config import skipped by time check");
     }
     let config2: Config2 = load_path(path2.into());
-    if get_modified_time(&path2) > get_modified_time(&Config2::file()) {
+    let src2_mtime = get_modified_time(&path2);
+    let dst2_path = Config2::file();
+    let dst2_mtime = get_modified_time(&dst2_path);
+    let source2_newer_than_target = src2_mtime > dst2_mtime;
+    log::info!(
+        "import_config2 time check(local): src={:?} mtime={}, dst={:?} mtime={}, src>dst={}",
+        path2,
+        fmt_local_time(src2_mtime),
+        dst2_path,
+        fmt_local_time(dst2_mtime),
+        source2_newer_than_target
+    );
+    if source2_newer_than_target {
         if store_path(Config2::file(), config2).is_err() {
             log::info!("config2 written");
         }
+    } else {
+        log::info!("config2 import skipped by time check");
     }
 }
 
