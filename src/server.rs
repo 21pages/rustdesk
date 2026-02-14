@@ -82,6 +82,10 @@ type ConnMap = HashMap<i32, ConnInner>;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 const CONFIG_SYNC_INTERVAL_SECS: f32 = 0.3;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+// 3s is enough for at least one initial sync attempt:
+// 0.3s backoff + up to 1s connect timeout + up to 1s response timeout.
+const CONFIG_SYNC_INITIAL_WAIT_SECS: u64 = 3;
 
 lazy_static::lazy_static! {
     pub static ref CHILD_PROCESS: Childs = Default::default();
@@ -600,7 +604,7 @@ pub async fn start_server(is_server: bool, no_server: bool) {
             allow_err!(input_service::setup_uinput(0, 1920, 0, 1080).await);
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        tokio::spawn(async { sync_and_watch_config_dir().await });
+        wait_initial_config_sync().await;
         #[cfg(target_os = "windows")]
         crate::platform::try_kill_broker();
         #[cfg(feature = "hwcodec")]
@@ -685,13 +689,40 @@ pub async fn start_ipc_url_server() {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-async fn sync_and_watch_config_dir() {
+async fn wait_initial_config_sync() {
+    if !crate::is_server() {
+        tokio::spawn(async move {
+            sync_and_watch_config_dir(None).await;
+        });
+        return;
+    }
+
+    let (sync_done_tx, mut sync_done_rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        sync_and_watch_config_dir(Some(sync_done_tx)).await;
+    });
+
+    tokio::select! {
+        _ = &mut sync_done_rx => {
+        }
+        _ = tokio::time::sleep(Duration::from_secs(CONFIG_SYNC_INITIAL_WAIT_SECS)) => {
+            log::warn!(
+                "timed out waiting {}s for initial config sync, continue startup and keep syncing in background",
+                CONFIG_SYNC_INITIAL_WAIT_SECS
+            );
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+async fn sync_and_watch_config_dir(sync_done_tx: Option<tokio::sync::oneshot::Sender<()>>) {
     if crate::platform::is_root() {
         return;
     }
 
     let mut cfg0 = (Config::get(), Config2::get());
     let mut synced = false;
+    let mut sync_done_tx = sync_done_tx;
     let tries = if crate::is_server() { 30 } else { 3 };
     log::debug!("#tries of ipc service connection: {}", tries);
     use hbb_common::sleep;
@@ -754,6 +785,9 @@ async fn sync_and_watch_config_dir() {
                                         }
                                     }
                                     synced = true;
+                                    if let Some(tx) = sync_done_tx.take() {
+                                        let _ = tx.send(());
+                                    }
                                 }
                                 _ => {}
                             };
@@ -789,6 +823,9 @@ async fn sync_and_watch_config_dir() {
                 log::info!("#{} try: failed to connect to ipc_service", i);
             }
         }
+    }
+    if let Some(tx) = sync_done_tx.take() {
+        let _ = tx.send(());
     }
     log::warn!("skipped config sync");
 }

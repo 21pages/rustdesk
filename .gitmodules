@@ -1,4 +1,4 @@
 [submodule "libs/hbb_common"]
 	path = libs/hbb_common
 	url = https://github.com/21pages/hbb_common
-	branch = key_pair
+	branch = fix_key_pair_set
