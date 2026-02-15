@@ -1,0 +1,93 @@
+diff --git a/libavcodec/qsvenc.c b/libavcodec/qsvenc.c
+index 8200a14012..1de4ac71d8 100644
+--- a/libavcodec/qsvenc.c
++++ b/libavcodec/qsvenc.c
+@@ -793,7 +793,12 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
+     }
+ 
+     if (avctx->compression_level == FF_COMPRESSION_DEFAULT) {
+-        avctx->compression_level = q->preset;
++        if (q->preset != MFX_TARGETUSAGE_UNKNOWN) {
++            avctx->compression_level = q->preset;
++        } else {
++            /* Prefer balanced quality/speed when caller does not set preset. */
++            avctx->compression_level = MFX_TARGETUSAGE_BALANCED;
++        }
+     } else if (avctx->compression_level >= 0) {
+         if (avctx->compression_level > MFX_TARGETUSAGE_BEST_SPEED) {
+             av_log(avctx, AV_LOG_WARNING, "Invalid compression level: "
+@@ -895,6 +900,18 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
+     max_bitrate_kbps           = avctx->rc_max_rate / 1000;
+     brc_param_multiplier       = (FFMAX(FFMAX3(target_bitrate_kbps, max_bitrate_kbps, buffer_size_in_kilobytes),
+                                   initial_delay_in_kilobytes) + 0x10000) / 0x10000;
++
++    if ((avctx->codec_id == AV_CODEC_ID_H264 || avctx->codec_id == AV_CODEC_ID_HEVC) &&
++        target_bitrate_kbps > 0 && target_bitrate_kbps <= 4000 &&
++        q->param.mfx.RateControlMethod == MFX_RATECONTROL_VBR) {
++        if (max_bitrate_kbps <= target_bitrate_kbps) {
++            max_bitrate_kbps = FFMIN(50000,
++                                     FFMAX(target_bitrate_kbps + 500,
++                                           (target_bitrate_kbps * 3) / 2));
++        }
++        if (buffer_size_in_kilobytes <= 0)
++            buffer_size_in_kilobytes = FFMAX(512, target_bitrate_kbps * 2);
++    }
+     q->old_rc_buffer_size = avctx->rc_buffer_size;
+     q->old_rc_initial_buffer_occupancy = avctx->rc_initial_buffer_occupancy;
+     q->old_bit_rate = avctx->bit_rate;
+@@ -1078,6 +1095,16 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
+             if (q->skip_frame >= 0)
+                 q->extco2.SkipFrame = q->skip_frame;
+ 
++            if ((avctx->codec_id == AV_CODEC_ID_H264 || avctx->codec_id == AV_CODEC_ID_HEVC) &&
++                avctx->bit_rate > 0 && avctx->bit_rate <= 4000000) {
++                if (q->mbbrc < 0)
++                    q->extco2.MBBRC = MFX_CODINGOPTION_ON;
++                if (q->extbrc < 0)
++                    q->extco2.ExtBRC = MFX_CODINGOPTION_ON;
++                if (q->adaptive_i < 0)
++                    q->extco2.AdaptiveI = MFX_CODINGOPTION_ON;
++            }
++
+             q->extco2.Header.BufferId = MFX_EXTBUFF_CODING_OPTION2;
+             q->extco2.Header.BufferSz = sizeof(q->extco2);
+ 
+@@ -1151,9 +1178,14 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
+             if (sw_format == AV_PIX_FMT_BGRA &&
+                 (q->profile == MFX_PROFILE_HEVC_REXT ||
+                 q->profile == MFX_PROFILE_UNKNOWN))
+-                q->extco3.TargetChromaFormatPlus1 = MFX_CHROMAFORMAT_YUV444 + 1;
+-
+-            q->extco3.ScenarioInfo = q->scenario;
++                q->extco3.TargetChromaFormatPlus1 = MFX_CHROMAFORMAT_YUV444 + 1;            if (q->scenario != MFX_SCENARIO_UNKNOWN) {
++                q->extco3.ScenarioInfo = q->scenario;
++            } else if ((avctx->codec_id == AV_CODEC_ID_H264 || avctx->codec_id == AV_CODEC_ID_HEVC) &&
++                       avctx->bit_rate > 0 && avctx->bit_rate <= 4000000) {
++                q->extco3.ScenarioInfo = MFX_SCENARIO_DISPLAY_REMOTING;
++            } else {
++                q->extco3.ScenarioInfo = q->scenario;
++            }
+         } else if (avctx->codec_id == AV_CODEC_ID_AV1) {
+             if (q->low_delay_brc >= 0)
+                 q->extco3.LowDelayBRC = q->low_delay_brc ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
+@@ -2423,7 +2455,19 @@ static int update_bitrate(AVCodecContext *avctx, QSVEncContext *q)
+     target_bitrate_kbps        = avctx->bit_rate / 1000;
+     max_bitrate_kbps           = avctx->rc_max_rate / 1000;
+     brc_param_multiplier       = (FFMAX(FFMAX3(target_bitrate_kbps, max_bitrate_kbps, buffer_size_in_kilobytes),
+-                                    initial_delay_in_kilobytes) + 0x10000) / 0x10000;
++                                  initial_delay_in_kilobytes) + 0x10000) / 0x10000;
++
++    if ((avctx->codec_id == AV_CODEC_ID_H264 || avctx->codec_id == AV_CODEC_ID_HEVC) &&
++        target_bitrate_kbps > 0 && target_bitrate_kbps <= 4000 &&
++        q->param.mfx.RateControlMethod == MFX_RATECONTROL_VBR) {
++        if (max_bitrate_kbps <= target_bitrate_kbps) {
++            max_bitrate_kbps = FFMIN(50000,
++                                     FFMAX(target_bitrate_kbps + 500,
++                                           (target_bitrate_kbps * 3) / 2));
++        }
++        if (buffer_size_in_kilobytes <= 0)
++            buffer_size_in_kilobytes = FFMAX(512, target_bitrate_kbps * 2);
++    }
+ 
+     q->param.mfx.BufferSizeInKB = buffer_size_in_kilobytes / brc_param_multiplier;
+     q->param.mfx.InitialDelayInKB = initial_delay_in_kilobytes / brc_param_multiplier;
