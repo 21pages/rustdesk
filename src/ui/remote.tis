@@ -522,6 +522,8 @@ class QualityMonitor: Reactor.Component
     }
 
     function render() {
+        var showBitrate = false;
+        try { showBitrate = qualityMonitorData[3] >= 1; } catch(e) {}
         return <div >
             <div>
                 Speed: {qualityMonitorData[0]}
@@ -532,9 +534,9 @@ class QualityMonitor: Reactor.Component
             <div>
                 Delay: {qualityMonitorData[2]} ms
             </div>
-            <div>
+            {showBitrate ? <div>
                 Target Bitrate: {qualityMonitorData[3]}kb
-            </div>
+            </div> : undefined}
             <div>
                 Codec: {qualityMonitorData[4]}
             </div>
