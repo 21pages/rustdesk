@@ -30,9 +30,9 @@ const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_NV12;
 pub const DEFAULT_FPS: i32 = 30;
 const DEFAULT_GOP: i32 = i32::MAX;
 pub const ERR_HEVC_POC: i32 = HwcodecErrno::HWCODEC_ERR_HEVC_COULD_NOT_FIND_POC as i32;
-pub const RC_BITRATE_MODE: RateControl = RateControl::RC_VBR;
+pub const RC_BITRATE_MODE: RateControl = RateControl::RC_CBR;
 // AMD encoders produce worse image quality at low bitrates, multiply to compensate
-pub const AMD_BITRATE_MULTIPLIER: f32 = 1.5;
+pub const AMD_BITRATE_MULTIPLIER: f32 = 1.0;
 
 crate::generate_call_macro!(call_yuv, false);
 
@@ -277,7 +277,7 @@ impl HwRamEncoder {
         if name.contains("mediacodec") {
             return RC_VBR;
         }
-        if image_quality == ImageQuality::Best
+        if [ImageQuality::Best, ImageQuality::Balanced].contains(&image_quality)
             && ["qsv", "nvenc", "amf"].iter().any(|&x| name.contains(x))
         {
             return RC_CQP;
@@ -291,7 +291,24 @@ impl HwRamEncoder {
         } else {
             1.0
         };
-        Self::calc_bitrate(width, height, ratio, name.contains("h264"), multipler)
+        // When Balanced uses CQP but Low uses VBR, double the bitrate:
+        // In CQP mode (Best/Balanced), bitrate is ceiling so 2x is harmless.
+        // In VBR mode (Low), 2x compensates for the quality gap.
+        let cqp_multipler =
+            if Self::rate_control(name, ImageQuality::Balanced) == RC_CQP
+                && Self::rate_control(name, ImageQuality::Low) != RC_CQP
+            {
+                2.0
+            } else {
+                1.0
+            };
+        Self::calc_bitrate(
+            width,
+            height,
+            ratio,
+            name.contains("h264"),
+            multipler * cqp_multipler,
+        )
     }
 
     pub fn calc_bitrate(

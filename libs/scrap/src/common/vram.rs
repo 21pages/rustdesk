@@ -317,12 +317,23 @@ impl VRamEncoder {
         } else {
             1.0
         };
+        // When Balanced uses CQP but Low uses VBR, double the bitrate:
+        // In CQP mode (Best/Balanced), bitrate is ceiling so 2x is harmless.
+        // In VBR mode (Low), 2x compensates for the quality gap.
+        let cqp_multipler =
+            if Self::rate_control(ImageQuality::Balanced) == RateControl::RC_CQP
+                && Self::rate_control(ImageQuality::Low) != RateControl::RC_CQP
+            {
+                2.0
+            } else {
+                1.0
+            };
         crate::hwcodec::HwRamEncoder::calc_bitrate(
             width,
             height,
             ratio,
             f.data_format == DataFormat::H264,
-            multipler,
+            multipler * cqp_multipler,
         )
     }
 
@@ -349,7 +360,7 @@ impl VRamEncoder {
     }
 
     fn rate_control(image_quality: ImageQuality) -> RateControl {
-        if image_quality == ImageQuality::Best {
+        if [ImageQuality::Best, ImageQuality::Balanced].contains(&image_quality) {
             return RateControl::RC_CQP;
         }
         RC_BITRATE_MODE

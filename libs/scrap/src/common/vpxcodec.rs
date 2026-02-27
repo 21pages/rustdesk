@@ -353,20 +353,26 @@ impl VpxEncoder {
     }
 
     fn rate_control(image_quality: ImageQuality) -> vpx_rc_mode {
-        if image_quality == ImageQuality::Best {
+        if [ImageQuality::Best, ImageQuality::Balanced].contains(&image_quality) {
             RC_QP_MODE
         } else {
             vpx_rc_mode::VPX_CBR
         }
     }
 
-    fn bitrate(width: u32, height: u32, ratio: f32, rc: vpx_rc_mode) -> u32 {
+    fn bitrate(width: u32, height: u32, ratio: f32, _rc: vpx_rc_mode) -> u32 {
         let bitrate = base_bitrate(width, height) as f32;
-        let multiplier = if rc == RC_QP_MODE {
-            2.0 // CQ mode: bitrate is ceiling, set higher to let CQ level control quality
-        } else {
-            1.0
-        };
+        // When Balanced uses CQ but Low uses CBR, double the bitrate:
+        // In CQ mode (Best/Balanced), bitrate is ceiling so 2x is harmless.
+        // In CBR mode (Low), 2x compensates for the quality gap.
+        let multiplier =
+            if Self::rate_control(ImageQuality::Balanced) == RC_QP_MODE
+                && Self::rate_control(ImageQuality::Low) != RC_QP_MODE
+            {
+                2.0
+            } else {
+                1.0
+            };
         (bitrate * ratio * multiplier) as u32
     }
 
