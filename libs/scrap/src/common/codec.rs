@@ -950,9 +950,9 @@ fn interpolate_qp(
 // Ratio above 2.0 is treated as 2.0.
 pub fn qp_for_ratio(ratio: f32) -> (i32, i32, i32) {
     //                          at_min  at_best  at_balanced  at_speed  at_max
-    let qp = interpolate_qp(ratio, 18, 22, 28, 34, 44);
-    let qmin = interpolate_qp(ratio, 18, 18, 22, 28, 38);
-    let qmax = interpolate_qp(ratio, 22, 28, 34, 40, 44);
+    let qp = interpolate_qp(ratio, 18, 22, 32, 38, 44);
+    let qmin = interpolate_qp(ratio, 18, 18, 26, 32, 38);
+    let qmax = interpolate_qp(ratio, 22, 28, 38, 42, 44);
     (qp, qmin, qmax)
 }
 
@@ -1295,14 +1295,14 @@ mod tests {
     #[test]
     fn test_qp_for_ratio_known_values() {
         let (qp, qmin, qmax) = qp_for_ratio(BR_SPEED);
-        assert_eq!(qp, 34);
-        assert_eq!(qmin, 28);
-        assert_eq!(qmax, 40);
+        assert_eq!(qp, 38);
+        assert_eq!(qmin, 32);
+        assert_eq!(qmax, 42);
 
         let (qp, qmin, qmax) = qp_for_ratio(BR_BALANCED);
-        assert_eq!(qp, 28);
-        assert_eq!(qmin, 22);
-        assert_eq!(qmax, 34);
+        assert_eq!(qp, 32);
+        assert_eq!(qmin, 26);
+        assert_eq!(qmax, 38);
 
         let (qp, qmin, qmax) = qp_for_ratio(BR_BEST);
         assert_eq!(qp, 22);
