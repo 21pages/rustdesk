@@ -260,6 +260,10 @@ impl UI {
         get_local_option(key)
     }
 
+    fn get_user_pk(&self, username: String) -> String {
+        get_user_pk(username)
+    }
+
     fn set_local_option(&self, key: String, value: String) {
         set_local_option(key, value);
     }
@@ -766,6 +770,7 @@ impl sciter::EventHandler for UI {
         fn get_options();
         fn get_option(String);
         fn get_local_option(String);
+        fn get_user_pk(String);
         fn set_local_option(String, String);
         fn get_peer_option(String, String);
         fn peer_has_password(String);

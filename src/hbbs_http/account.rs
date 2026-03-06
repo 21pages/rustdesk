@@ -1,6 +1,10 @@
 use super::HbbHttpResponse;
 use crate::hbbs_http::create_http_client_with_url;
-use hbb_common::{config::LocalConfig, log, ResultType};
+use hbb_common::{
+    config::LocalConfig,
+    log,
+    ResultType,
+};
 use reqwest::blocking::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -204,6 +208,50 @@ impl OidcSession {
         }
     }
 
+    // Sync current user once after OIDC login so server can bind the user's pk.
+    fn refresh_current_user(
+        api_server: &str,
+        id: &str,
+        uuid: &str,
+        access_token: &str,
+        username: &str,
+    ) -> ResultType<()> {
+        let username = username.trim();
+        if username.is_empty() {
+            return Ok(());
+        }
+
+        let mut body = serde_json::json!({
+            "id": id,
+            "uuid": uuid,
+        });
+        let pk = crate::ui_interface::get_user_pk(username.to_owned());
+        if !pk.is_empty() {
+            body["pk"] = serde_json::Value::String(pk);
+        }
+
+        let url = format!("{}/api/currentUser", api_server);
+        Self::ensure_client(api_server);
+        let resp = if let Some(client) = &OIDC_SESSION.read().unwrap().client {
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .bearer_auth(access_token)
+                .json(&body)
+                .send()?
+        } else {
+            hbb_common::bail!("http client not initialized");
+        };
+
+        match resp.try_into()? {
+            HbbHttpResponse::<serde_json::Value>::Data(_) => Ok(()),
+            HbbHttpResponse::<serde_json::Value>::Error(err) => {
+                hbb_common::bail!("currentUser error: {}", err)
+            }
+            _ => hbb_common::bail!("Invalid currentUser response"),
+        }
+    }
+
     fn reset(&mut self) {
         self.state_msg = REQUESTING_ACCOUNT_AUTH;
         self.failed_msg = "".to_owned();
@@ -266,6 +314,15 @@ impl OidcSession {
             match Self::query(&api_server, &code_url.code, &id, &uuid) {
                 Ok(HbbHttpResponse::<_>::Data(auth_body)) => {
                     if auth_body.r#type == "access_token" {
+                        if let Err(err) = Self::refresh_current_user(
+                            &api_server,
+                            &id,
+                            &uuid,
+                            &auth_body.access_token,
+                            &auth_body.user.name,
+                        ) {
+                            log::warn!("Failed to refresh currentUser after oidc login: {}", err);
+                        }
                         if remember_me {
                             LocalConfig::set_option(
                                 "access_token".to_owned(),

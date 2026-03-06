@@ -2712,6 +2712,22 @@ pub fn main_max_encrypt_len() -> SyncReturn<usize> {
     SyncReturn(max_encrypt_len())
 }
 
+pub fn main_easy_access_get_approved_keys() -> String {
+    easy_access_get_approved_keys()
+}
+
+pub fn main_easy_access_set_approved_keys(json: String) {
+    easy_access_set_approved_keys(&json)
+}
+
+pub fn main_easy_access_fetch_authorized_keys() -> String {
+    easy_access_fetch_authorized_keys()
+}
+
+pub fn main_get_user_pk(username: String) -> String {
+    get_user_pk(username)
+}
+
 pub fn session_request_new_display_init_msgs(session_id: SessionID, display: usize) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.request_init_msgs(display);

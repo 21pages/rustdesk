@@ -71,7 +71,7 @@ lazy_static::lazy_static! {
     static ref SESSIONS: Arc::<Mutex<HashMap<SessionKey, Session>>> = Default::default();
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
-    pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
+    pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlledConfig)>>> = Default::default();
     static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
@@ -228,7 +228,7 @@ pub struct Connection {
     restart: bool,
     recording: bool,
     block_input: bool,
-    control_permissions: Option<ControlPermissions>,
+    control_permissions: Option<ControlledConfig>,
     last_test_delay: Option<Instant>,
     network_delay: u32,
     lock_after_session_end: bool,
@@ -302,6 +302,7 @@ pub struct Connection {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     terminal_user_token: Option<TerminalUserToken>,
     terminal_generic_service: Option<Box<GenericService>>,
+    easy_access_challenge: Option<Vec<u8>>,
 }
 
 impl ConnInner {
@@ -352,14 +353,14 @@ impl Connection {
         stream: super::Stream,
         id: i32,
         server: super::ServerPtrWeak,
-        control_permissions: Option<ControlPermissions>,
+        control_permissions: Option<ControlledConfig>,
     ) {
         // Android is not supported yet, so we always set control_permissions to None.
         #[cfg(target_os = "android")]
         let control_permissions = None;
         let _raii_id = raii::ConnectionID::new(id);
         let _raii_control_permissions_id =
-            raii::ControlPermissionsID::new(id, &control_permissions);
+            raii::ControlledConfigID::new(id, &control_permissions);
         let hash = Hash {
             salt: Config::get_salt(),
             challenge: Config::get_auto_password(6),
@@ -479,6 +480,7 @@ impl Connection {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             terminal_user_token: None,
             terminal_generic_service: None,
+            easy_access_challenge: None,
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -1228,8 +1230,21 @@ impl Connection {
             }
         }
         self.ip = addr.ip().to_string();
+        let mut hash = self.hash.clone();
+        // If easy access is granted by the server, generate a 32-byte challenge
+        if self
+            .control_permissions
+            .as_ref()
+            .map_or(false, |cp| cp.easy_access_granted)
+        {
+            let challenge: Vec<u8> = (0..32)
+                .map(|_| hbb_common::rand::random::<u8>())
+                .collect();
+            hash.easy_access_challenge = challenge.clone().into();
+            self.easy_access_challenge = Some(challenge);
+        }
         let mut msg_out = Message::new();
-        msg_out.set_hash(self.hash.clone());
+        msg_out.set_hash(hash);
         self.send(msg_out).await;
         self.get_api_server();
         self.post_conn_audit(json!({
@@ -2045,9 +2060,9 @@ impl Connection {
 
     fn permission(
         enable_prefix_option: &str,
-        control_permissions: &Option<ControlPermissions>,
+        control_permissions: &Option<ControlledConfig>,
     ) -> bool {
-        use hbb_common::rendezvous_proto::control_permissions::Permission;
+        use hbb_common::rendezvous_proto::controlled_config::Permission;
         if let Some(control_permissions) = control_permissions {
             let permission = match enable_prefix_option {
                 keys::OPTION_ENABLE_KEYBOARD => Some(Permission::keyboard),
@@ -2065,13 +2080,53 @@ impl Connection {
             };
             if let Some(permission) = permission {
                 if let Some(enabled) =
-                    crate::get_control_permission(control_permissions.permissions, permission)
+                    crate::get_control_permission(control_permissions.control_permissions, permission)
                 {
                     return enabled;
                 }
             }
         }
         Self::is_permission_enabled_locally(enable_prefix_option)
+    }
+
+    fn verify_easy_access_signature(&mut self, lr: &LoginRequest) -> bool {
+        let challenge = match self.easy_access_challenge.take() {
+            Some(c) => c,
+            None => return false,
+        };
+        if lr.easy_access_public_key.is_empty() || lr.easy_access_signature.is_empty() {
+            return false;
+        }
+        // Check public key is in locally approved list
+        let pk_base64 =
+            hbb_common::sodiumoxide::base64::encode(&lr.easy_access_public_key, hbb_common::sodiumoxide::base64::Variant::Original);
+        if !crate::easy_access_keys::is_approved(&pk_base64) {
+            log::warn!("Easy access public key not in approved list");
+            return false;
+        }
+        // Verify Ed25519 signature
+        use hbb_common::sodiumoxide::crypto::sign;
+        let pk = match sign::PublicKey::from_slice(&lr.easy_access_public_key) {
+            Some(pk) => pk,
+            None => {
+                log::warn!("Easy access: invalid public key length");
+                return false;
+            }
+        };
+        let sig = match sign::Signature::from_bytes(&lr.easy_access_signature) {
+            Ok(sig) => sig,
+            Err(_) => {
+                log::warn!("Easy access: invalid signature length");
+                return false;
+            }
+        };
+        if sign::verify_detached(&sig, &challenge, &pk) {
+            log::info!("Easy access: challenge-response verified");
+            true
+        } else {
+            log::warn!("Easy access: signature verification failed");
+            false
+        }
     }
 
     fn update_codec_on_login(&self) {
@@ -2167,7 +2222,7 @@ impl Connection {
             if self.authorized {
                 return true;
             }
-            match lr.union {
+            match lr.union.as_ref() {
                 Some(login_request::Union::FileTransfer(ft)) => {
                     if !Self::permission(
                         keys::OPTION_ENABLE_FILE_TRANSFER,
@@ -2178,7 +2233,7 @@ impl Connection {
                         sleep(1.).await;
                         return false;
                     }
-                    self.file_transfer = Some((ft.dir, ft.show_hidden));
+                    self.file_transfer = Some((ft.dir.clone(), ft.show_hidden));
                 }
                 Some(login_request::Union::ViewCamera(_vc)) => {
                     if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.control_permissions) {
@@ -2208,7 +2263,7 @@ impl Connection {
                         self.terminal_persistent =
                             o.terminal_persistent.enum_value() == Ok(BoolOption::Yes);
                     }
-                    self.terminal_service_id = terminal.service_id;
+                    self.terminal_service_id = terminal.service_id.clone();
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     if let Some(msg) =
                         self.fill_terminal_user_token(&lr.os_login.username, &lr.os_login.password)
@@ -2237,12 +2292,13 @@ impl Connection {
                         }
                     }
                 }
-                Some(login_request::Union::PortForward(mut pf)) => {
+                Some(login_request::Union::PortForward(pf)) => {
                     if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions) {
                         self.send_login_error("No permission of IP tunneling").await;
                         sleep(1.).await;
                         return false;
                     }
+                    let mut pf = pf.clone();
                     let (addr, _is_rdp) = Self::normalize_port_forward_target(&mut pf);
                     self.port_forward_address = addr;
                 }
@@ -2297,6 +2353,18 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
+            } else if self.verify_easy_access_signature(&lr) {
+                // Easy access: challenge-response signature verified, skip password validation
+                if err_msg.is_empty() {
+                    #[cfg(target_os = "linux")]
+                    self.linux_headless_handle.wait_desktop_cm_ready().await;
+                    if !self.send_logon_response_and_keep_alive().await {
+                        return false;
+                    }
+                    self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
+                } else {
+                    self.send_login_error(err_msg).await;
+                }
             } else if (password::approve_mode() == ApproveMode::Click
                 && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon()))
@@ -5281,14 +5349,14 @@ impl Retina {
 /// Get control permission state from CONTROL_PERMISSIONS_ARRAY.
 /// Returns: Some(false) if any disable, Some(true) if any enable (and no disable), None if not set.
 pub fn get_control_permission_state(
-    permission: hbb_common::rendezvous_proto::control_permissions::Permission,
+    permission: hbb_common::rendezvous_proto::controlled_config::Permission,
     disable_if_has_disabled: bool,
 ) -> Option<bool> {
     let control_permissions = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
     let mut has_enable = false;
     let mut has_disable = false;
     for (_, cp) in control_permissions.iter() {
-        match crate::get_control_permission(cp.permissions, permission) {
+        match crate::get_control_permission(cp.control_permissions, permission) {
             Some(false) => has_disable = true,
             Some(true) => has_enable = true,
             None => {}
@@ -5528,12 +5596,12 @@ mod raii {
         }
     }
 
-    pub struct ControlPermissionsID {
+    pub struct ControlledConfigID {
         id: i32,
-        control_permissions: Option<ControlPermissions>,
+        control_permissions: Option<ControlledConfig>,
     }
 
-    impl Drop for ControlPermissionsID {
+    impl Drop for ControlledConfigID {
         fn drop(&mut self) {
             if self.control_permissions.is_some() {
                 let mut lock = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
@@ -5541,8 +5609,8 @@ mod raii {
             }
         }
     }
-    impl ControlPermissionsID {
-        pub fn new(id: i32, control_permissions: &Option<ControlPermissions>) -> Self {
+    impl ControlledConfigID {
+        pub fn new(id: i32, control_permissions: &Option<ControlledConfig>) -> Self {
             if let Some(s) = control_permissions {
                 CONTROL_PERMISSIONS_ARRAY
                     .lock()

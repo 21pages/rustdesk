@@ -57,10 +57,14 @@ class UserModel {
     }
     _updateLocalUserInfo();
     final url = await bind.mainGetApiServer();
-    final body = {
+    var body = {
       'id': await bind.mainGetMyId(),
-      'uuid': await bind.mainGetUuid()
+      'uuid': await bind.mainGetUuid(),
     };
+    final username = UserModel.getLocalUserInfo()?['name'] ?? '';
+    if (username != '') {
+      body['pk'] = await bind.mainGetUserPk(username: username);
+    }
     if (refreshingUser) return;
     try {
       refreshingUser = true;
