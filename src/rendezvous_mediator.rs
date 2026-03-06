@@ -428,7 +428,7 @@ impl RendezvousMediator {
             rr.secure,
             false,
             Default::default(),
-            rr.control_permissions.clone().into_option(),
+            rr.conn_config.clone().into_option(),
         )
         .await
     }
@@ -442,7 +442,7 @@ impl RendezvousMediator {
         secure: bool,
         initiate: bool,
         socket_addr_v6: bytes::Bytes,
-        control_permissions: Option<ControlPermissions>,
+        control_permissions: Option<ControlledConfig>,
     ) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&socket_addr);
         log::info!(
@@ -499,7 +499,7 @@ impl RendezvousMediator {
                 peer_addr_v6,
                 addr,
                 server.clone(),
-                fla.control_permissions.clone().into_option(),
+                fla.conn_config.clone().into_option(),
             )
             .await;
         }
@@ -527,7 +527,7 @@ impl RendezvousMediator {
             true,
             true,
             socket_addr_v6,
-            fla.control_permissions.into_option(),
+            fla.conn_config.into_option(),
         )
         .await
     }
@@ -563,7 +563,7 @@ impl RendezvousMediator {
             socket,
             peer_addr,
             true,
-            fla.control_permissions.into_option(),
+            fla.conn_config.into_option(),
         )
         .await;
         Ok(())
@@ -580,7 +580,7 @@ impl RendezvousMediator {
         let peer_addr_v6 = hbb_common::AddrMangle::decode(&ph.socket_addr_v6);
         let relay = use_ws() || Config::is_proxy() || ph.force_relay;
         let mut socket_addr_v6 = Default::default();
-        let control_permissions = ph.control_permissions.into_option();
+        let control_permissions = ph.conn_config.into_option();
         if peer_addr_v6.port() > 0 && !relay {
             socket_addr_v6 = start_ipv6(
                 peer_addr_v6,
@@ -651,7 +651,7 @@ impl RendezvousMediator {
         peer_addr: SocketAddr,
         server: ServerPtr,
         msg_punch: PunchHoleSent,
-        control_permissions: Option<ControlPermissions>,
+        control_permissions: Option<ControlledConfig>,
     ) -> ResultType<()> {
         let mut msg_out = Message::new();
         msg_out.set_punch_hole_sent(msg_punch);
@@ -847,7 +847,7 @@ async fn start_ipv6(
     peer_addr_v6: SocketAddr,
     peer_addr_v4: SocketAddr,
     server: ServerPtr,
-    control_permissions: Option<ControlPermissions>,
+    control_permissions: Option<ControlledConfig>,
 ) -> bytes::Bytes {
     crate::test_ipv6().await;
     if let Some((socket, local_addr_v6)) = crate::get_ipv6_socket().await {
@@ -874,7 +874,7 @@ async fn udp_nat_listen(
     peer_addr: SocketAddr,
     peer_addr_v4: SocketAddr,
     server: ServerPtr,
-    control_permissions: Option<ControlPermissions>,
+    control_permissions: Option<ControlledConfig>,
 ) -> ResultType<()> {
     let tm = Instant::now();
     let socket_cloned = socket.clone();

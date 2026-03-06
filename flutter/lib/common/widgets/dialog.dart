@@ -2865,3 +2865,142 @@ Widget trustedDevicesTable(
         )),
   );
 }
+
+Future<void> syncEasyAccessKeys(BuildContext context) async {
+  final apiServer = await bind.mainGetApiServer();
+  if (apiServer.isEmpty) {
+    BotToast.showText(text: translate('No API server configured'));
+    return;
+  }
+  final accessToken = bind.mainGetLocalOption(key: 'access_token');
+  if (accessToken.isEmpty) {
+    BotToast.showText(text: translate('Not logged in'));
+    return;
+  }
+  final peerId = await bind.mainGetMyId();
+  final url = '$apiServer/api/easy-access/authorized-keys/$peerId';
+
+  try {
+    final httpService = http.HttpService();
+    final resp = await httpService.sendRequest(
+      Uri.parse(url),
+      http.HttpMethod.get,
+      headers: getHttpHeaders(),
+    );
+    if (resp.statusCode != 200) {
+      BotToast.showText(
+          text:
+              '${translate("Failed to fetch easy access keys")}: ${resp.statusCode}');
+      return;
+    }
+    final List<dynamic> serverKeys = json.decode(resp.body);
+    if (serverKeys.isEmpty) {
+      BotToast.showText(text: translate('No authorized keys found'));
+      return;
+    }
+    // Load current approved keys
+    final currentKeysJson =
+        bind.mainGetOptionSync(key: 'easy-access-approved-keys');
+    final List<dynamic> currentKeys = currentKeysJson.isNotEmpty
+        ? json.decode(currentKeysJson)
+        : [];
+    final currentKeySet =
+        currentKeys.map((k) => k['public_key'] as String).toSet();
+
+    // Find new keys
+    final newKeys = serverKeys
+        .where((k) => !currentKeySet.contains(k['public_key']))
+        .toList();
+    if (newKeys.isEmpty) {
+      BotToast.showText(text: translate('All keys already approved'));
+      return;
+    }
+
+    // Show approval dialog
+    final selectedKeys = <int>{};
+    for (int i = 0; i < newKeys.length; i++) {
+      selectedKeys.add(i);
+    }
+    gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+        title: Text(translate('Approve Easy Access Keys')),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${newKeys.length} ${translate("new key(s) found")}:',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...List.generate(newKeys.length, (i) {
+                final key = newKeys[i];
+                final userGuid = key['user_guid'] ?? '';
+                final userName = key['user_name'] ?? '';
+                final pk = key['public_key'] ?? '';
+                final displayName =
+                    userName.isNotEmpty ? userName : userGuid;
+                final shortKey = pk.length > 16
+                    ? '${pk.substring(0, 8)}...${pk.substring(pk.length - 8)}'
+                    : pk;
+                return StatefulBuilder(
+                  builder: (context, setCheckState) {
+                    return CheckboxListTile(
+                      value: selectedKeys.contains(i),
+                      onChanged: (v) {
+                        setCheckState(() {
+                          if (v == true) {
+                            selectedKeys.add(i);
+                          } else {
+                            selectedKeys.remove(i);
+                          }
+                        });
+                      },
+                      title: Text(displayName),
+                      subtitle: Text(shortKey,
+                          style: const TextStyle(
+                              fontSize: 12, fontFamily: 'monospace')),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      dense: true,
+                    );
+                  },
+                );
+              }),
+            ],
+          ),
+        ),
+        actions: [
+          dialogButton(
+            'Approve Selected',
+            onPressed: () async {
+              final approved = <Map<String, dynamic>>[];
+              approved.addAll(currentKeys.cast<Map<String, dynamic>>());
+              for (final i in selectedKeys) {
+                approved.add({
+                  'user_guid': newKeys[i]['user_guid'] ?? '',
+                  'public_key': newKeys[i]['public_key'] ?? '',
+                });
+              }
+              await bind.mainSetOption(
+                key: 'easy-access-approved-keys',
+                value: json.encode(approved),
+              );
+              BotToast.showText(
+                  text:
+                      '${selectedKeys.length} ${translate("key(s) approved")}');
+              close();
+            },
+          ),
+          dialogButton('Cancel', onPressed: close, isOutline: true),
+        ],
+        onCancel: close,
+      );
+    });
+  } catch (e) {
+    BotToast.showText(
+        text:
+            '${translate("Failed to fetch easy access keys")}: $e');
+  }
+}

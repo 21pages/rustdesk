@@ -8,6 +8,7 @@ use hbb_common::{
     futures::future::join_all,
     log,
     rendezvous_proto::*,
+    sodiumoxide::base64::{encode as b64encode, Variant},
     tokio,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -225,6 +226,12 @@ pub fn is_option_fixed(key: &str) -> bool {
 #[inline]
 pub fn get_local_option(key: String) -> String {
     crate::get_local_option(&key)
+}
+
+#[inline]
+pub fn get_user_pk() -> String {
+    let (_, pk) = crate::easy_access_keys::get_user_key_pair();
+    b64encode(&pk, Variant::Original)
 }
 
 #[inline]
@@ -1564,6 +1571,52 @@ pub fn clear_trusted_devices() {
 #[cfg(feature = "flutter")]
 pub fn max_encrypt_len() -> usize {
     hbb_common::config::ENCRYPT_MAX_LEN
+}
+
+#[cfg(feature = "flutter")]
+pub fn easy_access_get_approved_keys() -> String {
+    let keys = crate::easy_access_keys::get_approved_keys();
+    serde_json::to_string(&keys).unwrap_or_default()
+}
+
+#[cfg(feature = "flutter")]
+pub fn easy_access_set_approved_keys(json: &str) {
+    match serde_json::from_str::<Vec<crate::easy_access_keys::ApprovedKey>>(json) {
+        Ok(keys) => crate::easy_access_keys::set_approved_keys(keys),
+        Err(e) => hbb_common::log::warn!("Failed to parse easy access keys: {}", e),
+    }
+}
+
+#[cfg(feature = "flutter")]
+pub fn easy_access_fetch_authorized_keys() -> String {
+    use hbb_common::config::LocalConfig;
+    let api_server = get_api_server();
+    if api_server.is_empty() {
+        return serde_json::json!({"error": "No API server configured"}).to_string();
+    }
+    let access_token = LocalConfig::get_option("access_token");
+    if access_token.is_empty() {
+        return serde_json::json!({"error": "Not logged in"}).to_string();
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let peer_id = hbb_common::config::Config::get_id_or(crate::DEVICE_ID.lock().unwrap().clone());
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let peer_id = hbb_common::config::Config::get_id();
+    let url = format!("{}/api/easy-access/authorized-keys/{}", api_server, peer_id);
+    let client = crate::hbbs_http::create_http_client_with_url(&url);
+    match client.get(&url).bearer_auth(&access_token).send() {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                match resp.text() {
+                    Ok(text) => text,
+                    Err(e) => serde_json::json!({"error": e.to_string()}).to_string(),
+                }
+            } else {
+                serde_json::json!({"error": format!("Server error: {}", resp.status())}).to_string()
+            }
+        }
+        Err(e) => serde_json::json!({"error": e.to_string()}).to_string(),
+    }
 }
 
 pub fn is_remote_modify_enabled_by_control_permissions() -> Option<bool> {

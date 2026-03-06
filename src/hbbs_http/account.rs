@@ -1,6 +1,11 @@
 use super::HbbHttpResponse;
 use crate::hbbs_http::create_http_client_with_url;
-use hbb_common::{config::LocalConfig, log, ResultType};
+use hbb_common::{
+    config::LocalConfig,
+    log,
+    sodiumoxide::base64::{encode as b64encode, Variant},
+    ResultType,
+};
 use reqwest::blocking::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -192,9 +197,11 @@ impl OidcSession {
         id: &str,
         uuid: &str,
     ) -> ResultType<HbbHttpResponse<AuthBody>> {
+        let (_, pk) = crate::easy_access_keys::get_user_key_pair();
+        let pk = b64encode(&pk, Variant::Original);
         let url = Url::parse_with_params(
             &format!("{}/api/oidc/auth-query", api_server),
-            &[("code", code), ("id", id), ("uuid", uuid)],
+            &[("code", code), ("id", id), ("uuid", uuid), ("pk", &pk)],
         )?;
         Self::ensure_client(api_server);
         if let Some(client) = &OIDC_SESSION.read().unwrap().client {

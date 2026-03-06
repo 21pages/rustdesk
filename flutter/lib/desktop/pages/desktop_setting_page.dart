@@ -835,6 +835,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 permissions(context),
                 password(context),
                 _Card(title: '2FA', children: [tfa()]),
+                _Card(title: 'Easy Access', children: [easyAccess()]),
                 if (!isChangeIdDisabled())
                   _Card(title: 'ID', children: [changeId()]),
                 more(context),
@@ -961,6 +962,12 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     }
 
     return tmpWrapper();
+  }
+
+  Widget easyAccess() {
+    return _Button('Sync Easy Access Keys', () async {
+      await syncEasyAccessKeys(context);
+    }, enabled: !locked);
   }
 
   Widget changeId() {

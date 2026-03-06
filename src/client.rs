@@ -524,6 +524,9 @@ impl Client {
                                     }
                                 }
                             }
+                            if ph.controller_config.easy_access_granted {
+                                interface.get_lch().write().unwrap().easy_access_granted = true;
+                            }
                             log::info!("{} Hole Punched {} = {}", punch_type, peer, peer_addr);
                             break;
                         }
@@ -546,6 +549,9 @@ impl Client {
                             }
                         }
                         signed_id_pk = rr.pk().into();
+                        if rr.controller_config.easy_access_granted {
+                            interface.get_lch().write().unwrap().easy_access_granted = true;
+                        }
                         let fut = Self::create_relay(
                             &peer,
                             rr.uuid,
@@ -1755,6 +1761,7 @@ pub struct LoginConfigHandler {
     pub enable_trusted_devices: bool,
     pub record_state: bool,
     pub record_permission: bool,
+    pub easy_access_granted: bool,
 }
 
 impl Deref for LoginConfigHandler {
@@ -2627,16 +2634,15 @@ impl LoginConfigHandler {
         };
         let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
         if avatar.is_empty() {
-            avatar = serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option(
-                "user_info",
-            ))
-            .ok()
-            .and_then(|x| {
-                x.get("avatar")
-                    .and_then(|x| x.as_str())
-                    .map(|x| x.trim().to_owned())
-            })
-            .unwrap_or_default();
+            avatar =
+                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                    .ok()
+                    .and_then(|x| {
+                        x.get("avatar")
+                            .and_then(|x| x.as_str())
+                            .map(|x| x.trim().to_owned())
+                    })
+                    .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
@@ -2719,6 +2725,17 @@ impl LoginConfigHandler {
                 lr.set_terminal(terminal);
             }
             _ => {}
+        }
+
+        if self.easy_access_granted && !self.hash.easy_access_challenge.is_empty() {
+            let (user_sk, user_pk) = crate::easy_access_keys::get_user_key_pair();
+            if let Some(sig) = crate::easy_access_keys::sign_easy_access_challenge(
+                &self.hash.easy_access_challenge,
+                &user_sk,
+            ) {
+                lr.easy_access_public_key = user_pk.into();
+                lr.easy_access_signature = sig.into();
+            }
         }
 
         let mut msg_out = Message::new();
