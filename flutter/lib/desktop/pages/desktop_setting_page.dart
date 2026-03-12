@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
@@ -834,6 +835,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               child: Column(children: [
                 permissions(context),
                 password(context),
+                easyAccess(context),
                 _Card(title: '2FA', children: [tfa()]),
                 if (!isChangeIdDisabled())
                   _Card(title: 'ID', children: [changeId()]),
@@ -1218,6 +1220,98 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
             if (usePassword) radios[2],
           ]);
         })));
+  }
+
+  Widget easyAccess(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _fetchEasyAccessUsers(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return _Card(title: 'Easy Access', children: [
+            Center(child: CircularProgressIndicator()).marginAll(20)
+          ]);
+        }
+
+        final users = snapshot.data!;
+        if (users.isEmpty) {
+          return _Card(title: 'Easy Access', children: [
+            Text('No easy access users').marginAll(20)
+          ]);
+        }
+
+        return _Card(title: 'Easy Access', children: [
+          Table(
+            border: TableBorder.all(color: Colors.grey),
+            columnWidths: const {
+              0: FlexColumnWidth(2),
+              1: FlexColumnWidth(1),
+            },
+            children: [
+              TableRow(
+                decoration: BoxDecoration(color: Colors.grey[200]),
+                children: [
+                  Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text('Type', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              ...users.map((user) => TableRow(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text(user['name'] ?? ''),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text(_getTypeLabel(user['type'])),
+                  ),
+                ],
+              )),
+            ],
+          ).marginAll(15)
+        ]);
+      },
+    );
+  }
+
+  String _getTypeLabel(int? type) {
+    switch (type) {
+      case 1: return 'User Group → Device Group';
+      case 2: return 'User → Device Group';
+      case 3: return 'User Group → Device';
+      case 4: return 'User → Device';
+      default: return 'Unknown';
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchEasyAccessUsers() async {
+    try {
+      final id = await bind.mainGetMyId();
+      final uuid = await bind.mainGetUuid();
+      if (id.isEmpty || uuid.isEmpty) return [];
+
+      final url = await bind.mainGetApiServer();
+      if (url.isEmpty) return [];
+
+      final response = await http.get(
+        Uri.parse(
+          '$url/api/devices/easy-access-users?id=${Uri.encodeQueryComponent(id)}&uuid=${Uri.encodeQueryComponent(uuid)}',
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch easy access users: $e');
+    }
+    return [];
   }
 
   Widget more(BuildContext context) {
