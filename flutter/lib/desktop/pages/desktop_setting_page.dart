@@ -1223,71 +1223,168 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
   }
 
   Widget easyAccess(BuildContext context) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _fetchEasyAccessUsers(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return _Card(title: 'Easy Access', children: [
-            Center(child: CircularProgressIndicator()).marginAll(20)
-          ]);
-        }
+    return _Card(title: 'Easy Access', children: [
+      Text(
+        'View users and groups with easy access permission for this device.',
+      ).marginOnly(
+        left: _kContentHMargin,
+        top: 12,
+        right: _kContentHMargin,
+        bottom: 8,
+      ),
+      _SubButton('View', showEasyAccessDialog, !locked).marginOnly(bottom: 12),
+    ]);
+  }
 
-        final users = snapshot.data!;
-        if (users.isEmpty) {
-          return _Card(title: 'Easy Access', children: [
-            Text('No easy access users').marginAll(20)
-          ]);
-        }
+  void showEasyAccessDialog() {
+    gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+        title: Text(translate('Easy Access')),
+        contentBoxConstraints: const BoxConstraints(
+          maxWidth: 430,
+          maxHeight: 330,
+        ),
+        content: SizedBox(
+          width: 430,
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _fetchEasyAccessUsers(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                ).marginAll(20);
+              }
 
-        return _Card(title: 'Easy Access', children: [
-          Table(
-            border: TableBorder.all(color: Colors.grey),
-            columnWidths: const {
-              0: FlexColumnWidth(2),
-              1: FlexColumnWidth(1),
+              final entries = (snapshot.data ?? const <Map<String, dynamic>>[])
+                  .map((user) => Map<String, dynamic>.from(user))
+                  .toList();
+              if (entries.isEmpty) {
+                return Text('No easy access users').marginAll(20);
+              }
+
+              final users = _mergeEasyAccessEntriesByName(
+                entries
+                    .where((entry) => _isEasyAccessUserType(entry['type']))
+                    .toList(),
+              );
+              final userGroups = _mergeEasyAccessEntriesByName(
+                entries
+                    .where((entry) => _isEasyAccessUserGroupType(entry['type']))
+                    .toList(),
+              );
+              final theme = Theme.of(context);
+
+              return DefaultTabController(
+                length: 2,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TabBar(
+                      labelColor: theme.colorScheme.primary,
+                      unselectedLabelColor: theme.textTheme.bodyMedium?.color,
+                      tabs: const [
+                        Tab(text: 'Users'),
+                        Tab(text: 'User Groups'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 190,
+                      child: TabBarView(
+                        children: [
+                          _buildEasyAccessTable(context, users, 'No users'),
+                          _buildEasyAccessTable(
+                            context,
+                            userGroups,
+                            'No user groups',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
             },
+          ),
+        ),
+        actions: [dialogButton('Close', onPressed: close)],
+        onCancel: close,
+      );
+    });
+  }
+
+  Widget _buildEasyAccessTable(
+    BuildContext context,
+    List<Map<String, dynamic>> entries,
+    String emptyText,
+  ) {
+    if (entries.isEmpty) {
+      return Text(emptyText).marginAll(20);
+    }
+
+    final theme = Theme.of(context);
+    final borderColor = theme.dividerColor;
+    final headerColor = theme.colorScheme.surfaceVariant;
+    final headerTextStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.bold,
+    );
+
+    return SingleChildScrollView(
+      child: Table(
+        border: TableBorder.all(color: borderColor),
+        children: [
+          TableRow(
+            decoration: BoxDecoration(color: headerColor),
             children: [
-              TableRow(
-                decoration: BoxDecoration(color: Colors.grey[200]),
-                children: [
-                  Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text('Type', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text('Name', style: headerTextStyle),
               ),
-              ...users.map((user) => TableRow(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text(user['name'] ?? ''),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text(_getTypeLabel(user['type'])),
-                  ),
-                ],
-              )),
             ],
-          ).marginAll(15)
-        ]);
-      },
+          ),
+          ...entries.map(
+            (entry) => TableRow(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(entry['name'] ?? ''),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  String _getTypeLabel(int? type) {
-    switch (type) {
-      case 1: return 'User Group → Device Group';
-      case 2: return 'User → Device Group';
-      case 3: return 'User Group → Device';
-      case 4: return 'User → Device';
-      default: return 'Unknown';
+  List<Map<String, dynamic>> _mergeEasyAccessEntriesByName(
+    List<Map<String, dynamic>> entries,
+  ) {
+    final merged = <String, Map<String, dynamic>>{};
+    for (final entry in entries) {
+      final name = (entry['name'] ?? '').toString().trim();
+      if (name.isEmpty) {
+        continue;
+      }
+      final key = name.toLowerCase();
+      merged.putIfAbsent(key, () {
+        final normalizedEntry = Map<String, dynamic>.from(entry);
+        normalizedEntry['name'] = name;
+        return normalizedEntry;
+      });
     }
+
+    final deduped = merged.values.toList();
+    deduped.sort((a, b) => (a['name'] ?? '').toString().toLowerCase().compareTo(
+          (b['name'] ?? '').toString().toLowerCase(),
+        ));
+    return deduped;
   }
+
+  bool _isEasyAccessUserGroupType(dynamic type) => type == 1 || type == 3;
+
+  bool _isEasyAccessUserType(dynamic type) => type == 2 || type == 4;
 
   Future<List<Map<String, dynamic>>> _fetchEasyAccessUsers() async {
     try {
