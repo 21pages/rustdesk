@@ -1027,7 +1027,7 @@ pub fn get_active_username() -> String {
         .to_owned()
 }
 
-fn get_current_session_username() -> Option<String> {
+pub fn get_current_session_username() -> Option<String> {
     let Some(sid) = get_current_process_session_id() else {
         log::error!("get_current_process_session_id failed");
         return None;

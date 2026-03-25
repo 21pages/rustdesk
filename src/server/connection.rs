@@ -1986,6 +1986,7 @@ impl Connection {
         if password::temporary_enabled() {
             let password = password::temporary_password();
             if self.validate_one_password(password.clone()) {
+                log::info!("login password validated with temporary password");
                 raii::AuthedConnID::update_or_insert_session(
                     self.session_key(),
                     Some(password),
@@ -1996,6 +1997,10 @@ impl Connection {
         }
         if password::permanent_enabled() || allow_permanent_password {
             if self.validate_one_password(Config::get_permanent_password()) {
+                log::info!(
+                    "login password validated with permanent password, fallback={}",
+                    allow_permanent_password && !password::permanent_enabled()
+                );
                 return true;
             }
         }
@@ -2285,14 +2290,25 @@ impl Connection {
                     }
                 }
             };
+            log::info!(
+                "====================== is_prelogin:{}, is_locked:{}, is_logon_ui:{:?}, is_logon:{}, username:{:?} sid:{:?}, is_physical:{:?} ======================",
+                crate::platform::is_prelogin(), 
+                    crate::platform::is_locked(),
+                    crate::platform::is_logon_ui(),
+                    is_logon(),
+                    crate::platform::get_current_session_username(),
+                    crate::platform::get_current_process_session_id(),
+                    crate::platform::is_physical_console_session(),
+
+
+            );
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             let is_logon = || crate::platform::is_prelogin() || crate::platform::is_locked();
             #[cfg(any(target_os = "android", target_os = "ios"))]
             let is_logon = || crate::platform::is_prelogin();
 
-            let allow_logon_screen_password =
-                crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
-                    && is_logon();
+            let allow_logon_screen_password = true && is_logon();
+    
 
             if !hbb_common::is_ip_str(&lr.username)
                 && !hbb_common::is_domain_port_str(&lr.username)
