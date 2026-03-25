@@ -1152,17 +1152,16 @@ pub fn is_locked() -> bool {
     unsafe { is_session_locked(share_rdp()) == TRUE }
 }
 
-// `is_logon_ui()` is regardless of multiple sessions now.
-// It only check if "LogonUI.exe" exists.
-//
-// If there're mulitple sessions (logged in users),
-// some are in the login screen, while the others are not.
-// Then this function may not work fine if the session we want to handle(connect) is not in the login screen.
-// But it's a rare case and cannot be simply handled, so it will not be dealt with for the time being.
 #[inline]
 pub fn is_logon_ui() -> ResultType<bool> {
+    let Some(current_sid) = get_current_process_session_id() else {
+        log::error!("get_current_process_session_id failed");
+        return Ok(false);
+    };
     let pids = get_pids("LogonUI.exe")?;
-    Ok(!pids.is_empty())
+    Ok(pids
+        .into_iter()
+        .any(|pid| get_session_id_of_process(pid) == Some(current_sid)))
 }
 
 pub fn is_root() -> bool {
