@@ -1982,7 +1982,7 @@ impl Connection {
         hasher2.finalize()[..] == self.lr.password[..]
     }
 
-    fn validate_password(&mut self) -> bool {
+    fn validate_password(&mut self, allow_permanent_password: bool) -> bool {
         if password::temporary_enabled() {
             let password = password::temporary_password();
             if self.validate_one_password(password.clone()) {
@@ -1994,7 +1994,7 @@ impl Connection {
                 return true;
             }
         }
-        if password::permanent_enabled() {
+        if password::permanent_enabled() || allow_permanent_password {
             if self.validate_one_password(Config::get_permanent_password()) {
                 return true;
             }
@@ -2290,6 +2290,10 @@ impl Connection {
             #[cfg(any(target_os = "android", target_os = "ios"))]
             let is_logon = || crate::platform::is_prelogin();
 
+            let allow_logon_screen_password =
+                crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
+                    && is_logon();
+
             if !hbb_common::is_ip_str(&lr.username)
                 && !hbb_common::is_domain_port_str(&lr.username)
                 && lr.username != Config::get_id()
@@ -2298,8 +2302,7 @@ impl Connection {
                     .await;
                 return false;
             } else if (password::approve_mode() == ApproveMode::Click
-                && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
-                    && is_logon()))
+                && !allow_logon_screen_password)
                 || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
             {
                 self.try_start_cm(lr.my_id, lr.my_name, false);
@@ -2335,7 +2338,7 @@ impl Connection {
                 if !res {
                     return true;
                 }
-                if !self.validate_password() {
+                if !self.validate_password(allow_logon_screen_password) {
                     self.update_failure(failure, false, 0);
                     if err_msg.is_empty() {
                         self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
