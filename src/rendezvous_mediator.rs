@@ -51,6 +51,13 @@ pub struct RendezvousMediator {
 }
 
 impl RendezvousMediator {
+    #[inline]
+    fn format_request_id(request_id: &[u8]) -> String {
+        Uuid::from_slice(request_id)
+            .map(|id| id.to_string())
+            .unwrap_or_else(|_| format!("{:?}", request_id))
+    }
+
     pub fn restart() {
         SHOULD_EXIT.store(true, Ordering::SeqCst);
         MANUAL_RESTARTED.store(true, Ordering::SeqCst);
@@ -448,14 +455,22 @@ impl RendezvousMediator {
     ) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&socket_addr);
         log::info!(
-            "create_relay requested from {:?}, relay_server: {}, uuid: {}, secure: {}",
+            "create_relay requested from {:?}, relay_server: {}, uuid: {}, request_id: {}, secure: {}",
             peer_addr,
             relay_server,
             uuid,
+            Self::format_request_id(request_id.as_ref()),
             secure,
         );
 
         let mut socket = connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
+        log::info!(
+            "create_relay local hbbs socket: local_addr={}, peer_addr={}, uuid={}, initiate={}",
+            socket.local_addr(),
+            peer_addr,
+            uuid,
+            initiate
+        );
 
         let mut msg_out = Message::new();
         let mut rr = RelayResponse {
@@ -544,12 +559,23 @@ impl RendezvousMediator {
         socket_addr_v6: bytes::Bytes,
     ) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&fla.socket_addr);
-        log::debug!("Handle intranet from {:?}", peer_addr);
+        log::info!(
+            "handle intranet: controller_addr={}, relay_server={}, request_id={}",
+            peer_addr,
+            relay_server,
+            Self::format_request_id(fla.request_id.as_ref())
+        );
         let mut socket = connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
         let local_addr = socket.local_addr();
         // we saw invalid local_addr while using proxy, local_addr.ip() == "::1"
         let local_addr: SocketAddr =
             format!("{}:{}", local_addr.ip(), local_addr.port()).parse()?;
+        log::info!(
+            "handle intranet local accept addr: controller_addr={}, local_addr={}, request_id={}",
+            peer_addr,
+            local_addr,
+            Self::format_request_id(fla.request_id.as_ref())
+        );
         let mut msg_out = Message::new();
         msg_out.set_local_addr(LocalAddr {
             id: Config::get_id(),
@@ -619,6 +645,8 @@ impl RendezvousMediator {
         }
         use hbb_common::protobuf::Enum;
         let nat_type = NatType::from_i32(Config::get_nat_type()).unwrap_or(NatType::UNKNOWN_NAT);
+        let controller_addr = AddrMangle::decode(&ph.socket_addr);
+        let request_id = Self::format_request_id(ph.request_id.as_ref());
         let msg_punch = PunchHoleSent {
             socket_addr: ph.socket_addr,
             id: Config::get_id(),
@@ -631,6 +659,12 @@ impl RendezvousMediator {
         };
         if ph.udp_port > 0 {
             peer_addr.set_port(ph.udp_port as u16);
+            log::info!(
+                "punch udp hole: controller_addr={}, peer_udp_addr={}, request_id={}",
+                controller_addr,
+                peer_addr,
+                request_id
+            );
             self.punch_udp_hole(peer_addr, server, msg_punch, controlled_config)
                 .await?;
             return Ok(());
@@ -639,9 +673,40 @@ impl RendezvousMediator {
         let mut socket = {
             let socket = connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
             let local_addr = socket.local_addr();
+            log::info!(
+                "punch tcp hole: controller_addr={}, peer_addr={}, local_addr={}, request_id={}",
+                controller_addr,
+                peer_addr,
+                local_addr,
+                request_id
+            );
             // key important here for punch hole to tell my gateway incoming peer is safe.
             // it can not be async here, because local_addr can not be reused, we must close the connection before use it again.
-            allow_err!(socket_client::connect_tcp_local(peer_addr, Some(local_addr), 30).await);
+            // Each in-flight controlled-side TCP attempt owns its local port until it is dropped
+            // and rebound as a listener below, so another concurrent attempt should not reuse the
+            // same controlled-side TCP address.
+            match socket_client::connect_tcp_local(peer_addr, Some(local_addr), 30).await {
+                Ok(probe) => {
+                    log::info!(
+                        "punch tcp probe connected: controller_addr={}, peer_addr={}, local_addr={}, request_id={}",
+                        controller_addr,
+                        peer_addr,
+                        probe.local_addr(),
+                        request_id
+                    );
+                    drop(probe);
+                }
+                Err(err) => {
+                    log::warn!(
+                        "punch tcp probe failed: controller_addr={}, peer_addr={}, local_addr={}, request_id={}, err={}",
+                        controller_addr,
+                        peer_addr,
+                        local_addr,
+                        request_id,
+                        err
+                    );
+                }
+            }
             socket
         };
         let mut msg_out = Message::new();
@@ -659,9 +724,17 @@ impl RendezvousMediator {
         msg_punch: PunchHoleSent,
         controlled_config: Option<ControlledConfig>,
     ) -> ResultType<()> {
+        let request_id = Self::format_request_id(msg_punch.request_id.as_ref());
         let mut msg_out = Message::new();
         msg_out.set_punch_hole_sent(msg_punch);
         let (socket, addr) = new_direct_udp_for(&self.host).await?;
+        log::info!(
+            "udp punch socket prepared: local_addr={}, hbbs_addr={}, peer_addr={}, request_id={}",
+            socket.local_addr().map(|x| x.to_string()).unwrap_or_default(),
+            addr,
+            peer_addr,
+            request_id
+        );
         let data = msg_out.write_to_bytes()?;
         socket.send_to(&data, addr).await?;
         let socket_cloned = socket.clone();
@@ -884,6 +957,16 @@ async fn udp_nat_listen(
 ) -> ResultType<()> {
     let tm = Instant::now();
     let socket_cloned = socket.clone();
+    let local_addr = socket
+        .local_addr()
+        .map(|addr| addr.to_string())
+        .unwrap_or_else(|_| "<unknown>".to_owned());
+    log::info!(
+        "udp listen start: local_addr={}, peer_addr={}, peer_addr_v4={}",
+        local_addr,
+        peer_addr,
+        peer_addr_v4
+    );
     let func = async {
         socket.connect(peer_addr).await?;
         let res = crate::punch_udp(socket.clone(), true).await?;
@@ -893,6 +976,13 @@ async fn udp_nat_listen(
             res,
         )
         .await?;
+        log::info!(
+            "udp kcp accepted: local_addr={}, peer_addr={}, peer_addr_v4={}, elapsed={:?}",
+            local_addr,
+            peer_addr,
+            peer_addr_v4,
+            tm.elapsed()
+        );
         crate::server::create_tcp_connection(
             server,
             stream.1,

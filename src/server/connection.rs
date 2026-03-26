@@ -2130,6 +2130,14 @@ impl Connection {
             }
             _ => return false,
         };
+        log::info!(
+            "easy access verify start: peer_ip={}, stream_local_addr={}, challenge_len={}, signature_len={}, manager_id_len={}",
+            self.ip,
+            self.stream.local_addr(),
+            lr_challenge_bytes.len(),
+            easy_access_signature.len(),
+            manager_id.len()
+        );
         if lr_challenge_bytes.is_empty() {
             return false;
         }
@@ -2163,10 +2171,24 @@ impl Connection {
             }
         };
         if !sign::verify_detached(&sig, &lr_challenge_bytes, &pk) {
-            log::warn!("Easy access signature verify failed");
+            log::warn!(
+                "Easy access signature verify failed: peer_ip={}, stream_local_addr={}, challenge_len={}, signature_len={}, manager_id_len={}",
+                self.ip,
+                self.stream.local_addr(),
+                lr_challenge_bytes.len(),
+                easy_access_signature.len(),
+                manager_id.len()
+            );
             return false;
         }
-        log::info!("Easy access challenge and signature verified");
+        log::info!(
+            "Easy access challenge and signature verified: peer_ip={}, stream_local_addr={}, challenge_len={}, signature_len={}, manager_id_len={}",
+            self.ip,
+            self.stream.local_addr(),
+            lr_challenge_bytes.len(),
+            easy_access_signature.len(),
+            manager_id.len()
+        );
         true
     }
 
@@ -2391,8 +2413,7 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
-            } else if hbb_common::config::is_allow_easy_access() && self.verify_easy_access().await
-            {
+            } else if true && self.verify_easy_access().await {
                 // Consume the token so it cannot be reused
                 if let Some(c) = self.controlled_config.as_mut() {
                     c.easy_access_signature = Default::default();

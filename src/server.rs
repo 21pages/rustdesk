@@ -161,19 +161,43 @@ pub fn new() -> ServerPtr {
 async fn accept_connection_(
     server: ServerPtr,
     socket: Stream,
+    peer_addr: SocketAddr,
     secure: bool,
     controlled_config: Option<ControlledConfig>,
 ) -> ResultType<()> {
     let local_addr = socket.local_addr();
+    let signature_len = controlled_config
+        .as_ref()
+        .map(|config| config.easy_access_signature.len())
+        .unwrap_or_default();
+    log::info!(
+        "direct accept rebind start: peer_addr={}, socket_local_addr={}, secure={}, signature_len={}",
+        peer_addr,
+        local_addr,
+        secure,
+        signature_len
+    );
     drop(socket);
     // even we drop socket, below still may fail if not use reuse_addr,
     // there is TIME_WAIT before socket really released, so sometimes we
     // see "Only one usage of each socket address is normally permitted" on windows sometimes,
     let listener = new_listener(local_addr, true).await?;
-    log::info!("Server listening on: {}", &listener.local_addr()?);
+    let listener_addr = listener.local_addr()?;
+    log::info!(
+        "direct accept listener ready: peer_addr={}, listener_addr={}",
+        peer_addr,
+        listener_addr
+    );
     if let Ok((stream, addr)) = timeout(CONNECT_TIMEOUT, listener.accept()).await? {
         stream.set_nodelay(true).ok();
         let stream_addr = stream.local_addr()?;
+        log::info!(
+            "direct accept inbound: peer_addr={}, remote_addr={}, stream_local_addr={}, listener_addr={}",
+            peer_addr,
+            addr,
+            stream_addr,
+            listener_addr
+        );
         create_tcp_connection(
             server,
             Stream::from(stream, stream_addr),
@@ -194,6 +218,22 @@ pub async fn create_tcp_connection(
     controlled_config: Option<ControlledConfig>,
 ) -> ResultType<()> {
     let mut stream = stream;
+    let signature_len = controlled_config
+        .as_ref()
+        .map(|config| config.easy_access_signature.len())
+        .unwrap_or_default();
+    let manager_id_len = controlled_config
+        .as_ref()
+        .map(|config| config.manager_id.len())
+        .unwrap_or_default();
+    log::info!(
+        "create_tcp_connection: remote_addr={}, stream_local_addr={}, secure={}, signature_len={}, manager_id_len={}",
+        addr,
+        stream.local_addr(),
+        secure,
+        signature_len,
+        manager_id_len
+    );
     let id = server.write().unwrap().get_new_id();
     let (sk, pk) = Config::get_key_pair();
     if secure && pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
@@ -277,7 +317,8 @@ pub async fn accept_connection(
     secure: bool,
     controlled_config: Option<ControlledConfig>,
 ) {
-    if let Err(err) = accept_connection_(server, socket, secure, controlled_config).await {
+    if let Err(err) = accept_connection_(server, socket, peer_addr, secure, controlled_config).await
+    {
         log::warn!("Failed to accept connection from {}: {}", peer_addr, err);
     }
 }

@@ -184,6 +184,13 @@ pub fn get_key_state(key: enigo::Key) -> bool {
 impl Client {
     const CLIENT_CLIPBOARD_NAME: &'static str = "client-clipboard";
 
+    #[inline]
+    fn format_request_id(request_id: &[u8]) -> String {
+        Uuid::from_slice(request_id)
+            .map(|id| id.to_string())
+            .unwrap_or_else(|_| format!("{:?}", request_id))
+    }
+
     /// Start a new connection.
     pub async fn start(
         peer: &str,
@@ -461,6 +468,19 @@ impl Client {
         let udp_nat_port = udp.1.map(|x| *x.lock().unwrap()).unwrap_or(0);
         let punch_type = if udp_nat_port > 0 { "UDP" } else { "TCP" };
         let mut controller_config = None;
+        log::info!(
+            "punch setup: peer={}, rendezvous_server={}, my_addr={}, punch_type={}, udp_nat_port={}, ipv6_addr={}",
+            peer,
+            rendezvous_server,
+            my_addr,
+            punch_type,
+            udp_nat_port,
+            ipv6.1
+                .as_ref()
+                .map(|x| AddrMangle::decode(x))
+                .map(|x| x.to_string())
+                .unwrap_or_else(|| "<none>".to_owned())
+        );
         msg_out.set_punch_hole_request(PunchHoleRequest {
             id: peer.to_owned(),
             token: token.to_owned(),
@@ -473,18 +493,23 @@ impl Client {
             socket_addr_v6: ipv6.1.unwrap_or_default(),
             ..Default::default()
         });
+        // The controller reuses the same hbbs TCP socket across these direct attempts.
+        // If a late response from an older attempt is consumed here, it still points to that older
+        // attempt's controlled-side address rather than a concurrently reused address on B.
         for i in 1..=3 {
             log::info!(
-                "#{} {} punch attempt with {}, id: {}",
+                "#{} {} punch attempt with {}, id: {}, timeout_ms={}",
                 i,
                 punch_type,
                 my_addr,
-                peer
+                peer,
+                if i == 1 { 110 } else { i * 3000 },
             );
             socket.send(&msg_out).await?;
             // below timeout should not bigger than hbbs's connection timeout.
+            let timeout_ms = if i == 1 { 0 } else { i * 3000 };
             if let Some(msg_in) =
-                crate::get_next_nonkeyexchange_msg(&mut socket, Some(i * 3000)).await
+                crate::get_next_nonkeyexchange_msg(&mut socket, Some(timeout_ms)).await
             {
                 match msg_in.union {
                     Some(rendezvous_message::Union::PunchHoleResponse(ph)) => {
@@ -515,6 +540,25 @@ impl Client {
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
                             feedback = ph.feedback;
                             controller_config = ph.controller_config.into_option();
+                            log::info!(
+                                "{} punch response: peer={}, my_addr={}, peer_addr={}, is_udp={}, is_local={}, relay_server={}, socket_addr_v6={}, challenge_len={}",
+                                punch_type,
+                                peer,
+                                my_addr,
+                                peer_addr,
+                                ph.is_udp,
+                                is_local,
+                                relay_server,
+                                if ph.socket_addr_v6.is_empty() {
+                                    "<none>".to_owned()
+                                } else {
+                                    AddrMangle::decode(&ph.socket_addr_v6).to_string()
+                                },
+                                controller_config
+                                    .as_ref()
+                                    .map(|c| c.easy_access_challenge.len())
+                                    .unwrap_or_default()
+                            );
                             let s = udp.0.take();
                             if ph.is_udp && s.is_some() {
                                 if let Some(s) = s {
@@ -538,9 +582,15 @@ impl Client {
                     }
                     Some(rendezvous_message::Union::RelayResponse(rr)) => {
                         log::info!(
-                            "relay requested from peer, time used: {:?}, relay_server: {}",
+                            "relay requested from peer, time used: {:?}, relay_server: {}, uuid={}, request_id={}, challenge_len={}",
                             start.elapsed(),
-                            rr.relay_server
+                            rr.relay_server,
+                            rr.uuid,
+                            Self::format_request_id(rr.request_id.as_ref()),
+                            rr.controller_config
+                                .as_ref()
+                                .map(|c| c.easy_access_challenge.len())
+                                .unwrap_or_default()
                         );
                         start = Instant::now();
                         let mut connect_futures = Vec::new();
@@ -600,9 +650,11 @@ impl Client {
         }
         let time_used = start.elapsed().as_millis() as u64;
         log::info!(
-            "{} ms used to {} punch hole, relay_server: {}, {}",
+            "{} ms used to {} punch hole, my_addr={}, peer_addr={}, relay_server: {}, {}",
             time_used,
             punch_type,
+            my_addr,
+            peer_addr,
             relay_server,
             if is_local {
                 "is_local: true".to_owned()
@@ -698,13 +750,47 @@ impl Client {
             }
         }
         log::info!("peer address: {}, timeout: {}", peer, connect_timeout);
+        // The direct connect phase reuses the controller-side local address selected by the hbbs
+        // socket or prepared UDP socket. If we accepted an old response above, this connect races
+        // against the old attempt's peer address, not a newly aliased controlled-side endpoint.
         let start = std::time::Instant::now();
+        let udp_nat_local_addr = udp_socket_nat
+            .as_ref()
+            .and_then(|socket| socket.local_addr().ok())
+            .map(|addr| addr.to_string())
+            .unwrap_or_else(|| "<none>".to_owned());
+        let udp_v6_local_addr = udp_socket_v6
+            .as_ref()
+            .and_then(|socket| socket.local_addr().ok())
+            .map(|addr| addr.to_string())
+            .unwrap_or_else(|| "<none>".to_owned());
+        log::info!(
+            "direct connect start: peer={}, local_tcp_addr={}, target_peer_addr={}, udp_local_addr={}, udp_v6_local_addr={}, timeout_ms={}, is_local={}, relay_server={}",
+            peer_id,
+            local_addr,
+            peer,
+            udp_nat_local_addr,
+            udp_v6_local_addr,
+            connect_timeout,
+            is_local,
+            relay_server
+        );
 
         let mut connect_futures = Vec::new();
-        let fut = connect_tcp_local(peer, Some(local_addr), connect_timeout);
         connect_futures.push(
             async move {
-                let conn = fut.await?;
+                log::info!(
+                    "tcp connect attempt: local_addr={}, peer_addr={}, timeout_ms={}",
+                    local_addr,
+                    peer,
+                    connect_timeout
+                );
+                let conn = connect_tcp_local(peer, Some(local_addr), connect_timeout).await?;
+                log::info!(
+                    "tcp connect established: local_addr={}, peer_addr={}",
+                    conn.local_addr(),
+                    peer
+                );
                 Ok((conn, None, "TCP"))
             }
             .boxed(),
@@ -747,6 +833,15 @@ impl Client {
             }
         }
         let mut conn = conn?;
+        log::info!(
+            "direct connect selected: peer={}, transport={}, local_addr={}, target_peer_addr={}, direct={}, elapsed={:?}",
+            peer_id,
+            typ,
+            conn.local_addr(),
+            peer,
+            direct,
+            start.elapsed()
+        );
         log::info!(
             "{:?} used to establish {typ} connection with {} punch",
             start.elapsed(),
@@ -874,12 +969,13 @@ impl Client {
             let mut msg_out = RendezvousMessage::new();
             uuid = Uuid::new_v4().to_string();
             log::info!(
-                "#{} request relay attempt, id: {}, uuid: {}, relay_server: {}, secure: {}",
+                "#{} request relay attempt, id: {}, uuid: {}, relay_server: {}, secure: {}, hbbs_local_addr={}",
                 i,
                 peer,
                 uuid,
                 relay_server,
                 secure,
+                socket.local_addr(),
             );
             msg_out.set_request_relay(RequestRelay {
                 id: peer.to_owned(),
@@ -899,6 +995,22 @@ impl Client {
                         bail!(rs.refuse_reason);
                     }
                     *controller_config = rs.controller_config.into_option();
+                    log::info!(
+                        "relay response accepted: peer={}, uuid={}, request_id={}, challenge_len={}, socket_addr={}, relay_server={}",
+                        peer,
+                        rs.uuid,
+                        Self::format_request_id(rs.request_id.as_ref()),
+                        controller_config
+                            .as_ref()
+                            .map(|c| c.easy_access_challenge.len())
+                            .unwrap_or_default(),
+                        if rs.socket_addr.is_empty() {
+                            "<none>".to_owned()
+                        } else {
+                            AddrMangle::decode(&rs.socket_addr).to_string()
+                        },
+                        rs.relay_server
+                    );
                     succeed = true;
                     break;
                 }
@@ -2644,16 +2756,15 @@ impl LoginConfigHandler {
         };
         let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
         if avatar.is_empty() {
-            avatar = serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option(
-                "user_info",
-            ))
-            .ok()
-            .and_then(|x| {
-                x.get("avatar")
-                    .and_then(|x| x.as_str())
-                    .map(|x| x.trim().to_owned())
-            })
-            .unwrap_or_default();
+            avatar =
+                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                    .ok()
+                    .and_then(|x| {
+                        x.get("avatar")
+                            .and_then(|x| x.as_str())
+                            .map(|x| x.trim().to_owned())
+                    })
+                    .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
@@ -4202,6 +4313,16 @@ async fn udp_nat_connect(
     typ: &'static str,
     ms_timeout: u64,
 ) -> ResultType<(Stream, Option<KcpStream>, &'static str)> {
+    let local_addr = socket
+        .local_addr()
+        .map(|addr| addr.to_string())
+        .unwrap_or_else(|_| "<unknown>".to_owned());
+    log::info!(
+        "udp connect attempt: transport={}, local_addr={}, timeout_ms={}",
+        typ,
+        local_addr,
+        ms_timeout
+    );
     crate::punch_udp(socket.clone(), false)
         .await
         .map_err(|err| {
@@ -4214,5 +4335,11 @@ async fn udp_nat_connect(
             log::debug!("Failed to connect KCP stream: {}", err);
             anyhow!(err)
         })?;
+    log::info!(
+        "udp connect established: transport={}, local_addr={}, timeout_ms={}",
+        typ,
+        res.1.local_addr(),
+        ms_timeout
+    );
     Ok((res.1, Some(res.0), typ))
 }
