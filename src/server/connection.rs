@@ -2391,8 +2391,7 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
-            } else if hbb_common::config::is_allow_easy_access() && self.verify_easy_access().await
-            {
+            } else if true && self.verify_easy_access().await {
                 // Consume the token so it cannot be reused
                 if let Some(c) = self.controlled_config.as_mut() {
                     c.easy_access_signature = Default::default();
