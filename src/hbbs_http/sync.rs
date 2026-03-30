@@ -9,6 +9,7 @@ use crate::{ui_interface::get_builtin_option, Connection};
 use hbb_common::{
     config::{self, keys, Config, LocalConfig},
     log,
+    sysinfo::{Pid, System},
     tokio::{self, sync::broadcast, time::Instant},
 };
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,8 @@ use serde_json::{json, Value};
 const TIME_HEARTBEAT: Duration = Duration::from_secs(15);
 const UPLOAD_SYSINFO_TIMEOUT: Duration = Duration::from_secs(120);
 const TIME_CONN: Duration = Duration::from_secs(3);
+const TIME_CONN_MONITOR: Duration = Duration::from_secs(1);
+const TIME_MEM_LOG: Duration = Duration::from_secs(30);
 
 #[cfg(not(any(target_os = "ios")))]
 lazy_static::lazy_static! {
@@ -82,17 +85,107 @@ impl InfoUploaded {
 }
 
 #[cfg(not(any(target_os = "ios")))]
+#[derive(Clone, Copy, Debug)]
+struct ProcessMemSample {
+    rss_bytes: u64,
+    virtual_bytes: u64,
+}
+
+#[cfg(not(any(target_os = "ios")))]
+fn current_process_mem_sample(sys: &mut System) -> Option<ProcessMemSample> {
+    sys.refresh_processes();
+    let pid = Pid::from_u32(std::process::id());
+    sys.process(pid).map(|p| ProcessMemSample {
+        rss_bytes: p.memory(),
+        virtual_bytes: p.virtual_memory(),
+    })
+}
+
+#[cfg(not(any(target_os = "ios")))]
+fn bytes_to_mib(v: u64) -> f64 {
+    v as f64 / 1024.0 / 1024.0
+}
+
+#[cfg(not(any(target_os = "ios")))]
+fn log_conn_mem_snapshot(
+    reason: &str,
+    conns: &[i32],
+    sample: Option<ProcessMemSample>,
+    prev_sample: Option<ProcessMemSample>,
+) {
+    match sample {
+        Some(sample) => {
+            let rss_mib = bytes_to_mib(sample.rss_bytes);
+            let virtual_mib = bytes_to_mib(sample.virtual_bytes);
+            let (delta_rss_mib, delta_virtual_mib) = prev_sample
+                .map(|prev| {
+                    (
+                        bytes_to_mib(sample.rss_bytes) - bytes_to_mib(prev.rss_bytes),
+                        bytes_to_mib(sample.virtual_bytes) - bytes_to_mib(prev.virtual_bytes),
+                    )
+                })
+                .unwrap_or((0.0, 0.0));
+            log::info!(
+                "conn-monitor reason={reason} conn_count={} conns={:?} rss_mib={:.2} delta_rss_mib={:+.2} virtual_mib={:.2} delta_virtual_mib={:+.2}",
+                conns.len(),
+                conns,
+                rss_mib,
+                delta_rss_mib,
+                virtual_mib,
+                delta_virtual_mib,
+            );
+        }
+        None => {
+            log::info!(
+                "conn-monitor reason={reason} conn_count={} conns={:?} memory=unavailable",
+                conns.len(),
+                conns,
+            );
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 async fn start_hbbs_sync_async() {
     let mut interval = crate::rustdesk_interval(tokio::time::interval_at(
         Instant::now() + TIME_CONN,
         TIME_CONN,
     ));
+    let mut monitor_interval = crate::rustdesk_interval(tokio::time::interval_at(
+        Instant::now() + TIME_CONN_MONITOR,
+        TIME_CONN_MONITOR,
+    ));
     let mut last_sent: Option<Instant> = None;
     let mut info_uploaded = InfoUploaded::default();
     let mut sysinfo_ver = "".to_owned();
+    let mut mem_sys = System::new();
+    let mut prev_conn_count = Connection::alive_conns().len();
+    let mut last_mem_log = Instant::now() - TIME_MEM_LOG;
+    let startup_conns = Connection::alive_conns();
+    let startup_sample = current_process_mem_sample(&mut mem_sys);
+    let mut last_mem_sample = startup_sample;
+    log_conn_mem_snapshot("startup", &startup_conns, startup_sample, None);
     loop {
         tokio::select! {
+            _ = monitor_interval.tick() => {
+                let conns = Connection::alive_conns();
+                let conn_count = conns.len();
+                let conn_count_changed = conn_count != prev_conn_count;
+                let periodic_due = last_mem_log.elapsed() >= TIME_MEM_LOG;
+                if conn_count_changed || periodic_due {
+                    let sample = current_process_mem_sample(&mut mem_sys);
+                    let reason = if conn_count_changed {
+                        "conn_count_changed"
+                    } else {
+                        "periodic"
+                    };
+                    log_conn_mem_snapshot(reason, &conns, sample, last_mem_sample);
+                    last_mem_sample = sample;
+                    last_mem_log = Instant::now();
+                }
+                prev_conn_count = conn_count;
+            }
             _ = interval.tick() => {
                 let url = heartbeat_url();
                 let id = Config::get_id();

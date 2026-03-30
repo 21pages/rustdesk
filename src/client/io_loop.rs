@@ -52,6 +52,7 @@ use std::{
         Arc, RwLock,
     },
 };
+const AUTO_DISCONNECT_TEST_SECS: u64 = 30;
 
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
@@ -155,6 +156,8 @@ impl<T: InvokeUiSession> Remote<T> {
 
         let mut last_recv_time = Instant::now();
         let mut received = false;
+        let auto_disconnect_deadline =
+            Some(Instant::now() + Duration::from_secs(AUTO_DISCONNECT_TEST_SECS));
         let conn_type = if self.handler.is_file_transfer() {
             ConnType::FILE_TRANSFER
         } else if self.handler.is_view_camera() {
@@ -315,6 +318,14 @@ impl<T: InvokeUiSession> Remote<T> {
                                 codec_format,
                                 ..Default::default()
                             });
+                        }
+                        _ = time::sleep_until(auto_disconnect_deadline.unwrap()), if auto_disconnect_deadline.is_some() => {
+                            log::info!(
+                                "Auto disconnect test timer reached for id={}, conn_type={:?}",
+                                self.handler.get_id(),
+                                conn_type,
+                            );
+                            break;
                         }
                     }
                 }
