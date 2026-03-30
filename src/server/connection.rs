@@ -5339,8 +5339,9 @@ mod raii {
         }
 
         pub fn check_wake_lock_on_setting_changed() {
-            let current =
-                config::Config::get_bool_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS);
+            let current = config::Config::get_bool_option(
+                keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS,
+            );
             let cached = *WAKELOCK_KEEP_AWAKE_OPTION.lock().unwrap();
             if cached != Some(current) {
                 Self::check_wake_lock();

@@ -1105,12 +1105,8 @@ pub fn handle_mouse_simulation_(evt: &MouseEvent, conn: i32) {
             // Clamp delta to prevent extreme/malicious values from reaching OS APIs.
             // This matches the Flutter client's kMaxRelativeMouseDelta constant.
             const MAX_RELATIVE_MOUSE_DELTA: i32 = 10000;
-            let dx = evt
-                .x
-                .clamp(-MAX_RELATIVE_MOUSE_DELTA, MAX_RELATIVE_MOUSE_DELTA);
-            let dy = evt
-                .y
-                .clamp(-MAX_RELATIVE_MOUSE_DELTA, MAX_RELATIVE_MOUSE_DELTA);
+            let dx = evt.x.clamp(-MAX_RELATIVE_MOUSE_DELTA, MAX_RELATIVE_MOUSE_DELTA);
+            let dy = evt.y.clamp(-MAX_RELATIVE_MOUSE_DELTA, MAX_RELATIVE_MOUSE_DELTA);
             en.mouse_move_relative(dx, dy);
             // Get actual cursor position after relative movement for tracking
             if let Some((x, y)) = crate::get_cursor_pos() {
