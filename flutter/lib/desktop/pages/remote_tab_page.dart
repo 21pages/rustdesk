@@ -498,6 +498,14 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         windowOnTop(windowId());
       }
       return jumpOk;
+    } else if (call.method == kWindowEventCloseSession) {
+      final id = call.arguments as String;
+      int closed = 0;
+      while (tabController.state.value.tabs.any((tab) => tab.key == id)) {
+        tabController.closeBy(id);
+        closed++;
+      }
+      return closed;
     } else if (call.method == kWindowEventGetRemoteList) {
       return tabController.state.value.tabs
           .map((e) => e.key)

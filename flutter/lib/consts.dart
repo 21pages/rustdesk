@@ -69,6 +69,7 @@ const String kWindowEventNewTerminal = "new_terminal";
 const String kWindowEventRestoreTerminalSessions = "restore_terminal_sessions";
 const String kWindowEventActiveSession = "active_session";
 const String kWindowEventActiveDisplaySession = "active_display_session";
+const String kWindowEventCloseSession = "close_session";
 const String kWindowEventGetRemoteList = "get_remote_list";
 const String kWindowEventGetSessionIdList = "get_session_id_list";
 const String kWindowEventRemoteWindowCoords = "remote_window_coords";
@@ -163,7 +164,8 @@ const String kOptionShowVirtualMouse = "show-virtual-mouse";
 const String kOptionVirtualMouseScale = "virtual-mouse-scale";
 const String kOptionShowVirtualJoystick = "show-virtual-joystick";
 const String kOptionAllowAskForNoteAtEndOfConnection = "allow-ask-for-note";
-const String kOptionEnableShowTerminalExtraKeys = "enable-show-terminal-extra-keys";
+const String kOptionEnableShowTerminalExtraKeys =
+    "enable-show-terminal-extra-keys";
 
 // network options
 const String kOptionAllowWebSocket = "allow-websocket";
@@ -195,8 +197,10 @@ const String kOptionDisableFloatingWindow = "disable-floating-window";
 
 const String kOptionKeepScreenOn = "keep-screen-on";
 
-const String kOptionKeepAwakeDuringIncomingSessions = "keep-awake-during-incoming-sessions";
-const String kOptionKeepAwakeDuringOutgoingSessions = "keep-awake-during-outgoing-sessions";
+const String kOptionKeepAwakeDuringIncomingSessions =
+    "keep-awake-during-incoming-sessions";
+const String kOptionKeepAwakeDuringOutgoingSessions =
+    "keep-awake-during-outgoing-sessions";
 
 const String kOptionShowMobileAction = "showMobileActions";
 

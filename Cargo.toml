@@ -20,6 +20,10 @@ path = "src/naming.rs"
 name = "service"
 path = "src/service.rs"
 
+[[bin]]
+name = "rd_ipc_ctl"
+path = "src/bin/rd_ipc_ctl.rs"
+
 [features]
 inline = []
 cli = []

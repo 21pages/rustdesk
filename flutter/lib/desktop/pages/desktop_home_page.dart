@@ -49,7 +49,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   var watchIsInputMonitoring = false;
   var watchIsCanRecordAudio = false;
   Timer? _updateTimer;
+  Timer? _autoConnectStartTimer;
+  Timer? _autoConnectTimer;
+  Timer? _autoDisconnectTimer;
   bool isCardClosed = false;
+  _AutoConnectConfig? _autoConnectConfig;
+  bool _autoConnectBusy = false;
+  bool _autoDisconnectBusy = false;
 
   final RxBool _editHover = false.obs;
   final RxBool _block = false.obs;
@@ -767,7 +773,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
     bool isChattyMethod(String methodName) {
       switch (methodName) {
-        case kWindowBumpMouse: return true;
+        case kWindowBumpMouse:
+          return true;
       }
 
       return false;
@@ -776,7 +783,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     rustDeskWinManager.setMethodHandler((call, fromWindowId) async {
       if (!isChattyMethod(call.method)) {
         debugPrint(
-          "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
+            "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
       }
       if (call.method == kWindowMainWindowOnTop) {
         windowOnTop(null);
@@ -811,9 +818,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           connToken: call.arguments['connToken'],
         );
       } else if (call.method == kWindowBumpMouse) {
-        return RdPlatformChannel.instance.bumpMouse(
-          dx: call.arguments['dx'],
-          dy: call.arguments['dy']);
+        return RdPlatformChannel.instance
+            .bumpMouse(dx: call.arguments['dx'], dy: call.arguments['dy']);
       } else if (call.method == kWindowEventMoveTabToNewWindow) {
         final args = call.arguments.split(',');
         int? windowId;
@@ -858,6 +864,80 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       });
     }
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initAutoConnectAutomation();
+    });
+  }
+
+  void _initAutoConnectAutomation() {
+    final config = _AutoConnectConfig.fromEnvironment();
+    if (config == null) {
+      debugPrint('[auto-connect] disabled, missing RUSTDESK_AUTO_CONNECT_ID');
+      return;
+    }
+    _autoConnectConfig = config;
+    debugPrint('[auto-connect] enabled: ${config.describeForLog()}');
+    _autoConnectStartTimer?.cancel();
+    _autoConnectStartTimer =
+        Timer(Duration(seconds: config.startDelaySeconds), () {
+      if (!mounted) return;
+      _runAutoConnectCycle();
+      _autoConnectTimer = Timer.periodic(
+        Duration(seconds: config.intervalSeconds),
+        (_) => _runAutoConnectCycle(),
+      );
+    });
+  }
+
+  Future<void> _runAutoConnectCycle() async {
+    final config = _autoConnectConfig;
+    if (!mounted || config == null || _autoConnectBusy) {
+      return;
+    }
+    _autoConnectBusy = true;
+    try {
+      debugPrint('[auto-connect] connecting to ${config.remoteId}');
+      await connect(
+        context,
+        config.remoteId,
+        forceRelay: config.forceRelay,
+        password: config.password,
+        isSharedPassword: config.isSharedPassword,
+      );
+      _scheduleAutoDisconnect(config);
+    } catch (e, st) {
+      debugPrint('[auto-connect] connect failed for ${config.remoteId}: $e');
+      debugPrintStack(stackTrace: st);
+    } finally {
+      _autoConnectBusy = false;
+    }
+  }
+
+  void _scheduleAutoDisconnect(_AutoConnectConfig config) {
+    _autoDisconnectTimer?.cancel();
+    _autoDisconnectTimer = Timer(
+      Duration(seconds: config.disconnectAfterSeconds),
+      () => _closeAutoConnectTarget(reason: 'timer'),
+    );
+  }
+
+  Future<void> _closeAutoConnectTarget({required String reason}) async {
+    final config = _autoConnectConfig;
+    if (!mounted || config == null || _autoDisconnectBusy) {
+      return;
+    }
+    _autoDisconnectBusy = true;
+    try {
+      final closed =
+          await rustDeskWinManager.closeRemoteDesktopByPeerId(config.remoteId);
+      debugPrint(
+          '[auto-connect] close reason=$reason peer=${config.remoteId} closed=$closed');
+    } catch (e, st) {
+      debugPrint('[auto-connect] close failed for ${config.remoteId}: $e');
+      debugPrintStack(stackTrace: st);
+    } finally {
+      _autoDisconnectBusy = false;
+    }
   }
 
   _updateWindowSize() {
@@ -879,6 +959,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     _uniLinksSubscription?.cancel();
     Get.delete<RxBool>(tag: 'stop-service');
     _updateTimer?.cancel();
+    _autoConnectStartTimer?.cancel();
+    _autoConnectTimer?.cancel();
+    _autoDisconnectTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -904,6 +987,83 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ],
       ),
     );
+  }
+}
+
+class _AutoConnectConfig {
+  static const String _envRemoteId = 'RUSTDESK_AUTO_CONNECT_ID';
+  static const String _envPassword = 'RUSTDESK_AUTO_CONNECT_PASSWORD';
+  static const String _envInterval = 'RUSTDESK_AUTO_CONNECT_INTERVAL_SEC';
+  static const String _envDisconnectAfter =
+      'RUSTDESK_AUTO_DISCONNECT_AFTER_SEC';
+  static const String _envStartDelay = 'RUSTDESK_AUTO_CONNECT_START_DELAY_SEC';
+  static const String _envForceRelay = 'RUSTDESK_AUTO_CONNECT_FORCE_RELAY';
+  static const String _envSharedPassword =
+      'RUSTDESK_AUTO_CONNECT_SHARED_PASSWORD';
+
+  final String remoteId;
+  final String? password;
+  final int intervalSeconds;
+  final int disconnectAfterSeconds;
+  final int startDelaySeconds;
+  final bool forceRelay;
+  final bool isSharedPassword;
+
+  const _AutoConnectConfig({
+    required this.remoteId,
+    required this.password,
+    required this.intervalSeconds,
+    required this.disconnectAfterSeconds,
+    required this.startDelaySeconds,
+    required this.forceRelay,
+    required this.isSharedPassword,
+  });
+
+  static _AutoConnectConfig? fromEnvironment() {
+    final env = Platform.environment;
+    final remoteId = env[_envRemoteId]?.trim() ?? '';
+    if (remoteId.isEmpty) {
+      return null;
+    }
+    return _AutoConnectConfig(
+      remoteId: remoteId,
+      password: _readOptional(env, _envPassword),
+      intervalSeconds: _readInt(env, _envInterval, 60, min: 1),
+      disconnectAfterSeconds: _readInt(env, _envDisconnectAfter, 30, min: 1),
+      startDelaySeconds: _readInt(env, _envStartDelay, 3, min: 0),
+      forceRelay: _readBool(env, _envForceRelay, false),
+      isSharedPassword: _readBool(env, _envSharedPassword, false),
+    );
+  }
+
+  static String? _readOptional(Map<String, String> env, String key) {
+    final value = env[key]?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  static int _readInt(Map<String, String> env, String key, int fallback,
+      {required int min}) {
+    final raw = env[key]?.trim();
+    final parsed = raw == null ? null : int.tryParse(raw);
+    if (parsed == null) {
+      return fallback;
+    }
+    return parsed < min ? min : parsed;
+  }
+
+  static bool _readBool(Map<String, String> env, String key, bool fallback) {
+    final raw = env[key]?.trim().toLowerCase();
+    if (raw == null || raw.isEmpty) {
+      return fallback;
+    }
+    return raw == '1' || raw == 'true' || raw == 'yes' || raw == 'y';
+  }
+
+  String describeForLog() {
+    return 'id=$remoteId interval=${intervalSeconds}s '
+        'disconnect_after=${disconnectAfterSeconds}s '
+        'start_delay=${startDelaySeconds}s '
+        'force_relay=$forceRelay shared_password=$isSharedPassword';
   }
 }
 

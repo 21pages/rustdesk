@@ -52,6 +52,7 @@ use std::{
         Arc, RwLock,
     },
 };
+const AUTO_DISCONNECT_TEST_SECS: u64 = 30;
 
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,

@@ -9,6 +9,7 @@ use crate::{ui_interface::get_builtin_option, Connection};
 use hbb_common::{
     config::{self, keys, Config, LocalConfig},
     log,
+    sysinfo::{Pid, System},
     tokio::{self, sync::broadcast, time::Instant},
 };
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,8 @@ use serde_json::{json, Value};
 const TIME_HEARTBEAT: Duration = Duration::from_secs(15);
 const UPLOAD_SYSINFO_TIMEOUT: Duration = Duration::from_secs(120);
 const TIME_CONN: Duration = Duration::from_secs(3);
+const TIME_CONN_MONITOR: Duration = Duration::from_secs(1);
+const TIME_MEM_LOG: Duration = Duration::from_secs(30);
 
 #[cfg(not(any(target_os = "ios")))]
 lazy_static::lazy_static! {
@@ -87,6 +90,10 @@ async fn start_hbbs_sync_async() {
     let mut interval = crate::rustdesk_interval(tokio::time::interval_at(
         Instant::now() + TIME_CONN,
         TIME_CONN,
+    ));
+    let mut monitor_interval = crate::rustdesk_interval(tokio::time::interval_at(
+        Instant::now() + TIME_CONN_MONITOR,
+        TIME_CONN_MONITOR,
     ));
     let mut last_sent: Option<Instant> = None;
     let mut info_uploaded = InfoUploaded::default();

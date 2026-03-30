@@ -286,6 +286,25 @@ class RustDeskMultiWindowManager {
     );
   }
 
+  Future<int> closeRemoteDesktopByPeerId(String peerId) async {
+    int closed = 0;
+    for (final windowId in List<int>.from(_remoteDesktopWindows)) {
+      try {
+        final res = await DesktopMultiWindow.invokeMethod(
+            windowId, kWindowEventCloseSession, peerId);
+        if (res is int) {
+          closed += res;
+        } else if (res == true) {
+          closed += 1;
+        }
+      } catch (e) {
+        debugPrint(
+            'Failed to close remote desktop session for peer $peerId on window $windowId, $e');
+      }
+    }
+    return closed;
+  }
+
   Future<MultiWindowCallResult> newFileTransfer(
     String remoteId, {
     String? password,
@@ -472,7 +491,8 @@ class RustDeskMultiWindowManager {
     }
     for (int i = 0; i < windows.length; i++) {
       final wId = windows[i];
-      final shouldSavePos = type != WindowType.Terminal || i == windows.length - 1;
+      final shouldSavePos =
+          type != WindowType.Terminal || i == windows.length - 1;
       if (shouldSavePos) {
         debugPrint("closing multi window, type: ${type.toString()} id: $wId");
         try {
