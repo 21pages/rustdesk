@@ -325,7 +325,9 @@ impl PendingDirectAccept {
     fn try_new(peer_addr: SocketAddr) -> Option<Self> {
         let mut pending = PENDING_DIRECT_ACCEPTS
             .lock()
-            .expect("PENDING_DIRECT_ACCEPTS mutex poisoned");
+            .expect(
+                "PENDING_DIRECT_ACCEPTS mutex poisoned - this indicates a critical threading error in direct connection handling",
+            );
         if !pending.insert(peer_addr) {
             return None;
         }
@@ -337,7 +339,9 @@ impl Drop for PendingDirectAccept {
     fn drop(&mut self) {
         PENDING_DIRECT_ACCEPTS
             .lock()
-            .expect("PENDING_DIRECT_ACCEPTS mutex poisoned during cleanup")
+            .expect(
+                "PENDING_DIRECT_ACCEPTS mutex poisoned during cleanup - peer address may remain pending and block future direct accepts",
+            )
             .remove(&self.0);
     }
 }
