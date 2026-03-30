@@ -323,7 +323,9 @@ struct PendingDirectAccept(SocketAddr);
 
 impl PendingDirectAccept {
     fn try_new(peer_addr: SocketAddr) -> Option<Self> {
-        let mut pending = PENDING_DIRECT_ACCEPTS.lock().unwrap();
+        let mut pending = PENDING_DIRECT_ACCEPTS
+            .lock()
+            .expect("PENDING_DIRECT_ACCEPTS mutex poisoned");
         if !pending.insert(peer_addr) {
             return None;
         }
@@ -333,7 +335,10 @@ impl PendingDirectAccept {
 
 impl Drop for PendingDirectAccept {
     fn drop(&mut self) {
-        PENDING_DIRECT_ACCEPTS.lock().unwrap().remove(&self.0);
+        PENDING_DIRECT_ACCEPTS
+            .lock()
+            .expect("PENDING_DIRECT_ACCEPTS mutex poisoned during cleanup")
+            .remove(&self.0);
     }
 }
 
