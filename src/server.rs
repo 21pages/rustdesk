@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::SocketAddr,
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
@@ -85,6 +85,7 @@ const CONFIG_SYNC_INTERVAL_SECS: f32 = 0.3;
 
 lazy_static::lazy_static! {
     pub static ref CHILD_PROCESS: Childs = Default::default();
+    static ref PENDING_DIRECT_ACCEPTS: Mutex<HashSet<SocketAddr>> = Default::default();
     // A client server used to provide local services(audio, video, clipboard, etc.)
     // for all initiative connections.
     //
@@ -273,9 +274,20 @@ pub async fn accept_connection(
     secure: bool,
     control_permissions: Option<ControlPermissions>,
 ) {
+    let accept_guard = match PendingDirectAccept::try_new(peer_addr) {
+        Some(guard) => guard,
+        None => {
+            log::debug!(
+                "Skip duplicate direct accept attempt for peer {} while another accept is pending",
+                peer_addr
+            );
+            return;
+        }
+    };
     if let Err(err) = accept_connection_(server, socket, secure, control_permissions).await {
         log::warn!("Failed to accept connection from {}: {}", peer_addr, err);
     }
+    drop(accept_guard);
 }
 
 pub async fn create_relay_connection(
@@ -304,6 +316,24 @@ pub async fn create_relay_connection(
             uuid,
             err
         );
+    }
+}
+
+struct PendingDirectAccept(SocketAddr);
+
+impl PendingDirectAccept {
+    fn try_new(peer_addr: SocketAddr) -> Option<Self> {
+        let mut pending = PENDING_DIRECT_ACCEPTS.lock().unwrap();
+        if !pending.insert(peer_addr) {
+            return None;
+        }
+        Some(Self(peer_addr))
+    }
+}
+
+impl Drop for PendingDirectAccept {
+    fn drop(&mut self) {
+        PENDING_DIRECT_ACCEPTS.lock().unwrap().remove(&self.0);
     }
 }
 
