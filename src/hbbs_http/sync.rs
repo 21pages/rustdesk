@@ -17,6 +17,33 @@ use serde_json::{json, Value};
 const TIME_HEARTBEAT: Duration = Duration::from_secs(15);
 const UPLOAD_SYSINFO_TIMEOUT: Duration = Duration::from_secs(120);
 const TIME_CONN: Duration = Duration::from_secs(3);
+const STRATEGY_ALLOWED_CONFIG_KEYS: &[&str] = &[
+    keys::OPTION_ACCESS_MODE,
+    keys::OPTION_ENABLE_KEYBOARD,
+    keys::OPTION_ENABLE_REMOTE_PRINTER,
+    keys::OPTION_ENABLE_CLIPBOARD,
+    keys::OPTION_ENABLE_FILE_TRANSFER,
+    keys::OPTION_ENABLE_AUDIO,
+    keys::OPTION_ENABLE_TERMINAL,
+    keys::OPTION_ENABLE_TUNNEL,
+    keys::OPTION_ENABLE_REMOTE_RESTART,
+    keys::OPTION_ENABLE_RECORD_SESSION,
+    keys::OPTION_ENABLE_BLOCK_INPUT,
+    keys::OPTION_ENABLE_CAMERA,
+    keys::OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION,
+    keys::OPTION_APPROVE_MODE,
+    keys::OPTION_VERIFICATION_METHOD,
+    keys::OPTION_TEMPORARY_PASSWORD_LENGTH,
+    keys::OPTION_ALLOW_NUMERNIC_ONE_TIME_PASSWORD,
+    "allow-hide-cm",
+    keys::OPTION_ENABLE_LAN_DISCOVERY,
+    keys::OPTION_DIRECT_SERVER,
+    keys::OPTION_DIRECT_ACCESS_PORT,
+    keys::OPTION_WHITELIST,
+    keys::OPTION_ALLOW_AUTO_DISCONNECT,
+    keys::OPTION_AUTO_DISCONNECT_TIMEOUT,
+    keys::OPTION_ALLOW_REMOVE_WALLPAPER,
+];
 
 #[cfg(not(any(target_os = "ios")))]
 lazy_static::lazy_static! {
@@ -284,22 +311,35 @@ fn heartbeat_url() -> String {
     format!("{}/api/heartbeat", url)
 }
 
+fn sanitize_strategy_config_options(
+    config_options: HashMap<String, String>,
+) -> HashMap<String, String> {
+    config_options
+        .into_iter()
+        .filter_map(|(k, v)| {
+            if STRATEGY_ALLOWED_CONFIG_KEYS.contains(&k.as_str()) {
+                Some((k, v))
+            } else {
+                log::warn!("Ignore unauthorized strategy config key: {}", k);
+                None
+            }
+        })
+        .collect()
+}
+
 fn handle_config_options(config_options: HashMap<String, String>) {
     let mut options = Config::get_options();
     let default_settings = config::DEFAULT_SETTINGS.read().unwrap().clone();
-    config_options
-        .iter()
-        .map(|(k, v)| {
-            // Priority: user config > default advanced options.
-            // Only when default advanced options are also empty, remove user option (fallback to built-in default);
-            // otherwise insert an empty value so user config remains present.
-            if v.is_empty() && default_settings.get(k).map_or("", |v| v).is_empty() {
-                options.remove(k);
-            } else {
-                options.insert(k.to_string(), v.to_string());
-            }
-        })
-        .count();
+    for (k, v) in sanitize_strategy_config_options(config_options) {
+        // Priority: user config > default advanced options.
+        // Only when default advanced options are also empty, remove user option (fallback to built-in default);
+        // otherwise insert an empty value so user config remains present.
+        if v.is_empty() && default_settings.get(&k).map_or("", |v| v).is_empty() {
+            options.remove(&k);
+        } else {
+            options.insert(k, v);
+        }
+    }
     Config::set_options(options);
 }
 
@@ -307,4 +347,27 @@ fn handle_config_options(config_options: HashMap<String, String>) {
 #[cfg(not(any(target_os = "ios")))]
 pub fn is_pro() -> bool {
     PRO.lock().unwrap().clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_strategy_config_options_drops_non_strategy_keys() {
+        let mut options = HashMap::new();
+        options.insert(keys::OPTION_ENABLE_FILE_TRANSFER.to_string(), "N".to_owned());
+        options.insert("stop-service".to_owned(), "Y".to_owned());
+        options.insert(keys::OPTION_API_SERVER.to_string(), "https://evil".to_owned());
+
+        let sanitized = sanitize_strategy_config_options(options);
+
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(
+            sanitized.get(keys::OPTION_ENABLE_FILE_TRANSFER),
+            Some(&"N".to_owned())
+        );
+        assert!(!sanitized.contains_key("stop-service"));
+        assert!(!sanitized.contains_key(keys::OPTION_API_SERVER));
+    }
 }
