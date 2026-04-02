@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(not(any(target_os = "ios")))]
@@ -9,14 +9,19 @@ use crate::{ui_interface::get_builtin_option, Connection};
 use hbb_common::{
     config::{self, keys, Config, LocalConfig},
     log,
+    sodiumoxide::crypto::sign,
     tokio::{self, sync::broadcast, time::Instant},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 const TIME_HEARTBEAT: Duration = Duration::from_secs(15);
 const UPLOAD_SYSINFO_TIMEOUT: Duration = Duration::from_secs(120);
 const TIME_CONN: Duration = Duration::from_secs(3);
+// Bind signatures to the intended API route so a valid heartbeat packet
+// cannot be replayed against sysinfo, or vice versa.
+const SYNC_HEARTBEAT_PATH: &str = "/api/heartbeat";
+const SYNC_SYSINFO_PATH: &str = "/api/sysinfo";
 const STRATEGY_ALLOWED_CONFIG_KEYS: &[&str] = &[
     keys::OPTION_ACCESS_MODE,
     keys::OPTION_ENABLE_KEYBOARD,
@@ -74,6 +79,114 @@ pub struct StrategyOptions {
     pub config_options: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub extra: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SignedSyncRequest {
+    payload: Value,
+    ts: i64,
+    nonce: String,
+    sig: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SignedSyncResponse {
+    payload: Value,
+    req_nonce: String,
+    sig: String,
+}
+
+struct SignedSyncRequestContext {
+    body: String,
+    nonce: String,
+}
+
+// Normalize JSON before signing so logically identical payloads produce the
+// same signature input even if object key order differs after serialization.
+fn canonicalize_sync_value(value: &Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(items.iter().map(canonicalize_sync_value).collect()),
+        Value::Object(map) => {
+            let mut keys: Vec<_> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = Map::new();
+            for key in keys {
+                if let Some(value) = map.get(&key) {
+                    out.insert(key, canonicalize_sync_value(value));
+                }
+            }
+            Value::Object(out)
+        }
+        _ => value.clone(),
+    }
+}
+
+fn sync_request_signature_payload(path: &str, ts: i64, nonce: &str, payload: &Value) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "kind": "sync-request",
+        "path": path,
+        "ts": ts,
+        "nonce": nonce,
+        "payload": canonicalize_sync_value(payload),
+    }))
+    .unwrap_or_default()
+}
+
+fn sync_response_signature_payload(path: &str, req_nonce: &str, payload: &Value) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "kind": "sync-response",
+        "path": path,
+        "req_nonce": req_nonce,
+        "payload": canonicalize_sync_value(payload),
+    }))
+    .unwrap_or_default()
+}
+
+fn build_signed_sync_request(path: &str, payload: Value) -> Option<SignedSyncRequestContext> {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or_default();
+    let nonce = hbb_common::uuid::Uuid::new_v4().to_string();
+    let signed_request = sign::sign(
+        &sync_request_signature_payload(path, ts, &nonce, &payload),
+        &sign::SecretKey::from_slice(&Config::get_key_pair().0)?,
+    );
+    let body = serde_json::to_string(&SignedSyncRequest {
+        payload,
+        ts,
+        nonce: nonce.clone(),
+        sig: crate::encode64(signed_request),
+    })
+    .ok()?;
+    Some(SignedSyncRequestContext { body, nonce })
+}
+
+async fn verify_signed_sync_response(
+    path: &str,
+    req_nonce: &str,
+    body: &str,
+) -> Option<Map<String, Value>> {
+    let response = serde_json::from_str::<SignedSyncResponse>(body).ok()?;
+    if response.req_nonce != req_nonce {
+        log::warn!("Ignore sync response with mismatched request nonce");
+        return None;
+    }
+    let key = crate::get_key(true).await;
+    let signed_message = crate::decode64(&response.sig).ok()?;
+    let verified_message = sign::verify(&signed_message, &crate::get_rs_pk(&key)?).ok()?;
+    let expected = sync_response_signature_payload(path, &response.req_nonce, &response.payload);
+    if verified_message != expected {
+        log::warn!("Ignore sync response with invalid signature payload");
+        return None;
+    }
+    match response.payload {
+        Value::Object(map) => Some(map),
+        _ => {
+            log::warn!("Ignore sync response with non-object payload");
+            None
+        }
+    }
 }
 
 struct InfoUploaded {
@@ -203,13 +316,13 @@ async fn start_hbbs_sync_async() {
                     if !note.is_empty() {
                         v[keys::OPTION_PRESET_NOTE] = json!(note);
                     }
-                    let v = v.to_string();
+                    let payload_body = v.to_string();
                     let mut hash = "".to_owned();
                     if crate::is_public(&url) {
                         use sha2::{Digest, Sha256};
                         let mut hasher = Sha256::new();
                         hasher.update(url.as_bytes());
-                        hasher.update(&v.as_bytes());
+                        hasher.update(payload_body.as_bytes());
                         let res = hasher.finalize();
                         hash = hbb_common::base64::encode(&res[..]);
                         let old_hash = config::Status::get("sysinfo_hash");
@@ -234,7 +347,18 @@ async fn start_hbbs_sync_async() {
                             }
                         }
                     }
-                    match crate::post_request(url.replace("heartbeat", "sysinfo"), v, "").await {
+                    let Some(signed_req) = build_signed_sync_request(SYNC_SYSINFO_PATH, v) else {
+                        log::error!("Failed to sign sysinfo sync request");
+                        info_uploaded.last_uploaded = Some(Instant::now());
+                        continue;
+                    };
+                    match crate::post_request(
+                        url.replace("heartbeat", "sysinfo"),
+                        signed_req.body,
+                        "",
+                    )
+                    .await
+                    {
                         Ok(x)  => {
                             if x == "SYSINFO_UPDATED" {
                                 info_uploaded = InfoUploaded::uploaded(url.clone(), id.clone(), sys_username);
@@ -268,17 +392,24 @@ async fn start_hbbs_sync_async() {
                 }
                 let modified_at = LocalConfig::get_option("strategy_timestamp").parse::<i64>().unwrap_or(0);
                 v["modified_at"] = json!(modified_at);
-                if let Ok(s) = crate::post_request(url.clone(), v.to_string(), "").await {
-                    if let Ok(mut rsp) = serde_json::from_str::<HashMap::<&str, Value>>(&s) {
+                let Some(signed_req) = build_signed_sync_request(SYNC_HEARTBEAT_PATH, v) else {
+                    log::error!("Failed to sign heartbeat sync request");
+                    continue;
+                };
+                if let Ok(s) = crate::post_request(url.clone(), signed_req.body, "").await {
+                    if let Some(mut rsp) =
+                        verify_signed_sync_response(SYNC_HEARTBEAT_PATH, &signed_req.nonce, &s)
+                            .await
+                    {
                         if rsp.remove("sysinfo").is_some() {
                             info_uploaded.uploaded = false;
                             config::Status::set("sysinfo_hash", "".to_owned());
                             log::info!("sysinfo required to forcely update");
                         }
-                        if let Some(conns)  = rsp.remove("disconnect") {
-                                if let Ok(conns) = serde_json::from_value::<Vec<i32>>(conns) {
-                                    SENDER.lock().unwrap().send(conns).ok();
-                                }
+                        if let Some(conns) = rsp.remove("disconnect") {
+                            if let Ok(conns) = serde_json::from_value::<Vec<i32>>(conns) {
+                                SENDER.lock().unwrap().send(conns).ok();
+                            }
                         }
                         if let Some(rsp_modified_at) = rsp.remove("modified_at") {
                             if let Ok(rsp_modified_at) = serde_json::from_value::<i64>(rsp_modified_at) {
@@ -293,6 +424,8 @@ async fn start_hbbs_sync_async() {
                                 handle_config_options(strategy.config_options);
                             }
                         }
+                    } else {
+                        log::warn!("Ignore unsigned or invalid heartbeat sync response");
                     }
                 }
             }
@@ -356,9 +489,15 @@ mod tests {
     #[test]
     fn sanitize_strategy_config_options_drops_non_strategy_keys() {
         let mut options = HashMap::new();
-        options.insert(keys::OPTION_ENABLE_FILE_TRANSFER.to_string(), "N".to_owned());
+        options.insert(
+            keys::OPTION_ENABLE_FILE_TRANSFER.to_string(),
+            "N".to_owned(),
+        );
         options.insert("stop-service".to_owned(), "Y".to_owned());
-        options.insert(keys::OPTION_API_SERVER.to_string(), "https://evil".to_owned());
+        options.insert(
+            keys::OPTION_API_SERVER.to_string(),
+            "https://evil".to_owned(),
+        );
 
         let sanitized = sanitize_strategy_config_options(options);
 
