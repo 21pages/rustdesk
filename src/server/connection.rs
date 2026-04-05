@@ -79,48 +79,53 @@ lazy_static::lazy_static! {
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
 }
 
-fn get_easy_access_manager_pk(manager_id: &[u8]) -> Option<Vec<u8>> {
-    if manager_id.is_empty() {
-        return None;
-    }
-    let manager_id = uuid::Uuid::from_slice(manager_id).ok()?.to_string();
-    let json = Config::get_option("easy-access-managers");
-    if json.is_empty() {
-        return None;
-    }
-    let managers: Vec<crate::hbbs_http::sync::EasyAccessManager> =
-        serde_json::from_str(&json).ok()?;
-    let pk_b64 = managers
-        .iter()
-        .find(|m| m.manager_id == manager_id)
-        .map(|m| m.pk.clone())?;
-    hbb_common::base64::decode(pk_b64).ok()
+const EASY_ACCESS_MANAGER_SIGNATURE_CONTEXT: &[u8] = b"easy-access-manager-v1";
+const EASY_ACCESS_SERVER_SIGNATURE_CONTEXT: &[u8] = b"easy-access-server-v1";
+
+fn push_easy_access_payload_field(payload: &mut Vec<u8>, field: &[u8]) {
+    payload.extend_from_slice(&(field.len() as u32).to_le_bytes());
+    payload.extend_from_slice(field);
 }
 
-async fn sync_easy_access_manager_pk(manager_id: &[u8]) -> Option<Vec<u8>> {
-    let manager_id_str = match uuid::Uuid::from_slice(manager_id) {
-        Ok(id) => id.to_string(),
-        Err(_) => {
-            log::warn!("Easy access manager_id invalid");
-            return None;
-        }
-    };
-    log::warn!("Easy access manager_id not found in local cache, forcing full refresh from hbbs",);
-    if let Err(err) = crate::hbbs_http::sync::sync_easy_access_managers(true).await {
-        log::warn!(
-            "Failed to force refresh easy access managers from hbbs: {}",
-            err
-        );
-        return None;
-    }
-    let pk = get_easy_access_manager_pk(manager_id);
-    if pk.is_none() {
-        log::warn!(
-            "Easy access manager_id {} not found after sync",
-            manager_id_str
-        );
-    }
-    pk
+fn build_easy_access_manager_payload(
+    challenge: &[u8],
+    target_uuid: &[u8],
+    target_pk: &[u8],
+) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(
+        EASY_ACCESS_MANAGER_SIGNATURE_CONTEXT.len()
+            + challenge.len()
+            + target_uuid.len()
+            + target_pk.len()
+            + 12,
+    );
+    push_easy_access_payload_field(&mut payload, EASY_ACCESS_MANAGER_SIGNATURE_CONTEXT);
+    push_easy_access_payload_field(&mut payload, challenge);
+    push_easy_access_payload_field(&mut payload, target_uuid);
+    push_easy_access_payload_field(&mut payload, target_pk);
+    payload
+}
+
+fn build_easy_access_server_payload(
+    manager_id: &[u8],
+    manager_pk: &[u8],
+    manager_payload: &[u8],
+    manager_signature: &[u8],
+) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(
+        EASY_ACCESS_SERVER_SIGNATURE_CONTEXT.len()
+            + manager_id.len()
+            + manager_pk.len()
+            + manager_payload.len()
+            + manager_signature.len()
+            + 16,
+    );
+    push_easy_access_payload_field(&mut payload, EASY_ACCESS_SERVER_SIGNATURE_CONTEXT);
+    push_easy_access_payload_field(&mut payload, manager_id);
+    push_easy_access_payload_field(&mut payload, manager_pk);
+    push_easy_access_payload_field(&mut payload, manager_payload);
+    push_easy_access_payload_field(&mut payload, manager_signature);
+    payload
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -1485,6 +1490,10 @@ impl Connection {
             return false;
         }
         self.authorized = true;
+        if let Some(c) = self.controlled_config.as_mut() {
+            c.easy_access_signature = Default::default();
+            c.manager_id = Default::default();
+        }
         let (conn_type, auth_conn_type) = if self.file_transfer.is_some() {
             (1, AuthConnType::FileTransfer)
         } else if self.port_forward_socket.is_some() {
@@ -2123,10 +2132,27 @@ impl Connection {
     }
 
     async fn verify_easy_access(&self) -> bool {
+        if hbb_common::config::is_allow_easy_access() {
+            return false;
+        }
         let lr_challenge_bytes = self.lr.easy_access_challenge.clone();
-        let (manager_id, easy_access_signature) = match self.controlled_config.as_ref() {
-            Some(c) if !c.easy_access_signature.is_empty() => {
-                (c.manager_id.clone(), c.easy_access_signature.clone())
+        let (
+            manager_id,
+            manager_pk_bytes,
+            easy_access_signature,
+            easy_access_server_signature,
+        ) = match self.controlled_config.as_ref() {
+            Some(c)
+                if !c.easy_access_signature.is_empty()
+                    && !c.easy_access_manager_pk.is_empty()
+                    && !c.easy_access_server_signature.is_empty() =>
+            {
+                (
+                    c.manager_id.clone(),
+                    c.easy_access_manager_pk.clone(),
+                    c.easy_access_signature.clone(),
+                    c.easy_access_server_signature.clone(),
+                )
             }
             _ => return false,
         };
@@ -2137,36 +2163,70 @@ impl Connection {
             log::warn!("Easy access manager_id missing");
             return false;
         }
-        let pk = match get_easy_access_manager_pk(&manager_id) {
-            Some(pk) => pk,
-            None => match sync_easy_access_manager_pk(&manager_id).await {
-                Some(pk) => pk,
-                None => return false,
-            },
-        };
         if easy_access_signature.is_empty() {
             log::warn!("Easy access signature missing");
             return false;
         }
-        let sig = match sign::Signature::from_bytes(&easy_access_signature) {
+        let manager_sig = match sign::Signature::from_bytes(&easy_access_signature) {
             Ok(sig) => sig,
             Err(_) => {
                 log::warn!("Easy access signature invalid");
                 return false;
             }
         };
-        let pk = match sign::PublicKey::from_slice(&pk) {
-            Some(pk) => pk,
-            None => {
-                log::warn!("Easy access public key invalid");
+        if easy_access_server_signature.is_empty() {
+            log::warn!("Easy access server signature missing");
+            return false;
+        }
+        let server_sig = match sign::Signature::from_bytes(&easy_access_server_signature) {
+            Ok(sig) => sig,
+            Err(_) => {
+                log::warn!("Easy access server signature invalid");
                 return false;
             }
         };
-        if !sign::verify_detached(&sig, &lr_challenge_bytes, &pk) {
-            log::warn!("Easy access signature verify failed");
+        let manager_pk = match sign::PublicKey::from_slice(&manager_pk_bytes) {
+            Some(pk) => pk,
+            None => {
+                log::warn!("Easy access manager public key invalid");
+                return false;
+            }
+        };
+        let server_key = crate::common::get_key(true).await;
+        let server_pk = match crate::common::get_rs_pk(&server_key) {
+            Some(pk) => pk,
+            None => {
+                log::warn!("Easy access server public key invalid");
+                return false;
+            }
+        };
+        let target_uuid = hbb_common::get_uuid();
+        if target_uuid.is_empty() {
+            log::warn!("Easy access target uuid missing");
             return false;
         }
-        log::info!("Easy access challenge and signature verified");
+        let target_pk = Config::get_key_pair().1;
+        if target_pk.is_empty() {
+            log::warn!("Easy access target public key missing");
+            return false;
+        }
+        let manager_payload =
+            build_easy_access_manager_payload(&lr_challenge_bytes, &target_uuid, &target_pk);
+        if !sign::verify_detached(&manager_sig, &manager_payload, &manager_pk) {
+            log::warn!("Easy access manager signature verify failed");
+            return false;
+        }
+        let server_payload = build_easy_access_server_payload(
+            &manager_id,
+            &manager_pk_bytes,
+            &manager_payload,
+            &easy_access_signature,
+        );
+        if !sign::verify_detached(&server_sig, &server_payload, &server_pk) {
+            log::warn!("Easy access server signature verify failed");
+            return false;
+        }
+        log::info!("Easy access challenge, manager signature, and server signature verified");
         true
     }
 
@@ -2391,18 +2451,14 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
-            } else if hbb_common::config::is_allow_easy_access() && self.verify_easy_access().await
-            {
-                // Consume the token so it cannot be reused
-                if let Some(c) = self.controlled_config.as_mut() {
-                    c.easy_access_signature = Default::default();
-                    c.manager_id = Default::default();
-                }
+            } else if self.verify_easy_access().await {
                 // Easy access: token verified, skip password validation and click accept
                 if err_msg.is_empty() {
                     #[cfg(target_os = "linux")]
                     self.linux_headless_handle.wait_desktop_cm_ready().await;
-                    self.send_logon_response_and_keep_alive().await;
+                    if !self.send_logon_response_and_keep_alive().await {
+                        return false;
+                    }
                     self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
                 } else {
                     self.send_login_error(err_msg).await;
