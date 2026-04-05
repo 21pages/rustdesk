@@ -1388,17 +1388,16 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
 
   Future<List<Map<String, dynamic>>> _fetchEasyAccessUsers() async {
     try {
-      final id = await bind.mainGetMyId();
-      final uuid = await bind.mainGetUuid();
-      if (id.isEmpty || uuid.isEmpty) return [];
+      final authBody = await bind.mainGetEasyAccessDeviceAuth();
+      if (authBody.isEmpty) return [];
 
       final url = await bind.mainGetApiServer();
       if (url.isEmpty) return [];
 
-      final response = await http.get(
-        Uri.parse(
-          '$url/api/devices/easy-access-users?id=${Uri.encodeQueryComponent(id)}&uuid=${Uri.encodeQueryComponent(uuid)}',
-        ),
+      final response = await http.post(
+        Uri.parse('$url/api/devices/easy-access-users'),
+        headers: {'Content-Type': 'application/json'},
+        body: authBody,
       );
 
       if (response.statusCode == 200) {

@@ -10,7 +10,6 @@ use hbb_common::{
     config::{self, keys, Config, LocalConfig},
     log,
     tokio::{self, sync::broadcast, time::Instant},
-    ResultType,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -318,47 +317,6 @@ fn easy_access_version() -> String {
     Config::get_option("easy-access-version")
 }
 
-fn easy_access_managers_from_items(items: &[EasyAccessManager]) -> HashMap<String, Vec<u8>> {
-    let mut managers = HashMap::new();
-    for item in items {
-        match hbb_common::base64::decode(&item.pk) {
-            Ok(pk) => {
-                managers.insert(item.manager_id.clone(), pk);
-            }
-            Err(err) => {
-                log::warn!(
-                    "failed to decode easy access manager pk for {}: {}",
-                    item.manager_id,
-                    err
-                );
-            }
-        }
-    }
-    managers
-}
-
-fn load_easy_access_managers() -> HashMap<String, Vec<u8>> {
-    let json = Config::get_option("easy-access-managers");
-    if json.is_empty() {
-        return Default::default();
-    }
-    match serde_json::from_str::<Vec<EasyAccessManager>>(&json) {
-        Ok(items) => easy_access_managers_from_items(&items),
-        Err(err) => {
-            log::warn!("failed to parse easy-access-managers from config: {}", err);
-            Default::default()
-        }
-    }
-}
-
-pub fn get_easy_access_manager_pk(manager_id: &str) -> Option<Vec<u8>> {
-    if manager_id.is_empty() {
-        return None;
-    }
-    let managers = load_easy_access_managers();
-    managers.get(manager_id).cloned()
-}
-
 fn store_easy_access_managers(managers: Value, version: Option<String>) {
     match serde_json::from_value::<Vec<EasyAccessManager>>(managers) {
         Ok(items) => {
@@ -385,27 +343,4 @@ fn handle_easy_access_sync_response(rsp: &mut HashMap<String, Value>) {
             .and_then(|v| serde_json::from_value::<String>(v).ok());
         store_easy_access_managers(managers, version);
     }
-}
-
-pub async fn sync_easy_access_managers(force_full: bool) -> ResultType<()> {
-    let url = heartbeat_url();
-    if url.is_empty() {
-        return Ok(());
-    }
-    let mut v = Value::default();
-    v["id"] = json!(Config::get_id());
-    v["uuid"] = json!(crate::encode64(hbb_common::get_uuid()));
-    v["ver"] = json!(hbb_common::get_version_number(crate::VERSION));
-    v["modified_at"] = json!(LocalConfig::get_option("strategy_timestamp")
-        .parse::<i64>()
-        .unwrap_or(0));
-    v["easy_access_version"] = json!(if force_full {
-        "".to_owned()
-    } else {
-        easy_access_version()
-    });
-    let s = crate::post_request(url, v.to_string(), "").await?;
-    let mut rsp = serde_json::from_str::<HashMap<String, Value>>(&s)?;
-    handle_easy_access_sync_response(&mut rsp);
-    Ok(())
 }

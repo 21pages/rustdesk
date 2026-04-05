@@ -16,9 +16,11 @@ use flutter_rust_bridge::{StreamSink, SyncReturn};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::allow_err;
 use hbb_common::{
+    base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _},
     config::{self, LocalConfig, PeerConfig, PeerInfoSerde},
     fs, lazy_static, log,
     rendezvous_proto::ConnType,
+    sodiumoxide::crypto::sign,
     ResultType,
 };
 use std::{
@@ -1285,6 +1287,43 @@ pub fn main_get_my_id() -> String {
 
 pub fn main_get_uuid() -> String {
     get_uuid()
+}
+
+fn easy_access_users_signature_payload(
+    id: &str,
+    uuid: &str,
+    timestamp: i64,
+    nonce: &str,
+) -> String {
+    format!("POST\n/api/devices/easy-access-users\n{id}\n{uuid}\n{timestamp}\n{nonce}")
+}
+
+pub fn main_get_easy_access_device_auth() -> String {
+    let id = get_id();
+    let uuid = get_uuid();
+    if id.is_empty() || uuid.is_empty() {
+        return String::new();
+    }
+
+    let timestamp = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs() as i64,
+        Err(_) => return String::new(),
+    };
+    let nonce = uuid::Uuid::new_v4().to_string();
+    let (sk_bytes, _) = config::Config::get_key_pair();
+    let Some(sk) = sign::SecretKey::from_slice(&sk_bytes) else {
+        return String::new();
+    };
+    let payload = easy_access_users_signature_payload(&id, &uuid, timestamp, &nonce);
+    let signature = BASE64_STANDARD.encode(sign::sign_detached(payload.as_bytes(), &sk).as_ref());
+    serde_json::json!({
+        "id": id,
+        "uuid": uuid,
+        "timestamp": timestamp,
+        "nonce": nonce,
+        "signature": signature,
+    })
+    .to_string()
 }
 
 pub fn main_get_peer_option(id: String, key: String) -> String {
