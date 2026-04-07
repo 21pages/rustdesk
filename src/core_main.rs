@@ -153,6 +153,16 @@ pub fn core_main() -> Option<Vec<String>> {
         }
     }
     hbb_common::init_log(false, &log_name);
+    log::info!("============== core_main start with args: {:?}", args);
+    let encrypt_res = hbb_common::password_security::encrypt_str_or_original(
+        "hello",
+        hbb_common::password_security::VERSION_02_USER,
+        1024,
+    );
+    log::info!(
+        "============== encrypt_str_or_original result: {}",
+        encrypt_res
+    );
 
     // linux uni (url) go here.
     #[cfg(all(target_os = "linux", feature = "flutter"))]
