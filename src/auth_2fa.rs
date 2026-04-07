@@ -3,7 +3,9 @@ use hbb_common::{
     bail,
     config::Config,
     get_time,
-    password_security::{decrypt_vec_or_original, encrypt_vec_or_original},
+    password_security::{
+        decrypt_vec_or_original, encrypt_vec_or_original, CURRENT_ENCRYPT_VERSION,
+    },
     ResultType,
 };
 use serde_derive::{Deserialize, Serialize};
@@ -52,7 +54,7 @@ impl TOTPInfo {
     }
 
     pub fn into_string(&self) -> ResultType<String> {
-        let secret = encrypt_vec_or_original(self.secret.as_slice(), "00", 1024);
+        let secret = encrypt_vec_or_original(self.secret.as_slice(), CURRENT_ENCRYPT_VERSION, 1024);
         let totp_info = TOTPInfo {
             secret,
             ..self.clone()
@@ -63,7 +65,8 @@ impl TOTPInfo {
 
     pub fn from_str(data: &str) -> ResultType<TOTP> {
         let mut totp_info = serde_json::from_str::<TOTPInfo>(data)?;
-        let (secret, success, _) = decrypt_vec_or_original(&totp_info.secret, "00");
+        let (secret, success, _) =
+            decrypt_vec_or_original(&totp_info.secret, CURRENT_ENCRYPT_VERSION);
         if success {
             totp_info.secret = secret;
             return Ok(totp_info.new_totp()?);
@@ -121,7 +124,8 @@ pub struct TelegramBot {
 
 impl TelegramBot {
     fn into_string(&self) -> ResultType<String> {
-        let token = encrypt_vec_or_original(self.token_str.as_bytes(), "00", 1024);
+        let token =
+            encrypt_vec_or_original(self.token_str.as_bytes(), CURRENT_ENCRYPT_VERSION, 1024);
         let bot = TelegramBot {
             token,
             ..self.clone()
@@ -145,7 +149,7 @@ impl TelegramBot {
             return Ok(None);
         }
         let mut bot = serde_json::from_str::<TelegramBot>(&data)?;
-        let (token, success, _) = decrypt_vec_or_original(&bot.token, "00");
+        let (token, success, _) = decrypt_vec_or_original(&bot.token, CURRENT_ENCRYPT_VERSION);
         if success {
             bot.token_str = String::from_utf8(token)?;
             return Ok(Some(bot));
