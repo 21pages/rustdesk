@@ -505,6 +505,7 @@ pub extern "system" fn Java_ffi_FFI_onAppStart(mut env: JNIEnv, _class: JClass, 
             let java_vm = jvm.get_java_vm_pointer() as *mut c_void;
             let context_jobject = context.as_obj().as_raw() as *mut c_void;
             *APPLICATION_CONTEXT.write().unwrap() = Some(context);
+            init_ndk_context(java_vm, context_jobject);
             try_init_rustls_platform_verifier(&mut env, context_jobject);
         }
     }
