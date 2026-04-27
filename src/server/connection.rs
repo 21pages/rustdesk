@@ -1830,6 +1830,7 @@ impl Connection {
                 && sessions.iter().any(|e| e.sid == current_sid)
                 && get_version_number(&self.lr.version) >= get_version_number("1.2.4")
             {
+                let session_count = sessions.len();
                 pi.windows_sessions = Some(WindowsSessions {
                     sessions,
                     current_sid,
@@ -1841,6 +1842,12 @@ impl Connection {
                 // the session it wants — otherwise the prompt pops up in the
                 // current `--server` session before any choice is made.
                 self.wait_for_windows_session_id_confirm = true;
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen defer CM login until Windows session confirmed, conn_id={}, current_sid={}, session_count={}",
+                    self.inner.id(),
+                    current_sid,
+                    session_count
+                );
             }
         }
     }
@@ -1904,9 +1911,26 @@ impl Connection {
         // request will be replayed once the chosen session is confirmed.
         #[cfg(windows)]
         if self.wait_for_windows_session_id_confirm {
+            log::info!(
+                "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen queue CM login while waiting for Windows session confirmation, conn_id={}, peer_id={}, name={}, authorized={}",
+                self.inner.id(),
+                peer_id,
+                name,
+                authorized
+            );
             self.pending_cm_login = Some((peer_id, name, authorized));
             return;
         }
+        log::info!(
+            "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen start CM login, conn_id={}, peer_id={}, name={}, authorized={}, file_transfer={}, view_camera={}, terminal={}",
+            self.inner.id(),
+            peer_id,
+            name,
+            authorized,
+            self.file_transfer.is_some(),
+            self.view_camera,
+            self.terminal
+        );
         self.send_to_cm(ipc::Data::Login {
             id: self.inner.id(),
             is_file_transfer: self.file_transfer.is_some(),
@@ -3319,6 +3343,13 @@ impl Connection {
                                 && current_process_sid != sid
                                 && sessions.iter().any(|e| e.sid == sid)
                             {
+                                log::info!(
+                                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen selected Windows session differs from current process session, reconnecting server session, conn_id={}, current_sid={}, selected_sid={}, session_count={}",
+                                    self.inner.id(),
+                                    current_process_sid,
+                                    sid,
+                                    sessions.len()
+                                );
                                 std::thread::spawn(move || {
                                     let _ = ipc::connect_to_user_session(Some(sid));
                                 });
@@ -3328,6 +3359,13 @@ impl Connection {
                             // the deferred CM login so the permission window
                             // appears here and only here.
                             if self.wait_for_windows_session_id_confirm {
+                                log::info!(
+                                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen Windows session confirmed, replay deferred CM login if present, conn_id={}, current_sid={}, selected_sid={}, had_pending_login={}",
+                                    self.inner.id(),
+                                    current_process_sid,
+                                    sid,
+                                    self.pending_cm_login.is_some()
+                                );
                                 self.wait_for_windows_session_id_confirm = false;
                                 if let Some((peer_id, name, authorized)) =
                                     self.pending_cm_login.take()
