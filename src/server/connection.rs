@@ -1653,6 +1653,15 @@ impl Connection {
         if !self.terminal {
             self.handle_windows_specific_session(&mut pi, &mut wait_session_id_confirm);
         }
+        #[cfg(not(windows))]
+        log::info!(
+            "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen bypass Windows session deferral on non-windows platform, conn_id={}, terminal={}, file_transfer={}, view_camera={}, platform={}",
+            self.inner.id(),
+            self.terminal,
+            self.file_transfer.is_some(),
+            self.view_camera,
+            std::env::consts::OS
+        );
         if self.file_transfer.is_some() || self.terminal {
             res.set_peer_info(pi);
         } else if self.view_camera {
@@ -1830,6 +1839,12 @@ impl Connection {
                 && sessions.iter().any(|e| e.sid == current_sid)
                 && get_version_number(&self.lr.version) >= get_version_number("1.2.4")
             {
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen defer CM login until Windows session confirmed, conn_id={}, current_sid={}, session_count={}",
+                    self.inner.id(),
+                    current_sid,
+                    sessions.len()
+                );
                 pi.windows_sessions = Some(WindowsSessions {
                     sessions,
                     current_sid,
@@ -1841,7 +1856,27 @@ impl Connection {
                 // the session it wants — otherwise the prompt pops up in the
                 // current `--server` session before any choice is made.
                 self.wait_for_windows_session_id_confirm = true;
+            } else {
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen skip Windows session deferral, conn_id={}, current_sid={}, is_installed={}, is_share_rdp={}, non_port_forward_conn_count={}, session_count={}, has_current_sid={}, client_version={}, version_ok={}",
+                    self.inner.id(),
+                    current_sid,
+                    crate::platform::is_installed(),
+                    crate::platform::is_share_rdp(),
+                    raii::AuthedConnID::non_port_forward_conn_count(),
+                    sessions.len(),
+                    sessions.iter().any(|e| e.sid == current_sid),
+                    self.lr.version,
+                    get_version_number(&self.lr.version) >= get_version_number("1.2.4")
+                );
             }
+        } else {
+            log::info!(
+                "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen skip Windows session deferral, conn_id={}, reason=no_current_process_session_id, session_count={}, client_version={}",
+                self.inner.id(),
+                sessions.len(),
+                self.lr.version
+            );
         }
     }
 
@@ -1904,9 +1939,26 @@ impl Connection {
         // request will be replayed once the chosen session is confirmed.
         #[cfg(windows)]
         if self.wait_for_windows_session_id_confirm {
+            log::info!(
+                "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen queue CM login while waiting for Windows session confirmation, conn_id={}, peer_id={}, name={}, authorized={}",
+                self.inner.id(),
+                peer_id,
+                name,
+                authorized
+            );
             self.pending_cm_login = Some((peer_id, name, authorized));
             return;
         }
+        log::info!(
+            "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen start CM login, conn_id={}, peer_id={}, name={}, authorized={}, file_transfer={}, view_camera={}, terminal={}",
+            self.inner.id(),
+            peer_id,
+            name,
+            authorized,
+            self.file_transfer.is_some(),
+            self.view_camera,
+            self.terminal
+        );
         self.send_to_cm(ipc::Data::Login {
             id: self.inner.id(),
             is_file_transfer: self.file_transfer.is_some(),
@@ -2437,6 +2489,11 @@ impl Connection {
                 && !hbb_common::is_domain_port_str(&lr.username)
                 && lr.username != Config::get_id()
             {
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen reject login before auth, conn_id={}, peer_id={}, reason=peer_id_or_username_mismatch",
+                    self.inner.id(),
+                    lr.my_id
+                );
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
@@ -2444,6 +2501,15 @@ impl Connection {
                 && !allow_logon_screen_password)
                 || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
             {
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=require_cm_approval, conn_id={}, peer_id={}, approve_mode_click={}, approve_mode_both={}, allow_logon_screen_password={}, has_valid_password={}",
+                    self.inner.id(),
+                    lr.my_id,
+                    password::approve_mode() == ApproveMode::Click,
+                    password::approve_mode() == ApproveMode::Both,
+                    allow_logon_screen_password,
+                    password::has_valid_password()
+                );
                 self.try_start_cm(lr.my_id, lr.my_name, false);
                 if hbb_common::get_version_number(&lr.version)
                     >= hbb_common::get_version_number("1.2.0")
@@ -2453,20 +2519,50 @@ impl Connection {
                 }
                 return true;
             } else if self.is_recent_session(false) {
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=recent_session, conn_id={}, peer_id={}, authorized={}, err_msg_empty={}",
+                    self.inner.id(),
+                    lr.my_id,
+                    self.authorized,
+                    err_msg.is_empty()
+                );
                 if err_msg.is_empty() {
                     #[cfg(target_os = "linux")]
                     self.linux_headless_handle.wait_desktop_cm_ready().await;
                     if !self.send_logon_response_and_keep_alive().await {
+                        log::info!(
+                            "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=recent_session send_logon_response_and_keep_alive returned false, conn_id={}, peer_id={}",
+                            self.inner.id(),
+                            lr.my_id
+                        );
                         return false;
                     }
                     self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
                 } else {
+                    log::info!(
+                        "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=recent_session blocked by desktop session state, conn_id={}, peer_id={}, err_msg={}",
+                        self.inner.id(),
+                        lr.my_id,
+                        err_msg
+                    );
                     self.send_login_error(err_msg).await;
                 }
             } else if lr.password.is_empty() {
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=password_empty, conn_id={}, peer_id={}, err_msg_empty={}",
+                    self.inner.id(),
+                    lr.my_id,
+                    err_msg.is_empty()
+                );
                 if err_msg.is_empty() {
                     self.try_start_cm(lr.my_id, lr.my_name, false);
                 } else {
+                    log::info!(
+                        "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=password_empty blocked by desktop session state, conn_id={}, peer_id={}, err_msg={}",
+                        self.inner.id(),
+                        lr.my_id,
+                        err_msg
+                    );
                     self.send_login_error(
                         crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY_PASSWORD_EMPTY,
                     )
@@ -2475,9 +2571,21 @@ impl Connection {
             } else {
                 let (failure, res) = self.check_failure(0).await;
                 if !res {
+                    log::info!(
+                        "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=password_check blocked by failure guard, conn_id={}, peer_id={}",
+                        self.inner.id(),
+                        lr.my_id
+                    );
                     return true;
                 }
                 if !self.validate_password(allow_logon_screen_password) {
+                    log::info!(
+                        "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=password_invalid, conn_id={}, peer_id={}, allow_logon_screen_password={}, err_msg_empty={}",
+                        self.inner.id(),
+                        lr.my_id,
+                        allow_logon_screen_password,
+                        err_msg.is_empty()
+                    );
                     self.update_failure(failure, false, 0);
                     self.check_update_temporary_password(false);
                     if err_msg.is_empty() {
@@ -2491,15 +2599,33 @@ impl Connection {
                         .await;
                     }
                 } else {
+                    log::info!(
+                        "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=password_valid, conn_id={}, peer_id={}, authorized={}, err_msg_empty={}",
+                        self.inner.id(),
+                        lr.my_id,
+                        self.authorized,
+                        err_msg.is_empty()
+                    );
                     self.update_failure(failure, true, 0);
                     if err_msg.is_empty() {
                         #[cfg(target_os = "linux")]
                         self.linux_headless_handle.wait_desktop_cm_ready().await;
                         if !self.send_logon_response_and_keep_alive().await {
+                            log::info!(
+                                "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=password_valid send_logon_response_and_keep_alive returned false, conn_id={}, peer_id={}",
+                                self.inner.id(),
+                                lr.my_id
+                            );
                             return false;
                         }
                         self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
                     } else {
+                        log::info!(
+                            "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=password_valid blocked by desktop session state, conn_id={}, peer_id={}, err_msg={}",
+                            self.inner.id(),
+                            lr.my_id,
+                            err_msg
+                        );
                         self.send_login_error(err_msg).await;
                     }
                 }
@@ -2507,15 +2633,31 @@ impl Connection {
         } else if let Some(message::Union::Auth2fa(tfa)) = msg.union {
             let (failure, res) = self.check_failure(1).await;
             if !res {
+                log::info!(
+                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=2fa_check blocked by failure guard, conn_id={}, peer_id={}",
+                    self.inner.id(),
+                    self.lr.my_id
+                );
                 return true;
             }
             if let Some(totp) = self.require_2fa.as_ref() {
                 if let Ok(res) = totp.check_current(&tfa.code) {
                     if res {
+                        log::info!(
+                            "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=2fa_valid, conn_id={}, peer_id={}, authorized={}",
+                            self.inner.id(),
+                            self.lr.my_id,
+                            self.authorized
+                        );
                         self.update_failure(failure, true, 1);
                         self.require_2fa.take();
                         raii::AuthedConnID::set_session_2fa(self.session_key());
                         if !self.send_logon_response_and_keep_alive().await {
+                            log::info!(
+                                "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=2fa_valid send_logon_response_and_keep_alive returned false, conn_id={}, peer_id={}",
+                                self.inner.id(),
+                                self.lr.my_id
+                            );
                             return false;
                         }
                         self.try_start_cm(
@@ -2533,6 +2675,11 @@ impl Connection {
                             });
                         }
                     } else {
+                        log::info!(
+                            "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=2fa_invalid, conn_id={}, peer_id={}",
+                            self.inner.id(),
+                            self.lr.my_id
+                        );
                         self.update_failure(failure, false, 1);
                         self.send_login_error(crate::client::LOGIN_MSG_2FA_WRONG)
                             .await;
@@ -2567,8 +2714,19 @@ impl Connection {
                 if let Ok(uuid) = uuid::Uuid::from_slice(_s.uuid.to_vec().as_ref()) {
                     if let Some((_instant, uuid_old)) = uuid_old {
                         if uuid == uuid_old {
+                            log::info!(
+                                "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=switch_sides_response, conn_id={}, peer_id={}, authorized={}",
+                                self.inner.id(),
+                                lr.my_id,
+                                self.authorized
+                            );
                             self.from_switch = true;
                             if !self.send_logon_response_and_keep_alive().await {
+                                log::info!(
+                                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen auth branch=switch_sides_response send_logon_response_and_keep_alive returned false, conn_id={}, peer_id={}",
+                                    self.inner.id(),
+                                    lr.my_id
+                                );
                                 return false;
                             }
                             self.try_start_cm(
@@ -3319,6 +3477,13 @@ impl Connection {
                                 && current_process_sid != sid
                                 && sessions.iter().any(|e| e.sid == sid)
                             {
+                                log::info!(
+                                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen selected Windows session differs from current process session, reconnecting server session, conn_id={}, current_sid={}, selected_sid={}, session_count={}",
+                                    self.inner.id(),
+                                    current_process_sid,
+                                    sid,
+                                    sessions.len()
+                                );
                                 std::thread::spawn(move || {
                                     let _ = ipc::connect_to_user_session(Some(sid));
                                 });
@@ -3328,6 +3493,13 @@ impl Connection {
                             // the deferred CM login so the permission window
                             // appears here and only here.
                             if self.wait_for_windows_session_id_confirm {
+                                log::info!(
+                                    "====DEBUG==== accept_window_popup_after_windows_sessoin_chosen Windows session confirmed, replay deferred CM login if present, conn_id={}, current_sid={}, selected_sid={}, had_pending_login={}",
+                                    self.inner.id(),
+                                    current_process_sid,
+                                    sid,
+                                    self.pending_cm_login.is_some()
+                                );
                                 self.wait_for_windows_session_id_confirm = false;
                                 if let Some((peer_id, name, authorized)) =
                                     self.pending_cm_login.take()
