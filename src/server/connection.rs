@@ -1809,14 +1809,40 @@ impl Connection {
         wait_session_id_confirm: &mut bool,
     ) {
         let sessions = crate::platform::get_available_sessions(true);
+        log::info!("====DEBUG=== sessions count: {}", sessions.len());
+        log::info!("====DEBUG=== sessions: {:?}", sessions);
+
         if let Some(current_sid) = crate::platform::get_current_process_session_id() {
-            if crate::platform::is_installed()
-                && crate::platform::is_share_rdp()
-                && raii::AuthedConnID::non_port_forward_conn_count() == 1
-                && sessions.len() > 1
-                && sessions.iter().any(|e| e.sid == current_sid)
-                && get_version_number(&self.lr.version) >= get_version_number("1.2.4")
+            log::info!("====DEBUG=== current_sid: {}", current_sid);
+
+            let is_installed = crate::platform::is_installed();
+            log::info!("====DEBUG=== is_installed: {}", is_installed);
+
+            let is_share_rdp = crate::platform::is_share_rdp();
+            log::info!("====DEBUG=== is_share_rdp: {}", is_share_rdp);
+
+            let conn_count = raii::AuthedConnID::non_port_forward_conn_count();
+            log::info!("====DEBUG=== non_port_forward_conn_count: {}", conn_count);
+
+            let sessions_len_check = sessions.len() > 1;
+            log::info!("====DEBUG=== sessions.len() > 1: {}", sessions_len_check);
+
+            let current_sid_in_sessions = sessions.iter().any(|e| e.sid == current_sid);
+            log::info!("====DEBUG=== current_sid in sessions: {}", current_sid_in_sessions);
+
+            let client_version = get_version_number(&self.lr.version);
+            let required_version = get_version_number("1.2.4");
+            log::info!("====DEBUG=== client_version: {}, required_version: {}, check: {}",
+                client_version, required_version, client_version >= required_version);
+
+            if is_installed
+                && is_share_rdp
+                && conn_count == 1
+                && sessions_len_check
+                && current_sid_in_sessions
+                && client_version >= required_version
             {
+                log::info!("====DEBUG=== All conditions met, setting windows_sessions");
                 pi.windows_sessions = Some(WindowsSessions {
                     sessions,
                     current_sid,
@@ -1824,7 +1850,11 @@ impl Connection {
                 })
                 .into();
                 *wait_session_id_confirm = true;
+            } else {
+                log::info!("====DEBUG=== Conditions not met, windows_sessions not set");
             }
+        } else {
+            log::info!("====DEBUG=== current_sid is None");
         }
     }
 
