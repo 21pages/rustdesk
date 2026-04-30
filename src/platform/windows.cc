@@ -29,6 +29,65 @@ void flog(char const *fmt, ...)
     fclose(h);
 }
 
+static const char *WtsStateName(WTS_CONNECTSTATE_CLASS state)
+{
+    switch (state)
+    {
+    case WTSActive:
+        return "WTSActive";
+    case WTSConnected:
+        return "WTSConnected";
+    case WTSConnectQuery:
+        return "WTSConnectQuery";
+    case WTSShadow:
+        return "WTSShadow";
+    case WTSDisconnected:
+        return "WTSDisconnected";
+    case WTSIdle:
+        return "WTSIdle";
+    case WTSListen:
+        return "WTSListen";
+    case WTSReset:
+        return "WTSReset";
+    case WTSDown:
+        return "WTSDown";
+    case WTSInit:
+        return "WTSInit";
+    default:
+        return "Unknown";
+    }
+}
+
+static void AppendAscii(std::wstring &out, const char *text)
+{
+    if (text == NULL)
+    {
+        out += L"<null>";
+        return;
+    }
+    while (*text)
+    {
+        out.push_back(static_cast<wchar_t>(*text));
+        text++;
+    }
+}
+
+static void CopyWideDebug(PWSTR buf, uint32_t bufSize, const std::wstring &text)
+{
+    if (buf == NULL || bufSize == 0)
+    {
+        return;
+    }
+    buf[0] = L'\0';
+    if (text.empty())
+    {
+        return;
+    }
+    uint32_t count = text.size() < bufSize ? static_cast<uint32_t>(text.size()) : bufSize - 1;
+    wcsncpy_s(buf, bufSize, text.c_str(), count);
+    buf[count] = L'\0';
+}
+
 static BOOL GetProcessUserName(DWORD processID, LPWSTR outUserName, DWORD inUserNameSize)
 {
     BOOL ret = FALSE;
@@ -639,36 +698,65 @@ extern "C"
         return nout;
     }
 
-    void get_available_session_ids(PWSTR buf, uint32_t bufSize, BOOL include_rdp) {
+    void get_available_session_ids(PWSTR buf, uint32_t bufSize, BOOL include_rdp, BOOL collect_debug, PWSTR debugBuf, uint32_t debugBufSize) {
         std::vector<std::wstring> sessionIds;
         PWTS_SESSION_INFOA pInfos = NULL;
-        DWORD count;
+        DWORD count = 0;
+        std::wstring debug;
 
         if (WTSEnumerateSessionsA(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pInfos, &count)) {
+            if (collect_debug) {
+                debug += L"WTSEnumerateSessions ok count=" + std::to_wstring(count) + L" include_rdp=" + std::to_wstring(include_rdp);
+            }
             for (DWORD i = 0; i < count; i++) {
                 auto info = pInfos[i];
                 auto rdp = "rdp";
                 auto nrdp = strlen(rdp);
                 auto ica = "ica";
                 auto nica = strlen(ica);
-                if (info.State == WTSActive) {
-                    if (info.pWinStationName == NULL)
-                        continue;
-                    if (info.SessionId == 65536 || info.SessionId == 655)
-                        continue;
+                bool accepted = false;
+                const char *reason = collect_debug ? "state_not_active" : "";
 
-                    if (!stricmp(info.pWinStationName, "console")){
+                if (info.State == WTSActive) {
+                    if (info.pWinStationName == NULL) {
+                        reason = "station_null";
+                    }
+                    else if (info.SessionId == 65536 || info.SessionId == 655) {
+                        reason = "ignored_session_id";
+                    }
+                    else if (!stricmp(info.pWinStationName, "console")){
                         sessionIds.push_back(std::wstring(L"Console:") + std::to_wstring(info.SessionId));
+                        accepted = true;
+                        reason = "accepted_console";
                     }
                     else if (include_rdp && !strnicmp(info.pWinStationName, rdp, nrdp)) {
                         sessionIds.push_back(std::wstring(L"RDP:") + std::to_wstring(info.SessionId));
+                        accepted = true;
+                        reason = "accepted_rdp";
                     }
                     else if (include_rdp && !strnicmp(info.pWinStationName, ica, nica)) {
                         sessionIds.push_back(std::wstring(L"ICA:") + std::to_wstring(info.SessionId));
+                        accepted = true;
+                        reason = "accepted_ica";
                     }
+                    else {
+                        reason = include_rdp ? "station_not_console_rdp_ica" : "rdp_not_included";
+                    }
+                }
+
+                if (collect_debug) {
+                    debug += L" | sid=" + std::to_wstring(info.SessionId) + L" state=";
+                    AppendAscii(debug, WtsStateName(info.State));
+                    debug += L" station=";
+                    AppendAscii(debug, info.pWinStationName);
+                    debug += L" accepted=" + std::to_wstring(accepted ? 1 : 0) + L" reason=";
+                    AppendAscii(debug, reason);
                 }
             }
             WTSFreeMemory(pInfos);
+        } else if (collect_debug) {
+            auto err = GetLastError();
+            debug += L"WTSEnumerateSessions failed error=" + std::to_wstring(err);
         }
 
         std::wstring tmpStr;
@@ -681,6 +769,10 @@ extern "C"
 
         if (buf && !tmpStr.empty() && tmpStr.size() < bufSize) {
             wcsncpy_s(buf, bufSize, tmpStr.c_str(), tmpStr.size());
+        }
+        if (collect_debug) {
+            debug += L" | selected=" + tmpStr;
+            CopyWideDebug(debugBuf, debugBufSize, debug);
         }
     }
 } // end of extern "C"

@@ -10,7 +10,7 @@ use hbb_common::{
     anyhow::anyhow,
     bail,
     config::{self, Config},
-    libc::{c_int, wchar_t},
+    libc::wchar_t,
     log,
     message_proto::{DisplayInfo, Resolution, WindowsSession},
     sleep,
@@ -1054,23 +1054,68 @@ fn get_session_username(session_id: u32) -> String {
 }
 
 pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
+    get_available_sessions_with_debug(name, false)
+}
+
+pub fn get_available_sessions_with_debug(name: bool, log_debug: bool) -> Vec<WindowsSession> {
     extern "C" {
-        fn get_available_session_ids(buf: *mut wchar_t, buf_size: c_int, include_rdp: bool);
+        fn get_available_session_ids(
+            buf: *mut wchar_t,
+            buf_size: u32,
+            include_rdp: BOOL,
+            collect_debug: BOOL,
+            debug_buf: *mut wchar_t,
+            debug_buf_size: u32,
+        );
     }
-    const BUF_SIZE: c_int = 1024;
+    const BUF_SIZE: u32 = 1024;
+    const DEBUG_BUF_SIZE: u32 = 8192;
     let mut buf: Vec<wchar_t> = vec![0; BUF_SIZE as usize];
+    let mut debug_buf: Vec<wchar_t> = vec![0; DEBUG_BUF_SIZE as usize];
 
     let station_session_id_array = unsafe {
-        get_available_session_ids(buf.as_mut_ptr(), BUF_SIZE, true);
+        get_available_session_ids(
+            buf.as_mut_ptr(),
+            BUF_SIZE,
+            TRUE,
+            if log_debug { TRUE } else { FALSE },
+            debug_buf.as_mut_ptr(),
+            DEBUG_BUF_SIZE,
+        );
         let session_ids = String::from_utf16_lossy(&buf);
         session_ids.trim_matches(char::from(0)).trim().to_string()
     };
+    if log_debug {
+        let debug_info = String::from_utf16_lossy(&debug_buf)
+            .trim_matches(char::from(0))
+            .trim()
+            .to_string();
+        log::info!(
+            "====DEBUG=== get_available_sessions raw: station_session_id_array='{}', debug='{}'",
+            station_session_id_array,
+            debug_info
+        );
+    }
     let mut v: Vec<WindowsSession> = vec![];
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-wtsgetactiveconsolesessionid
     let physical_console_sid = unsafe { get_current_session(FALSE) };
+    if log_debug {
+        let active_sid_with_rdp = unsafe { get_current_session(TRUE) };
+        log::info!(
+            "====DEBUG=== get_available_sessions current_session: include_rdp={}, console_only={}",
+            active_sid_with_rdp,
+            physical_console_sid
+        );
+    }
     if physical_console_sid != u32::MAX {
         let physical_console_name = if name {
             let physical_console_username = get_session_username(physical_console_sid);
+            if log_debug {
+                log::info!(
+                    "====DEBUG=== get_available_sessions physical_console_username: '{}'",
+                    physical_console_username
+                );
+            }
             if physical_console_username.is_empty() {
                 "Console".to_owned()
             } else {
@@ -1087,12 +1132,29 @@ pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
     }
     // https://learn.microsoft.com/en-us/previous-versions//cc722458(v=technet.10)?redirectedfrom=MSDN
     for type_session_id in station_session_id_array.split(",") {
+        if type_session_id.is_empty() {
+            continue;
+        }
+        if log_debug {
+            log::info!(
+                "====DEBUG=== get_available_sessions parse token: '{}'",
+                type_session_id
+            );
+        }
         let split: Vec<_> = type_session_id.split(":").collect();
         if split.len() == 2 {
             if let Ok(sid) = split[1].parse::<u32>() {
                 if !v.iter().any(|e| (*e).sid == sid) {
                     let name = if name {
                         let name = get_session_username(sid);
+                        if log_debug {
+                            log::info!(
+                                "====DEBUG=== get_available_sessions sid: {}, type: '{}', username: '{}'",
+                                sid,
+                                split[0],
+                                name
+                            );
+                        }
                         if name.is_empty() {
                             split[0].to_string()
                         } else {
@@ -1106,8 +1168,23 @@ pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
                         name,
                         ..Default::default()
                     });
+                } else if log_debug {
+                    log::info!(
+                        "====DEBUG=== get_available_sessions skip duplicated sid: {}",
+                        sid
+                    );
                 }
+            } else if log_debug {
+                log::info!(
+                    "====DEBUG=== get_available_sessions failed to parse sid from token: '{}'",
+                    type_session_id
+                );
             }
+        } else if log_debug {
+            log::info!(
+                "====DEBUG=== get_available_sessions invalid token: '{}'",
+                type_session_id
+            );
         }
     }
     if name {
@@ -1125,6 +1202,12 @@ pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
                 e.name = format!("{} (running)", e.name);
             }
         }
+    }
+    if log_debug {
+        log::info!(
+            "====DEBUG=== get_available_sessions final sessions: {:?}",
+            v
+        );
     }
     v
 }

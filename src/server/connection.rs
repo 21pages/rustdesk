@@ -97,6 +97,21 @@ lazy_static::lazy_static! {
 pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub static MOUSE_MOVE_TIME: AtomicI64 = AtomicI64::new(0);
+#[cfg(windows)]
+static WINDOWS_SESSION_DEBUG_LOG_TIME: AtomicI64 = AtomicI64::new(0);
+
+#[cfg(windows)]
+fn should_log_windows_session_debug() -> bool {
+    const INTERVAL_MS: i64 = 5_000;
+    let now = get_time();
+    let last = WINDOWS_SESSION_DEBUG_LOG_TIME.load(Ordering::SeqCst);
+    if now.saturating_sub(last) < INTERVAL_MS {
+        return false;
+    }
+    WINDOWS_SESSION_DEBUG_LOG_TIME
+        .compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
 
 #[cfg(all(feature = "flutter", feature = "plugin_framework"))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1808,32 +1823,56 @@ impl Connection {
         pi: &mut PeerInfo,
         wait_session_id_confirm: &mut bool,
     ) {
-        let sessions = crate::platform::get_available_sessions(true);
-        log::info!("====DEBUG=== sessions count: {}", sessions.len());
-        log::info!("====DEBUG=== sessions: {:?}", sessions);
+        let log_debug = should_log_windows_session_debug();
+        let sessions = crate::platform::get_available_sessions_with_debug(true, log_debug);
+        if log_debug {
+            log::info!("====DEBUG=== sessions count: {}", sessions.len());
+            log::info!("====DEBUG=== sessions: {:?}", sessions);
+        }
 
         if let Some(current_sid) = crate::platform::get_current_process_session_id() {
-            log::info!("====DEBUG=== current_sid: {}", current_sid);
+            if log_debug {
+                log::info!("====DEBUG=== current_sid: {}", current_sid);
+            }
 
             let is_installed = crate::platform::is_installed();
-            log::info!("====DEBUG=== is_installed: {}", is_installed);
+            if log_debug {
+                log::info!("====DEBUG=== is_installed: {}", is_installed);
+            }
 
             let is_share_rdp = crate::platform::is_share_rdp();
-            log::info!("====DEBUG=== is_share_rdp: {}", is_share_rdp);
+            if log_debug {
+                log::info!("====DEBUG=== is_share_rdp: {}", is_share_rdp);
+            }
 
             let conn_count = raii::AuthedConnID::non_port_forward_conn_count();
-            log::info!("====DEBUG=== non_port_forward_conn_count: {}", conn_count);
+            if log_debug {
+                log::info!("====DEBUG=== non_port_forward_conn_count: {}", conn_count);
+            }
 
             let sessions_len_check = sessions.len() > 1;
-            log::info!("====DEBUG=== sessions.len() > 1: {}", sessions_len_check);
+            if log_debug {
+                log::info!("====DEBUG=== sessions.len() > 1: {}", sessions_len_check);
+            }
 
             let current_sid_in_sessions = sessions.iter().any(|e| e.sid == current_sid);
-            log::info!("====DEBUG=== current_sid in sessions: {}", current_sid_in_sessions);
+            if log_debug {
+                log::info!(
+                    "====DEBUG=== current_sid in sessions: {}",
+                    current_sid_in_sessions
+                );
+            }
 
             let client_version = get_version_number(&self.lr.version);
             let required_version = get_version_number("1.2.4");
-            log::info!("====DEBUG=== client_version: {}, required_version: {}, check: {}",
-                client_version, required_version, client_version >= required_version);
+            if log_debug {
+                log::info!(
+                    "====DEBUG=== client_version: {}, required_version: {}, check: {}",
+                    client_version,
+                    required_version,
+                    client_version >= required_version
+                );
+            }
 
             if is_installed
                 && is_share_rdp
@@ -1842,7 +1881,9 @@ impl Connection {
                 && current_sid_in_sessions
                 && client_version >= required_version
             {
-                log::info!("====DEBUG=== All conditions met, setting windows_sessions");
+                if log_debug {
+                    log::info!("====DEBUG=== All conditions met, setting windows_sessions");
+                }
                 pi.windows_sessions = Some(WindowsSessions {
                     sessions,
                     current_sid,
@@ -1850,10 +1891,10 @@ impl Connection {
                 })
                 .into();
                 *wait_session_id_confirm = true;
-            } else {
+            } else if log_debug {
                 log::info!("====DEBUG=== Conditions not met, windows_sessions not set");
             }
-        } else {
+        } else if log_debug {
             log::info!("====DEBUG=== current_sid is None");
         }
     }
