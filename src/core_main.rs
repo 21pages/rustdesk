@@ -168,8 +168,13 @@ pub fn core_main() -> Option<Vec<String>> {
         && !_is_run_as_system
     {
         use crate::portable_service::client;
-        if let Err(e) = client::start_portable_service(client::StartPara::Direct) {
-            log::error!("Failed to start portable service: {:?}", e);
+        // Create a temporary runtime to call the async function
+        if let Ok(rt) = tokio::runtime::Runtime::new() {
+            if let Err(e) = rt.block_on(client::start_portable_service(client::StartPara::Direct)) {
+                log::error!("Failed to start portable service: {:?}", e);
+            }
+        } else {
+            log::error!("Failed to create tokio runtime for portable service");
         }
     }
     #[cfg(windows)]

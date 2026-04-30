@@ -536,7 +536,7 @@ pub mod client {
         Logon(String, String),
     }
 
-    pub(crate) fn start_portable_service(para: StartPara) -> ResultType<()> {
+    pub(crate) async fn start_portable_service(para: StartPara) -> ResultType<()> {
         log::info!("start portable service");
         if RUNNING.lock().unwrap().clone() {
             bail!("already running");
@@ -619,7 +619,7 @@ pub mod client {
                     password.as_str(),
                     &exe,
                     "--portable-service",
-                ) {
+                ).await {
                     *SHMEM.lock().unwrap() = None;
                     bail!("Failed to run portable service process: {}", e);
                 }

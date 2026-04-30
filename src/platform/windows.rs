@@ -2653,15 +2653,7 @@ pub fn is_user_token_admin(user_token: HANDLE) -> ResultType<bool> {
     }
 }
 
-pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) -> ResultType<()> {
-    let last_error_table = HashMap::from([
-        (
-            ERROR_LOGON_FAILURE,
-            "The user name or password is incorrect.",
-        ),
-        (ERROR_ACCESS_DENIED, "Access is denied."),
-    ]);
-
+fn create_process_with_logon_impl(user: &str, pwd: &str, exe: &str, arg: &str) -> Result<(), u32> {
     unsafe {
         let user_split = user.split("\\").collect::<Vec<&str>>();
         let wuser = wide_string(user_split.get(1).unwrap_or(&user));
@@ -2695,7 +2687,53 @@ pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) ->
                 &mut pi as *mut PROCESS_INFORMATION,
             )
         {
-            let last_error = GetLastError();
+            return Err(GetLastError());
+        }
+    }
+    Ok(())
+}
+
+pub async fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) -> ResultType<()> {
+    let last_error_table = HashMap::from([
+        (
+            ERROR_LOGON_FAILURE,
+            "The user name or password is incorrect.",
+        ),
+        (ERROR_ACCESS_DENIED, "Access is denied."),
+    ]);
+
+    let user = user.to_string();
+    let pwd = pwd.to_string();
+    let exe = exe.to_string();
+    let arg = arg.to_string();
+
+    let result = tokio::task::spawn_blocking(move || {
+        create_process_with_logon_impl(&user, &pwd, &exe, &arg)
+    }).await.map_err(|e| anyhow::anyhow!("Task join error: {}", e))?;
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(last_error) => {
+            // Retry once on ERROR_ACCESS_DENIED as it may be a transient timing issue
+            if last_error == ERROR_ACCESS_DENIED {
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                let result = tokio::task::spawn_blocking(move || {
+                    create_process_with_logon_impl(&user, &pwd, &exe, &arg)
+                }).await.map_err(|e| anyhow::anyhow!("Task join error: {}", e))?;
+
+                match result {
+                    Ok(()) => return Ok(()),
+                    Err(last_error) => {
+                        bail!(
+                            "CreateProcessWithLogonW failed : \"{}\", error {}",
+                            last_error_table
+                                .get(&last_error)
+                                .unwrap_or(&"Unknown error"),
+                            io::Error::from_raw_os_error(last_error as _)
+                        );
+                    }
+                }
+            }
             bail!(
                 "CreateProcessWithLogonW failed : \"{}\", error {}",
                 last_error_table
@@ -2705,7 +2743,6 @@ pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) ->
             );
         }
     }
-    return Ok(());
 }
 
 pub fn set_path_permission(dir: &Path, permission: &str) -> ResultType<()> {
