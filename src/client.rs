@@ -204,7 +204,6 @@ impl Client {
         debug_assert!(peer == interface.get_id());
         interface.update_direct(None);
         interface.update_received(false);
-        interface.clear_easy_access_challenge();
         match Self::_start(peer, key, token, conn_type, interface.clone()).await {
             Err(err) => {
                 let err_str = err.to_string();
@@ -287,6 +286,11 @@ impl Client {
         } else {
             (peer, "", key, token)
         };
+        interface
+            .get_lch()
+            .write()
+            .unwrap()
+            .start_easy_access_login_task(peer);
         let (rendezvous_server, servers, contained) = if other_server.is_empty() {
             crate::get_rendezvous_server(1_000).await
         } else {
@@ -342,7 +346,6 @@ impl Client {
         );
         if udp.0.is_none() {
             let conn = fut.await?;
-            interface.get_lch().write().unwrap().controller_config = conn.3;
             return Ok((conn.0, conn.1, conn.2));
         }
         let mut connect_futures = Vec::new();
@@ -361,10 +364,7 @@ impl Client {
         );
         connect_futures.push(fut.boxed());
         match select_ok(connect_futures).await {
-            Ok(conn) => {
-                interface.get_lch().write().unwrap().controller_config = conn.0 .3;
-                Ok((conn.0 .0, conn.0 .1, conn.0 .2))
-            }
+            Ok(conn) => Ok((conn.0 .0, conn.0 .1, conn.0 .2)),
             Err(e) => Err(e),
         }
     }
@@ -390,7 +390,6 @@ impl Client {
         ),
         (i32, String),
         bool,
-        Option<ControllerConfig>,
     )> {
         let mut start = Instant::now();
         let mut socket = connect_tcp(&*rendezvous_server, CONNECT_TIMEOUT).await;
@@ -461,7 +460,6 @@ impl Client {
         };
         let udp_nat_port = udp.1.map(|x| *x.lock().unwrap()).unwrap_or(0);
         let punch_type = if udp_nat_port > 0 { "UDP" } else { "TCP" };
-        let mut controller_config = None;
         msg_out.set_punch_hole_request(PunchHoleRequest {
             id: peer.to_owned(),
             token: token.to_owned(),
@@ -515,7 +513,6 @@ impl Client {
                             relay_server = ph.relay_server;
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
                             feedback = ph.feedback;
-                            controller_config = ph.controller_config.into_option();
                             let s = udp.0.take();
                             if ph.is_udp && s.is_some() {
                                 if let Some(s) = s {
@@ -555,7 +552,6 @@ impl Client {
                             }
                         }
                         signed_id_pk = rr.pk().into();
-                        controller_config = rr.controller_config.into_option();
                         let fut = Self::create_relay(
                             &peer,
                             rr.uuid,
@@ -586,7 +582,6 @@ impl Client {
                             (conn, typ == "IPv6", pk, kcp, typ),
                             (feedback, rendezvous_server),
                             false,
-                            controller_config,
                         ));
                     }
                     _ => {
@@ -630,12 +625,10 @@ impl Client {
                 udp.0,
                 ipv6.0,
                 punch_type,
-                &mut controller_config,
             )
             .await?,
             (feedback, rendezvous_server),
             true,
-            controller_config,
         ))
     }
 
@@ -658,7 +651,6 @@ impl Client {
         udp_socket_nat: Option<Arc<UdpSocket>>,
         udp_socket_v6: Option<Arc<UdpSocket>>,
         punch_type: &str,
-        controller_config: &mut Option<ControllerConfig>,
     ) -> ResultType<(
         Stream,
         bool,
@@ -733,7 +725,6 @@ impl Client {
                     key,
                     token,
                     conn_type,
-                    controller_config,
                 )
                 .await;
                 if let Err(e) = conn {
@@ -854,7 +845,6 @@ impl Client {
         key: &str,
         token: &str,
         conn_type: ConnType,
-        controller_config: &mut Option<ControllerConfig>,
     ) -> ResultType<Stream> {
         let mut succeed = false;
         let mut uuid = "".to_owned();
@@ -899,7 +889,6 @@ impl Client {
                     if !rs.refuse_reason.is_empty() {
                         bail!(rs.refuse_reason);
                     }
-                    *controller_config = rs.controller_config.into_option();
                     succeed = true;
                     break;
                 }
@@ -1772,7 +1761,8 @@ pub struct LoginConfigHandler {
     pub enable_trusted_devices: bool,
     pub record_state: bool,
     pub record_permission: bool,
-    pub controller_config: Option<ControllerConfig>,
+    easy_access_login: Option<EasyAccessLogin>,
+    easy_access_login_task: Option<tokio::task::JoinHandle<Option<EasyAccessLogin>>>,
 }
 
 impl Deref for LoginConfigHandler {
@@ -2645,16 +2635,15 @@ impl LoginConfigHandler {
         };
         let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
         if avatar.is_empty() {
-            avatar = serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option(
-                "user_info",
-            ))
-            .ok()
-            .and_then(|x| {
-                x.get("avatar")
-                    .and_then(|x| x.as_str())
-                    .map(|x| x.trim().to_owned())
-            })
-            .unwrap_or_default();
+            avatar =
+                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                    .ok()
+                    .and_then(|x| {
+                        x.get("avatar")
+                            .and_then(|x| x.as_str())
+                            .map(|x| x.trim().to_owned())
+                    })
+                    .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
@@ -2700,11 +2689,7 @@ impl LoginConfigHandler {
         } else {
             Bytes::new()
         };
-        let easy_access_challenge: Bytes = self
-            .controller_config
-            .as_ref()
-            .map(|config| config.easy_access_challenge.clone())
-            .unwrap_or_default();
+        let easy_access_login = self.easy_access_login.take().into();
         let mut lr = LoginRequest {
             username: pure_id,
             password: password.into(),
@@ -2722,7 +2707,7 @@ impl LoginConfigHandler {
             .into(),
             hwid,
             avatar,
-            easy_access_challenge,
+            easy_access_login,
             ..Default::default()
         };
         match self.conn_type {
@@ -2749,6 +2734,120 @@ impl LoginConfigHandler {
         msg_out.set_login_request(lr);
         msg_out
     }
+
+    async fn request_easy_access_grant(peer: &str) -> Option<EasyAccessLogin> {
+        let access_token = LocalConfig::get_option("access_token");
+        if access_token.is_empty() {
+            return None;
+        }
+        let api_server = crate::get_api_server(
+            Config::get_option("api-server"),
+            Config::get_option("custom-rendezvous-server"),
+        );
+        if api_server.is_empty() || crate::is_public(&api_server) {
+            return None;
+        }
+
+        #[derive(Serialize)]
+        struct EasyAccessGrantRequest<'a> {
+            id: &'a str,
+        }
+
+        #[derive(Deserialize)]
+        struct EasyAccessGrantResponse {
+            #[serde(default)]
+            challenge: String,
+            #[serde(default)]
+            grant: String,
+        }
+
+        let body = match serde_json::to_string(&EasyAccessGrantRequest { id: peer }) {
+            Ok(body) => body,
+            Err(err) => {
+                log::warn!("Easy access grant request serialize failed: {}", err);
+                return None;
+            }
+        };
+        let url = format!("{}/api/easy_access/grant", api_server);
+        let header = format!("Authorization: Bearer {}", access_token);
+        let response = match crate::post_request(url, body, &header).await {
+            Ok(response) => response,
+            Err(err) => {
+                log::debug!("Easy access grant request failed: {}", err);
+                return None;
+            }
+        };
+        let response: EasyAccessGrantResponse = match serde_json::from_str(&response) {
+            Ok(response) => response,
+            Err(err) => {
+                log::warn!("Easy access grant response parse failed: {}", err);
+                return None;
+            }
+        };
+        let challenge = match crate::decode64(&response.challenge) {
+            Ok(challenge) if !challenge.is_empty() => challenge,
+            Ok(_) => return None,
+            Err(err) => {
+                log::warn!("Easy access grant challenge invalid: {}", err);
+                return None;
+            }
+        };
+        let grant = match crate::decode64(&response.grant) {
+            Ok(grant) if !grant.is_empty() => match EasyAccessGrant::parse_from_bytes(&grant) {
+                Ok(grant) => grant,
+                Err(err) => {
+                    log::warn!("Easy access grant parse failed: {}", err);
+                    return None;
+                }
+            },
+            Ok(_) => return None,
+            Err(err) => {
+                log::warn!("Easy access grant payload invalid: {}", err);
+                return None;
+            }
+        };
+        Some(EasyAccessLogin {
+            challenge: challenge.into(),
+            grant: Some(grant).into(),
+            ..Default::default()
+        })
+    }
+
+    fn start_easy_access_login_task(&mut self, peer: &str) {
+        if let Some(task) = self.easy_access_login_task.take() {
+            task.abort();
+        }
+        self.easy_access_login = None;
+
+        let easy_access_peer = peer.to_owned();
+        let easy_access_login_task =
+            tokio::spawn(async move { Self::request_easy_access_grant(&easy_access_peer).await });
+        self.easy_access_login_task = Some(easy_access_login_task);
+    }
+
+    async fn wait_easy_access_login(lc: Arc<RwLock<LoginConfigHandler>>) {
+        const EASY_ACCESS_GRANT_LOGIN_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+
+        let task = lc.write().unwrap().easy_access_login_task.take();
+        let Some(mut task) = task else {
+            return;
+        };
+        match tokio::time::timeout(EASY_ACCESS_GRANT_LOGIN_WAIT_TIMEOUT, &mut task).await {
+            Ok(Ok(easy_access_login)) => {
+                lc.write().unwrap().easy_access_login = easy_access_login;
+            }
+            Ok(Err(err)) => {
+                if !err.is_cancelled() {
+                    log::debug!("Easy access grant task failed: {}", err);
+                }
+            }
+            Err(_) => {
+                task.abort();
+                log::debug!("Easy access grant wait timed out");
+            }
+        }
+    }
+
 
     pub fn update_supported_decodings(&self) -> Message {
         let decoding = scrap::codec::Decoder::supported_decodings(
@@ -3556,6 +3655,7 @@ async fn send_login(
     password: Vec<u8>,
     peer: &mut Stream,
 ) {
+    LoginConfigHandler::wait_easy_access_login(lc.clone()).await;
     let msg_out = lc
         .write()
         .unwrap()
@@ -3613,6 +3713,7 @@ async fn send_switch_login_request(
     peer: &mut Stream,
     uuid: Uuid,
 ) {
+    LoginConfigHandler::wait_easy_access_login(lc.clone()).await;
     let mut msg_out = Message::new();
     msg_out.set_switch_sides_response(SwitchSidesResponse {
         uuid: Bytes::from(uuid.as_bytes().to_vec()),
@@ -3671,11 +3772,6 @@ pub trait Interface: Send + Clone + 'static + Sized {
         self.get_lch().write().unwrap().received = received;
     }
 
-    fn clear_easy_access_challenge(&self) {
-        if let Some(config) = self.get_lch().write().unwrap().controller_config.as_mut() {
-            config.easy_access_challenge = Default::default();
-        }
-    }
 
     fn on_establish_connection_error(&self, err: String) {
         let title = "Connection Error";
