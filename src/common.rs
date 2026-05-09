@@ -1123,11 +1123,40 @@ pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
     format!("{}/api/audit/{}", url, typ)
 }
 
+fn url_requires_strict_transport(url: &reqwest::Url) -> bool {
+    url.path().starts_with("/api/easy_access/")
+}
+
+fn validate_strict_transport_url(url: &str) -> ResultType<()> {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return Ok(());
+    };
+    if !url_requires_strict_transport(&parsed) {
+        return Ok(());
+    }
+    if !cfg!(debug_assertions) && parsed.scheme() != "https" {
+        bail!("strict HTTPS URL must use https://");
+    }
+    Ok(())
+}
+
+fn url_allows_danger_accept_invalid_cert(url: &str) -> bool {
+    reqwest::Url::parse(url)
+        .map(|url| !url_requires_strict_transport(&url))
+        .unwrap_or(true)
+}
+
 pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
+    validate_strict_transport_url(&url)?;
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
-    let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
+    let allow_danger_accept_invalid_cert = url_allows_danger_accept_invalid_cert(&url);
+    let danger_accept_invalid_cert = if allow_danger_accept_invalid_cert {
+        get_cached_tls_accept_invalid_cert(tls_url)
+    } else {
+        Some(false)
+    };
     let response = post_request_(
         &url,
         tls_url,
@@ -1136,6 +1165,7 @@ pub async fn post_request(url: String, body: String, header: &str) -> ResultType
         tls_type,
         danger_accept_invalid_cert,
         danger_accept_invalid_cert,
+        allow_danger_accept_invalid_cert,
     )
     .await?;
     Ok(response.text().await?)
@@ -1150,6 +1180,7 @@ async fn post_request_(
     tls_type: Option<TlsType>,
     danger_accept_invalid_cert: Option<bool>,
     original_danger_accept_invalid_cert: Option<bool>,
+    allow_danger_accept_invalid_cert: bool,
 ) -> ResultType<reqwest::Response> {
     let mut req = create_http_client_async(
         tls_type.unwrap_or(TlsType::Rustls),
@@ -1189,7 +1220,10 @@ async fn post_request_(
                 Ok(resp)
             }
             Err(e) => {
-                if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
+                if allow_danger_accept_invalid_cert
+                    && (tls_type.is_none() || danger_accept_invalid_cert.is_none())
+                    && e.is_request()
+                {
                     if danger_accept_invalid_cert.is_none() {
                         log::warn!(
                             "HTTP request failed: {:?}, try again, danger accept invalid cert",
@@ -1203,6 +1237,7 @@ async fn post_request_(
                             tls_type,
                             Some(true),
                             original_danger_accept_invalid_cert,
+                            allow_danger_accept_invalid_cert,
                         )
                         .await
                     } else {
@@ -1215,6 +1250,7 @@ async fn post_request_(
                             Some(TlsType::NativeTls),
                             original_danger_accept_invalid_cert,
                             original_danger_accept_invalid_cert,
+                            allow_danger_accept_invalid_cert,
                         )
                         .await
                     }
@@ -1241,6 +1277,7 @@ async fn get_http_response_async(
     tls_type: Option<TlsType>,
     danger_accept_invalid_cert: Option<bool>,
     original_danger_accept_invalid_cert: Option<bool>,
+    allow_danger_accept_invalid_cert: bool,
 ) -> ResultType<reqwest::Response> {
     let http_client = create_http_client_async(
         tls_type.unwrap_or(TlsType::Rustls),
@@ -1301,7 +1338,10 @@ async fn get_http_response_async(
                 Ok(resp)
             }
             Err(e) => {
-                if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
+                if allow_danger_accept_invalid_cert
+                    && (tls_type.is_none() || danger_accept_invalid_cert.is_none())
+                    && e.is_request()
+                {
                     if danger_accept_invalid_cert.is_none() {
                         log::warn!(
                             "HTTP request failed: {:?}, try again, danger accept invalid cert",
@@ -1316,6 +1356,7 @@ async fn get_http_response_async(
                             tls_type,
                             Some(true),
                             original_danger_accept_invalid_cert,
+                            allow_danger_accept_invalid_cert,
                         )
                         .await
                     } else {
@@ -1329,6 +1370,7 @@ async fn get_http_response_async(
                             Some(TlsType::NativeTls),
                             original_danger_accept_invalid_cert,
                             original_danger_accept_invalid_cert,
+                            allow_danger_accept_invalid_cert,
                         )
                         .await
                     }
@@ -1347,10 +1389,16 @@ pub async fn http_request_sync(
     body: Option<String>,
     header: String,
 ) -> ResultType<String> {
+    validate_strict_transport_url(&url)?;
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
-    let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
+    let allow_danger_accept_invalid_cert = url_allows_danger_accept_invalid_cert(&url);
+    let danger_accept_invalid_cert = if allow_danger_accept_invalid_cert {
+        get_cached_tls_accept_invalid_cert(tls_url)
+    } else {
+        Some(false)
+    };
     let response = get_http_response_async(
         &url,
         tls_url,
@@ -1360,6 +1408,7 @@ pub async fn http_request_sync(
         tls_type,
         danger_accept_invalid_cert,
         danger_accept_invalid_cert,
+        allow_danger_accept_invalid_cert,
     )
     .await?;
     // Serialize response headers

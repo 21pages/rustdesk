@@ -309,6 +309,7 @@ pub struct Connection {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     terminal_user_token: Option<TerminalUserToken>,
     terminal_generic_service: Option<Box<GenericService>>,
+    easy_access_verified: bool,
 }
 
 impl ConnInner {
@@ -353,6 +354,7 @@ const SEND_TIMEOUT_VIDEO: u64 = 12_000;
 const SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO * 10;
 const SESSION_TIMEOUT: Duration = Duration::from_secs(30);
 const EASY_ACCESS_CHALLENGE_LEN: usize = 32;
+const EASY_ACCESS_GRANT_ID_LEN: usize = 16;
 
 impl Connection {
     pub async fn start(
@@ -495,6 +497,7 @@ impl Connection {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             terminal_user_token: None,
             terminal_generic_service: None,
+            easy_access_verified: false,
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -2090,7 +2093,14 @@ impl Connection {
         Self::is_permission_enabled_locally(enable_prefix_option)
     }
 
-    async fn verify_easy_access(&self) -> bool {
+    async fn verify_easy_access(&mut self) -> bool {
+        // If already verified in this connection, return cached result.
+        // This prevents re-consuming the one-time grant when client retries
+        // LoginRequest (e.g., desktop not ready on first attempt).
+        if self.easy_access_verified {
+            return true;
+        }
+
         const EASY_ACCESS_GRANT_VERSION: u32 = 1;
 
         fn open_easy_access_device_bound_proof(
@@ -2133,6 +2143,32 @@ impl Connection {
             bytes.extend_from_slice(&(device_nonce.len() as u32).to_be_bytes());
             bytes.extend_from_slice(device_nonce);
             bytes.push(u8::from(approved));
+            bytes
+        }
+
+        fn serialize_easy_access_manager_approval_signature_payload(
+            target_binding_bytes: &[u8],
+        ) -> Vec<u8> {
+            const EASY_ACCESS_MANAGER_APPROVAL_SIGNATURE_DOMAIN: &[u8] = b"EAM1";
+
+            let mut bytes = Vec::with_capacity(
+                EASY_ACCESS_MANAGER_APPROVAL_SIGNATURE_DOMAIN.len() + target_binding_bytes.len(),
+            );
+            bytes.extend_from_slice(EASY_ACCESS_MANAGER_APPROVAL_SIGNATURE_DOMAIN);
+            bytes.extend_from_slice(target_binding_bytes);
+            bytes
+        }
+
+        fn serialize_easy_access_server_approval_signature_payload(
+            manager_approval_bytes: &[u8],
+        ) -> Vec<u8> {
+            const EASY_ACCESS_SERVER_APPROVAL_SIGNATURE_DOMAIN: &[u8] = b"EAS1";
+
+            let mut bytes = Vec::with_capacity(
+                EASY_ACCESS_SERVER_APPROVAL_SIGNATURE_DOMAIN.len() + manager_approval_bytes.len(),
+            );
+            bytes.extend_from_slice(EASY_ACCESS_SERVER_APPROVAL_SIGNATURE_DOMAIN);
+            bytes.extend_from_slice(manager_approval_bytes);
             bytes
         }
 
@@ -2299,12 +2335,12 @@ impl Connection {
         }
 
         let grant_id = self.lr.easy_access_grant_id.clone();
-        if grant_id.is_empty() {
+        if grant_id.len() != EASY_ACCESS_GRANT_ID_LEN {
             return false;
         };
         let target_challenge = self.hash.easy_access_challenge.clone();
-        if target_challenge.is_empty() {
-            log::warn!("Easy access target challenge missing");
+        if target_challenge.len() != EASY_ACCESS_CHALLENGE_LEN {
+            log::warn!("Easy access target challenge invalid");
             return false;
         }
         let target_uuid = hbb_common::get_uuid();
@@ -2313,12 +2349,12 @@ impl Connection {
             return false;
         }
         let (target_sk, target_pk) = Config::get_key_pair();
-        if target_sk.is_empty() {
-            log::warn!("Easy access target private key missing");
+        if target_sk.len() != sign::SECRETKEYBYTES {
+            log::warn!("Easy access target private key invalid");
             return false;
         }
-        if target_pk.is_empty() {
-            log::warn!("Easy access target public key missing");
+        if target_pk.len() != sign::PUBLICKEYBYTES {
+            log::warn!("Easy access target public key invalid");
             return false;
         }
         let server_key = crate::common::get_key(true).await;
@@ -2333,6 +2369,7 @@ impl Connection {
             consume_easy_access_grant(&grant_id, target_uuid.as_slice(), &target_sk, &server_pk)
                 .await
         else {
+            log::warn!("Easy access consume_easy_access_grant returned None");
             return false;
         };
         if ticket.version != EASY_ACCESS_GRANT_VERSION {
@@ -2369,7 +2406,7 @@ impl Connection {
             };
         if !sign::verify_detached(
             &server_approval_signature,
-            &manager_approval_bytes,
+            &serialize_easy_access_server_approval_signature_payload(&manager_approval_bytes),
             &server_pk,
         ) {
             log::warn!("Easy access server approval signature verify failed");
@@ -2395,8 +2432,8 @@ impl Connection {
             log::warn!("Easy access manager approval signature missing");
             return false;
         }
-        if manager_approval.manager_id.is_empty() {
-            log::warn!("Easy access manager id missing");
+        if manager_approval.manager_id.len() != EASY_ACCESS_GRANT_ID_LEN {
+            log::warn!("Easy access manager id invalid");
             return false;
         }
         if target_binding.challenge.as_ref() != target_challenge.as_ref() {
@@ -2411,8 +2448,8 @@ impl Connection {
             log::warn!("Easy access target public key mismatch");
             return false;
         }
-        if target_binding.grant_id.is_empty() {
-            log::warn!("Easy access grant id missing");
+        if target_binding.grant_id.len() != EASY_ACCESS_GRANT_ID_LEN {
+            log::warn!("Easy access grant id invalid");
             return false;
         }
         let manager_pk = match sign::PublicKey::from_slice(&manager_approval.manager_pk) {
@@ -2439,7 +2476,7 @@ impl Connection {
         };
         if !sign::verify_detached(
             &manager_approval_signature,
-            &target_binding_bytes,
+            &serialize_easy_access_manager_approval_signature_payload(&target_binding_bytes),
             &manager_pk,
         ) {
             log::warn!("Easy access manager approval signature verify failed");
@@ -2450,6 +2487,7 @@ impl Connection {
             return false;
         }
         log::info!("Easy access grant verified");
+        self.easy_access_verified = true;
         true
     }
 
@@ -2676,19 +2714,22 @@ impl Connection {
                 self.send_login_error(crate::client::LOGIN_MSG_OFFLINE)
                     .await;
                 return false;
-            } else if err_msg == crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY
-                && !lr.easy_access_grant_id.is_empty()
-            {
-                self.send_login_error(err_msg).await;
-                return true;
             } else if self.verify_easy_access().await {
-                // Easy access: token verified, skip password validation and click accept
-                #[cfg(target_os = "linux")]
-                self.linux_headless_handle.wait_desktop_cm_ready().await;
-                if !self.send_logon_response_and_keep_alive().await {
-                    return false;
+                // TODO: Test this flow on headless Linux to ensure grant is not wasted when DESKTOP_SESSION_NOT_READY occurs.
+                if err_msg.is_empty() {
+                    #[cfg(target_os = "linux")]
+                    self.linux_headless_handle.wait_desktop_cm_ready().await;
+                    if !self.send_logon_response_and_keep_alive().await {
+                        return false;
+                    }
+                    self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
+                } else {
+                    // TODO: On Linux headless, err_msg may be non-empty (e.g. DESKTOP_SESSION_NOT_READY),
+                    // but the grant has already been consumed by verify_easy_access() above.
+                    // The controlling side will need to re-apply for a new grant to retry.
+                    // Consider checking desktop readiness before consuming the grant.
+                    self.send_login_error(err_msg).await;
                 }
-                self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
             } else if (password::approve_mode() == ApproveMode::Click
                 && !(crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon()))
