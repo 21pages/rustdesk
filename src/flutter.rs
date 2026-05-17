@@ -694,7 +694,8 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     /// unused in flutter, use switch_display or set_peer_info
-    fn set_display(&self, _x: i32, _y: i32, _w: i32, _h: i32, _cursor_embedded: bool, _scale: f64) {}
+    fn set_display(&self, _x: i32, _y: i32, _w: i32, _h: i32, _cursor_embedded: bool, _scale: f64) {
+    }
 
     fn update_privacy_mode(&self) {
         self.push_event::<&str>("update_privacy_mode", &[], &[]);
@@ -1332,7 +1333,13 @@ pub fn session_add(
         // clean it up so the new session_add can succeed instead of bailing,
         // which would leave the user stuck on a "Connecting..." spinner with
         // no error surfaced (the Flutter side ignores sessionAddSync's return).
-        if session.connection_round_state.lock().unwrap().is_disconnected() {
+        if session
+            .connection_round_state
+            .lock()
+            .unwrap()
+            .is_disconnected()
+        {
+            log::info!("========================= remove existing session disconnected");
             sessions::remove_session_by_session_id(&session_id);
         } else if session.lc.read().unwrap().conn_type != conn_type {
             bail!("same session id is found with different conn type?");
