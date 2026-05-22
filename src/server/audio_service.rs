@@ -91,18 +91,28 @@ pub fn set_audio_backend(backend: AudioBackend) {
 
 /// Get available audio backends for the current platform
 pub fn available_audio_backends() -> Vec<AudioBackend> {
-    let mut backends = vec![AudioBackend::Wasapi];
     #[cfg(all(windows, feature = "asio"))]
-    if is_asio_available() {
-        backends.push(AudioBackend::Asio);
+    {
+        let mut backends = vec![AudioBackend::Wasapi];
+        if is_asio_available() {
+            backends.push(AudioBackend::Asio);
+        }
+        backends
     }
-    backends
+    #[cfg(not(all(windows, feature = "asio")))]
+    {
+        vec![AudioBackend::Wasapi]
+    }
 }
 
 /// Get all available audio devices for a specific backend
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 pub fn get_audio_devices(backend: AudioBackend) -> Vec<String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+
     let mut devices = Vec::new();
+    #[cfg(not(all(windows, feature = "asio")))]
+    let _ = backend;
     
     #[cfg(all(windows, feature = "asio"))]
     {
@@ -316,22 +326,12 @@ mod cpal_impl {
         #[cfg(all(windows, feature = "asio"))]
         {
             if super::get_audio_backend() == super::AudioBackend::Asio {
-                return HOST_ASIO.as_ref()
-                    .map_err(|e| anyhow::anyhow!("ASIO host unavailable: {:?}", e));
+                return HOST_ASIO
+                    .as_ref()
+                    .map_err(|e| anyhow!("ASIO host unavailable: {:?}", e));
             }
         }
         Ok(&HOST)
-    }
-
-    /// Check if ASIO host is available
-    #[cfg(all(windows, feature = "asio"))]
-    fn is_asio_host_available() -> bool {
-        HOST_ASIO.is_ok()
-    }
-
-    #[cfg(not(all(windows, feature = "asio")))]
-    fn is_asio_host_available() -> bool {
-        false
     }
 
     fn run_restart(sp: EmptyExtraFieldService, state: &mut State) -> ResultType<()> {
@@ -531,26 +531,6 @@ mod cpal_impl {
         log::info!("Default input format: {:?}", format);
         Ok((device, format))
     }
-            {
-                if d.name().unwrap_or("".to_owned()) == audio_input {
-                    device = Some(d);
-                    break;
-                }
-            }
-        }
-        let device = device.unwrap_or(
-            HOST.default_input_device()
-                .with_context(|| "Failed to get default input device for loopback")?,
-        );
-        log::info!("Input device: {}", device.name().unwrap_or("".to_owned()));
-        let format = device
-            .default_input_config()
-            .map_err(|e| anyhow!(e))
-            .with_context(|| "Failed to get default input format")?;
-        log::info!("Default input format: {:?}", format);
-        Ok((device, format))
-    }
-
     fn play(sp: &GenericService) -> ResultType<(Box<dyn StreamTrait>, Arc<Message>)> {
         use cpal::SampleFormat::*;
         let (device, config) = get_device()?;
