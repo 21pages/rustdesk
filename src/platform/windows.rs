@@ -1419,7 +1419,14 @@ fn get_install_info_with_subkey(subkey: String) -> (String, String, String, Stri
 
 pub fn copy_raw_cmd(src_raw: &str, _raw: &str, _path: &str) -> ResultType<String> {
     let main_raw = format!(
-        "XCOPY \"{}\" \"{}\" /Y /E /H /C /I /K /R /Z",
+        "
+        if not exist \"{src_raw}\" exit /b 1
+        XCOPY \"{}\" \"{}\" /Y /E /H /C /I /K /R /Z
+        if errorlevel 1 exit /b %ERRORLEVEL%
+        if /I not \"{src_raw}\"==\"{_raw}\" copy /Y \"{src_raw}\" \"{_raw}\"
+        if errorlevel 1 exit /b %ERRORLEVEL%
+        if not exist \"{_raw}\" exit /b 1
+        ",
         PathBuf::from(src_raw)
             .parent()
             .ok_or(anyhow!("Can't get parent directory of {src_raw}"))?
@@ -1728,7 +1735,33 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
         import_config = get_import_config(&exe),
     );
     run_cmds(cmds, debug, "install")?;
-    run_after_run_cmds(silent);
+    let target_exists = Path::new(&exe).exists();
+    log::info!(
+        "install target check: subkey={}, install_dir={}, target_exe={}, source_exe={}, target_exists={}, source_exists={}",
+        subkey,
+        path,
+        exe,
+        src_exe,
+        target_exists,
+        Path::new(&src_exe).exists(),
+    );
+    if !target_exists {
+        log::error!(
+            "Installed executable missing after install: subkey={}, install_dir={}, target_exe={}, source_exe={}, source_exists={}, install_dir_exists={}, current_dir={}",
+            subkey,
+            path,
+            exe,
+            src_exe,
+            Path::new(&src_exe).exists(),
+            Path::new(&path).exists(),
+            std::env::current_dir()
+                .ok()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "<unknown>".to_string()),
+        );
+        bail!("Installed executable not found: {}", exe);
+    }
+    run_after_run_cmds_with_exe(silent, &exe);
     Ok(())
 }
 
@@ -3721,16 +3754,70 @@ sc start {app_name}
 }
 
 fn run_after_run_cmds(silent: bool) {
-    let (_, _, _, exe) = get_install_info();
+    let (subkey, path, start_menu, exe) = get_install_info();
+    log::info!(
+        "post-run target resolved: subkey={}, install_dir={}, start_menu={}, exe={}, exists={}, current_exe={}",
+        subkey,
+        path,
+        start_menu,
+        exe,
+        Path::new(&exe).exists(),
+        std::env::current_exe()
+            .ok()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<unknown>".to_string()),
+    );
+    run_after_run_cmds_with_exe(silent, &exe);
+}
+
+fn run_after_run_cmds_with_exe(silent: bool, exe: &str) {
+    let current_exe = std::env::current_exe()
+        .ok()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "<unknown>".to_string());
+    let current_dir = std::env::current_dir()
+        .ok()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "<unknown>".to_string());
+    let exe_exists = Path::new(exe).exists();
+    log::info!(
+        "post-run launch attempt: exe={}, exists={}, current_exe={}, current_dir={}, stop_service={}, silent={}",
+        exe,
+        exe_exists,
+        current_exe,
+        current_dir,
+        Config::get_option("stop-service"),
+        silent,
+    );
     if !silent {
         log::debug!("Spawn new window");
-        allow_err!(std::process::Command::new("cmd")
+        if let Err(err) = std::process::Command::new("cmd")
             .args(&["/c", "timeout", "/t", "2", "&", &format!("{exe}")])
             .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
-            .spawn());
+            .spawn()
+        {
+            log::error!(
+                "Failed to spawn delayed launch wrapper: err={:?}, exe={}, exists={}, current_exe={}, current_dir={}",
+                err,
+                exe,
+                exe_exists,
+                current_exe,
+                current_dir,
+            );
+        }
     }
     if Config::get_option("stop-service") != "Y" {
-        allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());
+        match std::process::Command::new(exe).arg("--tray").spawn() {
+            Ok(_) => log::info!("Spawned tray process: {}", exe),
+            Err(err) => log::error!(
+                "Failed to spawn tray process: err={:?}, exe={}, exists={}, current_exe={}, current_dir={}",
+                err,
+                exe,
+                exe_exists,
+                current_exe,
+                current_dir,
+            ),
+        }
     }
     std::thread::sleep(std::time::Duration::from_millis(300));
 }
