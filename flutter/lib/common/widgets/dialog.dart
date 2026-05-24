@@ -827,6 +827,90 @@ void enterPasswordDialog(
   );
 }
 
+void selectAuthMethodDialog(
+    SessionID sessionId, OverlayDialogManager dialogManager, String methods) {
+  final supported = methods
+      .split(',')
+      .map((method) => method.trim())
+      .where((method) => method.isNotEmpty)
+      .toSet();
+  dialogManager.dismissAll();
+  dialogManager.show((setState, close, context) {
+    cancel() {
+      close();
+      closeConnection();
+    }
+
+    easyAccess() {
+      bind.sessionGetCommon(
+          sessionId: sessionId, key: 'login_easy_access', param: '');
+      close();
+      dialogManager.showLoading(translate('Logging in...'),
+          onCancel: closeConnection);
+    }
+
+    enterPassword() {
+      bind.sessionGetCommon(
+          sessionId: sessionId, key: 'login_password', param: '');
+      close();
+      dialogManager.showLoading(translate('Logging in...'),
+          onCancel: closeConnection);
+    }
+
+    askRemote() {
+      bind.sessionGetCommon(
+          sessionId: sessionId, key: 'login_click', param: '');
+      close();
+      dialogManager.showLoading(translate('Logging in...'),
+          onCancel: closeConnection);
+    }
+
+    final actions = <Widget>[
+      dialogButton(
+        'Cancel',
+        icon: Icon(Icons.close_rounded),
+        onPressed: cancel,
+        isOutline: true,
+      ),
+    ];
+    if (supported.contains('easy_access')) {
+      actions.add(dialogButton(
+        'Easy Access',
+        icon: Icon(Icons.verified_user_rounded),
+        onPressed: easyAccess,
+      ));
+    }
+    if (supported.contains('password')) {
+      actions.add(dialogButton(
+        'Password',
+        icon: Icon(Icons.password_rounded),
+        onPressed: enterPassword,
+      ));
+    }
+    if (supported.contains('click')) {
+      actions.add(dialogButton(
+        'Ask remote to accept',
+        icon: Icon(Icons.touch_app_rounded),
+        onPressed: askRemote,
+      ));
+    }
+
+    return CustomAlertDialog(
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.login_rounded, color: MyTheme.accent),
+          Text(translate('Select authentication method')).paddingOnly(left: 10),
+        ],
+      ),
+      content: createDialogContent(
+          translate('Choose how to authenticate this connection')),
+      actions: actions,
+      onCancel: cancel,
+    );
+  });
+}
+
 void enterUserLoginDialog(
     SessionID sessionId,
     OverlayDialogManager dialogManager,

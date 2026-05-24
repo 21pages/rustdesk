@@ -122,13 +122,15 @@ pub const LOGIN_SCREEN_WAYLAND: &str = "Wayland login screen is not supported";
 #[cfg(target_os = "linux")]
 pub const SCRAP_UBUNTU_HIGHER_REQUIRED: &str = "ubuntu-21-04-required";
 #[cfg(target_os = "linux")]
-pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str =
-    "wayland-requires-higher-linux-version";
+pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str = "wayland-requires-higher-linux-version";
 #[cfg(target_os = "linux")]
-pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str =
-    "xdp-portal-unavailable";
+pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str = "xdp-portal-unavailable";
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
+const EASY_ACCESS_GRANT_TIMEOUT: u64 = 12_000;
+const AUTH_METHOD_EASY_ACCESS: &str = "easy_access";
+const AUTH_METHOD_PASSWORD: &str = "password";
+const AUTH_METHOD_CLICK: &str = "click";
 
 #[cfg(not(target_os = "linux"))]
 pub const AUDIO_BUFFER_MS: usize = 3000;
@@ -1726,6 +1728,66 @@ struct ConnToken {
     session_id: u64,
 }
 
+#[derive(Default)]
+struct PendingAuthMethods {
+    easy_access: bool,
+    password: bool,
+    click: bool,
+}
+
+impl PendingAuthMethods {
+    fn from_hash(hash: &Hash) -> Option<Self> {
+        let mut methods = Self::default();
+        for method in &hash.supported_auth_methods {
+            match method.enum_value() {
+                Ok(AuthMethod::AUTH_METHOD_EASY_ACCESS) => methods.easy_access = true,
+                Ok(AuthMethod::AUTH_METHOD_PASSWORD) => methods.password = true,
+                Ok(AuthMethod::AUTH_METHOD_CLICK) => methods.click = true,
+                _ => {}
+            }
+        }
+        if methods.is_empty() {
+            None
+        } else {
+            Some(methods)
+        }
+    }
+
+    fn has_multiple(&self) -> bool {
+        [self.easy_access, self.password, self.click]
+            .into_iter()
+            .filter(|enabled| *enabled)
+            .count()
+            > 1
+    }
+
+    fn as_msgbox_text(&self) -> String {
+        let mut methods = Vec::new();
+        if self.easy_access {
+            methods.push(AUTH_METHOD_EASY_ACCESS);
+        }
+        if self.password {
+            methods.push(AUTH_METHOD_PASSWORD);
+        }
+        if self.click {
+            methods.push(AUTH_METHOD_CLICK);
+        }
+        methods.join(",")
+    }
+
+    fn without_easy_access(&self) -> Self {
+        Self {
+            easy_access: false,
+            password: self.password,
+            click: self.click,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        !self.easy_access && !self.password && !self.click
+    }
+}
+
 /// Login config handler for [`Client`].
 #[derive(Default)]
 pub struct LoginConfigHandler {
@@ -2772,8 +2834,18 @@ impl LoginConfigHandler {
                 lc.other_server.is_some(),
             )
         };
-        let grant_id =
-            Self::fetch_easy_access_grant_id(&peer, challenge, other_server, secure).await;
+        let grant_id = match timeout(
+            EASY_ACCESS_GRANT_TIMEOUT,
+            Self::fetch_easy_access_grant_id(&peer, challenge, other_server, secure),
+        )
+        .await
+        {
+            Ok(grant_id) => grant_id,
+            Err(_) => {
+                log::debug!("Easy access grant request timed out");
+                None
+            }
+        };
         lc.write().unwrap().easy_access_grant_id = grant_id;
     }
 
@@ -3524,11 +3596,7 @@ async fn consume_local_switch_sides_uuid(id: &str, uuid: &Uuid) -> bool {
         return false;
     }
     match conn.next_timeout(1000).await {
-        Ok(Some(crate::ipc::Data::SwitchSidesUuid(
-            returned_uuid,
-            returned_id,
-            Some(true),
-        ))) => {
+        Ok(Some(crate::ipc::Data::SwitchSidesUuid(returned_uuid, returned_id, Some(true)))) => {
             returned_uuid == uuid && returned_id == id
         }
         _ => false,
@@ -3552,7 +3620,6 @@ pub async fn handle_hash(
     peer: &mut Stream,
 ) {
     lc.write().unwrap().hash = hash.clone();
-    LoginConfigHandler::request_easy_access_grant(lc.clone(), &hash, peer.is_secured()).await;
     // Take care of password application order
 
     // switch_uuid
@@ -3638,6 +3705,11 @@ pub async fn handle_hash(
         return;
     }
 
+    if handle_advertised_auth_methods(lc.clone(), &password, &hash, interface, peer).await {
+        lc.write().unwrap().hash = hash;
+        return;
+    }
+
     let password = if password.is_empty() {
         // login without password, the remote side can click accept
         interface.msgbox("input-password", "Password Required", "", "");
@@ -3659,6 +3731,7 @@ pub async fn handle_hash(
         )
     };
 
+    lc.write().unwrap().easy_access_grant_id = None;
     send_login(lc.clone(), os_username, os_password, password, peer).await;
     lc.write().unwrap().hash = hash;
 }
@@ -3688,6 +3761,57 @@ fn try_get_password_from_personal_ab(lc: Arc<RwLock<LoginConfigHandler>>, passwo
     }
 }
 
+// Return true when this function has handled the advertised auth methods by
+// showing a selection dialog or sending a click-login request, so handle_hash
+// should stop and wait for the selected path. Return false to keep the legacy
+// flow: send a password login, or send an empty password login that lets the
+// remote side accept the request.
+async fn handle_advertised_auth_methods(
+    lc: Arc<RwLock<LoginConfigHandler>>,
+    password: &[u8],
+    hash: &Hash,
+    interface: &impl Interface,
+    peer: &mut Stream,
+) -> bool {
+    let Some(methods) = PendingAuthMethods::from_hash(hash) else {
+        return false;
+    };
+    if methods.has_multiple() {
+        interface.msgbox(
+            "select-auth-method",
+            "Select authentication method",
+            &methods.as_msgbox_text(),
+            "",
+        );
+        return true;
+    }
+    if !methods.password {
+        if methods.easy_access {
+            interface.msgbox(
+                "select-auth-method",
+                "Select authentication method",
+                AUTH_METHOD_EASY_ACCESS,
+                "",
+            );
+            return true;
+        }
+        if methods.click {
+            handle_click_login(lc, peer).await;
+            return true;
+        }
+    }
+    if password.is_empty() && methods.easy_access {
+        interface.msgbox(
+            "select-auth-method",
+            "Select authentication method",
+            AUTH_METHOD_EASY_ACCESS,
+            "",
+        );
+        return true;
+    }
+    false
+}
+
 /// Send login message to peer.
 ///
 /// # Arguments
@@ -3709,6 +3833,39 @@ async fn send_login(
         .unwrap()
         .create_login_msg(os_username, os_password, password);
     allow_err!(peer.send(&msg_out).await);
+}
+
+pub async fn handle_click_login(lc: Arc<RwLock<LoginConfigHandler>>, peer: &mut Stream) {
+    lc.write().unwrap().easy_access_grant_id = None;
+    send_login(lc, "".to_owned(), "".to_owned(), Vec::new(), peer).await;
+}
+
+pub async fn handle_password_login(
+    lc: Arc<RwLock<LoginConfigHandler>>,
+    interface: &impl Interface,
+    peer: &mut Stream,
+) {
+    let password = lc.read().unwrap().password.clone();
+    if password.is_empty() {
+        interface.msgbox("input-password", "Password Required", "", "");
+        return;
+    }
+    let challenge = lc.read().unwrap().hash.challenge.clone();
+    let mut hasher = Sha256::new();
+    hasher.update(&password);
+    hasher.update(&challenge);
+    let password = hasher.finalize()[..].into();
+    let is_terminal = lc.read().unwrap().conn_type.eq(&ConnType::TERMINAL);
+    let (os_username, os_password) = if is_terminal {
+        ("".to_owned(), "".to_owned())
+    } else {
+        (
+            lc.read().unwrap().get_option("os-username"),
+            lc.read().unwrap().get_option("os-password"),
+        )
+    };
+    lc.write().unwrap().easy_access_grant_id = None;
+    send_login(lc, os_username, os_password, password, peer).await;
 }
 
 /// Handle login request made from ui.
@@ -3753,7 +3910,41 @@ pub async fn handle_login_from_ui(
     hasher2.update(&lc.read().unwrap().hash.challenge);
     hash_password = hasher2.finalize()[..].to_vec();
 
+    lc.write().unwrap().easy_access_grant_id = None;
     send_login(lc.clone(), os_username, os_password, hash_password, peer).await;
+}
+
+pub async fn handle_easy_access_login(
+    lc: Arc<RwLock<LoginConfigHandler>>,
+    interface: &impl Interface,
+    peer: &mut Stream,
+) {
+    let hash = lc.read().unwrap().hash.clone();
+    let Some(methods) = PendingAuthMethods::from_hash(&hash) else {
+        log::warn!("Easy access login requested but peer did not advertise support");
+        return;
+    };
+    if !methods.easy_access {
+        log::warn!("Easy access login requested but peer did not advertise support");
+        return;
+    }
+    LoginConfigHandler::request_easy_access_grant(lc.clone(), &hash, peer.is_secured()).await;
+    if lc.read().unwrap().easy_access_grant_id.is_none() {
+        log::debug!("Easy access grant unavailable");
+        let methods = methods.without_easy_access();
+        if !methods.is_empty() {
+            interface.msgbox(
+                "select-auth-method",
+                "Select authentication method",
+                &methods.as_msgbox_text(),
+                "",
+            );
+        } else {
+            interface.msgbox("error", "Login Error", "Easy Access unavailable", "");
+        }
+        return;
+    }
+    send_login(lc, "".to_owned(), "".to_owned(), Vec::new(), peer).await;
 }
 
 async fn send_switch_login_request(
@@ -3857,6 +4048,9 @@ pub trait Interface: Send + Clone + 'static + Sized {
 pub enum Data {
     Close,
     Login((String, String, String, bool)),
+    PasswordLogin,
+    ClickLogin,
+    EasyAccessLogin,
     Message(Message),
     SendFiles((i32, JobType, String, String, i32, bool, bool)),
     RemoveDirAll((i32, String, bool, bool)),

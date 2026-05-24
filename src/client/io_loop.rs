@@ -544,6 +544,16 @@ impl<T: InvokeUiSession> Remote<T> {
                     .handle_login_from_ui(os_username, os_password, password, remember, peer)
                     .await;
             }
+            Data::PasswordLogin => {
+                client::handle_password_login(self.handler.lc.clone(), &self.handler, peer).await;
+            }
+            Data::ClickLogin => {
+                client::handle_click_login(self.handler.lc.clone(), peer).await;
+            }
+            Data::EasyAccessLogin => {
+                client::handle_easy_access_login(self.handler.lc.clone(), &self.handler, peer)
+                    .await;
+            }
             #[cfg(all(target_os = "windows", not(feature = "flutter")))]
             Data::ToggleClipboardFile => {
                 self.check_clipboard_file_context();

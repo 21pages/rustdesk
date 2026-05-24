@@ -46,6 +46,7 @@ impl Session {
             false,
             None,
             None,
+            None,
         );
         session
     }
@@ -53,7 +54,7 @@ impl Session {
 
 #[async_trait]
 impl Interface for Session {
-    fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>> {
+    fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>> {
         return self.lc.clone();
     }
 
@@ -61,14 +62,29 @@ impl Interface for Session {
         match msgtype {
             "input-password" => {
                 self.sender
-                    .send(Data::Login((self.password.clone(), true)))
+                    .send(Data::Login((
+                        "".to_owned(),
+                        "".to_owned(),
+                        self.password.clone(),
+                        true,
+                    )))
                     .ok();
+            }
+            "select-auth-method" => {
+                if text.split(',').any(|method| method == "password") {
+                    self.sender.send(Data::PasswordLogin).ok();
+                } else if text.split(',').any(|method| method == "click") {
+                    self.sender.send(Data::ClickLogin).ok();
+                } else if text.split(',').any(|method| method == "easy_access") {
+                    self.sender.send(Data::EasyAccessLogin).ok();
+                }
             }
             "re-input-password" => {
                 log::error!("{}: {}", title, text);
                 match rpassword::prompt_password("Enter password: ") {
                     Ok(password) => {
-                        let login_data = Data::Login((password, true));
+                        let login_data =
+                            Data::Login(("".to_owned(), "".to_owned(), password, true));
                         self.sender.send(login_data).ok();
                     }
                     Err(e) => {
@@ -92,6 +108,8 @@ impl Interface for Session {
     fn handle_peer_info(&self, pi: PeerInfo) {
         self.lc.write().unwrap().handle_peer_info(&pi);
     }
+
+    fn set_multiple_windows_session(&self, _sessions: Vec<WindowsSession>) {}
 
     async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream) {
         log::info!(
@@ -137,7 +155,7 @@ pub async fn connect_test(id: &str, key: String, token: String) {
         Err(err) => {
             log::error!("Failed to connect {}: {}", &id, err);
         }
-        Ok((mut stream, direct)) => {
+        Ok(((mut stream, direct, ..), _test_delay)) => {
             log::info!("direct: {}", direct);
             // rpassword::prompt_password("Input anything to exit").ok();
             loop {

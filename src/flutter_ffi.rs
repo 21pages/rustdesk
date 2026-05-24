@@ -3,7 +3,7 @@ use crate::keyboard::input_source::{change_input_source, get_cur_session_input_s
 #[cfg(target_os = "linux")]
 use crate::platform::linux::is_x11;
 use crate::{
-    client::file_trait::FileManager,
+    client::{file_trait::FileManager, Interface},
     common::{make_fd_to_json, make_vec_fd_to_json},
     flutter::{
         self, session_add, session_add_existed, session_start_, sessions, try_sync_peer_option,
@@ -3070,6 +3070,15 @@ pub fn session_get_common(
     if let Some(s) = sessions::get_session_by_session_id(&session_id) {
         let v = if key == "is_screenshot_supported" {
             s.is_screenshot_supported().to_string()
+        } else if key == "login_password" {
+            s.send(crate::client::Data::PasswordLogin);
+            "true".to_owned()
+        } else if key == "login_easy_access" {
+            s.send(crate::client::Data::EasyAccessLogin);
+            "true".to_owned()
+        } else if key == "login_click" {
+            s.send(crate::client::Data::ClickLogin);
+            "true".to_owned()
         } else {
             "".to_owned()
         };

@@ -172,6 +172,15 @@ async fn connect_and_login(
                     Some(Data::Login((os_username, os_password, password, remember))) => {
                         interface.handle_login_from_ui(os_username, os_password, password, remember, &mut stream).await;
                     }
+                    Some(Data::PasswordLogin) => {
+                        crate::client::handle_password_login(interface.get_lch(), &interface, &mut stream).await;
+                    }
+                    Some(Data::ClickLogin) => {
+                        crate::client::handle_click_login(interface.get_lch(), &mut stream).await;
+                    }
+                    Some(Data::EasyAccessLogin) => {
+                        crate::client::handle_easy_access_login(interface.get_lch(), &interface, &mut stream).await;
+                    }
                     Some(Data::Message(msg)) => {
                         allow_err!(stream.send(&msg).await);
                     }

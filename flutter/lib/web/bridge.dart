@@ -1927,6 +1927,22 @@ class RustdeskImpl {
     throw UnimplementedError("sessionGetCommonSync");
   }
 
+  Future<String?> sessionGetCommon(
+      {required UuidValue sessionId,
+      required String key,
+      required String param,
+      dynamic hint}) {
+    if (key == 'login_password' ||
+        key == 'login_easy_access' ||
+        key == 'login_click') {
+      return Future(() {
+        js.context.callMethod('setByName', [key, param]);
+        return 'true';
+      });
+    }
+    throw UnimplementedError("sessionGetCommon");
+  }
+
   Future<void> sessionTakeScreenshot(
       {required UuidValue sessionId, required int display, dynamic hint}) {
     throw UnimplementedError("sessionTakeScreenshot");

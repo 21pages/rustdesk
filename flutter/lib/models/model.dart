@@ -908,6 +908,8 @@ class FfiModel with ChangeNotifier {
       wrongPasswordDialog(sessionId, dialogManager, type, title, text);
     } else if (type == 'input-2fa') {
       enter2FaDialog(sessionId, dialogManager);
+    } else if (type == 'select-auth-method') {
+      selectAuthMethodDialog(sessionId, dialogManager, text);
     } else if (type == 'input-password') {
       enterPasswordDialog(sessionId, dialogManager);
     } else if (type == 'session-login' || type == 'session-re-login') {

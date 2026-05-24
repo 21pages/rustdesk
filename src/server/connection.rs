@@ -409,6 +409,53 @@ const EASY_ACCESS_CHALLENGE_LEN: usize = 32;
 const EASY_ACCESS_MANAGER_ID_LEN: usize = 16;
 const EASY_ACCESS_GRANT_ID_LEN: usize = 32;
 
+fn is_logon_screen_password_allowed() -> bool {
+    #[cfg(target_os = "windows")]
+    let is_logon = || {
+        crate::platform::is_prelogin() || crate::platform::is_locked() || {
+            match crate::platform::is_logon_ui() {
+                Ok(result) => result,
+                Err(e) => {
+                    log::error!("Failed to detect logon UI: {:?}", e);
+                    false
+                }
+            }
+        }
+    };
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let is_logon = || crate::platform::is_prelogin() || crate::platform::is_locked();
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let is_logon = || crate::platform::is_prelogin();
+
+    crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y" && is_logon()
+}
+
+fn supported_auth_methods() -> Vec<AuthMethod> {
+    let mut methods = Vec::new();
+    let allow_logon_screen_password = is_logon_screen_password_allowed();
+    if hbb_common::config::is_allow_easy_access() {
+        methods.push(AuthMethod::AUTH_METHOD_EASY_ACCESS);
+    }
+    match password::approve_mode() {
+        ApproveMode::Password => {
+            methods.push(AuthMethod::AUTH_METHOD_PASSWORD);
+        }
+        ApproveMode::Click => {
+            if allow_logon_screen_password {
+                methods.push(AuthMethod::AUTH_METHOD_PASSWORD);
+            }
+            methods.push(AuthMethod::AUTH_METHOD_CLICK);
+        }
+        ApproveMode::Both => {
+            if password::has_valid_password() || allow_logon_screen_password {
+                methods.push(AuthMethod::AUTH_METHOD_PASSWORD);
+            }
+            methods.push(AuthMethod::AUTH_METHOD_CLICK);
+        }
+    }
+    methods
+}
+
 impl Connection {
     pub async fn start(
         addr: SocketAddr,
@@ -434,6 +481,10 @@ impl Connection {
             salt: Config::get_salt(),
             challenge: Config::get_auto_password(6),
             easy_access_challenge,
+            supported_auth_methods: supported_auth_methods()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             ..Default::default()
         };
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
@@ -2912,28 +2963,7 @@ impl Connection {
             }
 
             // https://github.com/rustdesk/rustdesk-server-pro/discussions/646
-            // `is_logon` is used to check login with `OPTION_ALLOW_LOGON_SCREEN_PASSWORD` == "Y".
-            // `is_logon_ui()` is a fallback for logon UI detection on Windows.
-            #[cfg(target_os = "windows")]
-            let is_logon = || {
-                crate::platform::is_prelogin() || crate::platform::is_locked() || {
-                    match crate::platform::is_logon_ui() {
-                        Ok(result) => result,
-                        Err(e) => {
-                            log::error!("Failed to detect logon UI: {:?}", e);
-                            false
-                        }
-                    }
-                }
-            };
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            let is_logon = || crate::platform::is_prelogin() || crate::platform::is_locked();
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            let is_logon = || crate::platform::is_prelogin();
-
-            let allow_logon_screen_password =
-                crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
-                    && is_logon();
+            let allow_logon_screen_password = is_logon_screen_password_allowed();
 
             if self.verify_easy_access().await {
                 // Easy access: token verified, skip password validation and click accept
