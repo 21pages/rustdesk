@@ -1397,13 +1397,15 @@ where
 /// - 4xx responses are returned as-is (server is reachable, business logic error).
 /// - If fallback also fails, returns the original HTTP result (text or error).
 pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
-    with_tcp_proxy_fallback(
+    let res = with_tcp_proxy_fallback(
         &url,
         "POST",
         post_request_http(&url, &body, header),
         post_request_via_tcp_proxy(&url, &body, header),
     )
-    .await
+    .await;
+    log::info!("============== res: {:?}", res);
+    res
 }
 
 #[async_recursion]
@@ -1652,13 +1654,15 @@ pub async fn http_request_sync(
     body: Option<String>,
     header: String,
 ) -> ResultType<String> {
-    with_tcp_proxy_fallback(
+    let res = with_tcp_proxy_fallback(
         &url,
         &method,
         http_request_http(&url, &method, body.clone(), &header),
         http_request_via_tcp_proxy(&url, &method, body.as_deref(), &header),
     )
-    .await
+    .await;
+    log::info!("============== http_request_sync res: {:?}", res);
+    res
 }
 
 /// General HTTP request via TCP proxy. Header is a JSON string (used by http_request_sync).
