@@ -154,7 +154,13 @@ class PlatformFFI {
       try {
         if (isAndroid) {
           // only support for android
-          _homeDir = (await ExternalPath.getExternalStorageDirectories())[0];
+          // external_path 2.x returns a nullable list; keep the default home dir if Android reports none.
+          final dirs = await ExternalPath.getExternalStorageDirectories();
+          if (dirs?.isNotEmpty == true) {
+            _homeDir = dirs![0];
+          } else {
+            debugPrint('No external storage directories found');
+          }
         } else if (isIOS) {
           // The previous code was `_homeDir = (await getDownloadsDirectory())?.path ?? '';`,
           // which provided the `downloads` path in the sandbox.
