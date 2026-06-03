@@ -105,10 +105,10 @@ dependencies:
   pull_down_button: ^0.9.3
   device_info_plus: ^9.1.0
   qr_flutter: ^4.1.0
-  extended_text: 14.0.0
+  extended_text: 15.0.2
   xterm: 4.0.0
   sqflite: 2.2.0
-  google_fonts: ^6.2.1
+  google_fonts: ^6.3.3
   vector_math: ^2.1.4
 
 dev_dependencies:
@@ -144,6 +144,11 @@ flutter_icons:
 
 # The following section is specific to Flutter.
 flutter:
+  # Flutter 3.44 enables Darwin Swift Package Manager by default. RustDesk's
+  # iOS/macOS projects still rely on CocoaPods-generated plugin frameworks.
+  config:
+    enable-swift-package-manager: false
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

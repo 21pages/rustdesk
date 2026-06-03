@@ -26,6 +26,18 @@ flutter_build_dir_2 = f'flutter/{flutter_build_dir}'
 skip_cargo = False
 
 
+def get_macos_flutter_arch():
+    # Flutter 3.44.1 build_macos.dart:208 makes release builds use
+    # genericPlatform, i.e. a universal binary. The Rust dylib built here is
+    # single-arch, so Xcode must link the same arch via FLUTTER_XCODE_ARCHS -> ARCHS.
+    machine = platform.machine().lower()
+    if machine in ("arm64", "aarch64"):
+        return "arm64"
+    if machine in ("x86_64", "amd64"):
+        return "x86_64"
+    raise Exception(f"Unsupported macOS architecture: {machine}")
+
+
 def get_deb_arch() -> str:
     custom_arch = os.environ.get("DEB_ARCH")
     if custom_arch is None:
@@ -410,7 +422,8 @@ def build_flutter_dmg(version, features):
     system2(
         "cp target/release/liblibrustdesk.dylib target/release/librustdesk.dylib")
     os.chdir('flutter')
-    system2('flutter build macos --release')
+    system2(
+        f'FLUTTER_XCODE_ARCHS={get_macos_flutter_arch()} flutter build macos --release')
     system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/')
     '''
     system2(
