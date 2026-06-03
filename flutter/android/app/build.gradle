@@ -82,7 +82,9 @@ protobuf {
 }
 
 android {
-    compileSdkVersion 34
+    // AGP 8 requires namespace in Gradle instead of the AndroidManifest package attribute.
+    namespace "com.carriez.flutter_hbb"
+    compileSdkVersion 36
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
 
@@ -91,15 +93,19 @@ android {
     }
 
     compileOptions {
-        targetCompatibility JavaVersion.VERSION_1_8
-        sourceCompatibility JavaVersion.VERSION_1_8
+        // Flutter 3.44 / AGP 8.11 require Java 17 for Android builds.
+        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_17
+        // qr_code_scanner declares desugared Java API usage in its AAR metadata.
+        coreLibraryDesugaringEnabled true
     }
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId "com.carriez.flutter_hbb"
-        minSdkVersion 22
-        targetSdkVersion 33
+        // Flutter 3.44 dependency validation errors below min SDK 23.
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
@@ -123,6 +129,13 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        // Match Kotlin bytecode with the Java 17 compile target.
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 flutter {
     source '../..'
 }
@@ -131,7 +144,10 @@ dependencies {
     implementation 'com.google.protobuf:protobuf-javalite:3.20.1'
     implementation "androidx.media:media:1.6.0"
     implementation 'com.github.getActivity:XXPermissions:18.5'
-    implementation("org.jetbrains.kotlin:kotlin-stdlib") { version { strictly("1.9.10") } }
+    // Keep Kotlin stdlib aligned with the Kotlin Gradle Plugin version above.
+    implementation("org.jetbrains.kotlin:kotlin-stdlib") { version { strictly("2.2.20") } }
+    // Required when dependencies request core library desugaring under AGP 8.
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation 'com.caverock:androidsvg-aar:1.4'
     implementation "rustls:rustls-platform-verifier:0.1.1"
 }

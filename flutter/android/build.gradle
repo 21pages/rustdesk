@@ -7,8 +7,57 @@ allprojects {
 }
 
 rootProject.buildDir = '../build'
+
+// Older Flutter plugins may still declare only AndroidManifest package.
+// AGP 8 needs a Gradle namespace, so derive it without patching pub cache.
+String androidNamespaceFromManifest(Project project) {
+    def manifest = project.file('src/main/AndroidManifest.xml')
+    if (!manifest.exists()) {
+        return null
+    }
+
+    def parsedManifest = new XmlSlurper(false, false).parse(manifest)
+    return parsedManifest.@package?.text()
+}
+
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
+    project.pluginManager.withPlugin('com.android.library') {
+        def androidExt = project.extensions.findByName('android')
+        if (androidExt != null) {
+            if (androidExt.namespace == null) {
+                def namespace = androidNamespaceFromManifest(project)
+                if (namespace != null && !namespace.isEmpty()) {
+                    androidExt.namespace = namespace
+                }
+            }
+            // Old Flutter plugins often keep Java at 1.8; align it with Kotlin 17.
+            androidExt.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+    }
+    project.afterEvaluate {
+        def androidExt = project.extensions.findByName('android')
+        if (androidExt != null) {
+            // Some plugin scripts reset compileOptions to 1.8; set it after evaluation too.
+            androidExt.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+    }
+    project.tasks.withType(JavaCompile).configureEach {
+        sourceCompatibility = JavaVersion.VERSION_17.toString()
+        targetCompatibility = JavaVersion.VERSION_17.toString()
+    }
+    // Keep all plugin Kotlin tasks on the same JVM target as their Java tasks.
+    project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
+    }
 }
 subprojects {
     project.evaluationDependsOn(':app')

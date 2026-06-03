@@ -25,10 +25,10 @@ env:
   SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
   SCITER_NASM_DEBVERSION: "2.15.05-1"
   LLVM_VERSION: "15.0.6"
-  FLUTTER_VERSION: "3.24.5"
-  ANDROID_FLUTTER_VERSION: "3.24.5"
+  FLUTTER_VERSION: "3.44.1"
+  ANDROID_FLUTTER_VERSION: "3.44.1"
   # for arm64 linux because official Dart SDK does not work
-  FLUTTER_ELINUX_VERSION: "3.16.9"
+  FLUTTER_ELINUX_VERSION: "3.27.1"
   TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2025.08.27
@@ -109,21 +109,14 @@ jobs:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      # https://github.com/flutter/flutter/issues/155685
+       # https://github.com/flutter/flutter/issues/155685
       - name: Replace engine with rustdesk custom flutter engine
         run: |
           flutter doctor -v
           flutter precache --windows
-          Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
+          Invoke-WebRequest -Uri https://github.com/21pages/flutter/releases/download/custom-engine-3.44.1/windows-x64-release.zip -OutFile windows-x64-release.zip
           Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
           mv -Force windows-x64-release/*  C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
-
-      - name: Patch flutter
-        shell: bash
-        run: |
-          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
@@ -470,11 +463,6 @@ jobs:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Patch flutter
-        run: |
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
-
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
         with:
@@ -648,11 +636,6 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Patch flutter
-        run: |
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       - name: Workaround for flutter issue
         shell: bash
@@ -907,11 +890,6 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.ANDROID_FLUTTER_VERSION }}
-
-      - name: Patch flutter
-        run: |
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.ANDROID_FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       - uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
         id: setup-ndk
@@ -1179,11 +1157,6 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.ANDROID_FLUTTER_VERSION }}
-
-      - name: Patch flutter
-        run: |
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.ANDROID_FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       - name: Restore bridge files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1505,6 +1478,18 @@ jobs:
                 export PATH=/opt/flutter-elinux/bin:$PATH
                 sed -i "s/flutter build linux --release/flutter-elinux build linux --verbose/g" ./build.py
                 sed -i "s/x64\/release/arm64\/release/g" ./build.py
+                # flutter-elinux is behind Flutter 3.44 and rejects flutter.config;
+                # keep this Darwin-only setting out of the Linux ARM build.
+                sed -i '/^  # Flutter 3\.44 enables Darwin Swift Package Manager by default\./,+3d' ./flutter/pubspec.yaml
+                # flutter-elinux 3.27.1 uses Dart 3.6.0. google_fonts 6.3.0 is
+                # the newest release before the Dart 3.7 lower-bound bump.
+                sed -i 's/^  google_fonts: .*/  google_fonts: 6.3.0/' ./flutter/pubspec.yaml
+                # sqflite 2.4.1 is the newest release before the Dart 3.7 lower-bound bump.
+                sed -i 's/^  sqflite: .*/  sqflite: 2.4.1/' ./flutter/pubspec.yaml
+                # extended_text 14.2.2 is the newest release before the Dart 3.7 lower-bound bump.
+                sed -i 's/^  extended_text: .*/  extended_text: 14.2.2/' ./flutter/pubspec.yaml
+                # flutter_plugin_android_lifecycle 2.0.29 is the newest release that supports Dart 3.6.
+                sed -i 's/^  flutter_plugin_android_lifecycle: .*/  flutter_plugin_android_lifecycle: 2.0.29/' ./flutter/pubspec.yaml
               ;;
               x86_64)
                 export PATH=/opt/flutter/bin:$PATH
@@ -1516,11 +1501,11 @@ jobs:
             tar xf flutter_linux_${{ env.FLUTTER_VERSION }}-stable.tar.xz
             case ${{ matrix.job.arch }} in
               aarch64)
-                # clone repo and reset to flutter ${{ env.FLUTTER_VERSION }}
+                # clone repo and reset to flutter-elinux ${{ env.FLUTTER_ELINUX_VERSION }}
                 git clone https://github.com/sony/flutter-elinux.git || true
                 pushd flutter-elinux
                   git fetch
-                  git reset --hard ${{ env.FLUTTER_VERSION }}
+                  git reset --hard ${{ env.FLUTTER_ELINUX_VERSION }}
                   bin/flutter-elinux doctor -v
                   bin/flutter-elinux precache --linux
                 popd
@@ -1531,19 +1516,6 @@ jobs:
                 flutter doctor -v
               ;;
             esac
-
-            if [[ "3.24.5" == ${{ env.FLUTTER_VERSION }} ]]; then
-              case ${{ matrix.job.arch }} in
-                aarch64)
-                  pushd /opt/flutter-elinux/flutter
-                ;;
-                x86_64)
-                  pushd /opt/flutter
-                ;;
-              esac
-              git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
-              popd
-            fi
 
             # build flutter
             pushd /workspace
@@ -2015,12 +1987,6 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Patch flutter
-        shell: bash
-        run: |
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       # https://rustdesk.com/docs/en/dev/build/web/
       - name: Build web

@@ -20,7 +20,10 @@ import '../../models/platform_model.dart';
 import '../widgets/deploy_dialog.dart';
 import '../widgets/dialog.dart';
 import 'home_page.dart';
-import 'scan_page.dart';
+// Keep qr_code_scanner out of web builds. Its 1.0.1 web implementation still
+// references dart:ui platformViewRegistry, while Flutter 3.44 exposes it from
+// dart:ui_web instead.
+import 'scan_page.dart' if (dart.library.html) 'scan_page_stub.dart';
 
 class SettingsPage extends StatefulWidget implements PageShape {
   @override
