@@ -1471,6 +1471,8 @@ jobs:
                 # flutter-elinux 3.27.1 uses Dart 3.6.0. google_fonts 6.3.0 is
                 # the newest release before the Dart 3.7 lower-bound bump.
                 sed -i 's/^  google_fonts: .*/  google_fonts: 6.3.0/' ./flutter/pubspec.yaml
+                # sqflite 2.4.1 is the newest release before the Dart 3.7 lower-bound bump.
+                sed -i 's/^  sqflite: .*/  sqflite: 2.4.1/' ./flutter/pubspec.yaml
               ;;
               x86_64)
                 export PATH=/opt/flutter/bin:$PATH
