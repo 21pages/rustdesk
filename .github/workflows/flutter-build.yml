@@ -1472,6 +1472,9 @@ jobs:
                 # flutter-elinux is behind Flutter 3.44 and rejects flutter.config;
                 # keep this Darwin-only setting out of the Linux ARM build.
                 sed -i '/^  # Flutter 3\.44 enables Darwin Swift Package Manager by default\./,+3d' ./flutter/pubspec.yaml
+                # flutter-elinux 3.27.1 uses Dart 3.6.0. google_fonts 6.3.0 is
+                # the newest release before the Dart 3.7 lower-bound bump.
+                sed -i 's/^  google_fonts: .*/  google_fonts: 6.3.0/' ./flutter/pubspec.yaml
               ;;
               x86_64)
                 export PATH=/opt/flutter/bin:$PATH
