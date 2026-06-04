@@ -28,7 +28,7 @@ env:
   FLUTTER_VERSION: "3.44.1"
   ANDROID_FLUTTER_VERSION: "3.44.1"
   # for arm64 linux because official Dart SDK does not work
-  FLUTTER_ELINUX_VERSION: "3.16.9"
+  FLUTTER_ELINUX_VERSION: "3.27.1"
   TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2025.08.27
@@ -1469,6 +1469,9 @@ jobs:
                 export PATH=/opt/flutter-elinux/bin:$PATH
                 sed -i "s/flutter build linux --release/flutter-elinux build linux --verbose/g" ./build.py
                 sed -i "s/x64\/release/arm64\/release/g" ./build.py
+                # flutter-elinux is behind Flutter 3.44 and rejects flutter.config;
+                # keep this Darwin-only setting out of the Linux ARM build.
+                sed -i '/^  # Flutter 3\.44 enables Darwin Swift Package Manager by default\./,+3d' ./flutter/pubspec.yaml
               ;;
               x86_64)
                 export PATH=/opt/flutter/bin:$PATH
