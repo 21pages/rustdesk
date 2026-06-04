@@ -1473,6 +1473,10 @@ jobs:
                 sed -i 's/^  google_fonts: .*/  google_fonts: 6.3.0/' ./flutter/pubspec.yaml
                 # sqflite 2.4.1 is the newest release before the Dart 3.7 lower-bound bump.
                 sed -i 's/^  sqflite: .*/  sqflite: 2.4.1/' ./flutter/pubspec.yaml
+                # extended_text 14.2.2 is the newest release before the Dart 3.7 lower-bound bump.
+                sed -i 's/^  extended_text: .*/  extended_text: 14.2.2/' ./flutter/pubspec.yaml
+                # flutter_plugin_android_lifecycle 2.0.29 is the newest release that supports Dart 3.6.
+                sed -i 's/^  flutter_plugin_android_lifecycle: .*/  flutter_plugin_android_lifecycle: 2.0.29/' ./flutter/pubspec.yaml
               ;;
               x86_64)
                 export PATH=/opt/flutter/bin:$PATH
