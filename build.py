@@ -178,7 +178,7 @@ def generate_build_script_for_docker():
             # install vcpkg
             pushd /opt
             export VCPKG_ROOT=`pwd`/vcpkg
-            git clone https://github.com/microsoft/vcpkg
+            git clone --branch 2026.05.25 --depth=1 https://github.com/microsoft/vcpkg
             vcpkg/bootstrap-vcpkg.sh
             popd
             $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"

@@ -86,7 +86,7 @@
   "vcpkg-configuration": {
     "default-registry": {
       "kind": "builtin",
-      "baseline": "120deac3062162151622ca4860575a33844ba10b"
+      "baseline": "d015e31e90838a4c9dfa3eed45979bc70d9357fc"
     },
     "overlay-ports": [
       "./res/vcpkg"
@@ -95,11 +95,11 @@
   "overrides": [
     {
       "name": "ffnvcodec",
-      "version": "12.1.14.0"
+      "version": "13.0.19.0"
     },
     {
       "name": "amd-amf",
-      "version": "1.4.35"
+      "version": "1.5.2"
     }
   ]
 }

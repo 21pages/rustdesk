@@ -1,40 +1,65 @@
-vcpkg_from_github(
-    OUT_SOURCE_PATH SOURCE_PATH
-    REPO ffmpeg/ffmpeg
-    REF "n${VERSION}"
-    SHA512 3b273769ef1a1b63aed0691eef317a760f8c83b1d0e1c232b67bbee26db60b4864aafbc88df0e86d6bebf07185bbd057f33e2d5258fde6d97763b9994cd48b6f
-    HEAD_REF master
-    PATCHES
-    0001-create-lib-libraries.patch
+set(FFMPEG_PATCHES
     0002-fix-msvc-link.patch
     0003-fix-windowsinclude.patch
     0004-dependencies.patch
     0005-fix-nasm.patch
     0007-fix-lib-naming.patch
     0013-define-WINVER.patch
-    0020-fix-aarch64-libswscale.patch
     0024-fix-osx-host-c11.patch
     0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch # Do not remove this patch. It is required by chromium
-    0041-add-const-for-opengl-definition.patch
-    0043-fix-miss-head.patch
-    patch/0001-avcodec-amfenc-add-query_timeout-option-for-h264-hev.patch
-    patch/0002-libavcodec-amfenc-reconfig-when-bitrate-change.patch
-    patch/0004-videotoolbox-changing-bitrate.patch
-    patch/0005-mediacodec-changing-bitrate.patch
-    patch/0006-dlopen-libva.patch
-    patch/0007-fix-linux-configure.patch
-    patch/0008-remove-amf-loop-query.patch
-    patch/0009-fix-nvenc-reconfigure-blur.patch
-    patch/0010.disable-loading-DLLs-from-app-dir.patch
-    patch/0011-android-mediacodec-encode-align-64.patch
-    patch/0012-fix-macos-big-sur-CVBufferCopyAttachments.patch
+    0045-use-prebuilt-bin2c.patch
+    0046-fix-msvc-detection.patch
+    0047-fix-msvc-utf8.patch
+    0048-backport-23039.patch
+)
+
+if(VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_LINUX)
+    list(APPEND FFMPEG_PATCHES
+        patch/0001-avcodec-amfenc-add-query_timeout-option-for-h264-hev.patch
+        patch/0002-libavcodec-amfenc-reconfig-when-bitrate-change.patch
+        patch/0008-remove-amf-loop-query.patch
+        patch/0009-fix-nvenc-reconfigure-blur.patch
+    )
+endif()
+
+if(VCPKG_TARGET_IS_WINDOWS)
+    list(APPEND FFMPEG_PATCHES
+        patch/0010.disable-loading-DLLs-from-app-dir.patch
+    )
+elseif(VCPKG_TARGET_IS_LINUX)
+    list(APPEND FFMPEG_PATCHES
+        patch/0006-dlopen-libva.patch
+        patch/0007-fix-linux-configure.patch
+    )
+elseif(VCPKG_TARGET_IS_OSX)
+    list(APPEND FFMPEG_PATCHES
+        patch/0004-videotoolbox-changing-bitrate.patch
+        patch/0012-fix-macos-big-sur-CVBufferCopyAttachments.patch
+    )
+elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(APPEND FFMPEG_PATCHES
+        patch/0005-mediacodec-changing-bitrate.patch
+        patch/0011-android-mediacodec-encode-align-64.patch
+    )
+endif()
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO ffmpeg/ffmpeg
+    REF "n${VERSION}"
+    SHA512 e858e92e5eb08d562302cde371af55917df6e1fe53994e18462a3c929a40ede1828c2bd53c2a7d65a2cfd791782ead3cd94efb2def904f49cb5dd8ab5cd4256f
+    HEAD_REF master
+    PATCHES
+        ${FFMPEG_PATCHES}
 )
 
 if(SOURCE_PATH MATCHES " ")
     message(FATAL_ERROR "Error: ffmpeg will not build with spaces in the path. Please use a directory with no spaces")
 endif()
 
-if(NOT VCPKG_TARGET_ARCHITECTURE STREQUAL "wasm32")
+vcpkg_add_to_path(PREPEND "${CURRENT_HOST_INSTALLED_DIR}/manual-tools/ffmpeg-bin2c")
+
+if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86" OR VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
     vcpkg_find_acquire_program(NASM)
     get_filename_component(NASM_EXE_PATH "${NASM}" DIRECTORY)
     vcpkg_add_to_path("${NASM_EXE_PATH}")
@@ -70,7 +95,6 @@ set(OPTIONS "\
 --disable-avfilter \
 --disable-swresample \
 --disable-swscale \
---disable-postproc \
 --enable-decoder=h264 \
 --enable-decoder=hevc \
 --enable-parser=h264 \
@@ -82,6 +106,13 @@ set(OPTIONS "\
 --enable-muxer=mp4 \
 --enable-protocol=file \
 ")
+
+set(ENABLE_AVCODEC ON)
+set(ENABLE_AVDEVICE OFF)
+set(ENABLE_AVFILTER OFF)
+set(ENABLE_AVFORMAT ON)
+set(ENABLE_SWRESAMPLE OFF)
+set(ENABLE_SWSCALE OFF)
 
 if(VCPKG_HOST_IS_WINDOWS)
     vcpkg_acquire_msys(MSYS_ROOT PACKAGES automake1.16)
@@ -701,5 +732,17 @@ else()
     message(FATAL_ERROR "Failed to identify license (${LICENSE_STRING})")
 endif()
 
+configure_file("${CMAKE_CURRENT_LIST_DIR}/FindFFMPEG.cmake.in" "${CURRENT_PACKAGES_DIR}/share/${PORT}/FindFFMPEG.cmake" @ONLY)
 configure_file("${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake" "${CURRENT_PACKAGES_DIR}/share/${PORT}/vcpkg-cmake-wrapper.cmake" @ONLY)
+
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static" AND NOT VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_OSX AND NOT VCPKG_TARGET_IS_IOS)
+    file(APPEND "${CURRENT_PACKAGES_DIR}/share/${PORT}/usage" "
+To use the static libraries to build your own shared library,
+you may need to add the following link option for your library:
+
+  -Wl,-Bsymbolic
+")
+endif()
+
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/${LICENSE_FILE}")
