@@ -208,6 +208,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
                                 peer.alias.toLowerCase().contains(textToFind))
                             .toList();
                       }
+                      _allPeersLoader
+                          .queryDropdownOnlineStatus(_autocompleteOpts);
                       return _autocompleteOpts;
                     },
                     focusNode: _idFocusNode,

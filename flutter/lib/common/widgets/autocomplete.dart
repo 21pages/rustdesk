@@ -6,12 +6,17 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/peer_card.dart';
 
 class AllPeersLoader {
+  static const _cbQueryOnlines = 'callback_query_onlines';
+  static const _dropdownQueryInterval = Duration(seconds: 3);
+
   List<Peer> peers = [];
 
   bool _isPeersLoading = false;
   bool _isPeersLoaded = false;
 
   final String _listenerKey = 'AllPeersLoader';
+  var _lastDropdownQueryIds = <String>{};
+  var _lastDropdownQueryTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   late void Function(VoidCallback) setState;
 
@@ -26,6 +31,10 @@ class AllPeersLoader {
     gFFI.lanPeersModel.addListener(_mergeAllPeers);
     gFFI.abModel.addPeerUpdateListener(_listenerKey, _mergeAllPeers);
     gFFI.groupModel.addPeerUpdateListener(_listenerKey, _mergeAllPeers);
+    platformFFI.registerEventHandler(_cbQueryOnlines, _listenerKey,
+        (evt) async {
+      _updateDropdownOnlineState(evt);
+    }, replace: true);
   }
 
   void clear() {
@@ -33,6 +42,7 @@ class AllPeersLoader {
     gFFI.lanPeersModel.removeListener(_mergeAllPeers);
     gFFI.abModel.removePeerUpdateListener(_listenerKey);
     gFFI.groupModel.removePeerUpdateListener(_listenerKey);
+    platformFFI.unregisterEventHandler(_cbQueryOnlines, _listenerKey);
   }
 
   Future<void> getAllPeers() async {
@@ -58,29 +68,82 @@ class AllPeersLoader {
     }
   }
 
+  void queryDropdownOnlineStatus(Iterable<Peer> dropdownPeers) {
+    final ids = dropdownPeers
+        .map((peer) => peer.id)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (ids.isEmpty) {
+      _lastDropdownQueryIds = {};
+      return;
+    }
+
+    final now = DateTime.now();
+    if (_setEquals(ids, _lastDropdownQueryIds) &&
+        now.difference(_lastDropdownQueryTime) < _dropdownQueryInterval) {
+      return;
+    }
+
+    _lastDropdownQueryIds = ids;
+    _lastDropdownQueryTime = now;
+    bind.queryOnlines(ids: ids.toList(growable: false));
+  }
+
+  bool _setEquals(Set<String> a, Set<String> b) {
+    return a.length == b.length && a.every(b.contains);
+  }
+
+  Set<String> _splitIds(dynamic ids) {
+    if (ids is! String || ids.isEmpty) {
+      return {};
+    }
+    return ids.split(',').where((id) => id.isNotEmpty).toSet();
+  }
+
+  void _updateDropdownOnlineState(Map<String, dynamic> evt) {
+    final onlines = _splitIds(evt['onlines']);
+    final offlines = _splitIds(evt['offlines']);
+    if (onlines.isEmpty && offlines.isEmpty) {
+      return;
+    }
+
+    var changed = false;
+    for (final peer in peers) {
+      if (onlines.contains(peer.id) && !peer.online) {
+        peer.online = true;
+        changed = true;
+      } else if (offlines.contains(peer.id) && peer.online) {
+        peer.online = false;
+        changed = true;
+      }
+    }
+    if (changed) {
+      setState(() {});
+    }
+  }
+
   void _mergeAllPeers() {
-    Map<String, dynamic> combinedPeers = {};
+    final combinedPeers = <String, Peer>{};
     for (var p in gFFI.abModel.allPeers()) {
       if (!combinedPeers.containsKey(p.id)) {
-        combinedPeers[p.id] = p.toJson();
+        combinedPeers[p.id] = p;
       }
     }
     for (var p in gFFI.groupModel.peers.map((e) => Peer.copy(e)).toList()) {
       if (!combinedPeers.containsKey(p.id)) {
-        combinedPeers[p.id] = p.toJson();
+        combinedPeers[p.id] = p;
       }
     }
 
-    List<Peer> parsedPeers = [];
-    for (var peer in combinedPeers.values) {
-      parsedPeers.add(Peer.fromJson(peer));
-    }
+    List<Peer> parsedPeers = combinedPeers.values.toList();
 
     Set<String> peerIds = combinedPeers.keys.toSet();
     for (final peer in gFFI.lanPeersModel.peers) {
       if (!peerIds.contains(peer.id)) {
         parsedPeers.add(peer);
         peerIds.add(peer.id);
+      } else if (peer.online) {
+        combinedPeers[peer.id]?.online = true;
       }
     }
 
@@ -88,6 +151,8 @@ class AllPeersLoader {
       if (!peerIds.contains(peer.id)) {
         parsedPeers.add(peer);
         peerIds.add(peer.id);
+      } else if (peer.online) {
+        combinedPeers[peer.id]?.online = true;
       }
     }
     for (final id in gFFI.recentPeersModel.restPeerIds) {
