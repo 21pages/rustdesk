@@ -114,7 +114,7 @@ jobs:
         run: |
           flutter doctor -v
           flutter precache --windows
-          Invoke-WebRequest -Uri https://github.com/21pages/flutter/releases/download/custom-engine-3.44.1/windows-x64-release.zip -OutFile windows-x64-release.zip
+          Invoke-WebRequest -Uri https://github.com/21pages/flutter/releases/download/custom-engine-3.44.1-vs2019-on-win2022/windows-x64-release.zip -OutFile windows-x64-release.zip
           Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
           mv -Force windows-x64-release/*  C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
 
