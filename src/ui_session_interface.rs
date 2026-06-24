@@ -1652,6 +1652,24 @@ impl<T: InvokeUiSession> Session<T> {
         self.lc.read().unwrap().get_conn_token()
     }
 
+    fn claim_conn_audit(&self) {
+        let url = self.get_audit_server("conn/claim".to_string());
+        if url.is_empty() {
+            return;
+        }
+        let token = LocalConfig::get_option("access_token");
+        if token.is_empty() {
+            return;
+        }
+        let (id, session_id, conn_type) = {
+            let lc = self.lc.read().unwrap();
+            (self.get_id(), lc.session_id, audit_conn_type(lc.conn_type))
+        };
+        tokio::spawn(async move {
+            claim_conn_audit(url, token, id, session_id, conn_type).await;
+        });
+    }
+
     pub fn printer_response(&self, id: i32, path: String, printer_name: String) {
         self.printer_names.write().unwrap().insert(id, printer_name);
         let to = std::env::temp_dir().join(format!("rustdesk_printer_{id}"));
@@ -1837,6 +1855,7 @@ impl<T: InvokeUiSession> Interface for Session<T> {
                 "",
             );
         }
+        self.claim_conn_audit();
         self.on_connected(self.lc.read().unwrap().conn_type);
         #[cfg(windows)]
         {
@@ -2061,4 +2080,24 @@ async fn start_one_port_forward<T: InvokeUiSession>(
 async fn send_note(url: String, id: String, sid: u64, note: String) {
     let body = serde_json::json!({ "id": id, "session_id": sid, "note": note });
     allow_err!(crate::post_request(url, body.to_string(), "").await);
+}
+
+fn audit_conn_type(conn_type: ConnType) -> i64 {
+    match conn_type {
+        ConnType::DEFAULT_CONN => 0,
+        ConnType::FILE_TRANSFER => 1,
+        ConnType::PORT_FORWARD | ConnType::RDP => 2,
+        ConnType::VIEW_CAMERA => 3,
+        ConnType::TERMINAL => 4,
+    }
+}
+
+async fn claim_conn_audit(url: String, token: String, id: String, session_id: u64, conn_type: i64) {
+    let body = serde_json::json!({
+        "id": id,
+        "session_id": session_id,
+        "conn_type": conn_type,
+    });
+    let header = format!("Authorization: Bearer {}", token);
+    allow_err!(crate::post_request(url, body.to_string(), &header).await);
 }

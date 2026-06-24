@@ -1408,6 +1408,7 @@ impl Connection {
             "id":json!(Config::get_id()),
             "uuid":json!(crate::encode64(hbb_common::get_uuid())),
             "peer_id":json!(self.lr.my_id),
+            "conn_id":json!(self.inner.id()),
             "type": r#type as i8,
             "path":path,
             "is_file":is_file,
