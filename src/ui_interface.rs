@@ -927,6 +927,15 @@ pub fn video_save_directory(root: bool) -> String {
         }
     };
 
+    // Get directory from config file otherwise --server will use the old value from global var.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let dir = LocalConfig::get_option_from_file(OPTION_VIDEO_SAVE_DIRECTORY);
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    let dir = LocalConfig::get_option(OPTION_VIDEO_SAVE_DIRECTORY);
+    if !dir.is_empty() {
+        return dir;
+    }
+
     if root {
         // Currently, only installed windows run as root
         #[cfg(windows)]
@@ -936,14 +945,6 @@ pub fn video_save_directory(root: bool) -> String {
                 std::path::PathBuf::from(format!("{drive}\\ProgramData\\{appname}\\recording",));
             return dir.to_string_lossy().to_string();
         }
-    }
-    // Get directory from config file otherwise --server will use the old value from global var.
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    let dir = LocalConfig::get_option_from_file(OPTION_VIDEO_SAVE_DIRECTORY);
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    let dir = LocalConfig::get_option(OPTION_VIDEO_SAVE_DIRECTORY);
-    if !dir.is_empty() {
-        return dir;
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     if let Ok(home) = config::APP_HOME_DIR.read() {
