@@ -1666,6 +1666,7 @@ impl Connection {
         } else {
             (0, AuthConnType::Remote)
         };
+        // let (conn_type, auth_conn_type) = (1, AuthConnType::FileTransfer);
         self.authed_conn_id = Some(self::raii::AuthedConnID::new(
             self.inner.id(),
             auth_conn_type,
@@ -5305,10 +5306,10 @@ impl Connection {
                 message
             );
         }
-        if is_first && Config::get_bool_option(keys::OPTION_ALLOW_SCOPE_VIOLATION_ALARM) {
+        if is_first && true {
             self.post_session_scope_violation_alarm(message);
         }
-        if Config::get_bool_option(keys::OPTION_ALLOW_SCOPE_VIOLATION_CLOSE) {
+        if true {
             self.send_close_reason_no_retry("Connection not allowed")
                 .await;
             self.on_close("Session scope violation", true).await;
@@ -5343,6 +5344,7 @@ impl Connection {
                 message
             );
         }
+        log::info!("==================== scoped options: {:?}", scoped);
         if let Some(option) = scoped {
             self.update_options(&option).await;
         }
