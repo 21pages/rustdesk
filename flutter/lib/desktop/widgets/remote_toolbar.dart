@@ -1331,6 +1331,24 @@ class _ControlMenu extends StatelessWidget {
   }
 }
 
+// Screen/window coordinate units used by ScreenAdjustor at 200% scale
+// (DPR/scaleFactor = 2):
+//
+// * Windows, 1920x1080: GetMonitorInfo/GetWindowRect/MoveWindow use physical
+//   pixels. A Flutter width of 960 logical pixels is therefore 1920 frame
+//   pixels, so it must be multiplied by 2.
+// * macOS Retina, 3840x2160 backing pixels: NSScreen.frame and
+//   NSWindow.frame/setFrame use 1920x1080 points, matching Flutter's logical
+//   pixels, so no conversion is needed.
+// * GNOME X11, 1920x1080 at 200%: in our test,
+//   gdk_monitor_get_geometry() returns 960x540 application pixels.
+//   gtk_window_get_size()/resize() and Flutter use the same units.
+// * GNOME Wayland, 1920x1080 at 200%: in our test, GDK still returns
+//   1920x1080 with scaleFactor 2. GTK window APIs still use application units;
+//   the compositor handles output scaling, so do not multiply.
+//
+// Thus, among these implementations, only Windows needs scaleFactor when
+// converting Flutter sizes to native window-frame units.
 class ScreenAdjustor {
   final String id;
   final FFI ffi;
@@ -1364,13 +1382,20 @@ class ScreenAdjustor {
         });
   }
 
-  doAdjustWindow(BuildContext context) async {
+  doAdjustWindow([BuildContext? context]) async {
+    // A resolution change is adjusted after a delay, when the menu context may
+    // already be disposed. Each desktop_multi_window window has its own engine,
+    // so that engine's first view is the current window.
+    final view = context != null
+        ? View.of(context)
+        : WidgetsBinding.instance.platformDispatcher.views.first;
     await updateScreen();
     if (_screen != null) {
       cbExitFullscreen();
-      double scale = _screen!.scaleFactor;
+      // See the platform coordinate-unit notes above ScreenAdjustor.
+      double scale = isWindows ? _screen!.scaleFactor : 1.0;
       final wndRect = await WindowController.fromWindowId(windowId).getFrame();
-      final mediaSize = MediaQueryData.fromView(View.of(context)).size;
+      final mediaSize = MediaQueryData.fromView(view).size;
       // On windows, wndRect is equal to GetWindowRect and mediaSize is equal to GetClientRect.
       // https://stackoverflow.com/a/7561083
       double magicWidth =
@@ -1394,6 +1419,11 @@ class ScreenAdjustor {
       Rect frameRect = _screen!.frame;
       if (!isFullscreen) {
         frameRect = _screen!.visibleFrame;
+      }
+      // The remote size may change after the menu is built. Never move an
+      // oversized target frame outside the current screen.
+      if (width > frameRect.width || height > frameRect.height) {
+        return;
       }
       if (left < frameRect.left) {
         left = frameRect.left;
@@ -1453,7 +1483,9 @@ class ScreenAdjustor {
     if (_screen == null) {
       return false;
     }
-    final scale = kIgnoreDpi ? 1.0 : _screen!.scaleFactor;
+    // canvasModel.scale already applies kIgnoreDpi. Only Windows needs to
+    // convert the rendered logical size to physical frame pixels.
+    final frameScale = isWindows ? _screen!.scaleFactor : 1.0;
     double selfWidth = _screen!.visibleFrame.width;
     double selfHeight = _screen!.visibleFrame.height;
     if (isFullscreen) {
@@ -1464,12 +1496,17 @@ class ScreenAdjustor {
     final canvasModel = ffi.canvasModel;
     final displayWidth = canvasModel.getDisplayWidth();
     final displayHeight = canvasModel.getDisplayHeight();
-    final requiredWidth =
-        CanvasModel.leftToEdge + displayWidth + CanvasModel.rightToEdge;
-    final requiredHeight =
-        CanvasModel.topToEdge + displayHeight + CanvasModel.bottomToEdge;
-    return selfWidth > (requiredWidth * scale) &&
-        selfHeight > (requiredHeight * scale);
+    // Test the rendered image size, not the remote source resolution; otherwise
+    // scaling down a high-DPI remote image can incorrectly hide Adjust Window.
+    final requiredWidth = (CanvasModel.leftToEdge +
+            displayWidth * canvasModel.scale +
+            CanvasModel.rightToEdge) *
+        frameScale;
+    final requiredHeight = (CanvasModel.topToEdge +
+            displayHeight * canvasModel.scale +
+            CanvasModel.bottomToEdge) *
+        frameScale;
+    return selfWidth > requiredWidth && selfHeight > requiredHeight;
   }
 }
 
@@ -2177,7 +2214,9 @@ class _ResolutionsMenuState extends State<_ResolutionsMenu> {
       }
       if (w == rect.width.toInt() && h == rect.height.toInt()) {
         if (await widget.screenAdjustor.isWindowCanBeAdjusted()) {
-          widget.screenAdjustor.doAdjustWindow(context);
+          // This delayed callback can outlive the menu State, so its context
+          // is unsafe.
+          widget.screenAdjustor.doAdjustWindow();
         }
       }
     });
