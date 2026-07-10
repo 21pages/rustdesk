@@ -91,8 +91,8 @@ static void on_subwindow_created(FlPluginRegistry* registry) {
 #if defined(GDK_WINDOWING_WAYLAND) && defined(HAS_KEYBOARD_SHORTCUTS_INHIBIT)
   wayland_shortcuts_inhibit_init_for_subwindow(registry);
 #endif
-  // Set up side button forwarding for sub-windows.
   if (registry == NULL || !FL_IS_VIEW(registry)) return;
+  // Set up side button forwarding for sub-windows.
   FlView* view = FL_VIEW(registry);
   GtkWidget* toplevel = gtk_widget_get_toplevel(GTK_WIDGET(view));
   if (toplevel != NULL && GTK_IS_WINDOW(toplevel)) {
