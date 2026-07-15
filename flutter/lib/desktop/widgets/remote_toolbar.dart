@@ -1364,7 +1364,8 @@ class ScreenAdjustor {
         });
   }
 
-  Future<Rect?> _getAdjustedWindowFrame(Size mediaSize) async {
+  Future<Rect?> _getAdjustedWindowFrame(Size mediaSize,
+      [String source = '_getAdjustedWindowFrame']) async {
     final screen = _screen;
     if (screen != null) {
       // Windows window frames use physical pixels while Flutter view sizes are
@@ -1385,14 +1386,18 @@ class ScreenAdjustor {
       double magicHeight =
           wndRect.bottom - wndRect.top - mediaSize.height * scale;
       final canvasModel = ffi.canvasModel;
+      final displayWidth = canvasModel.getDisplayWidth();
+      final displayHeight = canvasModel.getDisplayHeight();
+      final scaledDisplayWidth = displayWidth * canvasModel.scale;
+      final scaledDisplayHeight = displayHeight * canvasModel.scale;
       // canvasModel.scale is the rendered scale and already applies kIgnoreDpi.
       // Use it instead of the remote source resolution.
-      final width = (canvasModel.getDisplayWidth() * canvasModel.scale +
+      final width = (scaledDisplayWidth +
                   CanvasModel.leftToEdge +
                   CanvasModel.rightToEdge) *
               scale +
           magicWidth;
-      final height = (canvasModel.getDisplayHeight() * canvasModel.scale +
+      final height = (scaledDisplayHeight +
                   CanvasModel.topToEdge +
                   CanvasModel.bottomToEdge) *
               scale +
@@ -1415,6 +1420,22 @@ class ScreenAdjustor {
           );
         }
       }
+      debugPrint("========= $source: windowId: $windowId, "
+          "isFullscreen: $isFullscreen, "
+          "screenSize: ${screen.frame.width}x${screen.frame.height}, "
+          "screenFactor: ${screen.scaleFactor}, "
+          "frameScale: $scale, "
+          "availableSize: ${frameRect.width}x${frameRect.height}, "
+          "mediaSize: ${mediaSize.width}x${mediaSize.height}, "
+          "wndRect: $wndRect, "
+          "wndRectSize: ${wndRect.width}x${wndRect.height}, "
+          "displaySize: ${displayWidth}x$displayHeight, "
+          "scaledDisplaySize: ${scaledDisplayWidth}x$scaledDisplayHeight, "
+          "canvasScale: ${canvasModel.scale}, "
+          "canvasDpr: ${canvasModel.devicePixelRatio}, "
+          "magicWidth: $magicWidth, "
+          "magicHeight: $magicHeight, "
+          "calculatedSize: ${width}x$height");
       // A window frame cannot be smaller than its client area. Tolerate small
       // floating-point differences; larger negative values mean the native
       // frame and Flutter view metrics are not synchronized.
@@ -1477,7 +1498,7 @@ class ScreenAdjustor {
         }
       }
       final mediaSize = MediaQueryData.fromView(view).size;
-      final frame = await _getAdjustedWindowFrame(mediaSize);
+      final frame = await _getAdjustedWindowFrame(mediaSize, 'doAdjustWindow');
       if (frame == null) {
         return;
       }
@@ -1539,7 +1560,9 @@ class ScreenAdjustor {
     if (_screen == null) {
       return false;
     }
-    return await _getAdjustedWindowFrame(mediaSize) != null;
+    return await _getAdjustedWindowFrame(
+            mediaSize, 'isWindowCanBeAdjusted') !=
+        null;
   }
 }
 
