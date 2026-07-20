@@ -1902,6 +1902,10 @@ impl Connection {
                     }
                     // A separate primary lookup here could race with display hot-plug.
                     self.display_idx = primary_display_idx;
+                    log::info!(
+                        "=============== primary_display_idx: {}",
+                        primary_display_idx
+                    );
                     pi.displays = displays;
                     pi.current_display = self.display_idx as _;
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4152,6 +4156,11 @@ impl Connection {
 
     async fn handle_switch_display(&mut self, s: SwitchDisplay) {
         let display_idx = s.display as usize;
+        log::info!(
+            "================ Switch display: self.display {} -> display {}",
+            self.display_idx,
+            display_idx
+        );
         if self.display_idx != display_idx {
             if let Some(server) = self.server.upgrade() {
                 if !self.switch_display_to(display_idx, server.clone()) {
@@ -4254,6 +4263,12 @@ impl Connection {
     }
 
     async fn capture_displays(&mut self, add: &[usize], sub: &[usize], set: &[usize]) {
+        log::info!(
+            "================================ Capture displays: add {:?}, sub {:?}, set {:?}",
+            add,
+            sub,
+            set
+        );
         let video_source = self.video_source();
         let source_count = Self::video_source_count(video_source);
         // Only add/set can create services; sub only narrows existing subscriptions.
