@@ -993,12 +993,6 @@ pub mod client {
     // 1) Prepare/reset runtime shared memory + IPC token.
     // 2) Start helper process (direct or logon) with shmem argument.
     // 3) Keep STARTING=true until IPC ping/pong marks RUNNING, or timeout watchdog resets it.
-    pub(crate) async fn start_portable_service_async(para: StartPara) -> ResultType<()> {
-        tokio::task::spawn_blocking(move || start_portable_service(para))
-            .await
-            .map_err(|e| anyhow!("Portable service launch task failed: {}", e))?
-    }
-
     pub(crate) fn start_portable_service(para: StartPara) -> ResultType<()> {
         log::info!("start portable service");
         let launch_token = {
