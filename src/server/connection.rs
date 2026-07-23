@@ -869,7 +869,11 @@ impl Connection {
                         }
                         #[cfg(windows)]
                         ipc::Data::DataPortableService(ipc::DataPortableService::RequestStart) => {
-                            if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Direct) {
+                            if let Err(e) = portable_client::start_portable_service_async(
+                                portable_client::StartPara::Direct,
+                            )
+                            .await
+                            {
                                 log::error!("Failed to start portable service from cm: {:?}", e);
                             }
                         }
@@ -4207,7 +4211,8 @@ impl Connection {
         } else {
             err = "No need to elevate".to_string();
             if !crate::platform::is_installed() && !portable_client::running() {
-                err = portable_client::start_portable_service(para)
+                err = portable_client::start_portable_service_async(para)
+                    .await
                     .err()
                     .map_or("".to_string(), |e| e.to_string());
             }

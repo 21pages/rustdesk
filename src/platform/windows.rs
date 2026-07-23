@@ -2892,15 +2892,7 @@ pub fn is_user_token_admin(user_token: HANDLE) -> ResultType<bool> {
     }
 }
 
-pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) -> ResultType<()> {
-    let last_error_table = HashMap::from([
-        (
-            ERROR_LOGON_FAILURE,
-            "The user name or password is incorrect.",
-        ),
-        (ERROR_ACCESS_DENIED, "Access is denied."),
-    ]);
-
+fn create_process_with_logon_impl(user: &str, pwd: &str, exe: &str, arg: &str) -> Result<(), u32> {
     unsafe {
         let user_split = user.split("\\").collect::<Vec<&str>>();
         let wuser = wide_string(user_split.get(1).unwrap_or(&user));
@@ -2934,17 +2926,37 @@ pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) ->
                 &mut pi as *mut PROCESS_INFORMATION,
             )
         {
-            let last_error = GetLastError();
-            bail!(
-                "CreateProcessWithLogonW failed : \"{}\", error {}",
-                last_error_table
-                    .get(&last_error)
-                    .unwrap_or(&"Unknown error"),
-                io::Error::from_raw_os_error(last_error as _)
-            );
+            return Err(GetLastError());
         }
     }
-    return Ok(());
+    Ok(())
+}
+
+pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) -> ResultType<()> {
+    let last_error_table = HashMap::from([
+        (
+            ERROR_LOGON_FAILURE,
+            "The user name or password is incorrect.",
+        ),
+        (ERROR_ACCESS_DENIED, "Access is denied."),
+    ]);
+
+    let mut result = create_process_with_logon_impl(user, pwd, exe, arg);
+    if result == Err(ERROR_ACCESS_DENIED) {
+        // ERROR_ACCESS_DENIED can be a transient timing issue immediately after logon.
+        std::thread::sleep(Duration::from_millis(500));
+        result = create_process_with_logon_impl(user, pwd, exe, arg);
+    }
+    if let Err(last_error) = result {
+        bail!(
+            "CreateProcessWithLogonW failed : \"{}\", error {}",
+            last_error_table
+                .get(&last_error)
+                .unwrap_or(&"Unknown error"),
+            io::Error::from_raw_os_error(last_error as _)
+        );
+    }
+    Ok(())
 }
 
 #[inline]
