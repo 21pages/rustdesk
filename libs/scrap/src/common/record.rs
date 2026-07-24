@@ -20,7 +20,7 @@ use webm::mux::{self, Segment, Track, VideoTrack, Writer};
 
 const MIN_SECS: u64 = 1;
 
-// Use a Windows-safe filename on all platforms so recordings remain portable.
+// Replace characters that are invalid in Windows filename components so recordings remain portable.
 // Control characters are also replaced because they can make filenames invalid
 // on Windows or invisible and difficult to handle on Linux and macOS.
 fn sanitize_filename_component(value: &str) -> String {
