@@ -46,7 +46,7 @@ use scrap::vram::{VRamEncoder, VRamEncoderConfig};
 use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
-    codec::{Encoder, EncoderCfg},
+    codec::{av1_encoder_preference, Av1EncoderPreference, Encoder, EncoderCfg, AV1_ENCODER_ENV},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, Display, EncodeInput, TraitCapturer, TraitPixelBuffer,
@@ -1030,6 +1030,14 @@ fn get_encoder_config(
                 quality,
                 keyframe_interval,
             });
+            let preference = av1_encoder_preference();
+            log::info!(
+                "AV1 encoder selection: {AV1_ENCODER_ENV}={}",
+                preference.as_str()
+            );
+            if preference == Av1EncoderPreference::Aom {
+                return aom;
+            }
             // Prefer svt-av1 for AV1 encoding, keep aom for i444 (svt-av1 is 4:2:0
             // only) and for resolutions svt-av1 cannot handle.
             #[cfg(target_pointer_width = "64")]
@@ -1044,13 +1052,23 @@ fn get_encoder_config(
                         keyframe_interval,
                     });
                 }
-                log::info!(
-                    "AV1 uses aom instead of svt-av1: {}",
-                    if use_i444 {
-                        "i444"
-                    } else {
-                        "unsupported resolution"
-                    }
+                let reason = if use_i444 {
+                    "i444"
+                } else {
+                    "unsupported resolution"
+                };
+                if preference == Av1EncoderPreference::SvtAv1 {
+                    log::warn!(
+                        "Requested svt-av1 through {AV1_ENCODER_ENV}, but it cannot be used: {reason}; using aom"
+                    );
+                } else {
+                    log::info!("AV1 uses aom instead of svt-av1: {}", reason);
+                }
+            }
+            #[cfg(not(target_pointer_width = "64"))]
+            if preference == Av1EncoderPreference::SvtAv1 {
+                log::warn!(
+                    "Requested svt-av1 through {AV1_ENCODER_ENV}, but it is unavailable on 32-bit targets; using aom"
                 );
             }
             aom

@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 #[cfg(feature = "hwcodec")]
@@ -48,6 +48,135 @@ lazy_static::lazy_static! {
 }
 
 pub const ENCODE_NEED_SWITCH: &'static str = "ENCODE_NEED_SWITCH";
+pub const AV1_ENCODER_ENV: &str = "RUSTDESK_AV1_ENCODER";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Av1EncoderPreference {
+    Auto,
+    Aom,
+    SvtAv1,
+}
+
+impl Av1EncoderPreference {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Aom => "aom",
+            Self::SvtAv1 => "svt-av1",
+        }
+    }
+}
+
+pub fn av1_encoder_preference() -> Av1EncoderPreference {
+    let Ok(value) = std::env::var(AV1_ENCODER_ENV) else {
+        return Av1EncoderPreference::Auto;
+    };
+    let value = value.trim();
+    if value.is_empty() || value.eq_ignore_ascii_case("auto") {
+        Av1EncoderPreference::Auto
+    } else if value.eq_ignore_ascii_case("aom") {
+        Av1EncoderPreference::Aom
+    } else if value.eq_ignore_ascii_case("svt-av1")
+        || value.eq_ignore_ascii_case("svt_av1")
+        || value.eq_ignore_ascii_case("svt")
+        || value.eq_ignore_ascii_case("av1")
+    {
+        Av1EncoderPreference::SvtAv1
+    } else {
+        log::warn!("Ignoring invalid {AV1_ENCODER_ENV}={value:?}; expected auto, aom, or svt-av1");
+        Av1EncoderPreference::Auto
+    }
+}
+
+pub(crate) struct Av1EncoderStats {
+    encoder: &'static str,
+    input_frames: u64,
+    output_frames: u64,
+    total_encode_time: Duration,
+    first_output_after_inputs: Option<u64>,
+}
+
+impl Av1EncoderStats {
+    pub(crate) fn new(encoder: &'static str) -> Self {
+        Self {
+            encoder,
+            input_frames: 0,
+            output_frames: 0,
+            total_encode_time: Duration::ZERO,
+            first_output_after_inputs: None,
+        }
+    }
+
+    pub(crate) fn record(
+        &mut self,
+        input_pts: i64,
+        output_count: usize,
+        first_output_pts: Option<i64>,
+        last_output_pts: Option<i64>,
+        elapsed: Duration,
+    ) {
+        self.input_frames += 1;
+        self.output_frames += output_count as u64;
+        self.total_encode_time += elapsed;
+        if output_count > 0 && self.first_output_after_inputs.is_none() {
+            self.first_output_after_inputs = Some(self.input_frames);
+            log::info!(
+                "AV1 first output: encoder={}, after_input_frames={}, output_pts={:?}",
+                self.encoder,
+                self.input_frames,
+                first_output_pts
+            );
+        }
+
+        if self.input_frames <= 10 || self.input_frames % 30 == 0 || output_count != 1 {
+            let total_secs = self.total_encode_time.as_secs_f64();
+            let average_ms = total_secs * 1000.0 / self.input_frames as f64;
+            let encode_fps = if total_secs > 0.0 {
+                self.input_frames as f64 / total_secs
+            } else {
+                0.0
+            };
+            log::info!(
+                "AV1 encode frame: encoder={}, input_total={}, output_this_call={}, output_total={}, input_pts={}, first_output_pts={:?}, last_output_pts={:?}, elapsed_ms={:.3}, average_ms={:.3}, encode_fps={:.2}",
+                self.encoder,
+                self.input_frames,
+                output_count,
+                self.output_frames,
+                input_pts,
+                first_output_pts,
+                last_output_pts,
+                elapsed.as_secs_f64() * 1000.0,
+                average_ms,
+                encode_fps
+            );
+        }
+    }
+}
+
+impl Drop for Av1EncoderStats {
+    fn drop(&mut self) {
+        if self.input_frames == 0 {
+            return;
+        }
+        let total_secs = self.total_encode_time.as_secs_f64();
+        let average_ms = total_secs * 1000.0 / self.input_frames as f64;
+        let encode_fps = if total_secs > 0.0 {
+            self.input_frames as f64 / total_secs
+        } else {
+            0.0
+        };
+        log::info!(
+            "AV1 encode summary: encoder={}, input_total={}, output_total={}, first_output_after_inputs={:?}, total_encode_ms={:.3}, average_ms={:.3}, encode_fps={:.2}",
+            self.encoder,
+            self.input_frames,
+            self.output_frames,
+            self.first_output_after_inputs,
+            total_secs * 1000.0,
+            average_ms,
+            encode_fps
+        );
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum EncoderCfg {
@@ -1085,22 +1214,27 @@ pub fn test_av1() {
     use hbb_common::rand::Rng;
     use std::{sync::Once, time::Duration};
 
+    let preference = av1_encoder_preference();
     // The verdict is tied to the encoder generation that produced it, so
     // switching the AV1 encoder (aom <-> svt-av1) re-runs the test.
     #[cfg(target_pointer_width = "64")]
-    const AV1_TEST_RESULT: (&str, &str) = ("SVT-Y", "SVT-N");
+    let av1_test_result = if preference == Av1EncoderPreference::Aom {
+        ("Y", "N")
+    } else {
+        ("SVT-Y", "SVT-N")
+    };
     #[cfg(not(target_pointer_width = "64"))]
-    const AV1_TEST_RESULT: (&str, &str) = ("Y", "N");
+    let av1_test_result = ("Y", "N");
 
     let cached = Config::get_option(OPTION_AV1_TEST);
-    if disable_av1() || cached == AV1_TEST_RESULT.0 || cached == AV1_TEST_RESULT.1 {
+    if disable_av1() || cached == av1_test_result.0 || cached == av1_test_result.1 {
         log::info!("skip test av1");
         return;
     }
 
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
-        let f = || {
+        let f = move || {
             let (width, height, quality, keyframe_interval, i444) = (1920, 1080, 1.0, None, false);
             let frame_count = 10;
             let block_size = 300;
@@ -1170,17 +1304,21 @@ pub fn test_av1() {
             // color) sessions and svt-unsupported resolutions still run aom,
             // whose speed is then not covered by this gate.
             #[cfg(target_pointer_width = "64")]
-            let av1 = crate::svt_av1::SvtAv1Encoder::new(
-                EncoderCfg::SVTAV1(crate::svt_av1::SvtAv1EncoderConfig {
-                    width,
-                    height,
-                    quality,
-                    keyframe_interval,
-                }),
-                i444,
-            )
-            .map(|e| Box::new(e) as Box<dyn EncoderApi>)
-            .or_else(|_| aom());
+            let av1 = if preference == Av1EncoderPreference::Aom {
+                aom()
+            } else {
+                crate::svt_av1::SvtAv1Encoder::new(
+                    EncoderCfg::SVTAV1(crate::svt_av1::SvtAv1EncoderConfig {
+                        width,
+                        height,
+                        quality,
+                        keyframe_interval,
+                    }),
+                    i444,
+                )
+                .map(|e| Box::new(e) as Box<dyn EncoderApi>)
+                .or_else(|_| aom())
+            };
             #[cfg(not(target_pointer_width = "64"))]
             let av1 = aom();
             let Ok(mut av1) = av1 else {
@@ -1225,9 +1363,9 @@ pub fn test_av1() {
             Config::set_option(
                 OPTION_AV1_TEST.to_string(),
                 if v {
-                    AV1_TEST_RESULT.0
+                    av1_test_result.0
                 } else {
-                    AV1_TEST_RESULT.1
+                    av1_test_result.1
                 }
                 .to_string(),
             );

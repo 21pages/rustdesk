@@ -6,7 +6,7 @@
 
 include!(concat!(env!("OUT_DIR"), "/aom_ffi.rs"));
 
-use crate::codec::{base_bitrate, codec_thread_num};
+use crate::codec::{base_bitrate, codec_thread_num, Av1EncoderStats};
 use crate::{codec::EncoderApi, EncodeFrame, STRIDE_ALIGN};
 use crate::{common::GoogleImage, generate_call_macro, generate_call_ptr_macro, Error, Result};
 use crate::{EncodeInput, EncodeYuvFormat, Pixfmt};
@@ -17,7 +17,7 @@ use hbb_common::{
     message_proto::{Chroma, EncodedVideoFrame, EncodedVideoFrames, VideoFrame},
     ResultType,
 };
-use std::{ptr, slice};
+use std::{ptr, slice, time::Instant};
 
 generate_call_macro!(call_aom, false);
 generate_call_macro!(call_aom_allow_err, true);
@@ -55,6 +55,7 @@ pub struct AomEncoder {
     height: usize,
     i444: bool,
     yuvfmt: EncodeYuvFormat,
+    stats: Av1EncoderStats,
 }
 
 // https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/codecs/av1/libaom_av1_encoder.cc
@@ -246,6 +247,7 @@ impl EncoderApi for AomEncoder {
                     height: config.height as _,
                     i444,
                     yuvfmt: Self::get_yuvfmt(config.width, config.height, i444),
+                    stats: Av1EncoderStats::new("aom"),
                 })
             }
             _ => Err(anyhow!("encoder type mismatch")),
@@ -253,13 +255,26 @@ impl EncoderApi for AomEncoder {
     }
 
     fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
+        let yuv = input.yuv()?;
+        let start = Instant::now();
         let mut frames = Vec::new();
-        for ref frame in self
-            .encode(ms, input.yuv()?, STRIDE_ALIGN)
-            .with_context(|| "Failed to encode")?
         {
-            frames.push(Self::create_frame(frame));
+            for ref frame in self
+                .encode(ms, yuv, STRIDE_ALIGN)
+                .with_context(|| "Failed to encode")?
+            {
+                frames.push(Self::create_frame(frame));
+            }
         }
+        let first_output_pts = frames.first().map(|frame| frame.pts);
+        let last_output_pts = frames.last().map(|frame| frame.pts);
+        self.stats.record(
+            ms,
+            frames.len(),
+            first_output_pts,
+            last_output_pts,
+            start.elapsed(),
+        );
         if frames.len() > 0 {
             Ok(Self::create_video_frame(frames))
         } else {

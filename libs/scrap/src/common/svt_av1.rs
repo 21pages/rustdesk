@@ -6,7 +6,7 @@
 
 include!(concat!(env!("OUT_DIR"), "/svt_av1_ffi.rs"));
 
-use crate::codec::{base_bitrate, codec_thread_num, EncoderApi, EncoderCfg};
+use crate::codec::{base_bitrate, codec_thread_num, Av1EncoderStats, EncoderApi, EncoderCfg};
 use crate::{EncodeInput, EncodeYuvFormat, Pixfmt, STRIDE_ALIGN};
 use hbb_common::{
     anyhow::Context,
@@ -16,7 +16,7 @@ use hbb_common::{
     message_proto::{EncodedVideoFrame, EncodedVideoFrames, VideoFrame},
     ResultType,
 };
-use std::{mem::MaybeUninit, os::raw::c_void, ptr, slice};
+use std::{mem::MaybeUninit, os::raw::c_void, ptr, slice, time::Instant};
 
 // SVT-AV1 rejects on-the-fly target bitrates above 100_000 kbps.
 const MAX_TARGET_BITRATE_KBPS: u32 = 100_000;
@@ -45,6 +45,7 @@ pub struct SvtAv1Encoder {
     fps: u32,
     // frame rate change to apply with the next picture via FRAME_RATE_CHANGE_EVENT
     pending_fps: Option<u32>,
+    stats: Av1EncoderStats,
 }
 
 // The handle is only used behind &mut self, SVT-AV1 synchronizes internally.
@@ -98,6 +99,7 @@ impl EncoderApi for SvtAv1Encoder {
                     pending_bitrate: None,
                     fps: DEFAULT_FPS,
                     pending_fps: None,
+                    stats: Av1EncoderStats::new("svt-av1"),
                 })
             }
             _ => bail!("encoder type mismatch"),
@@ -105,9 +107,17 @@ impl EncoderApi for SvtAv1Encoder {
     }
 
     fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
+        let start = Instant::now();
         let frames = self
             .encode(ms, input.yuv()?)
             .with_context(|| "Failed to encode")?;
+        self.stats.record(
+            ms,
+            frames.len(),
+            frames.first().map(|frame| frame.pts),
+            frames.last().map(|frame| frame.pts),
+            start.elapsed(),
+        );
         if frames.len() > 0 {
             Ok(Self::create_video_frame(frames))
         } else {
