@@ -1050,6 +1050,8 @@ fn get_encoder_config(
                         height: c.height as _,
                         quality,
                         keyframe_interval,
+                        qp_range: None,
+                        preset: None,
                     });
                 }
                 let reason = if use_i444 {

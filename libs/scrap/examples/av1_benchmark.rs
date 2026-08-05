@@ -33,12 +33,14 @@ fn main() {
 mod benchmark {
     use hbb_common::{
         anyhow::{anyhow, bail},
-        message_proto::{video_frame, Chroma, VideoFrame},
+        bytes::Bytes,
+        message_proto::{video_frame, Chroma, EncodedVideoFrame, EncodedVideoFrames, VideoFrame},
         ResultType,
     };
     use scrap::{
         aom::{AomDecoder, AomEncoder, AomEncoderConfig},
         codec::{EncoderApi, EncoderCfg},
+        record::{RecordState, Recorder, RecorderContext},
         svt_av1::{SvtAv1Encoder, SvtAv1EncoderConfig},
         Capturer, Display as ScrapDisplay, EncodeInput, EncodeYuvFormat, GoogleImage, Pixfmt,
         TraitCapturer, STRIDE_ALIGN,
@@ -49,6 +51,7 @@ mod benchmark {
         fmt::Display,
         io::ErrorKind,
         str::FromStr,
+        sync::mpsc,
         thread,
         time::{Duration, Instant},
     };
@@ -62,16 +65,20 @@ Usage:
 Options:
   --input=TYPE    Input type: synthetic or screenshot [default: synthetic]
   --capture-delay=N
-                  Seconds to wait before taking the screenshot [default: 0]
+                  Seconds to wait before capturing the screenshot sequence [default: 0]
   --width=N       Synthetic frame width [default: 1920]
   --height=N      Synthetic frame height [default: 1080]
   --frames=N      Measured frames per encoder [default: 300]
   --warmup=N      Unmeasured warm-up frames per encoder [default: 10]
   --fps=N         Configured frame rate [default: 30]
   --quality=N     RustDesk quality ratio, in (0, 2] [default: 1.0]
+  --svt-preset=N  SVT-AV1 RTC preset, from 7 (slow) to 13 (fast) [default: 8]
   --svt-first     Run SVT-AV1 before AOM to help check order/thermal bias
+  --record        Save both encoded streams under target/av1-benchmark-recordings
   -h, --help      Show this help
 ";
+
+    const SCREENSHOT_INTERVAL: Duration = Duration::from_millis(30);
 
     #[derive(Clone, Copy)]
     struct Args {
@@ -83,7 +90,9 @@ Options:
         warmup: usize,
         fps: u32,
         quality: f32,
+        svt_preset: i8,
         svt_first: bool,
+        record: bool,
     }
 
     impl Default for Args {
@@ -97,7 +106,9 @@ Options:
                 warmup: 10,
                 fps: 30,
                 quality: 1.0,
+                svt_preset: 8,
                 svt_first: false,
+                record: false,
             }
         }
     }
@@ -162,6 +173,7 @@ Options:
     struct EncodedPacket {
         input_index: usize,
         pts: i64,
+        key: bool,
         data: Vec<u8>,
     }
 
@@ -325,14 +337,14 @@ Options:
         frame: Vec<u8>,
     }
 
-    struct ScreenshotI420 {
+    struct ScreenshotSequenceI420 {
         format: EncodeYuvFormat,
-        data: Vec<u8>,
+        frames: Vec<Vec<u8>>,
     }
 
     enum BenchmarkInput {
         Synthetic,
-        Screenshot(ScreenshotI420),
+        Screenshot(ScreenshotSequenceI420),
     }
 
     impl BenchmarkInput {
@@ -341,7 +353,7 @@ Options:
                 Self::Synthetic => Ok(FrameSource::Synthetic(SyntheticI420::new(format))),
                 Self::Screenshot(screenshot) => {
                     validate_matching_i420_layout(&screenshot.format, &format)?;
-                    Ok(FrameSource::Screenshot(&screenshot.data))
+                    Ok(FrameSource::Screenshot(&screenshot.frames))
                 }
             }
         }
@@ -352,7 +364,7 @@ Options:
                     "Synthetic input: static checkerboard with a moving YUV rectangle (I420)"
                 }
                 Self::Screenshot(_) => {
-                    "Screenshot input: one primary-display frame reused for every input frame (I420)"
+                    "Screenshot input: primary-display frames captured at 30 ms intervals (I420)"
                 }
             }
         }
@@ -360,14 +372,17 @@ Options:
 
     enum FrameSource<'a> {
         Synthetic(SyntheticI420),
-        Screenshot(&'a [u8]),
+        Screenshot(&'a [Vec<u8>]),
     }
 
     impl FrameSource<'_> {
-        fn frame(&mut self, index: usize) -> &[u8] {
+        fn frame(&mut self, index: usize) -> ResultType<&[u8]> {
             match self {
-                Self::Synthetic(input) => input.frame(index),
-                Self::Screenshot(frame) => *frame,
+                Self::Synthetic(input) => Ok(input.frame(index)),
+                Self::Screenshot(frames) => frames
+                    .get(index)
+                    .map(Vec::as_slice)
+                    .ok_or_else(|| anyhow!("screenshot frame {index} is unavailable")),
             }
         }
     }
@@ -475,7 +490,10 @@ Options:
         })
     }
 
-    fn capture_primary_screenshot(delay_seconds: u64) -> ResultType<ScreenshotI420> {
+    fn capture_primary_screenshots(
+        delay_seconds: u64,
+        frame_count: usize,
+    ) -> ResultType<ScreenshotSequenceI420> {
         let mut displays = ScrapDisplay::all()?;
         if displays.is_empty() {
             bail!("no displays are available for screenshot input");
@@ -497,13 +515,17 @@ Options:
             println!("Taking primary-display screenshot in {remaining}s...");
             thread::sleep(Duration::from_secs(1));
         }
-        println!("Capturing primary display at {width}x{height}...");
+        println!(
+            "Capturing {frame_count} primary-display frames at {width}x{height} with a {} ms interval...",
+            SCREENSHOT_INTERVAL.as_millis()
+        );
 
-        let wait_start = Instant::now();
         let wait_limit = Duration::from_secs(10);
+        let mut wait_start = Instant::now();
+        let mut frames = Vec::with_capacity(frame_count);
         let mut yuv = Vec::new();
         let mut mid_data = Vec::new();
-        loop {
+        while frames.len() < frame_count {
             match capturer.frame(Duration::from_millis(100)) {
                 Ok(frame) if !frame.valid() => {}
                 Ok(frame) => {
@@ -511,19 +533,31 @@ Options:
                     if converted.yuv().is_err() {
                         bail!("screen capturer returned a GPU texture instead of CPU pixels");
                     }
-                    println!("Screenshot captured.");
-                    return Ok(ScreenshotI420 { format, data: yuv });
+                    frames.push(std::mem::take(&mut yuv));
+                    wait_start = Instant::now();
+                    if frames.len() < frame_count {
+                        thread::sleep(SCREENSHOT_INTERVAL);
+                    }
+                    continue;
                 }
                 Err(error) if error.kind() == ErrorKind::WouldBlock => {}
                 Err(error) => bail!("failed to capture primary display: {error}"),
             }
             if wait_start.elapsed() >= wait_limit {
                 bail!(
-                    "timed out waiting for a screen frame; check screen-recording permission and try again"
+                    "timed out waiting for screenshot frame {}/{}; check screen-recording permission and try again",
+                    frames.len() + 1,
+                    frame_count
                 );
             }
             thread::sleep(Duration::from_millis(10));
         }
+        let captured_bytes = frames.iter().map(Vec::len).sum::<usize>();
+        println!(
+            "Screenshot sequence captured ({:.1} MiB).",
+            captured_bytes as f64 / (1024.0 * 1024.0)
+        );
+        Ok(ScreenshotSequenceI420 { format, frames })
     }
 
     fn accumulate_plane_error(
@@ -620,10 +654,17 @@ Options:
             print!("{USAGE}");
             return Ok(());
         };
+        let total_frames = args
+            .warmup
+            .checked_add(args.frames)
+            .ok_or_else(|| anyhow!("--warmup + --frames is too large"))?;
+        if args.frames == 0 {
+            bail!("--frames must be greater than zero");
+        }
         let input = match args.input {
             InputKind::Synthetic => BenchmarkInput::Synthetic,
             InputKind::Screenshot => {
-                let screenshot = capture_primary_screenshot(args.capture_delay)?;
+                let screenshot = capture_primary_screenshots(args.capture_delay, total_frames)?;
                 args.width = u32::try_from(screenshot.format.w)
                     .map_err(|_| anyhow!("captured screen width is too large"))?;
                 args.height = u32::try_from(screenshot.format.h)
@@ -647,6 +688,11 @@ Options:
         println!("Timing scope: encode_to_message only; input generation is excluded");
         println!("Quality scope: separate decode passes after both encoders finish");
         println!("Quality metrics: sequence PSNR and mean non-overlapping 8x8 luma SSIM\n");
+        let (svt_min_qp, svt_max_qp) = SvtAv1Encoder::quality_qp_range(args.quality);
+        println!(
+            "Comparison constraint: SVT-AV1 QP range={}..{} (matched to AOM for quality={}); preset=M{}\n",
+            svt_min_qp, svt_max_qp, args.quality, args.svt_preset
+        );
 
         let (mut aom, mut svt) = if args.svt_first {
             let svt = benchmark_encoder(EncoderKind::SvtAv1, args, &input)?;
@@ -660,6 +706,9 @@ Options:
 
         evaluate_quality(&mut aom, args, &input)?;
         evaluate_quality(&mut svt, args, &input)?;
+        if args.record {
+            write_recordings([&aom, &svt], args)?;
+        }
         print_results(&aom, &svt);
         Ok(())
     }
@@ -673,6 +722,9 @@ Options:
         }
         if !args.quality.is_finite() || args.quality <= 0.0 || args.quality > 2.0 {
             bail!("--quality must be in the range (0, 2]");
+        }
+        if !(7..=13).contains(&args.svt_preset) {
+            bail!("--svt-preset must be in the range 7..=13");
         }
         if !SvtAv1Encoder::support(args.width, args.height) {
             bail!(
@@ -707,6 +759,8 @@ Options:
                     height: args.height,
                     quality: args.quality,
                     keyframe_interval: None,
+                    qp_range: Some(SvtAv1Encoder::quality_qp_range(args.quality)),
+                    preset: Some(args.svt_preset),
                 }),
                 false,
             )?),
@@ -728,7 +782,7 @@ Options:
 
         for index in 0..total_frames {
             let pts = index.saturating_mul(1000) / args.fps as usize;
-            let yuv = input.frame(index);
+            let yuv = input.frame(index)?;
             let encode_start = Instant::now();
             let message = encoder.encode_to_message(EncodeInput::YUV(yuv), pts as i64)?;
             let elapsed = encode_start.elapsed();
@@ -749,6 +803,7 @@ Options:
                 packets.push(EncodedPacket {
                     input_index: index,
                     pts: frame.pts,
+                    key: frame.key,
                     data: frame.data.to_vec(),
                 });
             }
@@ -782,11 +837,10 @@ Options:
         println!("Evaluating {} decoded quality...", result.encoder);
         let mut decoder = AomDecoder::new()?;
         let mut quality_input = benchmark_input.frame_source(result.reference_format.clone())?;
-        let packets = std::mem::take(&mut result.packets);
-        for packet in packets {
+        for packet in &result.packets {
             let expected_pts = packet.input_index.saturating_mul(1000) / args.fps as usize;
             let measured = packet.input_index >= args.warmup;
-            let reference = quality_input.frame(packet.input_index);
+            let reference = quality_input.frame(packet.input_index)?;
             let decoded = decode_packet(
                 &mut decoder,
                 &packet.data,
@@ -799,6 +853,58 @@ Options:
                 result.decoded_frames += decoded;
             }
         }
+        Ok(())
+    }
+
+    fn write_recordings(results: [&BenchmarkResult; 2], args: Args) -> ResultType<()> {
+        const RECORDING_DIR: &str = "target/av1-benchmark-recordings";
+
+        println!("Writing AV1 benchmark recordings...");
+        let mut recordings = Vec::with_capacity(results.len());
+        for result in results {
+            let (tx, rx) = mpsc::channel();
+            let mut recorder = Recorder::new(RecorderContext {
+                server: false,
+                id: format!("benchmark-{}", result.encoder),
+                dir: RECORDING_DIR.to_owned(),
+                display_idx: 0,
+                camera: false,
+                tx: Some(tx),
+            })?;
+            let frames = result
+                .packets
+                .iter()
+                .map(|packet| EncodedVideoFrame {
+                    data: Bytes::from(packet.data.clone()),
+                    key: packet.key,
+                    pts: packet.pts,
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>();
+            let encoded = EncodedVideoFrames {
+                frames: frames.into(),
+                ..Default::default()
+            };
+            recorder.write_frame(
+                &video_frame::Union::Av1s(encoded),
+                args.width as usize,
+                args.height as usize,
+            )?;
+            let filename = match rx.recv() {
+                Ok(RecordState::NewFile(filename)) => filename,
+                Ok(_) => bail!("recorder did not report its output filename"),
+                Err(error) => bail!("failed to receive recorder output filename: {error}"),
+            };
+            recordings.push((recorder, filename));
+        }
+
+        // Recorder removes files whose writer exists for less than one second.
+        // Keep both muxers alive long enough for short benchmark runs as well.
+        thread::sleep(Duration::from_millis(1100));
+        for (_, filename) in &recordings {
+            println!("Recording: {filename}");
+        }
+        drop(recordings);
         Ok(())
     }
 
@@ -943,6 +1049,10 @@ Options:
                 parsed.svt_first = true;
                 continue;
             }
+            if argument == "--record" {
+                parsed.record = true;
+                continue;
+            }
 
             let (name, inline_value) = match argument.split_once('=') {
                 Some((name, value)) => (name, Some(value)),
@@ -963,6 +1073,7 @@ Options:
                 "--warmup" => parsed.warmup = parse_value(name, &value)?,
                 "--fps" => parsed.fps = parse_value(name, &value)?,
                 "--quality" => parsed.quality = parse_value(name, &value)?,
+                "--svt-preset" => parsed.svt_preset = parse_value(name, &value)?,
                 _ => bail!("unknown option {name}\n\n{USAGE}"),
             }
         }
