@@ -48,7 +48,10 @@ class ServerModel with ChangeNotifier {
 
   final List<Client> _clients = [];
 
-  Timer? cmHiddenTimer;
+  Timer? cmCompactTimer;
+
+  bool _isCmCompact = false;
+  bool _keepCmExpanded = false;
 
   final _wakelockKey = UniqueKey();
 
@@ -126,6 +129,15 @@ class ServerModel with ChangeNotifier {
 
   List<Client> get clients => _clients;
 
+  List<Client> get activeClients => _clients
+      .where((client) => client.authorized && !client.disconnected)
+      .toList(growable: false);
+
+  bool get hasPendingClients =>
+      _clients.any((client) => !client.authorized && !client.disconnected);
+
+  bool get isCmCompact => _isCmCompact;
+
   final controller = ScrollController();
 
   WeakReference<FFI> parent;
@@ -162,7 +174,7 @@ class ServerModel with ChangeNotifier {
           debugPrint("clients not match!");
           updateClientState(res);
         } else {
-          if (_clients.isEmpty) {
+          if (activeClients.isEmpty && !hasPendingClients) {
             hideCmWindow();
             if (_zeroClientLengthCounter++ == 12) {
               // 6 second
@@ -170,7 +182,7 @@ class ServerModel with ChangeNotifier {
             }
           } else {
             _zeroClientLengthCounter = 0;
-            if (!hideCm) showCmWindow();
+            if (!_isCmCompact && !hideCm) showCmWindow();
           }
         }
       }
@@ -529,9 +541,17 @@ class ServerModel with ChangeNotifier {
     }
     if (desktopType == DesktopType.cm) {
       if (_clients.isEmpty) {
+        _setCmCompactState(false);
         hideCmWindow();
-      } else if (!hideCm) {
+      } else if (hasPendingClients || activeClients.isEmpty) {
+        expandCm();
+      } else if (hideCm) {
+        compactCm();
+      } else if (_isCmCompact) {
+        compactCmWindow();
+      } else {
         showCmWindow();
+        if (!_keepCmExpanded) scheduleCmCompact();
       }
     }
     if (_clients.length != oldClientLenght) {
@@ -555,6 +575,7 @@ class ServerModel with ChangeNotifier {
             return;
           }
           _clients[index].authorized = true;
+          _clients[index].connectedAt = client.connectedAt;
           _clients[index].privacyMode = client.privacyMode;
         }
       } else {
@@ -574,9 +595,7 @@ class ServerModel with ChangeNotifier {
         _clients.removeAt(index_disconnected);
         tabController.remove(index_disconnected);
       }
-      if (desktopType == DesktopType.cm && !hideCm) {
-        showCmWindow();
-      }
+      _showCmForConnection(client);
       scrollToBottom();
       notifyListeners();
       if (isAndroid && !client.authorized) showLoginDialog(client);
@@ -594,17 +613,88 @@ class ServerModel with ChangeNotifier {
         onTap: () {},
         page: desktop.buildConnectionCard(client)));
     Future.delayed(Duration.zero, () async {
-      if (!hideCm) windowOnTop(null);
+      if (desktopType == DesktopType.cm) {
+        _showCmForConnection(client);
+      }
     });
-    // Only do the hidden task when on Desktop.
-    if (client.authorized && isDesktop) {
-      cmHiddenTimer = Timer(const Duration(seconds: 3), () {
-        if (!hideCm) windowManager.minimize();
-        cmHiddenTimer = null;
-      });
-    }
     parent.target?.chatModel
         .updateConnIdOfKey(MessageKey(client.peerId, client.id));
+  }
+
+  void _showCmForConnection(Client client) {
+    if (desktopType != DesktopType.cm) return;
+    _keepCmExpanded = false;
+    if (!client.authorized || hasPendingClients) {
+      expandCm();
+    } else if (hideCm) {
+      compactCm();
+    } else {
+      expandCm();
+      scheduleCmCompact();
+    }
+  }
+
+  void _setCmCompactState(bool compact) {
+    if (_isCmCompact == compact) return;
+    _isCmCompact = compact;
+    notifyListeners();
+  }
+
+  void cancelCmCompactTimer() {
+    cmCompactTimer?.cancel();
+    cmCompactTimer = null;
+  }
+
+  void keepCmExpanded() {
+    _keepCmExpanded = true;
+    cancelCmCompactTimer();
+  }
+
+  void scheduleCmCompact() {
+    cancelCmCompactTimer();
+    if (desktopType != DesktopType.cm ||
+        hasPendingClients ||
+        activeClients.isEmpty) {
+      return;
+    }
+    cmCompactTimer = Timer(const Duration(seconds: 3), () {
+      cmCompactTimer = null;
+      compactCm();
+    });
+  }
+
+  Future<void> compactCm() async {
+    if (desktopType != DesktopType.cm ||
+        hasPendingClients ||
+        activeClients.isEmpty) {
+      return;
+    }
+    cancelCmCompactTimer();
+    _keepCmExpanded = false;
+    _setCmCompactState(true);
+    await compactCmWindow();
+  }
+
+  Future<void> expandCm({bool keepExpanded = false}) async {
+    if (desktopType != DesktopType.cm) return;
+    cancelCmCompactTimer();
+    _keepCmExpanded = keepExpanded;
+    _setCmCompactState(false);
+    await showCmWindow(force: true);
+  }
+
+  Future<void> restoreCmWindowAfterStartup() async {
+    if (desktopType != DesktopType.cm) return;
+    if (hasPendingClients) {
+      await expandCm();
+    } else if (activeClients.isNotEmpty) {
+      if (hideCm) {
+        await compactCm();
+      } else {
+        await expandCm();
+        scheduleCmCompact();
+      }
+    }
   }
 
   void showLoginDialog(Client client) {
@@ -700,7 +790,13 @@ class ServerModel with ChangeNotifier {
       }
       parent.target?.invokeMethod("cancel_notification", client.id);
       client.authorized = true;
+      client.connectedAt = DateTime.now().millisecondsSinceEpoch;
       notifyListeners();
+      if (hideCm) {
+        compactCm();
+      } else {
+        scheduleCmCompact();
+      }
     } else {
       bind.cmLoginRes(connId: client.id, res: res);
       parent.target?.invokeMethod("cancel_notification", client.id);
@@ -728,8 +824,21 @@ class ServerModel with ChangeNotifier {
         parent.target?.dialogManager.dismissByTag(getLoginDialogTag(id));
         parent.target?.invokeMethod("cancel_notification", id);
       }
-      if (desktopType == DesktopType.cm && _clients.isEmpty) {
+      if (desktopType == DesktopType.cm &&
+          activeClients.isEmpty &&
+          !hasPendingClients) {
+        cancelCmCompactTimer();
+        _keepCmExpanded = false;
+        _setCmCompactState(false);
         hideCmWindow();
+      } else if (desktopType == DesktopType.cm) {
+        if (hasPendingClients || activeClients.isEmpty) {
+          expandCm();
+        } else if (_isCmCompact || hideCm) {
+          compactCm();
+        } else {
+          scheduleCmCompact();
+        }
       }
       if (isAndroid) androidUpdatekeepScreenOn();
       notifyListeners();
@@ -829,6 +938,7 @@ class Client {
   bool blockInput = false;
   bool privacyMode = false;
   bool disconnected = false;
+  int connectedAt = 0;
   bool fromSwitch = false;
   bool inVoiceCall = false;
   bool incomingVoiceCall = false;
@@ -841,6 +951,7 @@ class Client {
   Client.fromJson(Map<String, dynamic> json) {
     id = json['id'];
     authorized = json['authorized'];
+    connectedAt = json['connected_at'] ?? 0;
     isFileTransfer = json['is_file_transfer'];
     // TODO: no entry then default.
     isViewCamera = json['is_view_camera'];
@@ -867,6 +978,7 @@ class Client {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['id'] = id;
     data['authorized'] = authorized;
+    data['connected_at'] = connectedAt;
     data['is_file_transfer'] = isFileTransfer;
     data['is_view_camera'] = isViewCamera;
     data['is_terminal'] = isTerminal;

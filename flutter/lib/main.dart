@@ -301,6 +301,7 @@ void runConnectionManagerScreen() async {
   } else {
     await showCmWindow(isStartup: true);
   }
+  await gFFI.serverModel.restoreCmWindowAfterStartup();
   setResizable(false);
   // Start the uni links handler and redirect links to Native, not for Flutter.
   listenUniLinks(handleByFlutter: false);
@@ -308,7 +309,7 @@ void runConnectionManagerScreen() async {
 
 bool _isCmReadyToShow = false;
 
-showCmWindow({bool isStartup = false}) async {
+showCmWindow({bool isStartup = false, bool force = false}) async {
   if (isStartup) {
     WindowOptions windowOptions = getHiddenTitleBarWindowOptions(
         size: kConnectionManagerWindowSizeClosedChat, alwaysOnTop: true);
@@ -323,16 +324,28 @@ showCmWindow({bool isStartup = false}) async {
     await windowManager.setSizeAlignment(
         kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
     _isCmReadyToShow = true;
-  } else if (_isCmReadyToShow) {
-    if (await windowManager.getOpacity() != 1) {
-      await windowManager.setOpacity(1);
-      await windowManager.focus();
-      await windowManager.minimize(); //needed
-      await windowManager.setSizeAlignment(
-          kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
-      windowOnTop(null);
-    }
+  } else if (_isCmReadyToShow &&
+      (force || await windowManager.getOpacity() != 1)) {
+    await windowManager.setSkipTaskbar(false);
+    await windowManager.setAlwaysOnTop(true);
+    await windowManager.setOpacity(1);
+    await windowManager.restore();
+    await windowManager.setSizeAlignment(
+        kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
+    await windowManager.show();
+    await windowManager.focus();
   }
+}
+
+compactCmWindow() async {
+  if (!_isCmReadyToShow) return;
+  await windowManager.setAlwaysOnTop(true);
+  await windowManager.setSkipTaskbar(true);
+  await windowManager.setOpacity(1);
+  await windowManager.restore();
+  await windowManager.setSizeAlignment(
+      kConnectionManagerWindowSizeIndicator, Alignment.topCenter);
+  await windowManager.show();
 }
 
 hideCmWindow({bool isStartup = false}) async {

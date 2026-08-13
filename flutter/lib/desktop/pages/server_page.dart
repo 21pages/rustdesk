@@ -66,6 +66,21 @@ class _DesktopServerPageState extends State<DesktopServerPage>
     super.onWindowClose();
   }
 
+  @override
+  void onWindowMinimize() {
+    final model = gFFI.serverModel;
+    if (model.activeClients.isNotEmpty || model.hasPendingClients) {
+      Future.microtask(() {
+        if (model.hasPendingClients) {
+          model.expandCm();
+        } else {
+          model.compactCm();
+        }
+      });
+    }
+    super.onWindowMinimize();
+  }
+
   void onRemoveId(String id) {
     if (tabController.state.value.tabs.isEmpty) {
       windowManager.close();
@@ -84,7 +99,9 @@ class _DesktopServerPageState extends State<DesktopServerPage>
         builder: (context, serverModel, child) {
           final body = Scaffold(
             backgroundColor: Theme.of(context).colorScheme.background,
-            body: ConnectionManager(),
+            body: serverModel.isCmCompact
+                ? const _SessionIndicator()
+                : ConnectionManager(),
           );
           return isLinux
               ? buildVirtualWindowFrame(context, body)
@@ -165,10 +182,9 @@ class ConnectionManagerState extends State<ConnectionManager>
   Widget build(BuildContext context) {
     final serverModel = Provider.of<ServerModel>(context);
     pointerHandler(PointerEvent e) {
-      if (serverModel.cmHiddenTimer != null) {
-        serverModel.cmHiddenTimer!.cancel();
-        serverModel.cmHiddenTimer = null;
-        debugPrint("CM hidden timer has been canceled");
+      if (serverModel.cmCompactTimer != null) {
+        serverModel.keepCmExpanded();
+        debugPrint("CM compact timer has been canceled");
       }
     }
 
@@ -345,6 +361,153 @@ class ConnectionManagerState extends State<ConnectionManager>
   }
 }
 
+class _SessionIndicator extends StatefulWidget {
+  const _SessionIndicator();
+
+  @override
+  State<_SessionIndicator> createState() => _SessionIndicatorState();
+}
+
+class _SessionIndicatorState extends State<_SessionIndicator> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final model = Provider.of<ServerModel>(context);
+    final clients = model.activeClients;
+    if (clients.isEmpty) return const SizedBox.shrink();
+
+    final client = clients.first;
+    final connectedAt = clients
+        .map((client) => client.connectedAt)
+        .where((time) => time > 0)
+        .fold<int>(DateTime.now().millisecondsSinceEpoch, min);
+    final elapsed = Duration(
+      milliseconds: max(0, DateTime.now().millisecondsSinceEpoch - connectedAt),
+    );
+    final title = clients.length == 1
+        ? '${translate("Connected")} · '
+            '${client.name.isNotEmpty ? client.name : client.peerId}'
+        : '${translate("Connected")} · '
+            '${translate("Connection")} × ${clients.length}';
+    final subtitle =
+        clients.length == 1 ? _clientTypeLabel(client) : translate("Connected");
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xff17324d),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xff2f80ed)),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => model.expandCm(keepExpanded: true),
+              onPanStart: (_) => windowManager.startDragging(),
+              child: Row(
+                children: [
+                  const SizedBox(width: 14),
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xff4cd964),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$subtitle · ${formatDurationToTime(elapsed)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              for (final client in clients) {
+                bind.cmCloseConnection(connId: client.id);
+              }
+            },
+            icon: const Icon(Icons.link_off_rounded, size: 16),
+            label: Text(translate("Disconnect")),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: const Color(0xffd64545),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+          ),
+          IconButton(
+            onPressed: () => model.expandCm(keepExpanded: true),
+            color: Colors.white,
+            icon: const Icon(Icons.expand_more_rounded),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+
+  String _clientTypeLabel(Client client) {
+    switch (client.type_()) {
+      case ClientType.file:
+        return translate("Transfer file");
+      case ClientType.camera:
+        return translate("View camera");
+      case ClientType.portForward:
+        return translate("TCP tunneling");
+      case ClientType.terminal:
+        return translate("Terminal");
+      case ClientType.remote:
+        return translate("Share screen");
+    }
+  }
+}
+
 Widget buildConnectionCard(Client client) {
   return Consumer<ServerModel>(
     builder: (context, value, child) => Column(
@@ -420,6 +583,12 @@ class _CmHeaderState extends State<_CmHeader>
   @override
   void initState() {
     super.initState();
+    if (client.connectedAt > 0) {
+      _time.value = max(
+        0,
+        (DateTime.now().millisecondsSinceEpoch - client.connectedAt) ~/ 1000,
+      );
+    }
     _timer = Timer.periodic(Duration(seconds: 1), (_) {
       if (client.authorized && !client.disconnected) {
         _time.value = _time.value + 1;

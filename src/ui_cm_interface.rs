@@ -129,6 +129,7 @@ pub struct Client {
     pub id: i32,
     pub authorized: bool,
     pub disconnected: bool,
+    pub connected_at: i64,
     pub is_file_transfer: bool,
     pub is_view_camera: bool,
     pub is_terminal: bool,
@@ -239,6 +240,11 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             id,
             authorized,
             disconnected: false,
+            connected_at: if authorized {
+                hbb_common::get_time()
+            } else {
+                0
+            },
             is_file_transfer,
             is_view_camera,
             is_terminal,
@@ -365,6 +371,7 @@ pub fn get_click_time() -> i64 {
 pub fn authorize(id: i32) {
     if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
         client.authorized = true;
+        client.connected_at = hbb_common::get_time();
         allow_err!(client.tx.send(Data::Authorize));
     };
 }
