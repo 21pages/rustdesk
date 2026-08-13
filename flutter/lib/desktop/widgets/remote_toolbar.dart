@@ -1435,12 +1435,17 @@ class ScreenAdjustor {
   // occurred, and may become stale if panels change without frame or
   // scaleFactor changing.
 
+  void _logAdjust(String phase, String message) {
+    debugPrint("============= [$phase] $message");
+  }
+
   void _updateLinuxWorkAreaCache({
     required window_size.Screen screen,
     required Rect wndRect,
     required bool isWayland,
     required bool isX11,
     required bool forMenu,
+    required String phase,
   }) {
     if (isWayland &&
       (_waylandWorkAreaScreenFrame != screen.frame ||
@@ -1454,6 +1459,8 @@ class ScreenAdjustor {
         !isFullscreen &&
       stateGlobal.isMaximized.value) {
       _waylandMaximizedWorkAreaSize = wndRect.size;
+      _logAdjust(phase,
+          "cached Wayland maximized work area: ${wndRect.width}x${wndRect.height}");
     }
     if (isX11 &&
         (_x11WorkAreaScreenFrame != screen.frame ||
@@ -1464,6 +1471,8 @@ class ScreenAdjustor {
     }
     if (isX11 && forMenu && !isFullscreen) {
       _x11WorkArea = screen.visibleFrame;
+      _logAdjust(phase,
+          "cached X11 work area: ${_x11WorkArea!.width}x${_x11WorkArea!.height}");
     }
   }
 
@@ -1472,6 +1481,7 @@ class ScreenAdjustor {
     required bool isWayland,
     required bool isX11,
     required bool forMenu,
+    required String phase,
   }) async {
     Rect frameRect = screen.visibleFrame;
     if (isMacOS && forMenu && isFullscreen) {
@@ -1479,12 +1489,16 @@ class ScreenAdjustor {
       try {
         workArea = await kMacOSPermChannel
             .invokeListMethod<double>('getMacOSWorkAreaSize');
-      } catch (_) {
+      } catch (e) {
+        _logAdjust(phase, "macOS work area query failed: $e");
         return null;
       }
       if (workArea == null || workArea.length != 2) {
+        _logAdjust(phase, "macOS cached work area unavailable: $workArea");
         return null;
       }
+      _logAdjust(
+          phase, "macOS cached work area: ${workArea[0]}x${workArea[1]}");
       frameRect = Rect.fromLTWH(
         frameRect.left,
         frameRect.top,
@@ -1500,11 +1514,14 @@ class ScreenAdjustor {
         (x11WorkArea.width < frameRect.width ||
             x11WorkArea.height < frameRect.height)) {
       frameRect = x11WorkArea;
+      _logAdjust(
+          phase, "effective available frame source=X11 cached work area");
     }
     final screenScale = screen.scaleFactor;
     if (isWayland && screenScale > 1) {
       final fractionalScalingEnabled = await (_gnomeFractionalScalingEnabled ??=
           bind.mainGetCommon(key: 'gnome-fractional-scaling-enabled'));
+      _logAdjust(phase, "GNOME fractional scaling: $fractionalScalingEnabled");
       if (fractionalScalingEnabled == 'false') {
         frameRect = Rect.fromLTRB(
           frameRect.left / screenScale,
@@ -1519,6 +1536,7 @@ class ScreenAdjustor {
 
   Future<Rect?> _getAdjustedWindowFrame(Size mediaSize,
       {bool forMenu = false}) async {
+    final phase = forMenu ? 'menu' : 'adjust';
     final screen = _screen;
     if (screen != null) {
       // Windows window frames use physical pixels while Flutter view sizes are
@@ -1537,9 +1555,18 @@ class ScreenAdjustor {
           wndRect.right - wndRect.left - mediaSize.width * scale;
       double magicHeight =
           wndRect.bottom - wndRect.top - mediaSize.height * scale;
+      final views = WidgetsBinding.instance.platformDispatcher.views;
+      final devicePixelRatio =
+          views.isEmpty ? 0.0 : views.first.devicePixelRatio;
+      _logAdjust(phase,
+          "before adjust: fullscreen=$isFullscreen, maximized=${stateGlobal.isMaximized.value}, wndRect=${wndRect.width}x${wndRect.height}, mediaSize=${mediaSize.width}x${mediaSize.height}, devicePixelRatio=$devicePixelRatio, nativeScale=$scale, magic=${magicWidth}x$magicHeight");
       final canvasModel = ffi.canvasModel;
       // canvasModel.scale is the rendered scale and already applies kIgnoreDpi.
       // Use it instead of the remote source resolution.
+      _logAdjust(phase,
+          "canvasModel: ${canvasModel.getDisplayWidth()}x${canvasModel.getDisplayHeight()}, scale: ${canvasModel.scale}");
+      _logAdjust(phase,
+          "screen: ${screen.frame.width}x ${screen.frame.height}, visible: ${screen.visibleFrame.width}x ${screen.visibleFrame.height}, scale: ${screen.scaleFactor}");
       final isWayland = isLinux && bind.mainCurrentIsWayland();
       final isX11 = isLinux && !isWayland;
       _updateLinuxWorkAreaCache(
@@ -1548,6 +1575,7 @@ class ScreenAdjustor {
         isWayland: isWayland,
         isX11: isX11,
         forMenu: forMenu,
+        phase: phase,
       );
       if (isWindows && forMenu && isFullscreen) {
         // desktop_multi_window's hidden title bar keeps 8 physical pixels on
@@ -1572,6 +1600,8 @@ class ScreenAdjustor {
         horizontalEdges = CanvasModel.leftToEdge + CanvasModel.rightToEdge;
         verticalEdges = CanvasModel.topToEdge + CanvasModel.bottomToEdge;
       }
+      _logAdjust(
+          phase, "edges: horizontal=$horizontalEdges, vertical=$verticalEdges");
       final width = (canvasModel.getDisplayWidth() * canvasModel.scale +
                   horizontalEdges) *
               scale +
@@ -1588,8 +1618,10 @@ class ScreenAdjustor {
         isWayland: isWayland,
         isX11: isX11,
         forMenu: forMenu,
+        phase: phase,
       );
       if (frameRect == null) {
+        _logAdjust(phase, "effective available frame unavailable");
         return null;
       }
       var availableSize = frameRect.size;
@@ -1605,16 +1637,23 @@ class ScreenAdjustor {
               ? cachedSize.height
               : availableSize.height,
         );
+        _logAdjust(phase,
+            "effective available size: ${availableSize.width}x${availableSize.height}, source=Wayland maximized window");
       }
+      _logAdjust(
+          phase, "available frame: ${frameRect.width}x${frameRect.height}");
       // A window frame cannot be smaller than its client area. Tolerate small
       // floating-point differences; larger negative values mean the native
       // frame and Flutter view metrics are not synchronized.
       if (magicWidth < -0.1 || magicHeight < -0.1) {
+        _logAdjust(
+            phase, "adjust rejected: invalid magic=${magicWidth}x$magicHeight");
         return null;
       }
       // Transient fullscreen metrics once produced a calculated 4.0x60.0
       // target frame. Reject implausibly small targets to avoid hiding the window.
       if (width < 300 || height < 300) {
+        _logAdjust(phase, "adjust rejected: target too small=${width}x$height");
         return null;
       }
       // The remote size may change after the menu is built. Reject targets
@@ -1624,6 +1663,8 @@ class ScreenAdjustor {
       final fillsScreen =
           width == availableSize.width && height == availableSize.height;
       if (exceedsScreen || fillsScreen) {
+        _logAdjust(phase,
+            "adjust rejected: target=${width}x$height, available=${availableSize.width}x${availableSize.height}");
         return null;
       }
       if (left < frameRect.left) {
@@ -1638,8 +1679,11 @@ class ScreenAdjustor {
       if ((top + height) > frameRect.bottom) {
         top = frameRect.bottom - height;
       }
+      _logAdjust(
+          phase, "left: $left, top: $top, width: $width, height: $height");
       return Rect.fromLTWH(left, top, width, height);
     }
+    _logAdjust(phase, "screen unavailable");
     return null;
   }
 
@@ -1676,10 +1720,23 @@ class ScreenAdjustor {
       final mediaSize = MediaQueryData.fromView(view).size;
       final frame = await _getAdjustedWindowFrame(mediaSize);
       if (frame == null) {
+        _logAdjust('adjust', "no adjusted frame");
         return;
       }
+      _logAdjust('adjust', "setFrame start: $frame");
       await wc.setFrame(frame);
+      _logAdjust('adjust', "setFrame returned");
       stateGlobal.setMaximized(false);
+      unawaited(Future.delayed(Duration(milliseconds: 300), () async {
+        try {
+          final adjustedWndRect = await wc.getFrame();
+          final adjustedMediaSize = MediaQueryData.fromView(view).size;
+          _logAdjust('adjust',
+              "after adjust: requested=${frame.width}x${frame.height}, wndRect=${adjustedWndRect.width}x${adjustedWndRect.height}, mediaSize=${adjustedMediaSize.width}x${adjustedMediaSize.height}, devicePixelRatio=${view.devicePixelRatio}");
+        } catch (e) {
+          _logAdjust('adjust', "failed to get adjusted frame: $e");
+        }
+      }));
     }
   }
 
@@ -1691,9 +1748,14 @@ class ScreenAdjustor {
     try {
       final screen = (await window_size.getWindowInfo()).screen;
       if (screen != null) {
+        _logAdjust('screen', "source=current window");
         return screen;
       }
-    } catch (_) {}
+      _logAdjust('screen', "current window returned no screen");
+    } catch (e) {
+      _logAdjust('screen', "current window query failed: $e");
+    }
+    _logAdjust('screen', "falling back to main window");
     return _getMainWindowScreen();
   }
 
@@ -1703,9 +1765,11 @@ class ScreenAdjustor {
           WindowType.Main, kWindowGetWindowInfo, '');
       final info = response.result;
       if (info == null || info.isEmpty) {
+        _logAdjust('screen', "main window returned no screen");
         return null;
       }
       final screenMap = jsonDecode(info);
+      _logAdjust('screen', "source=main window fallback");
       return window_size.Screen(
           Rect.fromLTRB(screenMap['frame']['l'], screenMap['frame']['t'],
               screenMap['frame']['r'], screenMap['frame']['b']),
@@ -1715,7 +1779,8 @@ class ScreenAdjustor {
               screenMap['visibleFrame']['r'],
               screenMap['visibleFrame']['b']),
           screenMap['scaleFactor']);
-    } catch (_) {
+    } catch (e) {
+      _logAdjust('screen', "main window fallback failed: $e");
       return null;
     }
   }
