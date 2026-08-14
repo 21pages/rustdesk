@@ -116,6 +116,8 @@ class FfiModel with ChangeNotifier {
   int? pendingMonitorRestore;
   Timer? _pendingRestoreTimer;
   Rect? _rect;
+  Future<void> _displayInfoEventQueue = Future<void>.value();
+  Future<void> _displayUpdateQueue = Future<void>.value();
 
   var _inputBlocked = false;
   final _permissions = <String, bool>{};
@@ -342,9 +344,10 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'set_multiple_windows_session') {
         handleMultipleWindowsSession(evt, sessionId, peerId);
       } else if (name == 'peer_info') {
-        handlePeerInfo(evt, peerId, false);
+        await _queueDisplayInfoEvent(() => handlePeerInfo(evt, peerId, false));
       } else if (name == 'sync_peer_info') {
-        handleSyncPeerInfo(evt, sessionId, peerId);
+        await _queueDisplayInfoEvent(
+            () => handleSyncPeerInfo(evt, sessionId, peerId));
       } else if (name == 'sync_platform_additions') {
         handlePlatformAdditions(evt, sessionId, peerId);
       } else if (name == 'connection_ready') {
@@ -490,6 +493,14 @@ class FfiModel with ChangeNotifier {
         debugPrint('Event is not handled in the fixed branch: $name');
       }
     };
+  }
+
+  Future<void> _queueDisplayInfoEvent(Future<void> Function() handler) {
+    final task = _displayInfoEventQueue.then((_) => handler());
+    // Keep the queue usable after a handler error. The returned task still
+    // reports the error to the caller.
+    _displayInfoEventQueue = task.then<void>((_) {}, onError: (_, __) {});
+    return task;
   }
 
   _handleScreenshot(
@@ -795,12 +806,33 @@ class FfiModel with ChangeNotifier {
   }
 
   Future<void> updateCurDisplay(SessionID sessionId,
+      {updateCursorPos = false}) {
+    final task = _displayUpdateQueue.then(
+        (_) => _updateCurDisplay(sessionId, updateCursorPos: updateCursorPos));
+    // Keep the queue usable after a handler error. The returned task still
+    // reports the error to the caller.
+    _displayUpdateQueue = task.then<void>((_) {}, onError: (_, __) {});
+    return task;
+  }
+
+  Future<void> _tryUpdateCurDisplay(SessionID sessionId,
+      {bool updateCursorPos = false}) async {
+    try {
+      await updateCurDisplay(sessionId, updateCursorPos: updateCursorPos);
+    } catch (e, stackTrace) {
+      debugPrint('Failed to update current display: $e');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _updateCurDisplay(SessionID sessionId,
       {updateCursorPos = false}) async {
     final newRect = displaysRect();
     if (newRect == null) {
       return;
     }
-    if (newRect != _rect) {
+    final displayGeometryChanged = newRect != _rect;
+    if (displayGeometryChanged) {
       if (newRect.left != _rect?.left || newRect.top != _rect?.top) {
         parent.target?.cursorModel.updateDisplayOrigin(
             newRect.left, newRect.top,
@@ -811,8 +843,13 @@ class FfiModel with ChangeNotifier {
       // updating pointer lock center. This prevents stale center calculations.
       await parent.target?.canvasModel
           .updateViewStyle(refreshMousePos: updateCursorPos);
-      _updateSessionWidthHeight(sessionId);
+    }
 
+    // Display metadata can change while the overall desktop rectangle remains
+    // the same, so always synchronize every display's size with Rust.
+    await _updateSessionWidthHeight(sessionId);
+
+    if (displayGeometryChanged) {
       // Keep pointer lock center in sync when using relative mouse mode.
       // Note: updatePointerLockCenter is async-safe (handles errors internally),
       // so we fire-and-forget here.
@@ -1210,7 +1247,7 @@ class FfiModel with ChangeNotifier {
     });
   }
 
-  _updateSessionWidthHeight(SessionID sessionId) {
+  Future<void> _updateSessionWidthHeight(SessionID sessionId) async {
     if (_rect == null) return;
     if (_rect!.width <= 0 || _rect!.height <= 0) {
       debugPrintStack(
@@ -1218,7 +1255,7 @@ class FfiModel with ChangeNotifier {
     } else {
       final displays = _pi.getCurDisplays();
       if (displays.length == 1) {
-        bind.sessionSetSize(
+        await bind.sessionSetSize(
           sessionId: sessionId,
           display:
               pi.currentDisplay == kAllDisplayValue ? 0 : pi.currentDisplay,
@@ -1227,7 +1264,7 @@ class FfiModel with ChangeNotifier {
         );
       } else {
         for (int i = 0; i < displays.length; ++i) {
-          bind.sessionSetSize(
+          await bind.sessionSetSize(
             sessionId: sessionId,
             display: i,
             width: displays[i].width,
@@ -1326,7 +1363,8 @@ class FfiModel with ChangeNotifier {
   }
 
   /// Handle the peer info event based on [evt].
-  handlePeerInfo(Map<String, dynamic> evt, String peerId, bool isCache) async {
+  Future<void> handlePeerInfo(
+      Map<String, dynamic> evt, String peerId, bool isCache) async {
     parent.target?.chatModel.voiceCallStatus.value = VoiceCallStatus.notStarted;
 
     _queryAuditGuid(peerId);
@@ -1417,7 +1455,7 @@ class FfiModel with ChangeNotifier {
       _pi.displaysCount.value = _pi.displays.length;
       if (_pi.currentDisplay < _pi.displays.length) {
         // now replaced to _updateCurDisplay
-        updateCurDisplay(sessionId);
+        await _tryUpdateCurDisplay(sessionId);
       }
       // After reconnecting, restore the last selected monitor once the canvas is ready.
       // Switching earlier can offset the view if the monitor sizes differ.
@@ -1652,7 +1690,7 @@ class FfiModel with ChangeNotifier {
   }
 
   /// Handle the peer info synchronization event based on [evt].
-  handleSyncPeerInfo(
+  Future<void> handleSyncPeerInfo(
       Map<String, dynamic> evt, SessionID sessionId, String peerId) async {
     if (evt['displays'] != null) {
       cachedPeerData.peerInfo['displays'] = evt['displays'];
@@ -1665,12 +1703,12 @@ class FfiModel with ChangeNotifier {
       _pi.displaysCount.value = _pi.displays.length;
 
       if (_pi.currentDisplay == kAllDisplayValue) {
-        updateCurDisplay(sessionId);
+        await _tryUpdateCurDisplay(sessionId);
         // to-do: What if the displays are changed?
       } else {
         if (_pi.currentDisplay >= 0 &&
             _pi.currentDisplay < _pi.displays.length) {
-          updateCurDisplay(sessionId);
+          await _tryUpdateCurDisplay(sessionId);
         } else {
           if (_pi.displays.isNotEmpty) {
             // Notify to switch display
