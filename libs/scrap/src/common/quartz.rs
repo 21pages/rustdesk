@@ -1,37 +1,126 @@
 use crate::{quartz, Frame, Pixfmt};
+use hbb_common::{
+    config::{keys::OPTION_ALLOW_SCREEN_FRAME, Config},
+    log,
+};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
+use std::time::{Duration, Instant};
 use std::{io, mem};
 
+const EXCLUDED_WINDOW_IDS_RETRY_INTERVAL: Duration = Duration::from_millis(100);
+
+pub fn uses_screen_capture_kit() -> bool {
+    screen_frame_enabled() && quartz::SckCapturer::is_available()
+}
+
+fn screen_frame_enabled() -> bool {
+    Config::get_bool_option(OPTION_ALLOW_SCREEN_FRAME)
+}
+
+enum Backend {
+    ScreenCaptureKit(quartz::SckCapturer),
+    DisplayStream(quartz::Capturer),
+}
+
+impl Backend {
+    fn width(&self) -> usize {
+        match self {
+            Self::ScreenCaptureKit(capturer) => capturer.width(),
+            Self::DisplayStream(capturer) => capturer.width(),
+        }
+    }
+
+    fn height(&self) -> usize {
+        match self {
+            Self::ScreenCaptureKit(capturer) => capturer.height(),
+            Self::DisplayStream(capturer) => capturer.height(),
+        }
+    }
+}
+
 pub struct Capturer {
-    inner: quartz::Capturer,
+    inner: Backend,
     frame: Arc<Mutex<Option<quartz::Frame>>>,
     saved_raw_data: Vec<u8>, // for faster compare and copy
+    excluded_window_ids_generation: Option<u64>,
+    excluded_window_ids_pending_generation: Option<u64>,
+    excluded_window_ids_retry: Option<(u64, Instant)>,
+    screen_frame_enabled: bool,
 }
 
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
         let frame = Arc::new(Mutex::new(None));
+        let screen_frame_enabled = screen_frame_enabled();
 
-        let f = frame.clone();
-        let inner = quartz::Capturer::new(
-            display.0,
-            display.width(),
-            display.height(),
-            quartz::PixelFormat::Argb8888,
-            Default::default(),
-            move |inner| {
-                if let Ok(mut f) = f.lock() {
-                    *f = Some(inner);
+        let (excluded_window_ids, excluded_window_ids_generation) = quartz::excluded_window_ids();
+        let mut applied_excluded_window_ids_generation = Some(excluded_window_ids_generation);
+        let inner = if screen_frame_enabled && quartz::SckCapturer::is_available() {
+            let f = frame.clone();
+            match quartz::SckCapturer::new(
+                display.0,
+                display.width(),
+                display.height(),
+                quartz::PixelFormat::Argb8888,
+                false,
+                &excluded_window_ids,
+                move |inner| {
+                    *f.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(inner);
+                },
+            ) {
+                Ok(capturer) => {
+                    if !capturer.initial_filter_ready() {
+                        applied_excluded_window_ids_generation = None;
+                    }
+                    Backend::ScreenCaptureKit(capturer)
                 }
-            },
-        )
-        .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
+                Err(err) => {
+                    log::warn!(
+                        "Failed to start ScreenCaptureKit, falling back to CGDisplayStream: {err}"
+                    );
+                    let f = frame.clone();
+                    Backend::DisplayStream(
+                        quartz::Capturer::new(
+                            display.0,
+                            display.width(),
+                            display.height(),
+                            quartz::PixelFormat::Argb8888,
+                            Default::default(),
+                            move |inner| {
+                                *f.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                                    Some(inner);
+                            },
+                        )
+                        .map_err(|_| io::Error::from(io::ErrorKind::Other))?,
+                    )
+                }
+            }
+        } else {
+            let f = frame.clone();
+            Backend::DisplayStream(
+                quartz::Capturer::new(
+                    display.0,
+                    display.width(),
+                    display.height(),
+                    quartz::PixelFormat::Argb8888,
+                    Default::default(),
+                    move |inner| {
+                        *f.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(inner);
+                    },
+                )
+                .map_err(|_| io::Error::from(io::ErrorKind::Other))?,
+            )
+        };
 
         Ok(Capturer {
             inner,
             frame,
             saved_raw_data: Vec::new(),
+            excluded_window_ids_generation: applied_excluded_window_ids_generation,
+            excluded_window_ids_pending_generation: None,
+            excluded_window_ids_retry: None,
+            screen_frame_enabled,
         })
     }
 
@@ -46,6 +135,58 @@ impl Capturer {
 
 impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
+        if self.screen_frame_enabled != screen_frame_enabled() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Screen frame capture mode changed",
+            ));
+        }
+        if let Backend::ScreenCaptureKit(capturer) = &self.inner {
+            if let Some(error) = capturer.stream_error() {
+                return Err(io::Error::new(io::ErrorKind::Other, error));
+            }
+            let (window_ids, generation) = quartz::excluded_window_ids();
+            if Some(generation) != self.excluded_window_ids_generation {
+                let now = Instant::now();
+                if self.excluded_window_ids_pending_generation.is_none()
+                    && self
+                        .excluded_window_ids_retry
+                        .is_some_and(|(retry_generation, retry_at)| {
+                            retry_generation == generation && now < retry_at
+                        })
+                {
+                    return Err(io::ErrorKind::WouldBlock.into());
+                }
+                match capturer.update_excluded_window_ids(&window_ids)? {
+                    quartz::ExcludedWindowUpdate::Pending => {
+                        if self.excluded_window_ids_pending_generation.is_none() {
+                            self.excluded_window_ids_pending_generation = Some(generation);
+                        }
+                    }
+                    quartz::ExcludedWindowUpdate::Applied => {
+                        let applied_generation = self
+                            .excluded_window_ids_pending_generation
+                            .take()
+                            .unwrap_or(generation);
+                        self.excluded_window_ids_generation = Some(applied_generation);
+                        self.excluded_window_ids_retry = None;
+                        *self
+                            .frame
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+                    }
+                    quartz::ExcludedWindowUpdate::NotReady => {
+                        let retry_generation = self
+                            .excluded_window_ids_pending_generation
+                            .take()
+                            .unwrap_or(generation);
+                        self.excluded_window_ids_retry =
+                            Some((retry_generation, now + EXCLUDED_WINDOW_IDS_RETRY_INTERVAL));
+                    }
+                }
+                return Err(io::ErrorKind::WouldBlock.into());
+            }
+        }
         match self.frame.try_lock() {
             Ok(mut handle) => {
                 let mut frame = None;
@@ -72,6 +213,10 @@ impl crate::TraitCapturer for Capturer {
             Err(TryLockError::Poisoned(..)) => Err(io::ErrorKind::Other.into()),
         }
     }
+}
+
+pub fn set_excluded_window_ids(window_ids: Vec<u32>) {
+    quartz::set_excluded_window_ids(window_ids);
 }
 
 pub struct PixelBuffer<'a> {

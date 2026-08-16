@@ -9,6 +9,9 @@ pub struct Frame {
     bgra_stride: usize,
 }
 
+// The retained IOSurface keeps the mapped storage alive across capture threads.
+unsafe impl Send for Frame {}
+
 impl Frame {
     pub unsafe fn new(surface: IOSurfaceRef) -> Frame {
         CFRetain(surface);

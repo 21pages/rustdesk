@@ -635,6 +635,10 @@ impl Connection {
                                 break;
                             }
                         }
+                        #[cfg(target_os = "macos")]
+                        ipc::Data::ScreenFrameWindowIds(window_ids) => {
+                            scrap::set_excluded_window_ids(window_ids);
+                        }
                         ipc::Data::Close => {
                             conn.chat_unanswered = false; // seen
                             conn.file_transferred = false; //seen
@@ -2080,6 +2084,8 @@ impl Connection {
                 s.add_monitor_connection(self.inner.clone(), &noperms, self.display_idx);
             }
         }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        self.send_screen_frame_displays();
     }
 
     #[cfg(windows)]
@@ -2183,6 +2189,26 @@ impl Connection {
             privacy_mode: self.privacy_mode,
             from_switch: self.from_switch,
         });
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        self.send_screen_frame_displays();
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn send_screen_frame_displays(&mut self) {
+        if !self.is_remote() {
+            return;
+        }
+        let Some(server) = self.server.upgrade() else {
+            return;
+        };
+        let source = self.video_source();
+        let source_count = Self::video_source_count(source);
+        let displays =
+            server
+                .read()
+                .unwrap()
+                .get_subbed_displays(self.inner.id(), source, source_count);
+        self.send_to_cm(ipc::Data::ScreenFrameDisplays(displays));
     }
 
     #[inline]
@@ -4318,6 +4344,9 @@ impl Connection {
         }
         lock.subscribe(&new_service_name, self.inner.clone(), true);
         self.display_idx = display_idx;
+        drop(lock);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        self.send_screen_frame_displays();
         true
     }
 
@@ -4411,6 +4440,8 @@ impl Connection {
             }
             drop(lock);
         }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        self.send_screen_frame_displays();
     }
 
     #[cfg(windows)]

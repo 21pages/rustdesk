@@ -317,6 +317,15 @@ pub enum SwitchSidesUuidAction {
     Consume,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub struct ScreenFrameOptions {
+    pub enabled: bool,
+    pub color: u32,
+    pub width: u32,
+    pub opacity: u32,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "t", content = "c")]
 pub enum Data {
@@ -353,6 +362,12 @@ pub enum Data {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     MouseMoveTime(i64),
     Authorize,
+    #[cfg(target_os = "macos")]
+    ScreenFrameWindowIds(Vec<u32>),
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    ScreenFrameOptions(ScreenFrameOptions),
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    ScreenFrameDisplays(Vec<usize>),
     Close,
     #[cfg(windows)]
     SAS,
@@ -1861,12 +1876,24 @@ pub fn set_option(key: &str, value: &str) {
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
     let _nat = CheckTestNatType::new();
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let previous_screen_frame_options =
+        crate::ui_cm_interface::screen_frame_options_from_config();
     if let Ok(mut c) = connect(1000, "").await {
         c.send(&Data::Options(Some(value.clone()))).await?;
         // do not put below before connect, because we need to check should_exit
         c.next_timeout(1000).await.ok();
     }
     Config::set_options(value);
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        let options = crate::ui_cm_interface::screen_frame_options_from_config();
+        if options != previous_screen_frame_options {
+            if let Ok(mut c) = connect(100, "_cm").await {
+                allow_err!(c.send(&Data::ScreenFrameOptions(options)).await);
+            }
+        }
+    }
     Ok(())
 }
 

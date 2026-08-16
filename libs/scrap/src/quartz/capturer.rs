@@ -21,7 +21,7 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new<F: Fn(Frame) + 'static>(
+    pub fn new<F: Fn(Frame) + Send + 'static>(
         display: Display,
         width: usize,
         height: usize,

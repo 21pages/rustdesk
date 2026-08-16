@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
@@ -891,6 +892,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               block: locked,
               child: Column(children: [
                 permissions(context),
+                if (isWindows || isMacOS) screenFrame(context),
                 password(context),
                 _Card(title: '2FA', children: [tfa()]),
                 if (!isChangeIdDisabled())
@@ -1124,6 +1126,156 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     }
 
     return tmpWrapper();
+  }
+
+  Widget screenFrame(BuildContext context) {
+    const defaultColor = 0xFFA500;
+    const defaultWidth = 5;
+    const defaultOpacity = 50;
+    final visible = mainGetBoolOptionSync(kOptionAllowScreenFrame);
+    final colorValue = bind.mainGetOptionSync(key: kOptionScreenFrameColor);
+    final normalizedColor =
+        colorValue.startsWith('#') ? colorValue.substring(1) : colorValue;
+    final colorHex = normalizedColor.length == 6
+        ? int.tryParse(normalizedColor, radix: 16)
+        : null;
+    final color = Color(0xFF000000 | (colorHex ?? defaultColor));
+    final configuredWidth =
+        int.tryParse(bind.mainGetOptionSync(key: kOptionScreenFrameWidth)) ??
+            defaultWidth;
+    final width = configuredWidth.clamp(5, 20).toString();
+    final configuredOpacity =
+        int.tryParse(bind.mainGetOptionSync(key: kOptionScreenFrameOpacity)) ??
+            defaultOpacity;
+    var opacity = configuredOpacity.clamp(20, 100);
+    final colorEnabled = !locked && !isOptionFixed(kOptionScreenFrameColor);
+    final widthEnabled = !locked && !isOptionFixed(kOptionScreenFrameWidth);
+    final opacityEnabled =
+        !locked && !isOptionFixed(kOptionScreenFrameOpacity);
+    final widths = List<String>.generate(16, (index) => '${index + 5}');
+
+    return _Card(title: 'Screen frame', children: [
+      _OptionCheckBox(
+        context,
+        'Show screen frame',
+        kOptionAllowScreenFrame,
+        enabled: !locked,
+        update: (_) => setState(() {}),
+      ),
+      if (visible)
+        _SubLabeledWidget(
+          context,
+          'Screen frame color',
+          OutlinedButton(
+            onPressed: colorEnabled
+                ? () async {
+                    final selected = await showColorPickerDialog(
+                      context,
+                      color,
+                      pickersEnabled: const {
+                        ColorPickerType.accent: false,
+                        ColorPickerType.wheel: true,
+                      },
+                      pickerTypeLabels: {
+                        ColorPickerType.primary: translate('Primary Color'),
+                        ColorPickerType.wheel: translate('HSV Color'),
+                      },
+                      actionButtons: ColorPickerActionButtons(
+                        dialogOkButtonLabel: translate('OK'),
+                        dialogCancelButtonLabel: translate('Cancel'),
+                      ),
+                      showColorCode: true,
+                    );
+                    if (selected != color) {
+                      final rgb = (selected.value & 0xFFFFFF)
+                          .toRadixString(16)
+                          .padLeft(6, '0')
+                          .toUpperCase();
+                      await bind.mainSetOption(
+                        key: kOptionScreenFrameColor,
+                        value: '#$rgb',
+                      );
+                      if (mounted) setState(() {});
+                    }
+                  }
+                : null,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: color,
+                  border: Border.all(color: Theme.of(context).dividerColor),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              Text('#${(color.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}')
+                  .marginOnly(left: 8),
+            ]),
+          ),
+          enabled: colorEnabled,
+        ),
+      if (visible)
+        _SubLabeledWidget(
+          context,
+          'Screen frame width',
+          SizedBox(
+            width: 110,
+            child: ComboBox(
+              keys: widths,
+              values: widths.map((value) => '$value px').toList(),
+              initialKey: width,
+              enabled: widthEnabled,
+              onChanged: (value) async {
+                await bind.mainSetOption(
+                  key: kOptionScreenFrameWidth,
+                  value: value,
+                );
+                if (mounted) setState(() {});
+              },
+            ),
+          ),
+          enabled: widthEnabled,
+        ),
+      if (visible)
+        _SubLabeledWidget(
+          context,
+          'Screen frame opacity',
+          SizedBox(
+            width: 230,
+            child: StatefulBuilder(
+              builder: (context, setOpacityState) => Row(children: [
+                Expanded(
+                  child: Slider(
+                    value: opacity.toDouble(),
+                    min: 20,
+                    max: 100,
+                    divisions: 80,
+                    onChanged: opacityEnabled
+                        ? (value) => setOpacityState(
+                              () => opacity = value.round(),
+                            )
+                        : null,
+                    onChangeEnd: opacityEnabled
+                        ? (value) async {
+                            await bind.mainSetOption(
+                              key: kOptionScreenFrameOpacity,
+                              value: value.round().toString(),
+                            );
+                          }
+                        : null,
+                  ),
+                ),
+                SizedBox(
+                  width: 45,
+                  child: Text('$opacity%', textAlign: TextAlign.right),
+                ),
+              ]),
+            ),
+          ),
+          enabled: opacityEnabled,
+        ),
+    ]);
   }
 
   Widget password(BuildContext context) {

@@ -13,7 +13,11 @@ use hbb_common::tokio::sync::mpsc::unbounded_channel;
 use hbb_common::{
     allow_err, bail,
     config::{
-        keys::{OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW, OPTION_FILE_TRANSFER_MAX_FILES},
+        keys::{
+            OPTION_ALLOW_SCREEN_FRAME, OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
+            OPTION_FILE_TRANSFER_MAX_FILES, OPTION_SCREEN_FRAME_COLOR, OPTION_SCREEN_FRAME_OPACITY,
+            OPTION_SCREEN_FRAME_WIDTH,
+        },
         option2bool, Config,
     },
     fs::{self, get_string, is_write_need_confirmation, new_send_confirm, DigestCheckResult},
@@ -44,6 +48,19 @@ use std::{
         RwLock,
     },
 };
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const DEFAULT_SCREEN_FRAME_COLOR: u32 = 0xFFA500;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const DEFAULT_SCREEN_FRAME_WIDTH: u32 = 5;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const DEFAULT_SCREEN_FRAME_OPACITY: u32 = 50;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+lazy_static::lazy_static! {
+    static ref SCREEN_FRAME_OPTIONS: RwLock<ipc::ScreenFrameOptions> =
+        RwLock::new(screen_frame_options_from_config());
+}
 
 /// Default maximum number of files allowed per transfer request.
 /// Unit: number of files (not bytes).
@@ -147,6 +164,9 @@ pub struct Client {
     pub from_switch: bool,
     pub in_voice_call: bool,
     pub incoming_voice_call: bool,
+    #[serde(skip)]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    screen_frame_displays: Vec<usize>,
     #[serde(skip)]
     #[cfg(not(any(target_os = "ios")))]
     tx: UnboundedSender<Data>,
@@ -259,6 +279,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             tx,
             in_voice_call: false,
             incoming_voice_call: false,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            screen_frame_displays: Vec::new(),
         };
         CLIENTS
             .write()
@@ -266,6 +288,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             .retain(|_, c| !(c.disconnected && c.peer_id == client.peer_id));
         CLIENTS.write().unwrap().insert(id, client.clone());
         self.ui_handler.add_connection(&client);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        update_screen_frame();
     }
 
     #[inline]
@@ -312,6 +336,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
 
         self.ui_handler.remove_connection(id, close);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        update_screen_frame();
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -363,10 +389,24 @@ pub fn get_click_time() -> i64 {
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
 pub fn authorize(id: i32) {
+    #[cfg(target_os = "macos")]
+    {
+        let sender = CLIENTS.write().unwrap().get_mut(&id).map(|client| {
+            client.authorized = true;
+            client.tx.clone()
+        });
+        update_screen_frame();
+        if let Some(sender) = sender {
+            allow_err!(sender.send(Data::Authorize));
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
         client.authorized = true;
         allow_err!(client.tx.send(Data::Authorize));
     };
+    #[cfg(target_os = "windows")]
+    update_screen_frame();
 }
 
 #[inline]
@@ -380,6 +420,122 @@ pub fn close(id: i32) {
 #[inline]
 pub fn remove(id: i32) {
     CLIENTS.write().unwrap().remove(&id);
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    update_screen_frame();
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn screen_frame_options_from_config() -> ipc::ScreenFrameOptions {
+    parse_screen_frame_options(
+        &Config::get_option(OPTION_ALLOW_SCREEN_FRAME),
+        &Config::get_option(OPTION_SCREEN_FRAME_COLOR),
+        &Config::get_option(OPTION_SCREEN_FRAME_WIDTH),
+        &Config::get_option(OPTION_SCREEN_FRAME_OPACITY),
+    )
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn parse_screen_frame_options(
+    enabled: &str,
+    color: &str,
+    width: &str,
+    opacity: &str,
+) -> ipc::ScreenFrameOptions {
+    let color = color.strip_prefix('#').unwrap_or(color);
+    let color = if color.len() == 6 {
+        u32::from_str_radix(color, 16).ok()
+    } else {
+        None
+    }
+    .unwrap_or(DEFAULT_SCREEN_FRAME_COLOR);
+    let width = width
+        .parse::<u32>()
+        .unwrap_or(DEFAULT_SCREEN_FRAME_WIDTH)
+        .clamp(5, 20);
+    let opacity = opacity
+        .parse::<u32>()
+        .unwrap_or(DEFAULT_SCREEN_FRAME_OPACITY)
+        .clamp(20, 100);
+    ipc::ScreenFrameOptions {
+        enabled: option2bool(OPTION_ALLOW_SCREEN_FRAME, enabled),
+        color,
+        width,
+        opacity,
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn set_screen_frame_options(mut options: ipc::ScreenFrameOptions) {
+    if options.color > 0xFF_FFFF {
+        options.color = DEFAULT_SCREEN_FRAME_COLOR;
+    }
+    options.width = options.width.clamp(5, 20);
+    options.opacity = options.opacity.clamp(20, 100);
+    let changed = {
+        let mut current = SCREEN_FRAME_OPTIONS.write().unwrap();
+        if *current == options {
+            false
+        } else {
+            *current = options;
+            true
+        }
+    };
+    if changed {
+        update_screen_frame();
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn update_screen_frame() {
+    let clients = CLIENTS.read().unwrap();
+    let options = *SCREEN_FRAME_OPTIONS.read().unwrap();
+    let visible = options.enabled && should_show_screen_frame(&clients);
+    let active_displays = active_screen_frame_displays(&clients);
+    drop(clients);
+    crate::platform::set_screen_frame(
+        visible,
+        options.color,
+        options.width,
+        options.opacity,
+        &active_displays,
+    );
+    #[cfg(target_os = "macos")]
+    screen_frame_window_ids_changed(crate::platform::screen_frame_window_ids());
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn screen_frame_window_ids_changed(window_ids: Vec<u32>) {
+    let data = Data::ScreenFrameWindowIds(window_ids);
+    for client in CLIENTS.read().unwrap().values() {
+        allow_err!(client.tx.send(data.clone()));
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn should_show_screen_frame(clients: &HashMap<i32, Client>) -> bool {
+    clients.values().any(is_active_screen_frame_client)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn active_screen_frame_displays(clients: &HashMap<i32, Client>) -> Vec<usize> {
+    let mut displays = clients
+        .values()
+        .filter(|client| is_active_screen_frame_client(client))
+        .flat_map(|client| client.screen_frame_displays.iter().copied())
+        .collect::<Vec<_>>();
+    displays.sort_unstable();
+    displays.dedup();
+    displays
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn is_active_screen_frame_client(client: &Client) -> bool {
+    client.authorized
+        && !client.disconnected
+        && !client.is_file_transfer
+        && !client.is_view_camera
+        && !client.is_terminal
+        && client.port_forward.is_empty()
 }
 
 // server mode send chat to peer
@@ -649,6 +805,31 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 Data::Language(lang) => {
                                     LocalConfig::set_option("lang".to_owned(), lang);
                                     self.cm.change_language();
+                                }
+                                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                                Data::ScreenFrameOptions(options) => {
+                                    set_screen_frame_options(options);
+                                }
+                                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                                Data::ScreenFrameDisplays(mut displays) => {
+                                    displays.sort_unstable();
+                                    displays.dedup();
+                                    let changed = CLIENTS
+                                        .write()
+                                        .unwrap()
+                                        .get_mut(&self.conn_id)
+                                        .map(|client| {
+                                            if client.screen_frame_displays == displays {
+                                                false
+                                            } else {
+                                                client.screen_frame_displays = displays;
+                                                true
+                                            }
+                                        })
+                                        .unwrap_or(false);
+                                    if changed {
+                                        update_screen_frame();
+                                    }
                                 }
                                 Data::DataPortableService(ipc::DataPortableService::CmShowElevation(show)) => {
                                     self.cm.show_elevation(show);
@@ -1686,6 +1867,17 @@ pub fn quit_cm() {
     // in case of std::process::exit not work
     log::info!("quit cm");
     CLIENTS.write().unwrap().clear();
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        let options = *SCREEN_FRAME_OPTIONS.read().unwrap();
+        crate::platform::set_screen_frame(
+            false,
+            options.color,
+            options.width,
+            options.opacity,
+            &[],
+        );
+    }
     // `quit_gui()` ends the process on Windows and macOS, but on Linux it calls
     // `gtk_main_quit()`, which has no effect in the Flutter connection manager:
     // `flutter/linux/main.cc` runs `g_application_run()` (GtkApplication), so
@@ -1712,6 +1904,111 @@ mod tests {
         tokio::{runtime::Runtime, sync::mpsc::unbounded_channel},
     };
     use std::fs;
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn screen_frame_client(id: i32) -> Client {
+        let (tx, _rx) = unbounded_channel();
+        Client {
+            id,
+            authorized: false,
+            disconnected: false,
+            is_file_transfer: false,
+            is_view_camera: false,
+            is_terminal: false,
+            port_forward: String::new(),
+            name: String::new(),
+            avatar: String::new(),
+            peer_id: String::new(),
+            keyboard: false,
+            clipboard: false,
+            audio: false,
+            file: false,
+            restart: false,
+            recording: false,
+            block_input: false,
+            privacy_mode: false,
+            from_switch: false,
+            in_voice_call: false,
+            incoming_voice_call: false,
+            screen_frame_displays: Vec::new(),
+            tx,
+        }
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn screen_frame_tracks_only_active_screen_sessions() {
+        let mut clients = HashMap::new();
+        let mut client = screen_frame_client(1);
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.authorized = true;
+        clients.insert(client.id, client.clone());
+        assert!(should_show_screen_frame(&clients));
+
+        client.is_file_transfer = true;
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.is_file_transfer = false;
+        client.is_view_camera = true;
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.is_view_camera = false;
+        client.is_terminal = true;
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.is_terminal = false;
+        client.port_forward = "127.0.0.1:21118".to_owned();
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.port_forward.clear();
+        client.disconnected = true;
+        client.screen_frame_displays = vec![1];
+        clients.insert(client.id, client);
+        let mut active = screen_frame_client(2);
+        active.authorized = true;
+        active.screen_frame_displays = vec![2, 0, 2];
+        clients.insert(active.id, active);
+        assert!(should_show_screen_frame(&clients));
+        assert_eq!(active_screen_frame_displays(&clients), vec![0, 2]);
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn screen_frame_options_are_validated() {
+        assert_eq!(
+            parse_screen_frame_options("", "", "", ""),
+            ipc::ScreenFrameOptions {
+                enabled: false,
+                color: DEFAULT_SCREEN_FRAME_COLOR,
+                width: DEFAULT_SCREEN_FRAME_WIDTH,
+                opacity: DEFAULT_SCREEN_FRAME_OPACITY,
+            }
+        );
+        assert_eq!(
+            parse_screen_frame_options("N", "#12abEF", "64", "10"),
+            ipc::ScreenFrameOptions {
+                enabled: false,
+                color: 0x12_AB_EF,
+                width: 20,
+                opacity: 20,
+            }
+        );
+        assert_eq!(
+            parse_screen_frame_options("Y", "not-a-color", "0", "101"),
+            ipc::ScreenFrameOptions {
+                enabled: true,
+                color: DEFAULT_SCREEN_FRAME_COLOR,
+                width: 5,
+                opacity: 100,
+            }
+        );
+    }
 
     #[test]
     #[cfg(not(any(target_os = "ios")))]

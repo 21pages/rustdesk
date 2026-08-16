@@ -486,6 +486,24 @@ impl Server {
             .count()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn get_subbed_displays(
+        &self,
+        conn_id: i32,
+        source: VideoSource,
+        source_count: usize,
+    ) -> Vec<usize> {
+        (0..source_count)
+            .filter(|display| {
+                let name = video_service::get_service_name(source, *display);
+                self.services
+                    .get(&name)
+                    .map(|service| service.is_subed(conn_id))
+                    .unwrap_or(false)
+            })
+            .collect()
+    }
+
     fn capture_displays(
         &mut self,
         conn: ConnInner,

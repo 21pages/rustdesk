@@ -758,5 +758,10 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Continue", "繼續"),
         ("Browser didn't open? Use the url below to sign in.", "瀏覽器未開啟？請使用下方網址登入。"),
         ("Lock canvas", "鎖定畫布"),
+        ("Screen frame", "螢幕邊框"),
+        ("Show screen frame", "顯示螢幕邊框"),
+        ("Screen frame color", "螢幕邊框顏色"),
+        ("Screen frame width", "螢幕邊框寬度"),
+        ("Screen frame opacity", "螢幕邊框不透明度"),
     ].iter().cloned().collect();
 }
