@@ -2,6 +2,10 @@
 // https://github.com/servo/core-foundation-rs
 // https://github.com/rust-windowing/winit
 
+mod screen_frame;
+
+pub(crate) use screen_frame::set_visible as set_screen_frame_visible;
+
 use super::{CursorData, ResultType};
 use cocoa::{
     appkit::{NSApp, NSApplication, NSApplicationActivationPolicy::*},

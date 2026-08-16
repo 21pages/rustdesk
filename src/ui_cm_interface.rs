@@ -266,6 +266,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             .retain(|_, c| !(c.disconnected && c.peer_id == client.peer_id));
         CLIENTS.write().unwrap().insert(id, client.clone());
         self.ui_handler.add_connection(&client);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        update_screen_frame();
     }
 
     #[inline]
@@ -312,6 +314,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
 
         self.ui_handler.remove_connection(id, close);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        update_screen_frame();
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -367,6 +371,8 @@ pub fn authorize(id: i32) {
         client.authorized = true;
         allow_err!(client.tx.send(Data::Authorize));
     };
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    update_screen_frame();
 }
 
 #[inline]
@@ -380,6 +386,28 @@ pub fn close(id: i32) {
 #[inline]
 pub fn remove(id: i32) {
     CLIENTS.write().unwrap().remove(&id);
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    update_screen_frame();
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn update_screen_frame() {
+    let clients = CLIENTS.read().unwrap();
+    let visible = should_show_screen_frame(&clients);
+    drop(clients);
+    crate::platform::set_screen_frame_visible(visible);
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn should_show_screen_frame(clients: &HashMap<i32, Client>) -> bool {
+    clients.values().any(|client| {
+        client.authorized
+            && !client.disconnected
+            && !client.is_file_transfer
+            && !client.is_view_camera
+            && !client.is_terminal
+            && client.port_forward.is_empty()
+    })
 }
 
 // server mode send chat to peer
@@ -1686,6 +1714,8 @@ pub fn quit_cm() {
     // in case of std::process::exit not work
     log::info!("quit cm");
     CLIENTS.write().unwrap().clear();
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    crate::platform::set_screen_frame_visible(false);
     // `quit_gui()` ends the process on Windows and macOS, but on Linux it calls
     // `gtk_main_quit()`, which has no effect in the Flutter connection manager:
     // `flutter/linux/main.cc` runs `g_application_run()` (GtkApplication), so
@@ -1712,6 +1742,75 @@ mod tests {
         tokio::{runtime::Runtime, sync::mpsc::unbounded_channel},
     };
     use std::fs;
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn screen_frame_client(id: i32) -> Client {
+        let (tx, _rx) = unbounded_channel();
+        Client {
+            id,
+            authorized: false,
+            disconnected: false,
+            is_file_transfer: false,
+            is_view_camera: false,
+            is_terminal: false,
+            port_forward: String::new(),
+            name: String::new(),
+            avatar: String::new(),
+            peer_id: String::new(),
+            keyboard: false,
+            clipboard: false,
+            audio: false,
+            file: false,
+            restart: false,
+            recording: false,
+            block_input: false,
+            privacy_mode: false,
+            from_switch: false,
+            in_voice_call: false,
+            incoming_voice_call: false,
+            tx,
+        }
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn screen_frame_tracks_only_active_screen_sessions() {
+        let mut clients = HashMap::new();
+        let mut client = screen_frame_client(1);
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.authorized = true;
+        clients.insert(client.id, client.clone());
+        assert!(should_show_screen_frame(&clients));
+
+        client.is_file_transfer = true;
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.is_file_transfer = false;
+        client.is_view_camera = true;
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.is_view_camera = false;
+        client.is_terminal = true;
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.is_terminal = false;
+        client.port_forward = "127.0.0.1:21118".to_owned();
+        clients.insert(client.id, client.clone());
+        assert!(!should_show_screen_frame(&clients));
+
+        client.port_forward.clear();
+        client.disconnected = true;
+        clients.insert(client.id, client);
+        let mut active = screen_frame_client(2);
+        active.authorized = true;
+        clients.insert(active.id, active);
+        assert!(should_show_screen_frame(&clients));
+    }
 
     #[test]
     #[cfg(not(any(target_os = "ios")))]
