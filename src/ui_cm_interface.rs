@@ -367,11 +367,23 @@ pub fn get_click_time() -> i64 {
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
 pub fn authorize(id: i32) {
+    #[cfg(target_os = "macos")]
+    {
+        let sender = CLIENTS.write().unwrap().get_mut(&id).map(|client| {
+            client.authorized = true;
+            client.tx.clone()
+        });
+        update_screen_frame();
+        if let Some(sender) = sender {
+            allow_err!(sender.send(Data::Authorize));
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
         client.authorized = true;
         allow_err!(client.tx.send(Data::Authorize));
     };
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "windows")]
     update_screen_frame();
 }
 
@@ -396,6 +408,16 @@ fn update_screen_frame() {
     let visible = should_show_screen_frame(&clients);
     drop(clients);
     crate::platform::set_screen_frame_visible(visible);
+    #[cfg(target_os = "macos")]
+    screen_frame_window_ids_changed(crate::platform::screen_frame_window_ids());
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn screen_frame_window_ids_changed(window_ids: Vec<u32>) {
+    let data = Data::ScreenFrameWindowIds(window_ids);
+    for client in CLIENTS.read().unwrap().values() {
+        allow_err!(client.tx.send(data.clone()));
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]

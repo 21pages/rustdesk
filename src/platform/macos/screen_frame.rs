@@ -16,17 +16,22 @@ use std::{
 const FRAME_THICKNESS_PIXELS: f64 = 6.0;
 const CG_DISPLAY_BEGIN_CONFIGURATION_FLAG: u32 = 1 << 0;
 const CG_SCREEN_SAVER_WINDOW_LEVEL_KEY: i32 = 13;
-const NS_WINDOW_SHARING_NONE: usize = 0;
+const NS_WINDOW_SHARING_READ_ONLY: usize = 1;
 
 static REQUESTED_VISIBLE: AtomicBool = AtomicBool::new(false);
 static DISPLAY_CALLBACK_REGISTERED: AtomicBool = AtomicBool::new(false);
 static UPDATE_QUEUED: AtomicBool = AtomicBool::new(false);
 
 lazy_static::lazy_static! {
-    static ref WINDOWS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+    static ref WINDOWS: Mutex<Vec<ScreenFrameWindow>> = Mutex::new(Vec::new());
 }
 
 type DisplayReconfigurationCallback = extern "C" fn(u32, u32, *mut c_void);
+
+struct ScreenFrameWindow {
+    panel: usize,
+    window_id: u32,
+}
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
@@ -38,12 +43,26 @@ extern "C" {
 }
 
 pub(crate) fn set_visible(visible: bool) {
+    let visible = visible && scrap::uses_screen_capture_kit();
     if visible {
         register_display_callback();
     }
     if REQUESTED_VISIBLE.swap(visible, Ordering::AcqRel) != visible {
-        queue_update();
+        if unsafe { hbb_common::libc::pthread_main_np() } != 0 {
+            apply_requested_state();
+        } else {
+            Queue::main().exec_sync(apply_requested_state);
+        }
     }
+}
+
+pub(crate) fn window_ids() -> Vec<u32> {
+    WINDOWS
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|window| window.window_id)
+        .collect()
 }
 
 fn register_display_callback() {
@@ -84,6 +103,7 @@ fn apply_requested_state() {
             create_windows();
         }
     });
+    crate::ui_cm_interface::screen_frame_window_ids_changed(window_ids());
 }
 
 unsafe fn create_windows() {
@@ -136,14 +156,14 @@ unsafe fn create_windows() {
         ];
         for rect in rects {
             if let Some(window) = create_window(rect, level) {
-                windows.push(window as usize);
+                windows.push(window);
             }
         }
     }
     WINDOWS.lock().unwrap().extend(windows);
 }
 
-unsafe fn create_window(rect: NSRect, level: i64) -> Option<id> {
+unsafe fn create_window(rect: NSRect, level: i64) -> Option<ScreenFrameWindow> {
     let panel: id = msg_send![class!(NSPanel), alloc];
     if panel == nil {
         log::error!("Failed to allocate screen frame window");
@@ -173,20 +193,30 @@ unsafe fn create_window(rect: NSRect, level: i64) -> Option<id> {
     let _: () = msg_send![panel, setIgnoresMouseEvents: YES];
     let _: () = msg_send![panel, setHidesOnDeactivate: NO];
     let _: () = msg_send![panel, setCanHide: NO];
-    let _: () = msg_send![panel, setSharingType: NS_WINDOW_SHARING_NONE];
+    let _: () = msg_send![panel, setSharingType: NS_WINDOW_SHARING_READ_ONLY];
     let _: () = msg_send![panel, setReleasedWhenClosed: NO];
     let _: () = msg_send![panel, setFloatingPanel: YES];
     let _: () = msg_send![panel, setBecomesKeyOnlyIfNeeded: YES];
     let _: () = msg_send![panel, setCollectionBehavior: collection_behavior];
     let _: () = msg_send![panel, setLevel: level];
     let _: () = msg_send![panel, orderFrontRegardless];
-    Some(panel)
+    let window_id: isize = msg_send![panel, windowNumber];
+    if window_id <= 0 || window_id > u32::MAX as isize {
+        log::error!("Failed to get a valid screen frame window number");
+        let _: () = msg_send![panel, orderOut: nil];
+        let _: () = msg_send![panel, release];
+        return None;
+    }
+    Some(ScreenFrameWindow {
+        panel: panel as usize,
+        window_id: window_id as u32,
+    })
 }
 
 unsafe fn destroy_windows() {
     let windows = std::mem::take(&mut *WINDOWS.lock().unwrap());
     for window in windows {
-        let window = window as id;
+        let window = window.panel as id;
         let _: () = msg_send![window, orderOut: nil];
         let _: () = msg_send![window, release];
     }

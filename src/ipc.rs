@@ -356,6 +356,8 @@ pub enum Data {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     MouseMoveTime(i64),
     Authorize,
+    #[cfg(target_os = "macos")]
+    ScreenFrameWindowIds(Vec<u32>),
     Close,
     #[cfg(windows)]
     SAS,

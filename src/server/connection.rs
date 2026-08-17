@@ -703,6 +703,10 @@ impl Connection {
                                 break;
                             }
                         }
+                        #[cfg(target_os = "macos")]
+                        ipc::Data::ScreenFrameWindowIds(window_ids) => {
+                            scrap::set_excluded_window_ids(window_ids);
+                        }
                         ipc::Data::Close => {
                             conn.chat_unanswered = false; // seen
                             conn.file_transferred = false; //seen
