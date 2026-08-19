@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "nightly"
+      upload-tag: "fix_rdp_window_title_build_nightly"
