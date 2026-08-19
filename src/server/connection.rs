@@ -431,6 +431,7 @@ const H1: Duration = Duration::from_secs(3600);
 const MILLI1: Duration = Duration::from_millis(1);
 const SEND_TIMEOUT_VIDEO: u64 = 12_000;
 const SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO * 10;
+const PORT_FORWARD_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const SESSION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Whether the DRM backend can serve a Wayland login screen here.
@@ -1247,7 +1248,12 @@ impl Connection {
         let mut last_recv_time = Instant::now();
         if let Some(mut forward) = self.port_forward_socket.take() {
             log::info!("Running port forwarding loop");
-            self.stream.set_raw();
+            let heartbeat = self.port_forward_heartbeat_requested() && self.stream.set_framed_raw();
+            if !heartbeat {
+                self.stream.set_raw();
+            }
+            let mut heartbeat_timer =
+                crate::rustdesk_interval(time::interval(PORT_FORWARD_HEARTBEAT_INTERVAL));
             let mut hbbs_rx = crate::hbbs_http::sync::signal_receiver();
             loop {
                 tokio::select! {
@@ -1274,10 +1280,16 @@ impl Connection {
                     res = self.stream.next() => {
                         if let Some(res) = res {
                             last_recv_time = Instant::now();
-                            timeout(SEND_TIMEOUT_OTHER, forward.send(res?)).await??;
+                            let bytes = res?;
+                            if !bytes.is_empty() {
+                                timeout(SEND_TIMEOUT_OTHER, forward.send(bytes)).await??;
+                            }
                         } else {
                             bail!("Stream reset by the peer");
                         }
+                    },
+                    _ = heartbeat_timer.tick(), if heartbeat => {
+                        self.stream.send_bytes(bytes::Bytes::new()).await?;
                     },
                     _ = self.timer.tick() => {
                         if last_recv_time.elapsed() >= H1 {
@@ -1698,6 +1710,14 @@ impl Connection {
         (format!("{}:{}", pf.host, pf.port), is_rdp)
     }
 
+    fn port_forward_heartbeat_requested(&self) -> bool {
+        matches!(
+            self.lr.union.as_ref(),
+            Some(login_request::Union::PortForward(pf))
+                if pf.heartbeat && !(pf.host == "RDP" && pf.port == 0)
+        )
+    }
+
     async fn connect_port_forward_if_needed(&mut self) -> bool {
         if self.port_forward_socket.is_some() {
             return true;
@@ -1912,6 +1932,7 @@ impl Connection {
         }
 
         if self.port_forward_socket.is_some() {
+            res.port_forward_heartbeat = self.port_forward_heartbeat_requested();
             let mut msg_out = Message::new();
             res.set_peer_info(pi);
             msg_out.set_login_response(res);
@@ -2616,6 +2637,7 @@ impl Connection {
                 let PortForward {
                     host,
                     port,
+                    heartbeat: _,
                     special_fields: _,
                 } = pf;
                 push(b"port_forward");

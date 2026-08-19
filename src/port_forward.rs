@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 use crate::client::*;
 use hbb_common::{
     allow_err, bail,
+    bytes::Bytes,
     config::READ_TIMEOUT,
     futures::{SinkExt, StreamExt},
     log,
@@ -14,6 +15,8 @@ use hbb_common::{
     tokio_util::codec::{BytesCodec, Framed},
     ResultType, Stream,
 };
+
+const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
 fn run_rdp(port: u16, name: &str) {
     std::process::Command::new("cmdkey")
@@ -98,10 +101,10 @@ pub async fn listen(
                 let mut forward = Framed::new(forward, BytesCodec::new());
                 let mut close_port_forward = false;
                 match connect_and_login(&id, &password, &mut ui_receiver, interface.clone(), &mut forward, key, token, is_rdp, &mut close_port_forward).await {
-                    Ok(Some(stream)) => {
+                    Ok(Some((stream, heartbeat))) => {
                         let interface = interface.clone();
                         tokio::spawn(async move {
-                            if let Err(err) = run_forward(forward, stream).await {
+                            if let Err(err) = run_forward(forward, stream, heartbeat).await {
                                 interface.msgbox("error", "Error", &err.to_string(), "");
                             }
                             log::info!("connection from {:?} closed", addr);
@@ -143,7 +146,7 @@ async fn connect_and_login(
     token: &str,
     is_rdp: bool,
     close_port_forward: &mut bool,
-) -> ResultType<Option<Stream>> {
+) -> ResultType<Option<(Stream, bool)>> {
     let conn_type = if is_rdp {
         ConnType::RDP
     } else {
@@ -160,6 +163,7 @@ async fn connect_and_login(
     }
     let mut buffer = Vec::new();
     let mut received = false;
+    let heartbeat;
 
     let _keep_it = hc_connection(feedback, rendezvous_server, token).await;
 
@@ -181,17 +185,21 @@ async fn connect_and_login(
                                 return Ok(None);
                             }
                         }
-                        Some(message::Union::LoginResponse(lr)) => match lr.union {
-                            Some(login_response::Union::Error(err)) => {
-                                if !interface.handle_login_error(&err) {
-                                    return Ok(None);
+                        Some(message::Union::LoginResponse(lr)) => {
+                            let port_forward_heartbeat = lr.port_forward_heartbeat;
+                            match lr.union {
+                                Some(login_response::Union::Error(err)) => {
+                                    if !interface.handle_login_error(&err) {
+                                        return Ok(None);
+                                    }
                                 }
+                                Some(login_response::Union::PeerInfo(pi)) => {
+                                    heartbeat = port_forward_heartbeat;
+                                    interface.handle_peer_info(pi);
+                                    break;
+                                }
+                                _ => {}
                             }
-                            Some(login_response::Union::PeerInfo(pi)) => {
-                                interface.handle_peer_info(pi);
-                                break;
-                            }
-                            _ => {}
                         }
                         Some(message::Union::TestDelay(t)) => {
                             interface.handle_test_delay(t, &mut stream).await;
@@ -226,17 +234,25 @@ async fn connect_and_login(
             },
         }
     }
-    stream.set_raw();
+    let heartbeat = !is_rdp && !direct && heartbeat && stream.set_framed_raw();
+    if !heartbeat {
+        stream.set_raw();
+    }
     if !buffer.is_empty() {
         allow_err!(stream.send_bytes(buffer.into()).await);
     }
-    Ok(Some(stream))
+    Ok(Some((stream, heartbeat)))
 }
 
-async fn run_forward(forward: Framed<TcpStream, BytesCodec>, stream: Stream) -> ResultType<()> {
+async fn run_forward(
+    forward: Framed<TcpStream, BytesCodec>,
+    stream: Stream,
+    heartbeat: bool,
+) -> ResultType<()> {
     log::info!("new port forwarding connection started");
     let mut forward = forward;
     let mut stream = stream;
+    let mut heartbeat_timer = tokio::time::interval(HEARTBEAT_INTERVAL);
     loop {
         tokio::select! {
             res = forward.next() => {
@@ -248,10 +264,15 @@ async fn run_forward(forward: Framed<TcpStream, BytesCodec>, stream: Stream) -> 
             },
             res = stream.next() => {
                 if let Some(Ok(bytes)) = res {
-                    allow_err!(forward.send(bytes).await);
+                    if !bytes.is_empty() {
+                        allow_err!(forward.send(bytes).await);
+                    }
                 } else {
                     break;
                 }
+            },
+            _ = heartbeat_timer.tick(), if heartbeat => {
+                stream.send_bytes(Bytes::new()).await?;
             },
         }
     }

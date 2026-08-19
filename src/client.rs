@@ -2768,6 +2768,8 @@ impl LoginConfigHandler {
             ConnType::PORT_FORWARD | ConnType::RDP => lr.set_port_forward(PortForward {
                 host: self.port_forward.0.clone(),
                 port: self.port_forward.1,
+                heartbeat: self.conn_type == ConnType::PORT_FORWARD
+                    && self.direct == Some(false),
                 ..Default::default()
             }),
             ConnType::TERMINAL => {
