@@ -3737,6 +3737,12 @@ impl Connection {
                             self.update_auto_disconnect_timer();
                         }
                     }
+                    Some(misc::Union::RecoverVideo(_)) => {
+                        if self.should_handle_render_broadcast_message() {
+                            self.recover_video_display().await;
+                            self.update_auto_disconnect_timer();
+                        }
+                    }
                     Some(misc::Union::RefreshVideoDisplay(display)) => {
                         if self.should_handle_render_broadcast_message() {
                             self.refresh_video_display(Some(display as usize));
@@ -4386,6 +4392,60 @@ impl Connection {
                 super::service::SERVICE_OPTION_VALUE_TRUE,
             );
         });
+    }
+
+    async fn recover_video_display(&mut self) {
+        if self.view_camera {
+            self.refresh_video_display(Some(self.display_idx));
+            return;
+        }
+
+        let (displays, primary_display_idx) =
+            match display_service::update_get_sync_displays_on_login().await {
+                Ok(result) => result,
+                Err(err) => {
+                    log::warn!("Failed to refresh displays during video recovery: {}", err);
+                    self.refresh_video_display(None);
+                    return;
+                }
+            };
+        let display_count = displays.len();
+        let displays_msg = display_service::displays_to_msg(displays);
+        if display_count == 0 {
+            log::warn!("No display available during video recovery");
+            self.send(displays_msg).await;
+            self.refresh_video_display(None);
+            return;
+        }
+        let display_idx = primary_display_idx;
+
+        let Some(server) = self.server.upgrade() else {
+            return;
+        };
+        let previous_display_idx = self.display_idx;
+        if !self.switch_display_to(display_idx, server.clone()) {
+            self.refresh_video_display(None);
+            return;
+        }
+        if previous_display_idx >= display_count && previous_display_idx != display_idx {
+            let previous_service_name =
+                video_service::get_service_name(VideoSource::Monitor, previous_display_idx);
+            let mut lock = server.write().unwrap();
+            lock.subscribe(&previous_service_name, self.inner.clone(), false);
+            self.multi_ui_session = lock.get_subbed_displays_count(self.inner.id()) > 1;
+        }
+        log::info!(
+            "Recover video capture on display {}, displays: {}",
+            display_idx,
+            display_count
+        );
+        self.send(displays_msg).await;
+        if let Some(msg_out) =
+            video_service::make_display_changed_msg(display_idx, None, VideoSource::Monitor)
+        {
+            self.send(msg_out).await;
+        }
+        self.refresh_video_display(Some(display_idx));
     }
 
     async fn handle_switch_display(&mut self, s: SwitchDisplay) {
@@ -5832,6 +5892,7 @@ impl Connection {
             | Some(misc::Union::CaptureDisplays(_))
             | Some(misc::Union::RefreshVideo(_))
             | Some(misc::Union::RefreshVideoDisplay(_))
+            | Some(misc::Union::RecoverVideo(_))
             | Some(misc::Union::VideoReceived(_))
             | Some(misc::Union::ChatMessage(_))
             | Some(misc::Union::AudioFormat(_))
@@ -5961,6 +6022,7 @@ impl Connection {
             Some(misc::Union::ChangeDisplayResolution(_)) => "misc.change_display_resolution",
             Some(misc::Union::MessageQuery(_)) => "misc.message_query",
             Some(misc::Union::FollowCurrentDisplay(_)) => "misc.follow_current_display",
+            Some(misc::Union::RecoverVideo(_)) => "misc.recover_video",
             Some(misc::Union::SwitchSidesRequest(_)) => "misc.switch_sides_request",
             Some(_) => "misc.other",
             None => "misc.empty",
@@ -7554,6 +7616,7 @@ mod test {
                         misc_msg(|m| m.set_switch_sides_request(SwitchSidesRequest::new())),
                         Some("misc.switch_sides_request"),
                     ),
+                    (misc_msg(|m| m.set_recover_video(RecoverVideo::new())), None),
                 ],
             ),
             (
@@ -7568,6 +7631,7 @@ mod test {
                         misc_msg(|m| m.set_switch_sides_request(SwitchSidesRequest::new())),
                         None,
                     ),
+                    (misc_msg(|m| m.set_recover_video(RecoverVideo::new())), None),
                 ],
             ),
             (

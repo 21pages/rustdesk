@@ -304,23 +304,36 @@ impl<T: InvokeUiSession> Remote<T> {
                                 self.handler.msgbox("restarting-show", "Restarting remote device", "Connection in progress. Please wait.", "");
                                 break;
                             }
-                            if self.watchdog.check(
+                            match self.watchdog.check(
                                 self.is_connected,
                                 self.first_frame,
                                 self.handler.is_default(),
                                 Instant::now(),
                             ) {
-                                log::warn!("No first video frame received, sending refresh");
-                                let display = self
-                                    .handler
-                                    .lc
-                                    .read()
-                                    .unwrap()
-                                    .peer_info
-                                    .as_ref()
-                                    .map(|p| p.current_display)
-                                    .unwrap_or(0);
-                                self.handler.refresh_video(display as _);
+                                Some(FirstFrameWatchdogAction::Refresh) => {
+                                    log::warn!("No first video frame received, sending refresh");
+                                    let display = self
+                                        .handler
+                                        .lc
+                                        .read()
+                                        .unwrap()
+                                        .peer_info
+                                        .as_ref()
+                                        .filter(|p| {
+                                            p.current_display >= 0
+                                                && (p.current_display as usize) < p.displays.len()
+                                        })
+                                        .map(|p| p.current_display)
+                                        .unwrap_or(0);
+                                    self.handler.refresh_video(display);
+                                }
+                                Some(FirstFrameWatchdogAction::Recover) => {
+                                    log::warn!(
+                                        "No first video frame received after refresh, requesting recovery"
+                                    );
+                                    self.handler.recover_video();
+                                }
+                                None => {}
                             }
                             let elapsed = fps_instant.elapsed().as_millis();
                             if elapsed < 1000 {
@@ -600,7 +613,7 @@ impl<T: InvokeUiSession> Remote<T> {
             Data::Message(msg) => {
                 match &msg.union {
                     Some(message::Union::Misc(misc)) => match misc.union {
-                        Some(misc::Union::RefreshVideo(_)) => {
+                        Some(misc::Union::RefreshVideo(_)) | Some(misc::Union::RecoverVideo(_)) => {
                             self.video_threads.iter().for_each(|(_, v)| {
                                 *v.discard_queue.write().unwrap() = true;
                             });
@@ -2543,37 +2556,60 @@ impl Drop for VideoThread {
 struct ClientFirstFrameWatchdog {
     deadline: Option<Instant>,
     timeout: Duration,
+    attempts: u8,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FirstFrameWatchdogAction {
+    Refresh,
+    Recover,
+}
+
+const MAX_FIRST_FRAME_RECOVERY_ATTEMPTS: u8 = 2;
 
 impl ClientFirstFrameWatchdog {
     fn new(timeout: Duration) -> Self {
         Self {
             deadline: None,
             timeout,
+            attempts: 0,
         }
     }
 
-    // Returns true if refresh should be triggered
     fn check(
         &mut self,
         is_connected: bool,
         first_frame_received: bool,
         is_default: bool,
         now: Instant,
-    ) -> bool {
+    ) -> Option<FirstFrameWatchdogAction> {
         if is_connected && !first_frame_received && is_default {
+            if self.attempts >= MAX_FIRST_FRAME_RECOVERY_ATTEMPTS {
+                return None;
+            }
             if let Some(d) = self.deadline {
-                if now > d {
-                    self.deadline = Some(now + self.timeout);
-                    return true;
+                if now >= d {
+                    let action = if self.attempts == 0 {
+                        FirstFrameWatchdogAction::Refresh
+                    } else {
+                        FirstFrameWatchdogAction::Recover
+                    };
+                    self.attempts += 1;
+                    self.deadline = if self.attempts < MAX_FIRST_FRAME_RECOVERY_ATTEMPTS {
+                        Some(now + self.timeout * 2)
+                    } else {
+                        None
+                    };
+                    return Some(action);
                 }
             } else {
                 self.deadline = Some(now + self.timeout);
             }
         } else {
             self.deadline = None;
+            self.attempts = 0;
         }
-        false
+        None
     }
 }
 
@@ -2589,33 +2625,51 @@ mod tests {
         let start = Instant::now();
 
         // Not connected: no trigger, no deadline set
-        assert!(!watchdog.check(false, false, true, start));
+        assert_eq!(watchdog.check(false, false, true, start), None);
         assert!(watchdog.deadline.is_none());
 
         // Connected, default, no frame: deadline set to start + 3s
-        assert!(!watchdog.check(true, false, true, start));
+        assert_eq!(watchdog.check(true, false, true, start), None);
         assert!(watchdog.deadline.is_some());
         assert_eq!(watchdog.deadline.unwrap(), start + timeout);
 
         // Advance 2s: no trigger
-        assert!(!watchdog.check(true, false, true, start + Duration::from_secs(2)));
-
-        // Advance 4s: trigger!
-        assert!(watchdog.check(true, false, true, start + Duration::from_secs(4)));
-        // Deadline reset to +3s from now (start+4s) -> start+7s
         assert_eq!(
-            watchdog.deadline.unwrap(),
-            start + Duration::from_secs(4) + timeout
+            watchdog.check(true, false, true, start + Duration::from_secs(2)),
+            None
+        );
+
+        // First timeout performs a lightweight refresh.
+        assert_eq!(
+            watchdog.check(true, false, true, start + Duration::from_secs(4)),
+            Some(FirstFrameWatchdogAction::Refresh)
+        );
+        assert_eq!(watchdog.deadline.unwrap(), start + Duration::from_secs(10));
+
+        // The second timeout asks the peer to rebuild display capture.
+        assert_eq!(
+            watchdog.check(true, false, true, start + Duration::from_secs(10)),
+            Some(FirstFrameWatchdogAction::Recover)
+        );
+        assert!(watchdog.deadline.is_none());
+        assert_eq!(
+            watchdog.check(true, false, true, start + Duration::from_secs(20)),
+            None
         );
 
         // Frame received: reset
-        assert!(!watchdog.check(true, true, true, start + Duration::from_secs(5)));
+        assert_eq!(
+            watchdog.check(true, true, true, start + Duration::from_secs(21)),
+            None
+        );
         assert!(watchdog.deadline.is_none());
+        assert_eq!(watchdog.attempts, 0);
 
         // Not default: reset
         watchdog.check(true, false, true, start); // set deadline
         assert!(watchdog.deadline.is_some());
         watchdog.check(true, false, false, start); // reset
         assert!(watchdog.deadline.is_none());
+        assert_eq!(watchdog.attempts, 0);
     }
 }

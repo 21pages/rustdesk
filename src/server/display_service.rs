@@ -316,7 +316,7 @@ pub fn new() -> GenericService {
     svc.sp
 }
 
-fn displays_to_msg(displays: Vec<DisplayInfo>) -> Message {
+pub(super) fn displays_to_msg(displays: Vec<DisplayInfo>) -> Message {
     let mut pi = PeerInfo {
         ..Default::default()
     };

@@ -458,6 +458,10 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::Message(LoginConfigHandler::refresh()));
     }
 
+    pub fn recover_video(&self) {
+        self.send(Data::Message(LoginConfigHandler::recover_video()));
+    }
+
     pub fn record_screen(&self, start: bool) {
         self.send(Data::RecordScreen(start));
     }
@@ -1784,10 +1788,10 @@ impl<T: InvokeUiSession> Interface for Session<T> {
 
     fn handle_peer_info(&self, mut pi: PeerInfo) {
         log::debug!("handle_peer_info :{:?}", pi);
-        self.lc.write().unwrap().peer_info = Some(pi.clone());
         if pi.current_display as usize >= pi.displays.len() {
             pi.current_display = 0;
         }
+        self.lc.write().unwrap().peer_info = Some(pi.clone());
         if get_version_number(&pi.version) < get_version_number("1.1.10") {
             self.set_permission("restart", false);
         }

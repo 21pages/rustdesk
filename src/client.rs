@@ -2432,6 +2432,15 @@ impl LoginConfigHandler {
         msg_out
     }
 
+    /// Create a [`Message`] for recovering video capture.
+    pub fn recover_video() -> Message {
+        let mut misc = Misc::new();
+        misc.set_recover_video(RecoverVideo::new());
+        let mut msg_out = Message::new();
+        msg_out.set_misc(misc);
+        msg_out
+    }
+
     /// Create a [`Message`] for saving custom image quality.
     ///
     /// # Arguments
