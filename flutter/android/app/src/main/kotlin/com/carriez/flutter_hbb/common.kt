@@ -100,6 +100,8 @@ fun startAction(context: Context, action: String) {
 class AudioReader(val bufSize: Int, private val maxFrames: Int) {
     private var currentPos = 0
     private val bufferPool: Array<ByteBuffer>
+    var lastReadSize = 0
+        private set
 
     init {
         if (maxFrames < 0 || maxFrames > 32) {
@@ -125,9 +127,11 @@ class AudioReader(val bufSize: Int, private val maxFrames: Int) {
         val buffer = bufferPool[currentPos]
         val res = audioRecord.read(buffer, bufSize, READ_BLOCKING)
         return if (res > 0) {
+            lastReadSize = res
             next()
             buffer
         } else {
+            lastReadSize = 0
             null
         }
     }

@@ -102,8 +102,9 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
                 audioRecordStat = true
                 audioThread = thread {
                     while (audioRecordStat) {
-                        audioReader!!.readSync(audioRecorder!!)?.let {
-                            FFI.onAudioFrameUpdate(it)
+                        val reader = audioReader!!
+                        reader.readSync(audioRecorder!!)?.let {
+                            FFI.onAudioFrameUpdate(it, reader.lastReadSize)
                         }
                     }
                     // let's release here rather than onDestroy to avoid threading issue

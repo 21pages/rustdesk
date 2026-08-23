@@ -121,6 +121,12 @@ pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#
 
 #[cfg(not(target_os = "linux"))]
 pub const AUDIO_BUFFER_MS: usize = 3000;
+#[cfg(not(target_os = "linux"))]
+const AUDIO_PRIMING_MS: usize = 30;
+#[cfg(not(target_os = "linux"))]
+const AUDIO_FADE_MS: usize = 5;
+#[cfg(not(target_os = "linux"))]
+const AUDIO_STOP_TIMEOUT_MS: usize = 100;
 
 #[cfg(feature = "flutter")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1186,6 +1192,8 @@ pub struct AudioHandler {
     device_channel: u16,
     #[cfg(not(target_os = "linux"))]
     ready: Arc<std::sync::Mutex<bool>>,
+    #[cfg(not(target_os = "linux"))]
+    playback_control: Arc<AudioPlaybackControl>,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -1213,9 +1221,10 @@ impl AudioBuffer {
     pub fn resize(&mut self, sample_rate: usize, channels: usize) {
         let capacity = sample_rate * channels * AUDIO_BUFFER_MS / 1000;
         let old_capacity = self.0.lock().unwrap().capacity();
+        self.0 = Arc::new(std::sync::Mutex::new(ringbuf::HeapRb::<f32>::new(capacity)));
+        self.1 = sample_rate * channels;
+        self.2 = [0; 30];
         if capacity != old_capacity {
-            *self.0.lock().unwrap() = ringbuf::HeapRb::<f32>::new(capacity);
-            self.1 = sample_rate * channels;
             log::info!("Audio buffer resized from {old_capacity} to {capacity}");
         }
     }
@@ -1310,6 +1319,120 @@ impl AudioBuffer {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
+struct AudioPlayback {
+    channels: usize,
+    priming_frames: usize,
+    fade_frames: usize,
+    fade_in_frame: usize,
+    playing: bool,
+    stop_submitted: bool,
+}
+
+#[cfg(not(target_os = "linux"))]
+#[derive(Default)]
+struct AudioPlaybackControl {
+    stop_requested: std::sync::atomic::AtomicBool,
+    stopped: std::sync::atomic::AtomicBool,
+}
+
+#[cfg(not(target_os = "linux"))]
+impl AudioPlayback {
+    fn new(sample_rate: usize, channels: usize) -> Self {
+        Self {
+            channels: channels.max(1),
+            priming_frames: (sample_rate * AUDIO_PRIMING_MS / 1000).max(1),
+            fade_frames: (sample_rate * AUDIO_FADE_MS / 1000).max(2),
+            fade_in_frame: 0,
+            playing: false,
+            stop_submitted: false,
+        }
+    }
+
+    fn render<T>(
+        &mut self,
+        data: &mut [T],
+        buffer: &mut ringbuf::HeapRb<f32>,
+        stopping: bool,
+    ) -> bool
+    where
+        T: cpal::Sample + cpal::FromSample<f32>,
+    {
+        data.fill_with(|| T::from_sample(0.));
+
+        if stopping && self.stop_submitted {
+            buffer.clear();
+            return true;
+        }
+
+        let having_frames = buffer.occupied_len() / self.channels;
+        if !self.playing {
+            if stopping {
+                buffer.clear();
+                return true;
+            }
+            if having_frames < self.priming_frames {
+                return false;
+            }
+            self.playing = true;
+            self.fade_in_frame = 0;
+        }
+
+        let output_frames = data.len() / self.channels;
+        let available_frames = having_frames.min(output_frames).min(if stopping {
+            self.fade_frames
+        } else {
+            usize::MAX
+        });
+        if available_frames == 0 {
+            self.playing = false;
+            self.fade_in_frame = 0;
+            return stopping;
+        }
+
+        let draining = stopping || having_frames <= output_frames;
+        let fade_out_frames = if draining {
+            available_frames.min(self.fade_frames)
+        } else {
+            0
+        };
+        let fade_out_start = available_frames.saturating_sub(fade_out_frames);
+
+        for (frame_index, frame) in data
+            .chunks_exact_mut(self.channels)
+            .take(available_frames)
+            .enumerate()
+        {
+            let fade_in_gain = (self.fade_in_frame as f32 / self.fade_frames as f32).min(1.0);
+            self.fade_in_frame = self.fade_in_frame.saturating_add(1);
+            let fade_out_gain = if draining && frame_index >= fade_out_start {
+                if fade_out_frames > 1 {
+                    (available_frames - frame_index - 1) as f32 / (fade_out_frames - 1) as f32
+                } else {
+                    0.0
+                }
+            } else {
+                1.0
+            };
+            let gain = fade_in_gain * fade_out_gain;
+
+            for sample in frame {
+                *sample = T::from_sample(buffer.pop().unwrap_or_default() * gain);
+            }
+        }
+
+        if draining {
+            self.playing = false;
+            self.fade_in_frame = 0;
+        }
+        if stopping {
+            buffer.clear();
+            self.stop_submitted = true;
+        }
+        false
+    }
+}
+
 impl AudioHandler {
     #[cfg(target_os = "linux")]
     fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
@@ -1343,6 +1466,7 @@ impl AudioHandler {
     /// Start the audio playback.
     #[cfg(not(target_os = "linux"))]
     fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
+        self.finish_audio_stream();
         let device = AUDIO_HOST
             .default_output_device()
             .with_context(|| "Failed to get default output device")?;
@@ -1354,13 +1478,7 @@ impl AudioHandler {
         let sample_format = config.sample_format();
         log::info!("Default output format: {:?}", config);
         log::info!("Remote input format: {:?}", format0);
-        #[allow(unused_mut)]
-        let mut config: StreamConfig = config.into();
-        #[cfg(not(target_os = "ios"))]
-        {
-            // this makes ios audio output not work
-            config.buffer_size = cpal::BufferSize::Fixed(64);
-        }
+        let config: StreamConfig = config.into();
 
         self.sample_rate = (format0.sample_rate, config.sample_rate.0);
         let mut build_output_stream = |config: StreamConfig| match sample_format {
@@ -1475,56 +1593,21 @@ impl AudioHandler {
         self.audio_buffer
             .resize(config.sample_rate.0 as _, config.channels as _);
         let audio_buffer = self.audio_buffer.0.clone();
-        let ready = self.ready.clone();
+        let playback_control = self.playback_control.clone();
+        let mut playback = AudioPlayback::new(config.sample_rate.0 as _, config.channels as _);
+        *self.ready.lock().unwrap() = false;
         let timeout = None;
         let stream = device.build_output_stream(
             config,
-            move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
-                if !*ready.lock().unwrap() {
-                    *ready.lock().unwrap() = true;
-                }
-
-                let mut n = data.len();
+            move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
                 let mut lock = audio_buffer.lock().unwrap();
-                let mut having = lock.occupied_len();
-                // android two timestamps, one from zero, another not
-                #[cfg(not(target_os = "android"))]
-                if having < n {
-                    let tms = info.timestamp();
-                    let how_long = tms
-                        .playback
-                        .duration_since(&tms.callback)
-                        .unwrap_or(Duration::from_millis(0));
-
-                    // must long enough to fight back scheuler delay
-                    if how_long > Duration::from_millis(6) && how_long < Duration::from_millis(3000)
-                    {
-                        drop(lock);
-                        std::thread::sleep(how_long.div_f32(1.2));
-                        lock = audio_buffer.lock().unwrap();
-                        having = lock.occupied_len();
-                    }
-
-                    if having < n {
-                        n = having;
-                    }
-                }
-                #[cfg(target_os = "android")]
-                if having < n {
-                    n = having;
-                }
-                let mut elems = vec![0.0f32; n];
-                if n > 0 {
-                    lock.pop_slice(&mut elems);
-                }
-                drop(lock);
-
-                let mut input = elems.into_iter();
-                for sample in data.iter_mut() {
-                    *sample = match input.next() {
-                        Some(x) => T::from_sample(x),
-                        _ => T::from_sample(0.),
-                    };
+                let stopping = playback_control
+                    .stop_requested
+                    .load(std::sync::atomic::Ordering::Acquire);
+                if playback.render(data, &mut lock, stopping) {
+                    playback_control
+                        .stopped
+                        .store(true, std::sync::atomic::Ordering::Release);
                 }
             },
             err_fn,
@@ -1532,7 +1615,42 @@ impl AudioHandler {
         )?;
         stream.play()?;
         self.audio_stream = Some(Box::new(stream));
+        *self.ready.lock().unwrap() = true;
         Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn finish_audio_stream(&mut self) {
+        if self.audio_stream.is_none() {
+            return;
+        }
+        self.playback_control
+            .stop_requested
+            .store(true, std::sync::atomic::Ordering::Release);
+        for _ in 0..AUDIO_STOP_TIMEOUT_MS {
+            if self
+                .playback_control
+                .stopped
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        self.audio_stream.take();
+        self.playback_control
+            .stop_requested
+            .store(false, std::sync::atomic::Ordering::Release);
+        self.playback_control
+            .stopped
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+impl Drop for AudioHandler {
+    fn drop(&mut self) {
+        #[cfg(not(target_os = "linux"))]
+        self.finish_audio_stream();
     }
 }
 
@@ -1550,6 +1668,75 @@ mod audio_format_tests {
         assert!(is_supported_audio_channel_count(2));
         assert!(!is_supported_audio_channel_count(0));
         assert!(!is_supported_audio_channel_count(u32::MAX));
+    }
+}
+
+#[cfg(all(test, not(target_os = "linux")))]
+mod audio_playback_tests {
+    use super::AudioPlayback;
+    use ringbuf::{ring_buffer::RbBase, Rb};
+
+    #[test]
+    fn waits_for_priming_before_consuming_audio() {
+        let mut playback = AudioPlayback::new(1000, 2);
+        let mut buffer = ringbuf::HeapRb::new(128);
+        buffer.push_slice_overwrite(&[1.0; 58]);
+        let mut output = [1.0; 20];
+
+        assert!(!playback.render(&mut output, &mut buffer, false));
+
+        assert!(output.iter().all(|sample| *sample == 0.0));
+        assert_eq!(buffer.occupied_len(), 58);
+    }
+
+    #[test]
+    fn fades_audio_at_both_edges() {
+        let mut playback = AudioPlayback::new(1000, 2);
+        let mut buffer = ringbuf::HeapRb::new(128);
+        buffer.push_slice_overwrite(&[1.0; 60]);
+        let mut output = [0.0; 60];
+
+        assert!(!playback.render(&mut output, &mut buffer, false));
+
+        assert_eq!(&output[..2], &[0.0, 0.0]);
+        assert_eq!(&output[20..22], &[1.0, 1.0]);
+        assert_eq!(&output[58..], &[0.0, 0.0]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn reprimes_after_an_underrun() {
+        let mut playback = AudioPlayback::new(1000, 1);
+        let mut buffer = ringbuf::HeapRb::new(128);
+        buffer.push_slice_overwrite(&[1.0; 30]);
+        let mut output = [0.0; 30];
+        assert!(!playback.render(&mut output, &mut buffer, false));
+
+        buffer.push_slice_overwrite(&[1.0; 10]);
+        output.fill(1.0);
+        assert!(!playback.render(&mut output, &mut buffer, false));
+
+        assert!(output.iter().all(|sample| *sample == 0.0));
+        assert_eq!(buffer.occupied_len(), 10);
+    }
+
+    #[test]
+    fn explicit_stop_fades_and_discards_queued_audio() {
+        let mut playback = AudioPlayback::new(1000, 1);
+        let mut buffer = ringbuf::HeapRb::new(128);
+        buffer.push_slice_overwrite(&[1.0; 100]);
+        let mut output = [0.0; 20];
+        assert!(!playback.render(&mut output, &mut buffer, false));
+
+        output.fill(0.0);
+        assert!(!playback.render(&mut output, &mut buffer, true));
+
+        assert_eq!(output[0], 1.0);
+        assert_eq!(output[4], 0.0);
+        assert_eq!(output[19], 0.0);
+        assert!(buffer.is_empty());
+
+        assert!(playback.render(&mut output, &mut buffer, true));
     }
 }
 
