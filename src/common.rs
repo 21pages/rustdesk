@@ -980,8 +980,8 @@ pub(crate) fn release_id_from_update_url(update_url: &str) -> ResultType<String>
     };
     let segments = segments.collect::<Vec<_>>();
     let release_id = match segments.as_slice() {
-        ["rustdesk", "rustdesk", "releases", "tag", release_id] => *release_id,
-        ["rustdesk", "rustdesk", "releases", "tag", release_id, ""] => *release_id,
+        ["21pages", "rustdesk", "releases", "tag", release_id] => *release_id,
+        ["21pages", "rustdesk", "releases", "tag", release_id, ""] => *release_id,
         _ => bail!(
             "Update URL is not a RustDesk release tag URL: {}",
             update_url
@@ -1056,10 +1056,15 @@ fn process_software_update_check_response(bytes: Bytes) -> ResultType<()> {
     Ok(())
 }
 
-// No need to check `danger_accept_invalid_cert` for now.
-// Because the url is always `https://api.rustdesk.com/version/latest`.
+// The 1.4.10 test build bypasses production discovery to exercise the v1.4.11 release flow.
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
+    if crate::VERSION == "1.4.10" {
+        let response = hbb_common::VersionCheckResponse {
+            url: "https://github.com/21pages/rustdesk/releases/tag/v1.4.11".to_owned(),
+        };
+        return process_software_update_check_response(Bytes::from(serde_json::to_vec(&response)?));
+    }
     let (request, url) =
         hbb_common::version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
     let proxy_conf = Config::get_socks();
@@ -2806,7 +2811,7 @@ mod tests {
 
     #[test]
     fn parses_stable_rustdesk_release_url() {
-        let update_url = "https://github.com/rustdesk/rustdesk/releases/tag/v1.4.6";
+        let update_url = "https://github.com/21pages/rustdesk/releases/tag/v1.4.6";
 
         assert_eq!(release_id_from_update_url(update_url).unwrap(), "v1.4.6");
         assert_eq!(display_version_from_release_id("v1.4.6").unwrap(), "1.4.6");
@@ -2819,19 +2824,19 @@ mod tests {
     #[test]
     fn rejects_untrusted_release_urls_and_unstable_versions() {
         for update_url in [
-            "http://github.com/rustdesk/rustdesk/releases/tag/v1.4.6",
-            "https://github.com:8443/rustdesk/rustdesk/releases/tag/v1.4.6",
-            "https://github.com:443/rustdesk/rustdesk/releases/tag/v1.4.6",
-            "https://user@github.com/rustdesk/rustdesk/releases/tag/v1.4.6",
-            "https://example.com/rustdesk/rustdesk/releases/tag/v1.4.6",
+            "http://github.com/21pages/rustdesk/releases/tag/v1.4.6",
+            "https://github.com:8443/21pages/rustdesk/releases/tag/v1.4.6",
+            "https://github.com:443/21pages/rustdesk/releases/tag/v1.4.6",
+            "https://user@github.com/21pages/rustdesk/releases/tag/v1.4.6",
+            "https://example.com/21pages/rustdesk/releases/tag/v1.4.6",
             "https://github.com/other/rustdesk/releases/tag/v1.4.6",
             "https://github.com/rustdesk/other/releases/tag/v1.4.6",
-            "https://github.com/rustdesk/rustdesk/releases/download/v1.4.6/rustdesk.exe",
-            "https://github.com/rustdesk/rustdesk/releases/tag/v1.4.6?x=1",
-            "https://github.com/rustdesk/rustdesk/releases/tag/v1.4.6#asset",
-            "https://github.com/rustdesk/rustdesk/releases/tag/v1.4.6/extra",
-            "https://github.com/rustdesk/rustdesk/releases/tag/v1%2F4%2F6",
-            "https://github.com/rustdesk/rustdesk/releases/tag/%2e%2e",
+            "https://github.com/21pages/rustdesk/releases/download/v1.4.6/rustdesk.exe",
+            "https://github.com/21pages/rustdesk/releases/tag/v1.4.6?x=1",
+            "https://github.com/21pages/rustdesk/releases/tag/v1.4.6#asset",
+            "https://github.com/21pages/rustdesk/releases/tag/v1.4.6/extra",
+            "https://github.com/21pages/rustdesk/releases/tag/v1%2F4%2F6",
+            "https://github.com/21pages/rustdesk/releases/tag/%2e%2e",
         ] {
             assert!(release_id_from_update_url(update_url).is_err());
         }

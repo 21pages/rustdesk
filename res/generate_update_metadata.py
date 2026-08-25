@@ -21,7 +21,7 @@ SIGNATURE_CONTEXT = b"RustDesk update metadata v1\n"
 KEY_ID = "2026-ed25519-main"
 SEED_ENV = "RUSTDESK_UPDATE_ED25519_SEED"
 PUBLIC_KEY_ENV = "RUSTDESK_UPDATE_ED25519_PUBLIC_KEY"
-GITHUB_RELEASE_PREFIX = "https://github.com/rustdesk/rustdesk/releases/download"
+GITHUB_RELEASE_PREFIX = "https://github.com/21pages/rustdesk/releases/download"
 RFC3339_TIMESTAMP = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:[Zz]|[+-][0-9]{2}:[0-9]{2})"
 )
