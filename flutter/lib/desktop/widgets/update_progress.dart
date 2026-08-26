@@ -13,6 +13,9 @@ void handleUpdate(String releasePageUrl) {
   _isExtracting.value = false;
   String downloadUrl = releasePageUrl.replaceAll('tag', 'download');
   String version = downloadUrl.substring(downloadUrl.lastIndexOf('/') + 1);
+  if (version.startsWith('v')) {
+    version = version.substring(1);
+  }
   final String downloadFile =
       bind.mainGetCommonSync(key: 'download-file-$version');
   if (downloadFile.startsWith('error:')) {

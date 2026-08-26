@@ -135,6 +135,8 @@ fn check_update(manually: bool) -> ResultType<()> {
         let download_url = update_url.replace("tag", "download");
         let version = download_url.split('/').last().unwrap_or_default();
         #[cfg(target_os = "windows")]
+        let artifact_version = version.strip_prefix('v').unwrap_or(version);
+        #[cfg(target_os = "windows")]
         let download_url = if cfg!(feature = "flutter") {
             let Some(arch) = crate::platform::windows::release_arch_suffix() else {
                 bail!(
@@ -145,12 +147,15 @@ fn check_update(manually: bool) -> ResultType<()> {
             format!(
                 "{}/rustdesk-{}-{}.{}",
                 download_url,
-                version,
+                artifact_version,
                 arch,
                 if update_msi { "msi" } else { "exe" }
             )
         } else {
-            format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
+            format!(
+                "{}/rustdesk-{}-x86-sciter.exe",
+                download_url, artifact_version
+            )
         };
         log::debug!("New version available: {}", &version);
         let client = create_http_client_with_url(&download_url);
