@@ -562,6 +562,12 @@ class _GeneralState extends State<_General> {
           'Capture screen using DirectX',
           kOptionDirectxCapture,
         ),
+      if (isWindows && !outgoingOnly)
+        _OptionCheckBox(
+          context,
+          'Enable HDR color correction',
+          kOptionAllowHdrCapture,
+        ),
       if (!isWeb && !incomingOnly) ...[
         _OptionCheckBox(
           context,

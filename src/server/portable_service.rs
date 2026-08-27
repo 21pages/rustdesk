@@ -1187,6 +1187,7 @@ pub mod client {
     pub struct CapturerPortable {
         width: usize,
         height: usize,
+        current_display: usize,
     }
 
     impl CapturerPortable {
@@ -1220,7 +1221,11 @@ pub mod client {
                     height = display.height();
                 }
             }
-            CapturerPortable { width, height }
+            CapturerPortable {
+                width,
+                height,
+                current_display,
+            }
         }
     }
 
@@ -1306,6 +1311,17 @@ pub mod client {
 
         fn set_gdi(&mut self) -> bool {
             true
+        }
+
+        fn hdr_status(&self) -> scrap::HdrDisplayStatus {
+            display_service::try_get_displays()
+                .ok()
+                .and_then(|displays| {
+                    displays
+                        .get(self.current_display)
+                        .map(|display| display.hdr_status())
+                })
+                .unwrap_or_default()
         }
 
         #[cfg(feature = "vram")]

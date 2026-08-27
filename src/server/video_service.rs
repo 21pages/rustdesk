@@ -572,6 +572,30 @@ fn run(vs: VideoService) -> ResultType<()> {
         log::info!("disable dxgi with option, fall back to gdi");
         c.set_gdi();
     }
+    #[cfg(windows)]
+    let hdr_capture_allowed = vs.source.is_monitor() && scrap::codec::allow_hdr_capture();
+    #[cfg(windows)]
+    let hdr_status = if hdr_capture_allowed {
+        Some(c.hdr_status())
+    } else {
+        None
+    };
+    #[cfg(windows)]
+    let hdr_supported = hdr_status.map_or(false, |status| status.supported);
+    #[cfg(windows)]
+    let hdr_enabled = hdr_status.map_or(false, |status| status.enabled);
+    #[cfg(windows)]
+    if let Some(hdr_status) = hdr_status.filter(|status| status.supported) {
+        log::info!(
+            "======== HDR to SDR capture: display={}, status={:?}, active={}, gdi={}, portable={}, codec={:?}",
+            display_idx,
+            hdr_status,
+            hdr_enabled,
+            c.is_gdi(),
+            last_portable_service_running,
+            Encoder::negotiated_codec()
+        );
+    }
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     let mut spf = video_qos.spf();
     let mut quality = video_qos.ratio();
@@ -637,6 +661,8 @@ fn run(vs: VideoService) -> ResultType<()> {
 
     let start = time::Instant::now();
     let mut last_check_displays = time::Instant::now();
+    #[cfg(windows)]
+    let mut pending_hdr_enabled = None;
     #[cfg(windows)]
     let mut try_gdi = 1;
     #[cfg(windows)]
@@ -712,6 +738,31 @@ fn run(vs: VideoService) -> ResultType<()> {
         let now = time::Instant::now();
         if vs.source.is_monitor() && last_check_displays.elapsed().as_millis() > 1000 {
             last_check_displays = now;
+            #[cfg(windows)]
+            {
+                if hdr_supported {
+                    let current_hdr_enabled = c.hdr_status().enabled;
+                    if current_hdr_enabled == hdr_enabled {
+                        pending_hdr_enabled = None;
+                    } else if pending_hdr_enabled == Some(current_hdr_enabled) {
+                        log::info!(
+                            "======== HDR desktop mode changed: display={}, enabled={} -> {}, restart video service",
+                            display_idx,
+                            hdr_enabled,
+                            current_hdr_enabled
+                        );
+                        bail!("SWITCH");
+                    } else {
+                        pending_hdr_enabled = Some(current_hdr_enabled);
+                        log::info!(
+                            "======== HDR desktop mode change detected: display={}, enabled={} -> {}, waiting for confirmation",
+                            display_idx,
+                            hdr_enabled,
+                            current_hdr_enabled
+                        );
+                    }
+                }
+            }
             // This check may be redundant, but it is better to be safe.
             // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
             try_broadcast_display_changed(&sp, display_idx, &c, false)?;

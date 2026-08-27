@@ -2,11 +2,14 @@ use std::{io, mem, ptr, slice};
 pub mod gdi;
 pub use gdi::CapturerGDI;
 pub mod mag;
+mod tone_map;
 
 use winapi::{
     shared::{
         dxgi::*,
         dxgi1_2::*,
+        dxgi1_5::{IDXGIOutput5, IID_IDXGIOutput5},
+        dxgiformat::{DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT},
         dxgitype::*,
         minwindef::{DWORD, FALSE, TRUE, UINT},
         ntdef::LONG,
@@ -19,10 +22,11 @@ use winapi::{
         winnt::HRESULT, winuser::*,
     },
 };
+use windows_sys::Win32::Devices::Display as windows_display;
 
 use crate::RotationMode::*;
 
-use crate::{AdapterDevice, Frame, PixelBuffer};
+use crate::{AdapterDevice, Frame, HdrDisplayStatus, PixelBuffer};
 use std::ffi::c_void;
 
 pub struct ComPtr<T>(*mut T);
@@ -58,6 +62,63 @@ pub struct Capturer {
     output_texture: bool,
     adapter_desc1: DXGI_ADAPTER_DESC1,
     rotate: Rotate,
+    hdr_duplication: bool,
+    logged_hdr_duplication_frame: bool,
+    hdr_tone_mapper: Option<tone_map::ToneMapper>,
+}
+
+unsafe fn duplicate_output(
+    display: &Display,
+    device: *mut ID3D11Device,
+    prefer_hdr: bool,
+    duplication: *mut *mut IDXGIOutputDuplication,
+) -> (HRESULT, bool) {
+    if prefer_hdr {
+        let mut output5: *mut IDXGIOutput5 = ptr::null_mut();
+        let query_result = (*display.inner.0).QueryInterface(
+            &IID_IDXGIOutput5,
+            &mut output5 as *mut *mut _ as *mut *mut _,
+        );
+        let output5 = ComPtr(output5);
+        if query_result == S_OK && !output5.is_null() {
+            let formats: [DXGI_FORMAT; 2] =
+                [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM];
+            let result = (*output5.0).DuplicateOutput1(
+                device as *mut _,
+                0,
+                formats.len() as UINT,
+                formats.as_ptr(),
+                duplication,
+            );
+            if result == S_OK && !(*duplication).is_null() {
+                let mut desc: DXGI_OUTDUPL_DESC = mem::zeroed();
+                (**duplication).GetDesc(&mut desc);
+                hbb_common::log::info!(
+                    "======== HDR DDA init: requested=R16G16B16A16Float, reported_format={}, awaiting_first_frame=true",
+                    desc.ModeDesc.Format
+                );
+                return (result, true);
+            }
+            if !(*duplication).is_null() {
+                (*((*duplication) as *mut IUnknown)).Release();
+                *duplication = ptr::null_mut();
+            }
+            hbb_common::log::warn!(
+                "======== HDR DDA init: DuplicateOutput1 failed, hr=0x{:08x}, fallback=DuplicateOutput",
+                result as u32
+            );
+        } else {
+            hbb_common::log::info!(
+                "======== HDR DDA init: IDXGIOutput5 unavailable, hr=0x{:08x}, fallback=DuplicateOutput",
+                query_result as u32
+            );
+        }
+    }
+
+    (
+        (*display.inner.0).DuplicateOutput(device as *mut _, duplication),
+        false,
+    )
 }
 
 impl Capturer {
@@ -65,11 +126,12 @@ impl Capturer {
         let mut device = ptr::null_mut();
         let mut context = ptr::null_mut();
         let mut duplication = ptr::null_mut();
-        #[allow(invalid_value)]
-        let mut desc = unsafe { mem::MaybeUninit::uninit().assume_init() };
+        let mut desc: DXGI_OUTDUPL_DESC = unsafe { mem::zeroed() };
         #[allow(invalid_value)]
         let mut adapter_desc1 = unsafe { mem::MaybeUninit::uninit().assume_init() };
         let mut gdi_capturer = None;
+        let hdr_enabled =
+            !display.gdi && crate::codec::allow_hdr_capture() && display.hdr_status().enabled;
 
         let mut res = if display.gdi {
             wrap_hresult(1)
@@ -96,7 +158,32 @@ impl Capturer {
         };
         let device = ComPtr(device);
         let context = ComPtr(context);
-
+        let sdr_white_multiplier = if res.is_ok() && hdr_enabled {
+            Some(
+                display_sdr_white_multiplier(display.name()).unwrap_or_else(|| {
+                    hbb_common::log::warn!(
+                        "======== HDR SDR white: query failed, fallback_multiplier=1.000"
+                    );
+                    1.0
+                }),
+            )
+        } else {
+            None
+        };
+        let mut hdr_tone_mapper = if let Some(sdr_white_multiplier) = sdr_white_multiplier {
+            match tone_map::ToneMapper::new(device.0, sdr_white_multiplier) {
+                Ok(tone_mapper) => Some(tone_mapper),
+                Err(error) => {
+                    hbb_common::log::warn!(
+                        "======== HDR tone-map init failed: {error}, fallback=DuplicateOutput"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let mut hdr_duplication = false;
         if res.is_err() {
             gdi_capturer = display.create_gdi();
             println!("Fallback to GDI");
@@ -105,7 +192,15 @@ impl Capturer {
             }
         } else {
             res = wrap_hresult(unsafe {
-                let hres = (*display.inner.0).DuplicateOutput(device.0 as *mut _, &mut duplication);
+                let (hres, is_fp16) = if hdr_tone_mapper.is_some() {
+                    duplicate_output(&display, device.0, true, &mut duplication)
+                } else {
+                    (
+                        (*display.inner.0).DuplicateOutput(device.0 as *mut _, &mut duplication),
+                        false,
+                    )
+                };
+                hdr_duplication = is_fp16;
                 if hres != S_OK {
                     gdi_capturer = display.create_gdi();
                     println!("Fallback to GDI");
@@ -117,38 +212,14 @@ impl Capturer {
                 } else {
                     hres
                 }
-
-                // NVFBC(NVIDIA Capture SDK) which xpra used already deprecated, https://developer.nvidia.com/capture-sdk
-
-                // also try high version DXGI for better performance, e.g.
-                // https://docs.microsoft.com/zh-cn/windows/win32/direct3ddxgi/dxgi-1-2-improvements
-                // dxgi-1-6 may too high, only support win10 (2018)
-                // https://docs.microsoft.com/zh-cn/windows/win32/api/dxgiformat/ne-dxgiformat-dxgi_format
-                // DXGI_FORMAT_420_OPAQUE
-                // IDXGIOutputDuplication::GetFrameDirtyRects and IDXGIOutputDuplication::GetFrameMoveRects
-                // can help us update screen incrementally
-
-                /* // not supported on my PC, try in the future
-                use winapi::shared::dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM;
-
-                let format : Vec<DXGI_FORMAT> = vec![DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_420_OPAQUE];
-                (*display.inner).DuplicateOutput1(
-                    device as *mut _,
-                    0 as UINT,
-                    2 as UINT,
-                    format.as_ptr(),
-                    &mut duplication
-                )
-                */
-
-                // if above not work, I think below should not work either, try later
-                // https://developer.nvidia.com/capture-sdk deprecated
-                // examples using directx + nvideo sdk for GPU-accelerated video encoding/decoding
-                // https://github.com/NVIDIA/video-sdk-samples
             });
         }
 
         res?;
+
+        if !hdr_duplication {
+            hdr_tone_mapper = None;
+        }
 
         if !duplication.is_null() {
             unsafe {
@@ -174,6 +245,9 @@ impl Capturer {
             output_texture: false,
             adapter_desc1,
             rotate,
+            hdr_duplication,
+            logged_hdr_duplication_frame: false,
+            hdr_tone_mapper,
         })
     }
 
@@ -324,6 +398,10 @@ impl Capturer {
         self.gdi_capturer.take();
     }
 
+    pub fn hdr_status(&self) -> HdrDisplayStatus {
+        self.display.hdr_status()
+    }
+
     #[cfg(feature = "vram")]
     pub fn set_output_texture(&mut self, texture: bool) {
         self.output_texture = texture;
@@ -393,6 +471,14 @@ impl Capturer {
     pub fn frame<'a>(&'a mut self, timeout: UINT) -> io::Result<Frame<'a>> {
         if self.output_texture {
             Ok(Frame::Texture(self.get_texture(timeout)?))
+        } else if self.hdr_duplication {
+            let width = self.width;
+            let height = self.height;
+            Ok(Frame::PixelBuffer(PixelBuffer::with_BGRA(
+                self.get_hdr_pixelbuffer(timeout)?,
+                width,
+                height,
+            )))
         } else {
             let width = self.width;
             let height = self.height;
@@ -402,6 +488,50 @@ impl Capturer {
                 height,
             )))
         }
+    }
+
+    fn get_hdr_pixelbuffer<'a>(&'a mut self, timeout: UINT) -> io::Result<&'a [u8]> {
+        let (texture, rotation) = self.get_texture(timeout)?;
+        if texture.is_null() {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
+        let mut desc: D3D11_TEXTURE2D_DESC = unsafe { mem::zeroed() };
+        unsafe { (*(texture as *mut ID3D11Texture2D)).GetDesc(&mut desc) };
+        let rotate = match rotation {
+            0 => kRotate0,
+            90 => kRotate90,
+            180 => kRotate180,
+            270 => kRotate270,
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Unknown rotation: {rotation}"),
+                ));
+            }
+        };
+        let tone_mapper = self
+            .hdr_tone_mapper
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "HDR tone mapper unavailable"))?;
+        let data = tone_mapper.readback(texture as *mut ID3D11Texture2D)?;
+        if rotate == kRotate0 {
+            return Ok(data);
+        }
+
+        let stride = data.len() / desc.Height as usize;
+        self.rotated.resize(self.width * self.height * 4, 0);
+        unsafe {
+            crate::common::ARGBRotate(
+                data.as_ptr(),
+                stride as i32,
+                self.rotated.as_mut_ptr(),
+                4 * self.width as i32,
+                desc.Width as i32,
+                desc.Height as i32,
+                rotate,
+            );
+        }
+        Ok(&self.rotated)
     }
 
     fn get_pixelbuffer<'a>(&'a mut self, timeout: UINT) -> io::Result<&'a [u8]> {
@@ -485,14 +615,48 @@ impl Capturer {
             }
 
             let mut texture: *mut ID3D11Texture2D = ptr::null_mut();
-            (*frame.0).QueryInterface(
+            wrap_hresult((*frame.0).QueryInterface(
                 &IID_ID3D11Texture2D,
                 &mut texture as *mut *mut _ as *mut *mut _,
-            );
+            ))?;
+            if texture.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "desktop duplication frame has no D3D11 texture",
+                ));
+            }
             let texture = ComPtr(texture);
             self.texture = texture;
 
             let mut final_texture = self.texture.0 as *mut c_void;
+            if self.hdr_duplication {
+                let mut desc: D3D11_TEXTURE2D_DESC = mem::zeroed();
+                (*self.texture.0).GetDesc(&mut desc);
+                if !self.logged_hdr_duplication_frame {
+                    hbb_common::log::info!(
+                        "======== HDR DDA frame: actual_format={}, size={}x{}, fp16={}",
+                        desc.Format,
+                        desc.Width,
+                        desc.Height,
+                        desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT
+                    );
+                    self.logged_hdr_duplication_frame = true;
+                }
+                if desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT {
+                    hbb_common::log::warn!(
+                        "======== HDR DDA frame: FP16 unavailable, actual_format={}, fallback=SDR",
+                        desc.Format
+                    );
+                    self.hdr_duplication = false;
+                    self.hdr_tone_mapper = None;
+                    return Err(io::ErrorKind::WouldBlock.into());
+                }
+                let tone_mapper = self.hdr_tone_mapper.as_mut().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::Other, "HDR tone mapper unavailable")
+                })?;
+                final_texture =
+                    tone_mapper.render(self.texture.0, desc.Width, desc.Height)? as *mut c_void;
+            }
             let mut rotation = match self.display.rotation() {
                 DXGI_MODE_ROTATION_ROTATE90 => 90,
                 DXGI_MODE_ROTATION_ROTATE180 => 180,
@@ -500,14 +664,14 @@ impl Capturer {
                 _ => 0,
             };
             if rotation != 0
-                && !self.texture.is_null()
+                && !final_texture.is_null()
                 && !self.rotate.video_context.is_null()
                 && !self.rotate.video_device.is_null()
                 && !self.rotate.video_processor_enum.is_null()
                 && !self.rotate.video_processor.is_null()
             {
                 let mut desc: D3D11_TEXTURE2D_DESC = mem::zeroed();
-                (*self.texture.0).GetDesc(&mut desc);
+                (*(final_texture as *mut ID3D11Texture2D)).GetDesc(&mut desc);
                 if rotation == 90 || rotation == 270 {
                     let tmp = desc.Width;
                     desc.Width = desc.Height;
@@ -534,7 +698,7 @@ impl Capturer {
                     };
                     let mut input_view = ptr::null_mut();
                     (*self.rotate.video_device.0).CreateVideoProcessorInputView(
-                        self.texture.0 as *mut _,
+                        final_texture as *mut _,
                         self.rotate.video_processor_enum.0 as *mut _,
                         &input_view_desc,
                         &mut input_view,
@@ -838,6 +1002,10 @@ impl Display {
         )
     }
 
+    pub fn hdr_status(&self) -> HdrDisplayStatus {
+        advanced_color_status(self.name()).unwrap_or_default()
+    }
+
     #[cfg(feature = "vram")]
     pub fn adapter_luid(&self) -> Option<i64> {
         unsafe {
@@ -853,6 +1021,159 @@ impl Display {
             None
         }
     }
+}
+
+fn display_sdr_white_multiplier(device_name: &[u16]) -> Option<f32> {
+    const MAX_ATTEMPTS: usize = 3;
+    for _ in 0..MAX_ATTEMPTS {
+        let mut path_count = 0;
+        let mut mode_count = 0;
+        let result = unsafe {
+            windows_display::GetDisplayConfigBufferSizes(
+                windows_display::QDC_ONLY_ACTIVE_PATHS,
+                &mut path_count,
+                &mut mode_count,
+            )
+        };
+        if result != ERROR_SUCCESS as u32 {
+            return None;
+        }
+
+        let mut paths =
+            vec![windows_display::DISPLAYCONFIG_PATH_INFO::default(); path_count as usize];
+        let mut modes =
+            vec![windows_display::DISPLAYCONFIG_MODE_INFO::default(); mode_count as usize];
+        let result = unsafe {
+            windows_display::QueryDisplayConfig(
+                windows_display::QDC_ONLY_ACTIVE_PATHS,
+                &mut path_count,
+                paths.as_mut_ptr(),
+                &mut mode_count,
+                modes.as_mut_ptr(),
+                ptr::null_mut(),
+            )
+        };
+        if result == ERROR_INSUFFICIENT_BUFFER as u32 {
+            continue;
+        }
+        if result != ERROR_SUCCESS as u32 {
+            return None;
+        }
+        paths.truncate(path_count as usize);
+
+        for path in paths {
+            let mut source_name = windows_display::DISPLAYCONFIG_SOURCE_DEVICE_NAME::default();
+            source_name.header.r#type = windows_display::DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+            source_name.header.size =
+                mem::size_of::<windows_display::DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32;
+            source_name.header.adapterId = path.sourceInfo.adapterId;
+            source_name.header.id = path.sourceInfo.id;
+            let result =
+                unsafe { windows_display::DisplayConfigGetDeviceInfo(&mut source_name.header) };
+            if result != ERROR_SUCCESS as LONG
+                || wide_name(&source_name.viewGdiDeviceName) != wide_name(device_name)
+            {
+                continue;
+            }
+
+            let mut level = windows_display::DISPLAYCONFIG_SDR_WHITE_LEVEL::default();
+            level.header.r#type = windows_display::DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
+            level.header.size =
+                mem::size_of::<windows_display::DISPLAYCONFIG_SDR_WHITE_LEVEL>() as u32;
+            level.header.adapterId = path.targetInfo.adapterId;
+            level.header.id = path.targetInfo.id;
+            let result = unsafe { windows_display::DisplayConfigGetDeviceInfo(&mut level.header) };
+            if result != ERROR_SUCCESS as LONG || level.SDRWhiteLevel == 0 {
+                return None;
+            }
+            return Some((level.SDRWhiteLevel as f32 / 1000.0).clamp(0.1, 20.0));
+        }
+        return None;
+    }
+    None
+}
+
+fn advanced_color_status(device_name: &[u16]) -> Option<HdrDisplayStatus> {
+    const MAX_ATTEMPTS: usize = 3;
+    for _ in 0..MAX_ATTEMPTS {
+        let mut path_count = 0;
+        let mut mode_count = 0;
+        let result = unsafe {
+            windows_display::GetDisplayConfigBufferSizes(
+                windows_display::QDC_ONLY_ACTIVE_PATHS,
+                &mut path_count,
+                &mut mode_count,
+            )
+        };
+        if result != ERROR_SUCCESS as u32 {
+            return None;
+        }
+
+        let mut paths =
+            vec![windows_display::DISPLAYCONFIG_PATH_INFO::default(); path_count as usize];
+        let mut modes =
+            vec![windows_display::DISPLAYCONFIG_MODE_INFO::default(); mode_count as usize];
+        let result = unsafe {
+            windows_display::QueryDisplayConfig(
+                windows_display::QDC_ONLY_ACTIVE_PATHS,
+                &mut path_count,
+                paths.as_mut_ptr(),
+                &mut mode_count,
+                modes.as_mut_ptr(),
+                ptr::null_mut(),
+            )
+        };
+        if result == ERROR_INSUFFICIENT_BUFFER as u32 {
+            continue;
+        }
+        if result != ERROR_SUCCESS as u32 {
+            return None;
+        }
+        paths.truncate(path_count as usize);
+
+        for path in paths {
+            let mut source_name = windows_display::DISPLAYCONFIG_SOURCE_DEVICE_NAME::default();
+            source_name.header.r#type = windows_display::DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+            source_name.header.size =
+                mem::size_of::<windows_display::DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32;
+            source_name.header.adapterId = path.sourceInfo.adapterId;
+            source_name.header.id = path.sourceInfo.id;
+            let result =
+                unsafe { windows_display::DisplayConfigGetDeviceInfo(&mut source_name.header) };
+            if result != ERROR_SUCCESS as LONG
+                || wide_name(&source_name.viewGdiDeviceName) != wide_name(device_name)
+            {
+                continue;
+            }
+
+            let mut info = windows_display::DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO::default();
+            info.header.r#type = windows_display::DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO;
+            info.header.size =
+                mem::size_of::<windows_display::DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO>() as u32;
+            info.header.adapterId = path.targetInfo.adapterId;
+            info.header.id = path.targetInfo.id;
+            let result = unsafe { windows_display::DisplayConfigGetDeviceInfo(&mut info.header) };
+            if result != ERROR_SUCCESS as LONG {
+                return None;
+            }
+            let flags = unsafe { info.Anonymous.value };
+            return Some(HdrDisplayStatus {
+                supported: flags & 1 != 0,
+                enabled: flags & 2 != 0,
+                bits_per_color: info.bitsPerColorChannel.min(u8::MAX as u32) as u8,
+            });
+        }
+        return None;
+    }
+    None
+}
+
+fn wide_name(name: &[u16]) -> &[u16] {
+    let end = name
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(name.len());
+    &name[..end]
 }
 
 fn wrap_hresult(x: HRESULT) -> io::Result<()> {
