@@ -1781,6 +1781,7 @@ pub struct LoginConfigHandler {
     pub enable_trusted_devices: bool,
     pub record_state: bool,
     pub record_permission: bool,
+    disable_clipboard_on_connect: bool,
 }
 
 impl Deref for LoginConfigHandler {
@@ -1850,6 +1851,7 @@ impl LoginConfigHandler {
         let config = self.load_config();
         self.remember = !config.password.is_empty();
         self.config = config;
+        self.reset_clipboard_on_connect();
 
         let conn_token = conn_token
             .map(|x| serde_json::from_str::<ConnToken>(&x).ok())
@@ -2123,7 +2125,8 @@ impl LoginConfigHandler {
             })
             .into();
         } else if name == "disable-clipboard" {
-            config.disable_clipboard.v = !config.disable_clipboard.v;
+            config.disable_clipboard.v = !self.is_clipboard_disabled();
+            self.disable_clipboard_on_connect = false;
             option.disable_clipboard = (if config.disable_clipboard.v {
                 BoolOption::Yes
             } else {
@@ -2376,7 +2379,7 @@ impl LoginConfigHandler {
         } else if name == "disable-audio" {
             self.config.disable_audio.v
         } else if name == "disable-clipboard" {
-            self.config.disable_clipboard.v
+            self.is_clipboard_disabled()
         } else if name == "show-quality-monitor" {
             self.config.show_quality_monitor.v
         } else if name == "allow_swap_key" {
@@ -2392,6 +2395,15 @@ impl LoginConfigHandler {
         } else {
             !self.get_option(name).is_empty()
         }
+    }
+
+    pub fn is_clipboard_disabled(&self) -> bool {
+        self.disable_clipboard_on_connect || self.config.disable_clipboard.v
+    }
+
+    pub fn reset_clipboard_on_connect(&mut self) {
+        self.disable_clipboard_on_connect =
+            LocalConfig::get_option(keys::OPTION_DISABLE_CLIPBOARD_ON_CONNECT) == "Y";
     }
 
     pub fn is_privacy_mode_supported(&self) -> bool {

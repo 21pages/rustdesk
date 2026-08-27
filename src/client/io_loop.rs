@@ -1459,7 +1459,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::Clipboard(cb)) => {
                     let clipboard_allowed = {
                         let lc = self.handler.lc.read().unwrap();
-                        !lc.disable_clipboard.v && !lc.view_only.v
+                        !lc.is_clipboard_disabled() && !lc.view_only.v
                     };
                     if clipboard_allowed {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1482,7 +1482,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::MultiClipboards(_mcb)) => {
                     let clipboard_allowed = {
                         let lc = self.handler.lc.read().unwrap();
-                        !lc.disable_clipboard.v && !lc.view_only.v
+                        !lc.is_clipboard_disabled() && !lc.view_only.v
                     };
                     if clipboard_allowed {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]

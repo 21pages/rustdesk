@@ -178,7 +178,7 @@ impl SessionPermissionConfig {
     pub fn is_text_clipboard_required(&self) -> bool {
         *self.server_clipboard_enabled.read().unwrap()
             && *self.server_keyboard_enabled.read().unwrap()
-            && !self.lc.read().unwrap().disable_clipboard.v
+            && !self.lc.read().unwrap().is_clipboard_disabled()
             && !self.lc.read().unwrap().view_only.v
     }
 
@@ -417,7 +417,7 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn is_text_clipboard_required(&self) -> bool {
         *self.server_clipboard_enabled.read().unwrap()
             && *self.server_keyboard_enabled.read().unwrap()
-            && !self.lc.read().unwrap().disable_clipboard.v
+            && !self.lc.read().unwrap().is_clipboard_disabled()
             && !self.lc.read().unwrap().view_only.v
     }
 
@@ -1296,7 +1296,11 @@ impl<T: InvokeUiSession> Session<T> {
         if true == force_relay {
             self.lc.write().unwrap().force_relay = true;
         }
-        self.lc.write().unwrap().peer_info = None;
+        {
+            let mut lc = self.lc.write().unwrap();
+            lc.peer_info = None;
+            lc.reset_clipboard_on_connect();
+        }
         self.reconnect_count.fetch_add(1, Ordering::SeqCst);
         let mut lock = self.thread.lock().unwrap();
         // No need to join the previous thread, because it will exit automatically.
