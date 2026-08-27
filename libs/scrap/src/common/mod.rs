@@ -54,6 +54,13 @@ pub use self::convert::*;
 pub const STRIDE_ALIGN: usize = 64; // commonly used in libvpx vpx_img_alloc caller
 pub const HW_STRIDE_ALIGN: usize = 0; // recommended by av_frame_get_buffer
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct HdrDisplayStatus {
+    pub supported: bool,
+    pub enabled: bool,
+    pub bits_per_color: u8,
+}
+
 pub mod aom;
 #[cfg(not(any(target_os = "ios")))]
 pub mod camera;
@@ -141,6 +148,14 @@ pub trait TraitCapturer {
     fn is_gdi(&self) -> bool;
     #[cfg(windows)]
     fn set_gdi(&mut self) -> bool;
+
+    fn hdr_status(&self) -> HdrDisplayStatus {
+        HdrDisplayStatus::default()
+    }
+
+    fn set_hdr_capture(&mut self, _enabled: bool) -> bool {
+        false
+    }
 
     #[cfg(feature = "vram")]
     fn device(&self) -> AdapterDevice;

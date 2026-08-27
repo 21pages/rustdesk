@@ -1,6 +1,6 @@
 #[cfg(feature = "vram")]
 use crate::AdapterDevice;
-use crate::{common::TraitCapturer, dxgi, Frame, Pixfmt};
+use crate::{common::TraitCapturer, dxgi, Frame, HdrDisplayStatus, Pixfmt};
 use std::{
     io::{
         self,
@@ -38,6 +38,14 @@ impl Capturer {
     pub fn height(&self) -> usize {
         self.height
     }
+
+    pub fn hdr_status(&self) -> HdrDisplayStatus {
+        self.inner.hdr_status()
+    }
+
+    pub fn set_hdr_capture(&mut self, enabled: bool) -> bool {
+        self.inner.set_hdr_capture(enabled)
+    }
 }
 
 impl TraitCapturer for Capturer {
@@ -55,6 +63,14 @@ impl TraitCapturer for Capturer {
 
     fn set_gdi(&mut self) -> bool {
         self.inner.set_gdi()
+    }
+
+    fn hdr_status(&self) -> HdrDisplayStatus {
+        self.hdr_status()
+    }
+
+    fn set_hdr_capture(&mut self, enabled: bool) -> bool {
+        self.set_hdr_capture(enabled)
     }
 
     #[cfg(feature = "vram")]
@@ -202,6 +218,10 @@ impl Display {
     pub fn is_primary(&self) -> bool {
         // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-devmodea
         self.origin() == (0, 0)
+    }
+
+    pub fn hdr_status(&self) -> HdrDisplayStatus {
+        self.0.hdr_status()
     }
 
     #[cfg(feature = "vram")]
