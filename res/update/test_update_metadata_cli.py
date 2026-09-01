@@ -18,7 +18,7 @@ class UpdateMetadataCliTests(unittest.TestCase):
         self.assertEqual(
             2,
             WORKFLOW.count(
-                "--release-base-url https://github.com/rustdesk/rustdesk/releases/download"
+                "--release-base-url https://github.com/21pages/rustdesk/releases/download"
             ),
         )
 
