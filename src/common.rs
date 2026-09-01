@@ -948,11 +948,11 @@ pub fn check_software_update() {
     }
 }
 
-// The 1.4.9 test build bypasses production discovery to exercise the v1.4.10 release flow.
+// The 1.4.9 test build bypasses production discovery to exercise the v1.5.0 release flow.
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     if crate::VERSION == "1.4.9" {
-        let response_url = "https://github.com/21pages/rustdesk/releases/tag/v1.4.10".to_owned();
+        let response_url = "https://github.com/21pages/rustdesk/releases/tag/v1.5.0".to_owned();
         #[cfg(feature = "flutter")]
         {
             let mut m = HashMap::new();
