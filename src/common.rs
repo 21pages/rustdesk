@@ -1056,12 +1056,12 @@ fn process_software_update_check_response(bytes: Bytes) -> ResultType<()> {
     Ok(())
 }
 
-// The 1.4.10 test build bypasses production discovery to exercise the v1.4.11 release flow.
+// The 1.5.0 test build bypasses production discovery to exercise the v1.5.1 release flow.
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
-    if crate::VERSION == "1.4.10" {
+    if crate::VERSION == "1.5.0" {
         let response = hbb_common::VersionCheckResponse {
-            url: "https://github.com/21pages/rustdesk/releases/tag/v1.4.11".to_owned(),
+            url: "https://github.com/21pages/rustdesk/releases/tag/v1.5.1".to_owned(),
         };
         return process_software_update_check_response(Bytes::from(serde_json::to_vec(&response)?));
     }
