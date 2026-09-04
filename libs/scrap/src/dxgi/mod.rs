@@ -217,6 +217,7 @@ impl Capturer {
                 );
             }
         }
+        hbb_common::log::info!("========== DXGI capture backend: DuplicateOutput (legacy)");
         (*display.inner.0).DuplicateOutput(device as *mut _, duplication)
     }
 
