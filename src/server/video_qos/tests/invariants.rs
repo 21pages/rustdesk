@@ -85,7 +85,7 @@ impl Driver {
                 let mut delay = if roll < 45 {
                     self.base_rtt + self.rng.below(140) as u32
                 } else {
-                    self.base_rtt + DELAY_THRESHOLD_150MS + self.rng.below(1500) as u32
+                    self.base_rtt + DELAY_THRESHOLD_MIN_MS + self.rng.below(1500) as u32
                 };
                 if let Some(elapsed) = self.outstanding.remove(&id) {
                     delay = delay.max(elapsed as u32 + self.rng.below(500) as u32);
@@ -214,7 +214,7 @@ fn bad_evidence_never_raises_a_target_or_the_ratio() {
                 // itself may have relearned it.
                 let bad = match step {
                     Step::Reply { id, delay } => baseline(&qos, id)
-                        .is_some_and(|base| delay >= base + DELAY_THRESHOLD_150MS),
+                        .is_some_and(|base| delay >= base + qos.users[&id].delay.delay_threshold()),
                     Step::Timeout { .. } => true,
                     _ => false,
                 };

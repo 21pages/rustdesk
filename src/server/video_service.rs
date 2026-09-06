@@ -93,6 +93,26 @@ pub fn notify_video_frame_fetched(display_idx: usize, conn_id: i32, frame_tm: Op
     }
 }
 
+#[cfg(test)]
+pub(super) fn test_frame_notifications(
+    display_idx: usize,
+) -> (impl Drop, FrameFetchedNotifierReceiver) {
+    struct Cleanup(usize);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            FRAME_FETCHED_NOTIFIERS.lock().unwrap().remove(&self.0);
+        }
+    }
+    let (tx, rx) = hbb_common::tokio::sync::mpsc::unbounded_channel();
+    let rx = Arc::new(TokioMutex::new(rx));
+    assert!(FRAME_FETCHED_NOTIFIERS
+        .lock()
+        .unwrap()
+        .insert(display_idx, (tx, rx.clone()))
+        .is_none());
+    (Cleanup(display_idx), rx)
+}
+
 #[inline]
 pub fn notify_video_frame_fetched_by_conn_id(conn_id: i32, frame_tm: Option<Instant>) {
     let vec_display_idx: Vec<usize> = {
@@ -634,6 +654,9 @@ fn run(vs: VideoService) -> ResultType<()> {
     }
 
     let mut frame_controller = VideoFrameController::new(display_idx);
+    let diagnostics = qos_diagnostics::Monitor::new(|| {
+        format!("video service={} display={display_idx}", sp.name())
+    });
 
     let start = time::Instant::now();
     let mut last_check_displays = time::Instant::now();
@@ -657,6 +680,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
 
     while sp.ok() {
+        let _diag_loop = diagnostics.enter("video_loop");
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
         check_qos(
@@ -668,6 +692,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             &mut second_instant,
             &sp.name(),
         )?;
+        diagnostics.video_settings(spf);
         if sp.is_option_true(OPTION_REFRESH) {
             if vs.source.is_monitor() {
                 let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
@@ -721,8 +746,11 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
+        let mut diag_capture = diagnostics.enter("capture");
         let res = match c.frame(spf) {
             Ok(frame) => {
+                diag_capture.finish(if frame.valid() { "ok" } else { "empty" });
+                let _diag_prepare = diagnostics.enter("prepare_frame");
                 repeat_encode_counter = 0;
                 if frame.valid() {
                     let screenshot_key = (vs.source, display_idx);
@@ -774,6 +802,7 @@ fn run(vs: VideoService) -> ResultType<()> {
 
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
                     let send_conn_ids = handle_one_frame(
+                        &diagnostics,
                         display_idx,
                         &sp,
                         frame,
@@ -798,7 +827,14 @@ fn run(vs: VideoService) -> ResultType<()> {
                 }
                 Ok(())
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                diag_capture.finish(if err.kind() == WouldBlock {
+                    "empty"
+                } else {
+                    "error"
+                });
+                Err(err)
+            }
         };
 
         match res {
@@ -833,6 +869,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
                         let send_conn_ids = handle_one_frame(
+                            &diagnostics,
                             display_idx,
                             &sp,
                             EncodeInput::YUV(&yuv),
@@ -875,22 +912,33 @@ fn run(vs: VideoService) -> ResultType<()> {
         let mut fetched_conn_ids = HashSet::new();
         let timeout_millis = 3_000u64;
         let wait_begin = Instant::now();
+        let mut diag_wait = diagnostics.enter("frame_fetch_wait");
+        diagnostics.waiting(&frame_controller.send_conn_ids, &fetched_conn_ids);
         while wait_begin.elapsed().as_millis() < timeout_millis as _ {
             if vs.source.is_monitor() {
                 check_privacy_mode_changed(&sp, display_idx, &c)?;
             }
             frame_controller.try_wait_next(&mut fetched_conn_ids, 300);
+            diagnostics.waiting(&frame_controller.send_conn_ids, &fetched_conn_ids);
             // break if all connections have received current frame
             if fetched_conn_ids.len() >= frame_controller.send_conn_ids.len() {
                 break;
             }
         }
+        diag_wait.finish(
+            if fetched_conn_ids.len() >= frame_controller.send_conn_ids.len() {
+                "ok"
+            } else {
+                "timeout"
+            },
+        );
         DISPLAY_CONN_IDS.lock().unwrap().remove(&display_idx);
 
         let elapsed = now.elapsed();
         // may need to enable frame(timeout)
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {
+            let _diag_sleep = diagnostics.enter("frame_pacing");
             std::thread::sleep(spf - elapsed);
         }
     }
@@ -1135,6 +1183,7 @@ fn check_privacy_mode_changed(
 
 #[inline]
 fn handle_one_frame(
+    diagnostics: &qos_diagnostics::Monitor,
     display: usize,
     sp: &GenericService,
     frame: EncodeInput,
@@ -1158,8 +1207,12 @@ fn handle_one_frame(
     let mut send_conn_ids: HashSet<i32> = Default::default();
     let first = *first_frame;
     *first_frame = false;
+    let mut diag_encode = diagnostics.enter("encode");
     match encoder.encode_to_message(frame, ms) {
         Ok(mut vf) => {
+            diag_encode.finish("ok");
+            diagnostics.encoded(&vf);
+            let _diag_enqueue = diagnostics.enter("record_and_enqueue");
             *encode_fail_counter = 0;
             vf.display = display as _;
             let mut msg = Message::new();
@@ -1172,6 +1225,7 @@ fn handle_one_frame(
             send_conn_ids = sp.send_video_frame(msg);
         }
         Err(e) => {
+            diag_encode.finish("error");
             *encode_fail_counter += 1;
             // Encoding errors are not frequent except on Android
             if !cfg!(target_os = "android") {

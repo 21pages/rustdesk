@@ -10,9 +10,9 @@ FPS adjust:
 a. new user connected => set to INIT_FPS
 b. TestDelay reply => update the user's fps from the excess delay, the reply's delay
    above the baseline this connection has shown so far:
-     excess < DELAY_THRESHOLD_150MS: a good reply; grows the fps, and after a
+     excess < the viewer's delay threshold: a good reply; grows the fps, and after a
        reduction returns to the level held before it after two good replies;
-     excess >= DELAY_THRESHOLD_150MS: a bad reply; nothing happens until three in a
+     excess >= the viewer's delay threshold: a bad reply; nothing happens until three in a
        row confirm congestion, including after each reduction. FPS drops by a
        fifth at most; a second of excess cannot wait and halves it immediately.
        A recent fast restore also permits halving at 600 ms of excess.
@@ -29,7 +29,7 @@ d. second timeout / TestDelay reply => real fps is the minimum over all users;
 ratio adjust:
 a. user set image quality => update to the maximum ratio of the latest quality
 b. 3 seconds timeout => update ratio according to network delay
-    When network delay < DELAY_THRESHOLD_150MS, increase ratio, max 150kbps;
+    When every viewer's excess is below its threshold, increase ratio, max 150kbps;
     When a user calls for a reduction (two bad replies in a row, or a probe still
     out at the second tick past two seconds), decrease ratio by the step that user's
     own delay and confirmation call for, the most conservative step over all users;
@@ -43,6 +43,9 @@ delay:
     delays immediately. Old minima expire after 20 fresh replies; a higher window
     minimum is learned gradually only when the recent floor is no longer rising.
     Outstanding-probe checks and their late replies do not age this window.
+    Each viewer tolerates a quarter of its baseline as excess, bounded to 150-300 ms.
+    Ordinary FPS and bitrate adjustments use excess normalized to the 150 ms scale;
+    emergency FPS reductions still use absolute excess and elapsed probe time.
 */
 
 // Constants
@@ -61,7 +64,8 @@ const MAX_BR_MULTIPLE: f32 = 1.0;
 const HISTORY_DELAY_LEN: usize = 2;
 const ADJUST_RATIO_INTERVAL: usize = 3; // Adjust quality ratio every 3 seconds
 const DYNAMIC_SCREEN_THRESHOLD: usize = 2; // Allow increase quality ratio if encode more than 2 times in one second
-const DELAY_THRESHOLD_150MS: u32 = 150; // 150ms is the threshold for good network condition
+const DELAY_THRESHOLD_MIN_MS: u32 = 150;
+const DELAY_THRESHOLD_MAX_MS: u32 = 300;
 const RESTORE_GUARD_SAMPLES: u8 = 5; // A restored level that congests this soon is lowered
 
 #[derive(Default, Debug, Clone)]
@@ -82,6 +86,18 @@ struct UserDelay {
 }
 
 impl UserDelay {
+    fn delay_threshold(&self) -> u32 {
+        (self.rtt_calculator.get_rtt().unwrap_or_default() / 4)
+            .clamp(DELAY_THRESHOLD_MIN_MS, DELAY_THRESHOLD_MAX_MS)
+    }
+
+    // Keep the existing response curve, with 150 representing this viewer's threshold.
+    // Normalize each viewer before comparing them for the shared bitrate.
+    fn normalized_avg_delay(&self) -> u32 {
+        (u64::from(self.avg_delay()) * u64::from(DELAY_THRESHOLD_MIN_MS)
+            / u64::from(self.delay_threshold())) as u32
+    }
+
     fn add_delay(&mut self, delay: u32) {
         if self.delay_history.len() >= HISTORY_DELAY_LEN {
             self.delay_history.pop_front();
@@ -102,7 +118,7 @@ impl UserDelay {
         if let Some(samples) = self.samples_since_restore.as_mut() {
             *samples = samples.saturating_add(1);
         }
-        if delay < DELAY_THRESHOLD_150MS {
+        if delay < self.delay_threshold() {
             self.consecutive_bad_samples = 0;
             self.fps_bad_samples = 0;
             self.replies_after_bitrate_reduction = None;
@@ -194,7 +210,7 @@ impl UserDelay {
         if !self.needs_bitrate_reduction() {
             return None;
         }
-        let excess = self.avg_delay();
+        let excess = self.normalized_avg_delay();
         let confirmed = self.consecutive_bad_samples >= 3;
         Some(if excess < 200 {
             0.95
@@ -216,7 +232,7 @@ impl UserDelay {
     // Average delay above the baseline: what the queue adds on top of the path itself.
     fn avg_delay(&self) -> u32 {
         if self.delay_history.is_empty() {
-            return DELAY_THRESHOLD_150MS;
+            return self.delay_threshold();
         }
         let avg_delay = self.delay_history.iter().sum::<u32>() / self.delay_history.len() as u32;
         avg_delay.saturating_sub(self.rtt_calculator.get_rtt().unwrap_or_default())
@@ -442,7 +458,7 @@ impl VideoQoS {
         };
 
         // Calculate minimum acceptable delay-fps product
-        let dividend_ms = DELAY_THRESHOLD_150MS * min_fps;
+        let dividend_ms = DELAY_THRESHOLD_MIN_MS * min_fps;
 
         let mut adjust_ratio = false;
         let mut reduce_bitrate = false;
@@ -451,12 +467,25 @@ impl VideoQoS {
             // The reply closes the outstanding probe, braked or not.
             user.delay.stall_ticks = 0;
             let braked = user.delay.stall_reference_fps.take().is_some();
-            let old_avg_delay = user.delay.avg_delay();
+            let old_avg_delay = user.delay.normalized_avg_delay();
             if !braked {
                 user.delay.rtt_calculator.update(delay);
             }
             user.delay.add_delay(delay);
-            let mut avg_delay = user.delay.avg_delay();
+            // Jitter tolerance must not weaken the existing emergency FPS response.
+            let excess =
+                delay.saturating_sub(user.delay.rtt_calculator.get_rtt().unwrap_or_default());
+            let emergency = excess >= 1000
+                || (excess >= 600
+                    && user
+                        .delay
+                        .samples_since_restore
+                        .is_some_and(|s| s < RESTORE_GUARD_SAMPLES));
+            let mut avg_delay = if emergency {
+                user.delay.avg_delay()
+            } else {
+                user.delay.normalized_avg_delay()
+            };
             avg_delay = avg_delay.max(10);
             // Each viewer adapts from its own target, starts at INIT_FPS and is capped
             // by its own limit.  The stream follows the slowest viewer in adjust_fps;
@@ -486,10 +515,10 @@ impl VideoQoS {
                     0
                 };
                 fps = min_fps.max(fps + step);
-            } else if avg_delay < DELAY_THRESHOLD_150MS {
+            } else if avg_delay < DELAY_THRESHOLD_MIN_MS {
                 fps = min_fps.max(fps);
             } else {
-                let devide_fps = ((fps as f32) / (avg_delay as f32 / DELAY_THRESHOLD_150MS as f32))
+                let devide_fps = ((fps as f32) / (avg_delay as f32 / DELAY_THRESHOLD_MIN_MS as f32))
                     .ceil() as u32;
                 if avg_delay < 200 {
                     fps = min_fps.max(devide_fps);
@@ -502,7 +531,7 @@ impl VideoQoS {
                 }
             }
 
-            if avg_delay < DELAY_THRESHOLD_150MS {
+            if avg_delay < DELAY_THRESHOLD_MIN_MS {
                 user.delay.increase_fps_count += 1;
             } else {
                 user.delay.increase_fps_count = 0;
@@ -535,12 +564,14 @@ impl VideoQoS {
             user.delay.fps = Some(fps);
             let base = user.delay.rtt_calculator.get_rtt().unwrap_or_default();
             log::debug!(
-                "qos_trace t={} id={id} delay={delay} base={base} excess={} avg={avg_delay} bad={} good={} braked={braked} fps={fps} ratio={:.3} reduce_bitrate={reduce_bitrate}",
+                "qos_trace t={} id={id} delay={delay} base={base} excess={} avg={avg_delay} bad={} good={} braked={braked} fps={fps} ratio={:.3} reduce_bitrate={reduce_bitrate} threshold={threshold}",
                 hbb_common::get_time(),
                 delay.saturating_sub(base),
                 user.delay.consecutive_bad_samples,
                 user.delay.good_samples,
                 self.ratio,
+                avg_delay = user.delay.avg_delay().max(10),
+                threshold = user.delay.delay_threshold(),
             );
         }
         self.adjust_fps();
@@ -696,7 +727,11 @@ impl VideoQoS {
             return;
         }
         // Get maximum delay from all users
-        let max_delay = self.users.iter().map(|u| u.1.delay.avg_delay()).max();
+        let max_delay = self
+            .users
+            .iter()
+            .map(|u| u.1.delay.normalized_avg_delay())
+            .max();
         let Some(max_delay) = max_delay else {
             return;
         };
@@ -707,7 +742,7 @@ impl VideoQoS {
             .values()
             .filter_map(|u| u.delay.ratio_reduction())
             .reduce(f32::min);
-        if reduction.is_none() && max_delay >= DELAY_THRESHOLD_150MS {
+        if reduction.is_none() && max_delay >= DELAY_THRESHOLD_MIN_MS {
             // Elevated but unconfirmed: no change, and no cooldown either, so a
             // confirmation on the next reply is acted on at once.
             self.reset_send_counters();
@@ -982,4 +1017,5 @@ mod tests {
     mod robustness;
     mod sim;
     mod smoke;
+    mod threshold;
 }

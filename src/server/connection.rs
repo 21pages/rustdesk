@@ -71,6 +71,8 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 
+mod remote_writer;
+
 const FAILURE_IDX_ID_WHITELIST: usize = 2;
 // How long a rejection counts, so also how long a blocked address stays blocked. Longer
 // throttles enumeration harder; shorter limits collateral on whitelisted neighbours.
@@ -246,6 +248,8 @@ impl TerminalUserToken {
 }
 pub struct Connection {
     inner: ConnInner,
+    diagnostics: qos_diagnostics::Monitor,
+    remote_writer: Option<remote_writer::RemoteWriter>,
     display_idx: usize,
     stream: super::Stream,
     server: super::ServerPtrWeak,
@@ -450,6 +454,8 @@ impl Connection {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let tx_cloned = tx.clone();
         let mut conn = Self {
+            diagnostics: qos_diagnostics::Monitor::new(|| format!("connection id={id}")),
+            remote_writer: None,
             inner: ConnInner {
                 id,
                 tx: Some(tx),
@@ -617,11 +623,20 @@ impl Connection {
             (_tx_clip, rx_clip) = mpsc::unbounded_channel::<i32>();
         }
 
+        conn.diagnostics.arm_timer("second", Instant::now().into_std());
+        conn.diagnostics.arm_timer("probe", Instant::now().into_std());
         loop {
+            conn.start_remote_writer();
             tokio::select! {
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
 
+                err = remote_writer::stopped(&mut conn.remote_writer) => {
+                    conn.on_close(&err.to_string(), false).await;
+                    break;
+                },
+
                 Some(data) = rx_from_cm.recv() => {
+                    let _diag = conn.diagnostics.enter("ipc");
                     match data {
                         ipc::Data::Authorize => {
                             conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
@@ -782,6 +797,7 @@ impl Connection {
                             }
                         }
                         ipc::Data::RawMessage(bytes) => {
+                            let _diag_send = conn.diagnostics.enter("send_raw");
                             allow_err!(conn.stream.send_raw(bytes).await);
                         }
                         #[cfg(target_os = "windows")]
@@ -802,6 +818,7 @@ impl Connection {
                                     );
                                 }
                                 _ => {
+                                    let _diag_send = conn.diagnostics.enter("send_clipboard");
                                     allow_err!(conn.stream.send(&clip_2_msg(clip)).await);
                                 }
                             }
@@ -888,6 +905,7 @@ impl Connection {
                     }
                 },
                 res = conn.stream.next() => {
+                    let _diag = conn.diagnostics.enter("receive");
                     if let Some(res) = res {
                         match res {
                             Err(err) => {
@@ -917,7 +935,11 @@ impl Connection {
                     }
                 },
                 _ = conn.file_timer.tick() => {
+                    let _diag = conn.diagnostics.enter("file_timer");
                     if !conn.read_jobs.is_empty() {
+                        if conn.remote_writer.as_ref().map_or(false, |writer| !writer.file_ready()) {
+                            continue;
+                        }
                         conn.send_to_cm(ipc::Data::FileTransferLog(("transfer".to_string(), fs::serialize_transfer_jobs(&conn.read_jobs))));
                         match fs::handle_read_jobs(&mut conn.read_jobs, &mut conn.stream).await {
                             Ok(log) => {
@@ -935,6 +957,7 @@ impl Connection {
                     }
                 }
                 Ok(conns) = hbbs_rx.recv() => {
+                    let _diag = conn.diagnostics.enter("web_console");
                     if conns.contains(&id) {
                         conn.send_close_reason_no_retry("Closed manually by web console").await;
                         conn.on_close("web console", true).await;
@@ -942,20 +965,37 @@ impl Connection {
                     }
                 }
                 Some((instant, value)) = rx_video.recv() => {
+                    let _diag = conn.diagnostics.message("video_dequeue", &value, Some(instant.into_std()));
+                    conn.diagnostics.ack_required(conn.video_ack_required);
+                    if conn.remote_writer.is_some() {
+                        if let Err(err) = conn.send_remote_video(&value, instant).await {
+                            conn.on_close(&err.to_string(), false).await;
+                            break;
+                        }
+                        continue;
+                    }
                     if !conn.video_ack_required {
                         if let Some(message::Union::VideoFrame(vf)) = &value.union {
                             video_service::notify_video_frame_fetched(vf.display as usize, id, Some(instant.into()));
                         }
                     }
+                    let mut diag_send = conn.diagnostics.message("send", &value, Some(instant.into_std()));
                     if let Err(err) = conn.stream.send(&value as &Message).await {
+                        diag_send.finish("error");
                         conn.on_close(&err.to_string(), false).await;
                         break;
                     }
+                    diag_send.finish("ok");
                 },
                 Some((instant, value)) = rx.recv() => {
+                    let _diag = conn.diagnostics.message("message_dequeue", &value, Some(instant.into_std()));
                     let latency = instant.elapsed().as_millis() as i64;
                     #[allow(unused_mut)]
                     let mut msg = value;
+
+                    if conn.drop_stale_audio(&msg, instant) {
+                        continue;
+                    }
 
                     if latency > 1000 {
                         match &msg.union {
@@ -997,10 +1037,13 @@ impl Connection {
                         Some(message::Union::MultiClipboards(_multi_clipboards)) => {
                             #[cfg(not(target_os = "ios"))]
                             if let Some(msg_out) = crate::clipboard::get_msg_if_not_support_multi_clip(&conn.lr.version, &conn.lr.my_platform, _multi_clipboards) {
+                                let mut diag_send = conn.diagnostics.message("send", &msg_out, Some(instant.into_std()));
                                 if let Err(err) = conn.stream.send(&msg_out).await {
+                                    diag_send.finish("error");
                                     conn.on_close(&err.to_string(), false).await;
                                     break;
                                 }
+                                diag_send.finish("ok");
                                 continue;
                             }
                         }
@@ -1008,12 +1051,16 @@ impl Connection {
                     }
 
                     let msg: &Message = &msg;
+                    let mut diag_send = conn.diagnostics.message("send", msg, Some(instant.into_std()));
                     if let Err(err) = conn.stream.send(msg).await {
+                        diag_send.finish("error");
                         conn.on_close(&err.to_string(), false).await;
                         break;
                     }
+                    diag_send.finish("ok");
                 },
                 Some(data) = rx_from_authed.recv() => {
+                    let _diag = conn.diagnostics.enter("authorized_ipc");
                     match data {
                         #[cfg(all(target_os = "windows", feature = "flutter"))]
                         ipc::Data::PrinterData(data) => {
@@ -1026,7 +1073,9 @@ impl Connection {
                         _ => {}
                     }
                 }
-                _ = second_timer.tick() => {
+                scheduled = second_timer.tick() => {
+                    conn.diagnostics.timer("second", scheduled.into_std(), Duration::from_secs(1));
+                    let _diag = conn.diagnostics.enter("second_timer");
                     #[cfg(windows)]
                     conn.portable_check();
                     raii::AuthedConnID::check_wake_lock_on_setting_changed();
@@ -1041,7 +1090,9 @@ impl Connection {
                     #[cfg(feature = "hwcodec")]
                     conn.update_supported_encoding();
                 }
-                _ = test_delay_timer.tick() => {
+                scheduled = test_delay_timer.tick() => {
+                    conn.diagnostics.timer("probe", scheduled.into_std(), TEST_DELAY_TIMEOUT);
+                    let _diag = conn.diagnostics.enter("probe_timer");
                     if last_recv_time.elapsed() >= SEC30 {
                         conn.on_close("Timeout", true).await;
                         break;
@@ -1065,6 +1116,7 @@ impl Connection {
                 }
                 clip_file = rx_clip.recv() => match clip_file {
                     Some(_clip) => {
+                        let _diag = conn.diagnostics.enter("clipboard_receive");
                         #[cfg(feature = "unix-file-copy-paste")]
                         if crate::is_support_file_copy_paste(&conn.lr.version)
                         {
@@ -1107,6 +1159,7 @@ impl Connection {
             try_stop_record_cursor_pos();
         }
         conn.on_close("End", true).await;
+        conn.finish_remote_writer().await;
         log::info!("#{} connection loop exited", id);
     }
 
@@ -2705,6 +2758,7 @@ impl Connection {
     }
 
     async fn on_message(&mut self, msg: Message) -> bool {
+        let _diag = self.diagnostics.message("receive_handler", &msg, None);
         if let Some(message::Union::Misc(misc)) = &msg.union {
             // Move the CloseReason forward, as this message needs to be received when unauthorized, especially for kcp.
             if let Some(misc::Union::CloseReason(s)) = &misc.union {
@@ -5409,7 +5463,10 @@ impl Connection {
 
     #[inline]
     async fn send(&mut self, msg: Message) {
-        allow_err!(self.stream.send(&msg).await);
+        let mut diag_send = self.diagnostics.message("send", &msg, None);
+        let result = self.stream.send(&msg).await;
+        diag_send.finish(if result.is_ok() { "ok" } else { "error" });
+        allow_err!(result);
     }
 
     pub fn alive_conns() -> Vec<i32> {
