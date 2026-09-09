@@ -648,6 +648,9 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut would_block_count = 0u32;
     let mut yuv = Vec::new();
     let mut mid_data = Vec::new();
+    let mut last_encode = Instant::now();
+    #[cfg(all(windows, feature = "vram"))]
+    let mut repeat_texture = Some(scrap::dxgi::repeat::RepeatTexture::default());
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
     let mut encode_fail_counter = 0;
@@ -773,6 +776,15 @@ fn run(vs: VideoService) -> ResultType<()> {
                     }
 
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    #[cfg(all(windows, feature = "vram"))]
+                    if vs.source.is_monitor() {
+                        if let Some(texture) = repeat_texture.as_mut() {
+                            if let Err(err) = texture.update(&frame) {
+                                log::warn!("Disable static texture refresh: {err}");
+                                repeat_texture = None;
+                            }
+                        }
+                    }
                     let send_conn_ids = handle_one_frame(
                         display_idx,
                         &sp,
@@ -786,6 +798,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_height,
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
+                    last_encode = Instant::now();
                     send_counter += 1;
                 }
                 #[cfg(windows)]
@@ -845,7 +858,36 @@ fn run(vs: VideoService) -> ResultType<()> {
                             capture_height,
                         )?;
                         frame_controller.set_send(now, send_conn_ids);
+                        last_encode = Instant::now();
                         send_counter += 1;
+                    }
+                }
+                if vs.source.is_monitor()
+                    && last_encode.elapsed() >= Duration::from_millis(100).max(spf)
+                {
+                    let frame = if yuv.is_empty() {
+                        None
+                    } else {
+                        Some(EncodeInput::YUV(&yuv))
+                    };
+                    #[cfg(all(windows, feature = "vram"))]
+                    let frame = frame.or_else(|| repeat_texture.as_ref().and_then(|t| t.frame()));
+                    if let Some(frame) = frame {
+                        let send_conn_ids = handle_one_frame(
+                            display_idx,
+                            &sp,
+                            frame,
+                            ms,
+                            &mut encoder,
+                            recorder.clone(),
+                            &mut encode_fail_counter,
+                            &mut first_frame,
+                            capture_width,
+                            capture_height,
+                        )?;
+                        last_encode = Instant::now();
+                        frame_controller.set_send(now, send_conn_ids);
+                        // Static refinement must not count as motion for adaptive bitrate.
                     }
                 }
             }
