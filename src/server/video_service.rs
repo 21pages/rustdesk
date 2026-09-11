@@ -1357,8 +1357,8 @@ fn check_qos(
             allow_err!(encoder.set_quality(*ratio));
             video_qos.store_bitrate(encoder.bitrate());
         } else {
-            // Now only vaapi doesn't support changing quality
-            if !video_qos.in_vbr_state() && !video_qos.latest_quality().is_custom() {
+            // VAAPI needs a new encoder to apply QP changes, including custom quality.
+            if !video_qos.in_vbr_state() {
                 log::info!("switch to change quality");
                 bail!("SWITCH");
             }
