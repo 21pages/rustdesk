@@ -124,16 +124,6 @@ jobs:
               vcpkg-triplet: x64-windows-static,
               build-args: "--vram",
             }
-          - {
-              target: aarch64-pc-windows-msvc,
-              os: windows-11-arm,
-              arch: aarch64,
-              flutter-arch: arm64,
-              vcpkg-triplet: arm64-windows-static,
-              # vram is x86/x64-only (NVENC needs CUDA, Intel MediaSDK needs __rdtsc);
-              # no NV/Intel/AMD hardware exists on Windows-on-ARM, so vram stays disabled here.
-              build-args: "",
-            }
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
@@ -281,6 +271,21 @@ jobs:
         if: ${{ matrix.job.arch == 'aarch64' }}
         shell: bash
         run: echo "SODIUM_LIB_DIR=$VCPKG_ROOT/installed/${{ matrix.job.vcpkg-triplet }}/lib" >> "$GITHUB_ENV"
+
+      - name: Create vcpkg Archive
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: 'zip'
+          filename: x64-windows-static.zip
+          path: C:\vcpkg\installed\x64-windows-static
+      
+      - name: Upload vcpkg Archive
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: | 
+            x64-windows-static.zip
 
       - name: Build rustdesk
         run: |
