@@ -193,6 +193,11 @@ class RustdeskImpl {
     return Future(() => js.context.callMethod('setByName', ['reconnect']));
   }
 
+  bool sessionTakeMsgboxRetry(
+      {required UuidValue sessionId, required int retryId, dynamic hint}) {
+    return false;
+  }
+
   Future<void> sessionToggleOption(
       {required UuidValue sessionId, required String value, dynamic hint}) {
     return Future(

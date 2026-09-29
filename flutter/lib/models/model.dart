@@ -962,7 +962,8 @@ class FfiModel with ChangeNotifier {
     } else if (type == 'elevation-error') {
       showElevationError(sessionId, type, title, text, dialogManager);
     } else if (type == 'relay-hint' || type == 'relay-hint2') {
-      showRelayHintDialog(sessionId, type, title, text, dialogManager, peerId);
+      showRelayHintDialog(sessionId, type, title, text, dialogManager, peerId,
+          retryId: int.tryParse(evt['msgbox_retry_id'] ?? ''));
     } else if (text == kMsgboxTextWaitingForImage) {
       showConnectedWaitingForImage(dialogManager, sessionId, type, title, text);
     } else if (title == 'Privacy mode') {
@@ -974,7 +975,8 @@ class FfiModel with ChangeNotifier {
       if (!hasRetry) {
         hasRetry = shouldAutoRetryOnOffline(type, title, text);
       }
-      showMsgBox(sessionId, type, title, text, link, hasRetry, dialogManager);
+      showMsgBox(sessionId, type, title, text, link, hasRetry, dialogManager,
+          retryId: int.tryParse(evt['msgbox_retry_id'] ?? ''));
     }
   }
 
@@ -1066,7 +1068,16 @@ class FfiModel with ChangeNotifier {
   /// Show a message box with [type], [title] and [text].
   showMsgBox(SessionID sessionId, String type, String title, String text,
       String link, bool hasRetry, OverlayDialogManager dialogManager,
-      {bool? hasCancel}) async {
+      {bool? hasCancel, int? retryId}) async {
+    final ReconnectHandle retryReconnect = retryId == null
+        ? reconnect
+        : (dialogManager, sessionId, forceRelay) {
+            _timer?.cancel();
+            if (_takeMsgboxRetry(dialogManager, sessionId, retryId,
+                '$sessionId-$type-$title-$text-$link')) {
+              reconnect(dialogManager, sessionId, forceRelay);
+            }
+          };
     final noteAllowed = parent.target != null &&
         allowAskForNoteAtEndOfConnection(parent.target, false) &&
         (title == "Connection Error" || type == "restarting");
@@ -1089,14 +1100,14 @@ class FfiModel with ChangeNotifier {
       }
       msgBox(sessionId, type, title, text, link, dialogManager,
           hasCancel: hasCancel,
-          reconnect: hasRetry ? reconnect : null,
+          reconnect: hasRetry ? retryReconnect : null,
           reconnectTimeout: hasRetry ? _reconnects : null,
           onSubmit: onSubmit);
     }
     _timer?.cancel();
     if (hasRetry) {
       _timer = Timer(Duration(seconds: _reconnects), () {
-        reconnect(dialogManager, sessionId, false);
+        retryReconnect(dialogManager, sessionId, false);
       });
       _reconnects *= 2;
     } else {
@@ -1114,6 +1125,14 @@ class FfiModel with ChangeNotifier {
   void cancelPendingRestoreTimer() {
     _pendingRestoreTimer?.cancel();
     _pendingRestoreTimer = null;
+  }
+
+  bool _takeMsgboxRetry(OverlayDialogManager dialogManager, SessionID sessionId,
+      int? retryId, String dialogTag) {
+    final taken = retryId == null ||
+        bind.sessionTakeMsgboxRetry(sessionId: sessionId, retryId: retryId);
+    if (!taken) dialogManager.dismissByTag(dialogTag);
+    return taken;
   }
 
   void reconnect(OverlayDialogManager dialogManager, SessionID sessionId,
@@ -1134,7 +1153,8 @@ class FfiModel with ChangeNotifier {
       String title,
       String text,
       OverlayDialogManager dialogManager,
-      String peerId) async {
+      String peerId,
+      {int? retryId}) async {
     var hint = "\n\n${translate('relay_hint_tip')}";
     if (text.contains("10054") || text.contains("104")) {
       hint = "";
@@ -1155,6 +1175,11 @@ class FfiModel with ChangeNotifier {
     dialogManager.dismissByTag('$sessionId-$type');
     final retrySeconds = type == 'relay-hint' ? 5.obs : null;
     Timer? retryTimer;
+    bool takeRetry() {
+      return _takeMsgboxRetry(
+          dialogManager, sessionId, retryId, '$sessionId-$type');
+    }
+
     dialogManager.show(tag: '$sessionId-$type', (setState, close, context) {
       if (retrySeconds != null) {
         retryTimer ??= Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -1167,7 +1192,7 @@ class FfiModel with ChangeNotifier {
           retrySeconds.value--;
           if (retrySeconds.value <= 0) {
             timer.cancel();
-            reconnect(dialogManager, sessionId, false);
+            if (takeRetry()) reconnect(dialogManager, sessionId, false);
           }
         });
       }
@@ -1190,7 +1215,7 @@ class FfiModel with ChangeNotifier {
             dialogButton('Connect via relay',
                 onPressed: () {
                   retryTimer?.cancel();
-                  reconnect(dialogManager, sessionId, true);
+                  if (takeRetry()) reconnect(dialogManager, sessionId, true);
                 },
                 buttonStyle: style,
                 isOutline: true),
@@ -1199,7 +1224,7 @@ class FfiModel with ChangeNotifier {
                 '${translate('Retry')} (${retrySeconds.value}s)',
                 onPressed: () {
                   retryTimer?.cancel();
-                  reconnect(dialogManager, sessionId, false);
+                  if (takeRetry()) reconnect(dialogManager, sessionId, false);
                 }))
           else
             dialogButton('Retry',

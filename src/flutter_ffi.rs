@@ -315,9 +315,18 @@ pub fn session_get_is_recording(session_id: SessionID) -> SyncReturn<bool> {
 
 pub fn session_reconnect(session_id: SessionID, force_relay: bool) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.ui_handler.clear_msgbox_retry();
         session.reconnect(force_relay);
     }
     session_on_waiting_for_image_dialog_show(session_id);
+}
+
+pub fn session_take_msgbox_retry(session_id: SessionID, retry_id: usize) -> SyncReturn<bool> {
+    SyncReturn(
+        sessions::get_session_by_session_id(&session_id)
+            .map(|session| session.ui_handler.take_msgbox_retry(retry_id))
+            .unwrap_or(false),
+    )
 }
 
 pub fn session_toggle_option(session_id: SessionID, value: String) {

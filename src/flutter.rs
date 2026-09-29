@@ -227,7 +227,10 @@ pub struct FlutterHandler {
     display_rgbas: Arc<RwLock<HashMap<usize, RgbaData>>>,
     peer_info: Arc<RwLock<PeerInfo>>,
     use_texture_render: Arc<AtomicBool>,
+    msgbox_retry_id: Arc<AtomicUsize>,
 }
+
+static NEXT_MSGBOX_RETRY_ID: AtomicUsize = AtomicUsize::new(1);
 
 impl Default for FlutterHandler {
     fn default() -> Self {
@@ -238,6 +241,7 @@ impl Default for FlutterHandler {
             use_texture_render: Arc::new(
                 AtomicBool::new(crate::ui_interface::use_texture_render()),
             ),
+            msgbox_retry_id: Default::default(),
         }
     }
 }
@@ -537,6 +541,24 @@ impl SessionHandler {
 }
 
 impl FlutterHandler {
+    fn new_msgbox_retry(&self) -> usize {
+        let id = NEXT_MSGBOX_RETRY_ID.fetch_add(1, Ordering::SeqCst);
+        self.msgbox_retry_id.store(id, Ordering::SeqCst);
+        id
+    }
+
+    pub(crate) fn take_msgbox_retry(&self, id: usize) -> bool {
+        id != 0
+            && self
+                .msgbox_retry_id
+                .compare_exchange(id, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+    }
+
+    pub(crate) fn clear_msgbox_retry(&self) {
+        self.msgbox_retry_id.store(0, Ordering::SeqCst);
+    }
+
     /// Push an event to all the event queues.
     /// An event is stored as json in the event queues.
     ///
@@ -966,17 +988,21 @@ impl InvokeUiSession for FlutterHandler {
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str, retry: bool) {
         let has_retry = if retry { "true" } else { "" };
-        self.push_event(
-            "msgbox",
-            &[
-                ("type", msgtype),
-                ("title", title),
-                ("text", text),
-                ("link", link),
-                ("hasRetry", has_retry),
-            ],
-            &[],
-        );
+        let mut event = vec![
+            ("type", msgtype),
+            ("title", title),
+            ("text", text),
+            ("link", link),
+            ("hasRetry", has_retry),
+        ];
+        let retry_id;
+        if (msgtype == "relay-hint" || (msgtype == "error" && title == "Connection Error"))
+            && self.is_multi_ui_session()
+        {
+            retry_id = self.new_msgbox_retry().to_string();
+            event.push(("msgbox_retry_id", &retry_id));
+        }
+        self.push_event("msgbox", &event, &[]);
     }
 
     fn cancel_msgbox(&self, tag: &str) {
