@@ -57,8 +57,8 @@ dependencies:
       ref: cf4aef0512092fad9344a27ffe1c47ad83269dfc
   desktop_multi_window:
     git:
-      url: https://github.com/rustdesk-org/rustdesk_desktop_multi_window
-      ref: 8b774a66671cbb9bcb2631af6ac28f9bdd469ce3
+      url: https://github.com/21pages/rustdesk_desktop_multi_window
+      ref: fix/windows-fancyzones-child-visibility
   freezed_annotation: ^2.0.3
   flutter_custom_cursor:
     git:
