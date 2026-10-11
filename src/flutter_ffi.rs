@@ -19,7 +19,7 @@ use hbb_common::{
     ResultType,
 };
 use base::{
-    config::keys,
+    config::{device_groups, keys},
     fs,
 };
 use std::{
@@ -1914,6 +1914,11 @@ pub fn main_clear_group() {
 }
 
 pub fn main_load_group() -> String {
+    match device_groups::load_cache() {
+        Ok(Some(json)) => return json,
+        Ok(None) => {}
+        Err(err) => log::warn!("Failed to load device group memberships: {err}"),
+    }
     serde_json::to_string(&config::Group::load()).unwrap_or_default()
 }
 

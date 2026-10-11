@@ -20,8 +20,14 @@ class Peer {
   bool online = false;
   String loginName; //login username
   String device_group_name;
+  List<String> device_group_names;
   String note;
   bool? sameServer;
+
+  List<String> get deviceGroupNames =>
+      device_group_names.isEmpty && device_group_name.isNotEmpty
+          ? [device_group_name]
+          : device_group_names;
 
   String getId() {
     if (alias != '') {
@@ -44,6 +50,7 @@ class Peer {
         rdpUsername = json['rdpUsername'] ?? '',
         loginName = json['loginName'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
+        device_group_names = List<String>.from(json['device_group_names'] ?? []),
         note = json['note'] is String ? json['note'] : '',
         sameServer = json['same_server'];
 
@@ -62,6 +69,7 @@ class Peer {
       "rdpUsername": rdpUsername,
       'loginName': loginName,
       'device_group_name': device_group_name,
+      'device_group_names': device_group_names,
       'note': note,
       'same_server': sameServer,
     };
@@ -90,6 +98,7 @@ class Peer {
       "platform": platform,
       "login_name": loginName,
       "device_group_name": device_group_name,
+      "device_group_names": device_group_names,
     };
   }
 
@@ -107,6 +116,7 @@ class Peer {
     required this.rdpUsername,
     required this.loginName,
     required this.device_group_name,
+    this.device_group_names = const [],
     required this.note,
     this.sameServer,
   });
@@ -141,6 +151,7 @@ class Peer {
         rdpPort == other.rdpPort &&
         rdpUsername == other.rdpUsername &&
         device_group_name == other.device_group_name &&
+        listEquals(device_group_names, other.device_group_names) &&
         loginName == other.loginName &&
         note == other.note;
   }
@@ -160,6 +171,7 @@ class Peer {
         rdpUsername: other.rdpUsername,
         loginName: other.loginName,
         device_group_name: other.device_group_name,
+        device_group_names: other.device_group_names.toList(),
         note: other.note,
         sameServer: other.sameServer);
     peer.online = other.online;
