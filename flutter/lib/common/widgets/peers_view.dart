@@ -573,8 +573,7 @@ class MyGroupPeerView extends BasePeersView {
       final text = model.searchAccessibleItemNameText.value.toLowerCase();
       final searchPeersOfUser = model.users.any((user) =>
           user.name == peer.loginName &&
-          (user.name.toLowerCase().contains(text) ||
-              user.displayNameOrName.toLowerCase().contains(text)));
+          user.matchesSearch(text));
       final searchPeersOfDeviceGroup = peer.deviceGroupNames.any((name) =>
           name.toLowerCase().contains(text) &&
           model.deviceGroups.any((g) => g.name == name));

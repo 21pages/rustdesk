@@ -32,6 +32,7 @@ class UserPayload {
   String? verifier;
   UserStatus status;
   bool isAdmin = false;
+  List<String> groupNames;
 
   UserPayload.fromJson(Map<String, dynamic> json)
       : name = json['name'] ?? '',
@@ -39,6 +40,10 @@ class UserPayload {
         avatar = json['avatar'] ?? '',
         email = json['email'] ?? '',
         note = json['note'] ?? '',
+        groupNames = List<String>.from(json['group_names'] ??
+            (json['group_name'] is String && json['group_name'].isNotEmpty
+                ? [json['group_name']]
+                : [])),
         verifier = json['verifier'],
         status = json['status'] == 0
             ? UserStatus.kDisabled
@@ -52,6 +57,7 @@ class UserPayload {
       'name': name,
       'display_name': displayName,
       'avatar': avatar,
+      'group_names': groupNames,
       'status': status == UserStatus.kDisabled
           ? 0
           : status == UserStatus.kUnverified
@@ -65,8 +71,16 @@ class UserPayload {
     final Map<String, dynamic> map = {
       'name': name,
       'display_name': displayName,
+      'group_names': groupNames,
     };
     return map;
+  }
+
+  bool matchesSearch(String text) {
+    final query = text.toLowerCase();
+    return name.toLowerCase().contains(query) ||
+        displayNameOrName.toLowerCase().contains(query) ||
+        groupNames.any((group) => group.toLowerCase().contains(query));
   }
 
   String get displayNameOrName {

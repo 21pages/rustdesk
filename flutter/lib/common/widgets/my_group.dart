@@ -159,8 +159,7 @@ class _MyGroupState extends State<MyGroup> {
       final userItems = gFFI.groupModel.users.where((p0) {
         if (searchAccessibleItemNameText.isNotEmpty) {
           final search = searchAccessibleItemNameText.value.toLowerCase();
-          return p0.name.toLowerCase().contains(search) ||
-              p0.displayNameOrName.toLowerCase().contains(search);
+          return p0.matchesSearch(search);
         }
         return true;
       }).toList();
@@ -242,7 +241,11 @@ class _MyGroupState extends State<MyGroup> {
                     ),
                   ),
                 ).marginOnly(right: 4),
-                if (isMe) Flexible(child: Text(displayName)),
+                if (isMe)
+                  Flexible(child: Tooltip(
+                    message: user.groupNames.join(', '),
+                    child: Text(displayName),
+                  )),
                 if (isMe)
                   Flexible(
                     child: Container(
@@ -259,7 +262,11 @@ class _MyGroupState extends State<MyGroup> {
                       ),
                     ),
                   ),
-                if (!isMe) Expanded(child: Text(displayName)),
+                if (!isMe)
+                  Expanded(child: Tooltip(
+                    message: user.groupNames.join(', '),
+                    child: Text(displayName),
+                  )),
               ],
             ).paddingSymmetric(vertical: 4),
           ),
