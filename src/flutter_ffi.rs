@@ -239,6 +239,23 @@ pub fn session_get_cursor_shape(session_id: SessionID, id: String) -> Option<Cur
     }
 }
 
+pub fn session_set_skip_saved_password(session_id: SessionID) -> SyncReturn<bool> {
+    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.lc.write().unwrap().enable_skip_saved_password();
+        SyncReturn(true)
+    } else {
+        SyncReturn(false)
+    }
+}
+
+pub fn session_get_skip_saved_password(session_id: SessionID) -> SyncReturn<bool> {
+    SyncReturn(
+        sessions::get_session_by_session_id(&session_id)
+            .map(|session| session.lc.read().unwrap().skip_saved_password)
+            .unwrap_or(false),
+    )
+}
+
 pub fn session_get_remember(session_id: SessionID) -> Option<bool> {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         Some(session.get_remember())

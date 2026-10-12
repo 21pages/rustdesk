@@ -92,6 +92,8 @@ use crate::ui_session_interface::SessionPermissionConfig;
 
 pub use super::lang::*;
 
+mod without_saved_password;
+
 #[cfg(not(target_os = "linux"))]
 mod audio_playback;
 #[cfg(target_os = "windows")]
@@ -2856,6 +2858,7 @@ pub struct LoginConfigHandler {
     hash: Hash,
     password: Vec<u8>, // remember password for reconnect
     pub remember: bool,
+    pub(crate) skip_saved_password: bool,
     config: PeerConfig,
     pub port_forward: (String, i32),
     /// This login's `multiplex`, filled with `port_forward` under the turn
@@ -3694,7 +3697,7 @@ impl LoginConfigHandler {
         let password0 = config.password.clone();
         let remember = self.remember;
         let hash = self.hash.clone();
-        if remember {
+        if !self.skip_saved_password && remember {
             // remember is true: use PeerConfig password or ui login
             // not sync shared password to recent
             if !password.is_empty()
@@ -3704,7 +3707,7 @@ impl LoginConfigHandler {
                 config.password = password.clone();
                 log::debug!("remember password of {}", self.id);
             }
-        } else {
+        } else if !self.skip_saved_password {
             if self.password_source.is_personal_ab(&password) {
                 // sync personal ab password to recent automatically
                 config.password = password.clone();
@@ -3731,7 +3734,8 @@ impl LoginConfigHandler {
         #[cfg(feature = "flutter")]
         {
             // sync connected password to personal ab automatically if it is not shared password
-            if !config.password.is_empty()
+            if !self.skip_saved_password
+                && !config.password.is_empty()
                 && !self.password_source.is_shared_ab(&password, &hash)
                 && !self.password_source.is_personal_ab(&password)
             {
@@ -4677,6 +4681,9 @@ pub async fn handle_hash(
             return false;
         }
     }
+    if lc.read().unwrap().skip_saved_password {
+        return without_saved_password::handle_hash(lc, interface, peer).await;
+    }
     // last password
     let mut password = lc.read().unwrap().password.clone();
     // preset password
@@ -4823,6 +4830,11 @@ pub async fn handle_login_from_ui(
     remember: bool,
     peer: &mut Stream,
 ) {
+    if lc.read().unwrap().skip_saved_password {
+        without_saved_password::handle_login_from_ui(lc, os_username, os_password, password, peer)
+            .await;
+        return;
+    }
     let mut hash_password = if password.is_empty() {
         let mut password2 = lc.read().unwrap().password.clone();
         if password2.is_empty() {

@@ -547,6 +547,7 @@ abstract class BasePeerCard extends StatelessWidget {
     bool isRDP = false,
     bool isTerminal = false,
     bool isTerminalRunAsAdmin = false,
+    bool skipSavedPassword = false,
   }) {
     return MenuEntryButton<String>(
       childBuilder: (TextStyle? style) => Text(
@@ -566,6 +567,7 @@ abstract class BasePeerCard extends StatelessWidget {
           isTcpTunneling: isTcpTunneling,
           isRDP: isRDP,
           isTerminal: isTerminal || isTerminalRunAsAdmin,
+          skipSavedPassword: skipSavedPassword,
         );
       },
       padding: menuPadding,
@@ -589,6 +591,22 @@ abstract class BasePeerCard extends StatelessWidget {
       context,
       translate('Transfer file'),
       isFileTransfer: true,
+    );
+  }
+
+  MenuEntryBase<String> _connectWithoutSavedPasswordAction(
+      BuildContext context) {
+    return MenuEntrySubMenu<String>(
+      text: translate('Connect without saved password'),
+      padding: menuPadding,
+      entries: [
+        _connectCommonAction(context, translate('Control Remote Desktop'),
+            skipSavedPassword: true),
+        _connectCommonAction(context, translate('Transfer file'),
+            isFileTransfer: true, skipSavedPassword: true),
+        _connectCommonAction(context, translate('Terminal'),
+            isTerminal: true, skipSavedPassword: true),
+      ],
     );
   }
 
@@ -968,6 +986,7 @@ class RecentPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
+      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1033,6 +1052,7 @@ class FavoritePeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
+      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1093,6 +1113,7 @@ class DiscoveredPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
+      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1152,6 +1173,7 @@ class AddressBookPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
+      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1309,6 +1331,7 @@ class MyGroupPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
+      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1543,7 +1566,8 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     bool isViewCamera = false,
     bool isTcpTunneling = false,
     bool isRDP = false,
-    bool isTerminal = false}) async {
+    bool isTerminal = false,
+    bool skipSavedPassword = false}) async {
   var password = '';
   bool isSharedPassword = false;
   if (tab == PeerTabIndex.ab) {
@@ -1556,7 +1580,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
         alias: peer.alias,
       );
     }
-    if (!gFFI.abModel.current.isPersonal()) {
+    if (!skipSavedPassword && !gFFI.abModel.current.isPersonal()) {
       if (peer.password.isNotEmpty) {
         password = peer.password;
         isSharedPassword = true;
@@ -1571,6 +1595,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     }
   }
   connect(context, peer.id,
+      skipSavedPassword: skipSavedPassword,
       password: password,
       isSharedPassword: isSharedPassword,
       isFileTransfer: isFileTransfer,

@@ -225,6 +225,7 @@ class RustDeskMultiWindowManager {
     String remoteId,
     List<int> windows, {
     String? password,
+    bool skipSavedPassword = false,
     bool? forceRelay,
     String? switchUuid,
     bool? isRDP,
@@ -249,6 +250,9 @@ class RustDeskMultiWindowManager {
     if (connToken != null) {
       params['connToken'] = connToken;
     }
+    if (skipSavedPassword) {
+      params['skipSavedPassword'] = true;
+    }
     final msg = jsonEncode(params);
 
     // separate window for file transfer is not supported
@@ -270,6 +274,7 @@ class RustDeskMultiWindowManager {
   Future<MultiWindowCallResult> newRemoteDesktop(
     String remoteId, {
     String? password,
+    bool skipSavedPassword = false,
     bool? isSharedPassword,
     String? switchUuid,
     bool? forceRelay,
@@ -280,6 +285,7 @@ class RustDeskMultiWindowManager {
       remoteId,
       _remoteDesktopWindows,
       password: password,
+      skipSavedPassword: skipSavedPassword,
       forceRelay: forceRelay,
       switchUuid: switchUuid,
       isSharedPassword: isSharedPassword,
@@ -289,6 +295,7 @@ class RustDeskMultiWindowManager {
   Future<MultiWindowCallResult> newFileTransfer(
     String remoteId, {
     String? password,
+    bool skipSavedPassword = false,
     bool? isSharedPassword,
     bool? forceRelay,
     String? connToken,
@@ -299,6 +306,7 @@ class RustDeskMultiWindowManager {
       remoteId,
       _fileTransferWindows,
       password: password,
+      skipSavedPassword: skipSavedPassword,
       forceRelay: forceRelay,
       isSharedPassword: isSharedPassword,
       connToken: connToken,
@@ -350,6 +358,7 @@ class RustDeskMultiWindowManager {
   Future<MultiWindowCallResult> newTerminal(
     String remoteId, {
     String? password,
+    bool skipSavedPassword = false,
     bool? isSharedPassword,
     bool? forceRelay,
     String? connToken,
@@ -375,6 +384,9 @@ class RustDeskMultiWindowManager {
       "isSharedPassword": isSharedPassword,
       "connToken": connToken,
     };
+    if (skipSavedPassword) {
+      params['skipSavedPassword'] = true;
+    }
     final msg = jsonEncode(params);
 
     // Always create a new window for terminal

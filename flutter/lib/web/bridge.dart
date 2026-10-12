@@ -185,6 +185,16 @@ class RustdeskImpl {
         () => js.context.callMethod('getByName', ['remember']) == 'true');
   }
 
+  bool sessionSetSkipSavedPassword(
+      {required UuidValue sessionId, dynamic hint}) {
+    throw UnimplementedError('sessionSetSkipSavedPassword');
+  }
+
+  bool sessionGetSkipSavedPassword(
+      {required UuidValue sessionId, dynamic hint}) {
+    return false;
+  }
+
   Future<bool?> sessionGetToggleOption(
       {required UuidValue sessionId, required String arg, dynamic hint}) {
     return Future(

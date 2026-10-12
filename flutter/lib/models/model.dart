@@ -4115,6 +4115,7 @@ class FFI {
     int? tabWindowId,
     int? display,
     List<int>? displays,
+    bool skipSavedPassword = false,
   }) {
     closed = false;
     if (isMobile) mobileReset();
@@ -4161,6 +4162,11 @@ class FFI {
         isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,
       );
+      if (skipSavedPassword &&
+          !bind.sessionSetSkipSavedPassword(sessionId: sessionId)) {
+        throw StateError(
+            'Failed to initialize connection without saved password');
+      }
     } else if (display != null) {
       if (displays == null) {
         debugPrint(

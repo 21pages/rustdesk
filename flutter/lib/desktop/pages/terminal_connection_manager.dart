@@ -14,6 +14,7 @@ class TerminalConnectionManager {
   static FFI getConnection({
     required String peerId,
     required String? password,
+    bool skipSavedPassword = false,
     required bool? isSharedPassword,
     required bool? forceRelay,
     required String? connToken,
@@ -32,6 +33,7 @@ class TerminalConnectionManager {
     ffi.start(
       peerId,
       password: password,
+      skipSavedPassword: skipSavedPassword,
       isSharedPassword: isSharedPassword,
       forceRelay: forceRelay,
       connToken: connToken,

@@ -2531,9 +2531,23 @@ connectMainDesktop(String id,
     bool? forceRelay,
     String? password,
     String? connToken,
-    bool? isSharedPassword}) async {
+    bool? isSharedPassword,
+    bool skipSavedPassword = false}) async {
+  if (skipSavedPassword) {
+    final connType = isFileTransfer
+        ? ConnType.fileTransfer
+        : isTerminal
+            ? ConnType.terminal
+            : ConnType.defaultConn;
+    if (bind.peerGetSessionsCount(id: id, connType: connType.index) > 0) {
+      showToast(translate(
+          'Close the existing connection before connecting without saved passwords.'));
+      return;
+    }
+  }
   if (isFileTransfer) {
     await rustDeskWinManager.newFileTransfer(id,
+        skipSavedPassword: skipSavedPassword,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
@@ -2552,12 +2566,14 @@ connectMainDesktop(String id,
         forceRelay: forceRelay);
   } else if (isTerminal) {
     await rustDeskWinManager.newTerminal(id,
+        skipSavedPassword: skipSavedPassword,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
         forceRelay: forceRelay);
   } else {
     await rustDeskWinManager.newRemoteDesktop(id,
+        skipSavedPassword: skipSavedPassword,
         password: password,
         isSharedPassword: isSharedPassword,
         forceRelay: forceRelay);
@@ -2578,7 +2594,8 @@ connect(BuildContext context, String id,
     bool forceRelay = false,
     String? password,
     String? connToken,
-    bool? isSharedPassword}) async {
+    bool? isSharedPassword,
+    bool skipSavedPassword = false}) async {
   if (id == '') return;
   if (!isDesktop || desktopType == DesktopType.main) {
     try {
@@ -2603,6 +2620,7 @@ connect(BuildContext context, String id,
     if (desktopType == DesktopType.main) {
       await connectMainDesktop(
         id,
+        skipSavedPassword: skipSavedPassword,
         isFileTransfer: isFileTransfer,
         isViewCamera: isViewCamera,
         isTerminal: isTerminal,
@@ -2624,6 +2642,7 @@ connect(BuildContext context, String id,
         'isSharedPassword': isSharedPassword,
         'forceRelay': forceRelay,
         'connToken': connToken,
+        'skipSavedPassword': skipSavedPassword,
       });
     }
   } else {

@@ -780,6 +780,9 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("RustDesk could not load a GStreamer component needed for screen capture ({})", "RustDesk 無法載入螢幕擷取所需的 GStreamer 元件 ({})"),
         ("Relay fallback delay in seconds", "回退到中繼前的等待時間（秒）"),
         ("relay-fallback-delay-tip", "已經建立的中繼連線會等待直連的 WebRTC 多久，超過這個時間就改用中繼。調大可以讓較慢的直連有更多機會勝出；調小則在無法直連的網路上更快回退到中繼。留空表示使用預設值 2.5 秒。"),
-        ("To start a voice call, enable \"Audio capture\" on the \"Share screen\" page.", "若要開始語音通話，請在「螢幕分享」頁面啟用「音訊錄製」。")
+        ("To start a voice call, enable \"Audio capture\" on the \"Share screen\" page.", "若要開始語音通話，請在「螢幕分享」頁面啟用「音訊錄製」。"),
+        ("Connect without saved password", "不使用已儲存的密碼連線"),
+        ("connect-without-saved-password-tip", "等待對方接受（需遠端允許），或手動輸入密碼。本次不會使用或更改已儲存的密碼。"),
+        ("Close the existing connection before connecting without saved passwords.", "請先關閉現有連線，再選擇不使用已儲存的密碼連線。"),
     ].iter().cloned().collect();
 }
