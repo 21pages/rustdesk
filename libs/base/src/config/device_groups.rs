@@ -33,7 +33,18 @@ fn decode_cache(data: &[u8]) -> ResultType<Option<String>> {
                     .map_or(false, |groups| !groups.is_empty())
             })
         });
-    if has_memberships {
+    let has_user_memberships =
+        value
+            .get("users")
+            .and_then(Value::as_array)
+            .map_or(false, |users| {
+                users.iter().any(|user| {
+                    user.get("group_names")
+                        .and_then(Value::as_array)
+                        .map_or(false, |groups| !groups.is_empty())
+                })
+            });
+    if has_memberships || has_user_memberships {
         Ok(Some(String::from_utf8(data)?))
     } else {
         Ok(None)
@@ -71,5 +82,16 @@ mod tests {
                 .unwrap()
                 .is_none());
         }
+    }
+
+    #[test]
+    fn retains_user_memberships_without_device_groups() {
+        let value = json!({
+            "access_token": "test-token",
+            "users": [{"name": "alice", "group_names": ["Primary", "Support"]}],
+            "peers": [{"id": "123456789"}]
+        });
+        let loaded = decode_cache(&encode(&value)).unwrap().unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&loaded).unwrap(), value);
     }
 }
