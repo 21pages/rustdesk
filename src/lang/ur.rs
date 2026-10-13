@@ -781,9 +781,18 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Relay fallback delay in seconds", "ریلے پر واپس جانے میں تاخیر سیکنڈ میں"),
         ("relay-fallback-delay-tip", "پہلے سے قائم ریلے کنکشن براہ راست WebRTC کنکشن کا کتنی دیر انتظار کرتا ہے، اس کے بعد اس کی جگہ استعمال ہوتا ہے۔ سست براہ راست کنکشن کو مزید وقت دینے کے لیے بڑھائیں؛ ان نیٹ ورکس پر جہاں براہ راست کنکشن ممکن نہیں، جلد ریلے پر جانے کے لیے کم کریں۔ پہلے سے طے شدہ 2.5 سیکنڈ کے لیے خالی چھوڑ دیں۔"),
         ("To start a voice call, enable \"Audio capture\" on the \"Share screen\" page.", ""),
-        ("Connect without saved password", ""),
-        ("connect-without-saved-password-tip", ""),
-        ("Close the existing connection before connecting without saved passwords.", ""),
+        ("Default connection", ""),
+        ("Request consent", ""),
+        ("Enter password manually", ""),
+        ("Use password", ""),
+        ("Waiting for approval", ""),
+        ("The remote device does not allow requests for consent.", ""),
+        ("Password authentication is unavailable on the remote device.", ""),
+        ("No authentication method is available on the remote device.", ""),
+        ("Saved passwords will not be used or changed.", ""),
+        ("Close the existing connection before choosing another authentication method.", ""),
+        ("consent-method-unknown-tip", ""),
+        ("authentication-methods-unknown-tip", ""),
     ].iter().cloned().collect();
 }
 

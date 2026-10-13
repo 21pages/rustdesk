@@ -225,7 +225,7 @@ class RustDeskMultiWindowManager {
     String remoteId,
     List<int> windows, {
     String? password,
-    bool skipSavedPassword = false,
+    String loginMethod = '',
     bool? forceRelay,
     String? switchUuid,
     bool? isRDP,
@@ -250,8 +250,8 @@ class RustDeskMultiWindowManager {
     if (connToken != null) {
       params['connToken'] = connToken;
     }
-    if (skipSavedPassword) {
-      params['skipSavedPassword'] = true;
+    if (loginMethod.isNotEmpty) {
+      params['loginMethod'] = loginMethod;
     }
     final msg = jsonEncode(params);
 
@@ -274,7 +274,7 @@ class RustDeskMultiWindowManager {
   Future<MultiWindowCallResult> newRemoteDesktop(
     String remoteId, {
     String? password,
-    bool skipSavedPassword = false,
+    String loginMethod = '',
     bool? isSharedPassword,
     String? switchUuid,
     bool? forceRelay,
@@ -285,7 +285,7 @@ class RustDeskMultiWindowManager {
       remoteId,
       _remoteDesktopWindows,
       password: password,
-      skipSavedPassword: skipSavedPassword,
+      loginMethod: loginMethod,
       forceRelay: forceRelay,
       switchUuid: switchUuid,
       isSharedPassword: isSharedPassword,
@@ -295,7 +295,7 @@ class RustDeskMultiWindowManager {
   Future<MultiWindowCallResult> newFileTransfer(
     String remoteId, {
     String? password,
-    bool skipSavedPassword = false,
+    String loginMethod = '',
     bool? isSharedPassword,
     bool? forceRelay,
     String? connToken,
@@ -306,7 +306,7 @@ class RustDeskMultiWindowManager {
       remoteId,
       _fileTransferWindows,
       password: password,
-      skipSavedPassword: skipSavedPassword,
+      loginMethod: loginMethod,
       forceRelay: forceRelay,
       isSharedPassword: isSharedPassword,
       connToken: connToken,
@@ -358,7 +358,7 @@ class RustDeskMultiWindowManager {
   Future<MultiWindowCallResult> newTerminal(
     String remoteId, {
     String? password,
-    bool skipSavedPassword = false,
+    String loginMethod = '',
     bool? isSharedPassword,
     bool? forceRelay,
     String? connToken,
@@ -384,8 +384,8 @@ class RustDeskMultiWindowManager {
       "isSharedPassword": isSharedPassword,
       "connToken": connToken,
     };
-    if (skipSavedPassword) {
-      params['skipSavedPassword'] = true;
+    if (loginMethod.isNotEmpty) {
+      params['loginMethod'] = loginMethod;
     }
     final msg = jsonEncode(params);
 

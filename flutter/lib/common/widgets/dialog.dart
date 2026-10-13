@@ -968,8 +968,6 @@ _connectDialog(
   String? osAccountDescTip,
 }) async {
   final errUsername = ''.obs;
-  final skipSavedPassword =
-      isDesktop && bind.sessionGetSkipSavedPassword(sessionId: sessionId);
   var rememberPassword = false;
   if (passwordController != null) {
     rememberPassword =
@@ -1088,23 +1086,20 @@ _connectDialog(
       }
       return Column(
         children: [
-          descWidget(translate(skipSavedPassword
-              ? 'connect-without-saved-password-tip'
-              : 'verify_rustdesk_password_tip')),
+          descWidget(translate('verify_rustdesk_password_tip')),
           PasswordWidget(
             controller: passwordController,
             autoFocus: osUsernameController == null,
           ),
-          if (!skipSavedPassword)
-            rememberWidget(
-              translate('Remember password'),
-              rememberPassword,
-              (v) {
-                if (v != null) {
-                  setState(() => rememberPassword = v);
-                }
-              },
-            ),
+          rememberWidget(
+            translate('Remember password'),
+            rememberPassword,
+            (v) {
+              if (v != null) {
+                setState(() => rememberPassword = v);
+              }
+            },
+          ),
         ],
       );
     }
@@ -1114,8 +1109,7 @@ _connectDialog(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.password_rounded, color: MyTheme.accent),
-          Text(translate(skipSavedPassword ? 'Connect' : 'Password Required'))
-              .paddingOnly(left: 10),
+          Text(translate('Password Required')).paddingOnly(left: 10),
         ],
       ),
       content: Column(mainAxisSize: MainAxisSize.min, children: [

@@ -40,6 +40,7 @@ import 'package:vector_math/vector_math.dart' show Vector2;
 import '../common.dart';
 import '../utils/image.dart' as img;
 import '../common/widgets/dialog.dart';
+import '../common/widgets/connection_method_dialog.dart';
 import 'input_model.dart';
 import 'platform_model.dart';
 import 'package:flutter_hbb/utils/scale.dart';
@@ -908,7 +909,9 @@ class FfiModel with ChangeNotifier {
       parent.target?.inputModel.setRelativeMouseMode(false);
     }
 
-    if (type == 're-input-password') {
+    if (type == 'login-method') {
+      showConnectionMethodDialog(sessionId, dialogManager, jsonDecode(text));
+    } else if (type == 're-input-password') {
       wrongPasswordDialog(sessionId, dialogManager, type, title, text);
     } else if (type == 'input-2fa') {
       enter2FaDialog(sessionId, dialogManager);
@@ -4115,7 +4118,7 @@ class FFI {
     int? tabWindowId,
     int? display,
     List<int>? displays,
-    bool skipSavedPassword = false,
+    String loginMethod = '',
   }) {
     closed = false;
     if (isMobile) mobileReset();
@@ -4162,10 +4165,9 @@ class FFI {
         isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,
       );
-      if (skipSavedPassword &&
-          !bind.sessionSetSkipSavedPassword(sessionId: sessionId)) {
-        throw StateError(
-            'Failed to initialize connection without saved password');
+      if (loginMethod.isNotEmpty &&
+          !bind.sessionSetLoginMethod(sessionId: sessionId, method: loginMethod)) {
+        throw StateError('Failed to initialize connection method');
       }
     } else if (display != null) {
       if (displays == null) {

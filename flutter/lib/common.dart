@@ -2532,8 +2532,8 @@ connectMainDesktop(String id,
     String? password,
     String? connToken,
     bool? isSharedPassword,
-    bool skipSavedPassword = false}) async {
-  if (skipSavedPassword) {
+    String loginMethod = ''}) async {
+  if (loginMethod.isNotEmpty) {
     final connType = isFileTransfer
         ? ConnType.fileTransfer
         : isTerminal
@@ -2541,13 +2541,13 @@ connectMainDesktop(String id,
             : ConnType.defaultConn;
     if (bind.peerGetSessionsCount(id: id, connType: connType.index) > 0) {
       showToast(translate(
-          'Close the existing connection before connecting without saved passwords.'));
+          'Close the existing connection before choosing another authentication method.'));
       return;
     }
   }
   if (isFileTransfer) {
     await rustDeskWinManager.newFileTransfer(id,
-        skipSavedPassword: skipSavedPassword,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
@@ -2566,14 +2566,14 @@ connectMainDesktop(String id,
         forceRelay: forceRelay);
   } else if (isTerminal) {
     await rustDeskWinManager.newTerminal(id,
-        skipSavedPassword: skipSavedPassword,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
         forceRelay: forceRelay);
   } else {
     await rustDeskWinManager.newRemoteDesktop(id,
-        skipSavedPassword: skipSavedPassword,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         forceRelay: forceRelay);
@@ -2595,7 +2595,7 @@ connect(BuildContext context, String id,
     String? password,
     String? connToken,
     bool? isSharedPassword,
-    bool skipSavedPassword = false}) async {
+    String loginMethod = ''}) async {
   if (id == '') return;
   if (!isDesktop || desktopType == DesktopType.main) {
     try {
@@ -2620,7 +2620,7 @@ connect(BuildContext context, String id,
     if (desktopType == DesktopType.main) {
       await connectMainDesktop(
         id,
-        skipSavedPassword: skipSavedPassword,
+        loginMethod: loginMethod,
         isFileTransfer: isFileTransfer,
         isViewCamera: isViewCamera,
         isTerminal: isTerminal,
@@ -2642,7 +2642,7 @@ connect(BuildContext context, String id,
         'isSharedPassword': isSharedPassword,
         'forceRelay': forceRelay,
         'connToken': connToken,
-        'skipSavedPassword': skipSavedPassword,
+        'loginMethod': loginMethod,
       });
     }
   } else {

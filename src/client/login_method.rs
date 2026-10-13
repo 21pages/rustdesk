@@ -1,22 +1,41 @@
 use super::{send_login, Interface, LoginConfigHandler};
+use base::message_proto::LoginMethods;
 use hbb_common::{
     sha2::{Digest, Sha256},
     Stream,
 };
+use serde_json::json;
 use std::sync::{Arc, RwLock};
 
+#[derive(Default, PartialEq, Eq)]
+pub(super) enum LoginMethod {
+    #[default]
+    Automatic,
+    Consent,
+    Password,
+}
+
 impl LoginConfigHandler {
-    pub(crate) fn enable_skip_saved_password(&mut self) {
-        self.skip_saved_password = true;
+    pub(crate) fn set_login_method(&mut self, method: &str) -> bool {
+        self.login_method = match method {
+            "consent" => LoginMethod::Consent,
+            "password" => LoginMethod::Password,
+            _ => return false,
+        };
         self.password.clear();
         self.shared_password = None;
         self.password_source = Default::default();
         self.remember = false;
+        true
+    }
+
+    pub(crate) fn skips_saved_password(&self) -> bool {
+        self.login_method != LoginMethod::Automatic
     }
 }
 
 fn login_password(lc: &LoginConfigHandler) -> Vec<u8> {
-    if lc.password.is_empty() {
+    if lc.password.is_empty() || lc.login_method == LoginMethod::Consent {
         return Vec::new();
     }
     let mut hasher = Sha256::new();
@@ -25,16 +44,55 @@ fn login_password(lc: &LoginConfigHandler) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
+fn show_dialog(lc: &Arc<RwLock<LoginConfigHandler>>, interface: &impl Interface, error: &str) {
+    let data = {
+        let lc = lc.read().unwrap();
+        let methods = lc.hash.login_methods.as_ref();
+        json!({
+            "method": if lc.login_method == LoginMethod::Consent { "consent" } else { "password" },
+            "click": methods.map(|m| m.click),
+            "password": methods.map(|m| m.password),
+            "error": error,
+        })
+    };
+    interface.msgbox("login-method", "Connect", &data.to_string(), "");
+}
+
 pub(super) async fn handle_hash(
     lc: Arc<RwLock<LoginConfigHandler>>,
     interface: &impl Interface,
     peer: &mut Stream,
 ) -> bool {
-    let password = login_password(&lc.read().unwrap());
-    if password.is_empty() {
-        interface.msgbox("input-password", "Password Required", "", "");
+    let (password, send, available) = {
+        let lc = lc.read().unwrap();
+        let methods = lc.hash.login_methods.as_ref();
+        let password = login_password(&lc);
+        let send = match lc.login_method {
+            LoginMethod::Consent => methods.map_or(true, |m| m.click),
+            LoginMethod::Password => methods.map_or(true, |m| m.password) && !password.is_empty(),
+            LoginMethod::Automatic => return true,
+        };
+        (
+            password,
+            send,
+            methods.map_or(true, |m| m.click || m.password),
+        )
+    };
+    if !available {
+        interface.msgbox(
+            "error",
+            "Login Error",
+            "No authentication method is available on the remote device.",
+            "",
+        );
+        return false;
     }
-    send_login(lc, String::new(), String::new(), password, peer).await;
+    if password.is_empty() || !send {
+        show_dialog(&lc, interface, "");
+    }
+    if send {
+        send_login(lc, String::new(), String::new(), password, peer).await;
+    }
     true
 }
 
@@ -47,15 +105,56 @@ pub(super) async fn handle_login_from_ui(
 ) {
     let password = {
         let mut lc = lc.write().unwrap();
-        if !password.is_empty() {
-            let mut hasher = Sha256::new();
-            hasher.update(password);
-            hasher.update(&lc.hash.salt);
-            lc.password = hasher.finalize().to_vec();
+        let methods = lc.hash.login_methods.as_ref();
+        match lc.login_method {
+            LoginMethod::Consent if methods.map_or(true, |m| m.click) => Vec::new(),
+            LoginMethod::Password
+                if methods.map_or(true, |m| m.password) && !password.is_empty() =>
+            {
+                let mut hasher = Sha256::new();
+                hasher.update(password);
+                hasher.update(&lc.hash.salt);
+                lc.password = hasher.finalize().to_vec();
+                login_password(&lc)
+            }
+            _ => return,
         }
-        login_password(&lc)
     };
     send_login(lc, os_username, os_password, password, peer).await;
+}
+
+pub(super) fn handle_login_error(
+    lc: &Arc<RwLock<LoginConfigHandler>>,
+    err: &str,
+    interface: &impl Interface,
+) -> Option<bool> {
+    {
+        let mut lc = lc.write().unwrap();
+        match err {
+            super::LOGIN_MSG_NO_PASSWORD_ACCESS => {
+                lc.set_login_method("consent");
+                lc.hash.login_methods = Some(LoginMethods {
+                    click: true,
+                    ..Default::default()
+                })
+                .into();
+            }
+            super::LOGIN_MSG_PASSWORD_WRONG | super::LOGIN_MSG_PASSWORD_EMPTY => {
+                lc.password.clear()
+            }
+            _ => return None,
+        }
+    }
+    show_dialog(
+        lc,
+        interface,
+        if err == super::LOGIN_MSG_NO_PASSWORD_ACCESS {
+            ""
+        } else {
+            err
+        },
+    );
+    Some(true)
 }
 
 #[cfg(all(test, feature = "flutter"))]
@@ -105,7 +204,7 @@ mod tests {
                     lc.password = vec![2; 32];
                     lc.shared_password = Some("shared password".into());
                     if skip {
-                        lc.enable_skip_saved_password();
+                        assert!(lc.set_login_method("consent"));
                     }
                 }
                 let (mut stream, mut peer) = connection().await;
@@ -141,7 +240,7 @@ mod tests {
             let mut lc = session.lc.write().unwrap();
             lc.id = id.clone();
             lc.config = config.clone();
-            lc.enable_skip_saved_password();
+            assert!(lc.set_login_method("password"));
             lc.hash = Hash {
                 salt: "salt".into(),
                 challenge: "challenge".into(),
@@ -189,6 +288,50 @@ mod tests {
             &mut stream,
         )
         .await;
-        assert!(received_password(&mut peer).await.is_empty());
+        assert!(peer.next_timeout(50).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn unavailable_methods_never_send_a_login_or_fall_back_to_saved_passwords() {
+        for (method, click, password) in [
+            ("consent", false, true),
+            ("password", true, false),
+            ("consent", false, false),
+        ] {
+            let session = Session::<FlutterHandler>::default();
+            {
+                let mut lc = session.lc.write().unwrap();
+                lc.config.password = vec![1; 32];
+                assert!(lc.set_login_method(method));
+            }
+            let (mut stream, mut peer) = connection().await;
+            let keep_alive = client::handle_hash(
+                session.lc.clone(),
+                "preset password",
+                Hash {
+                    login_methods: Some(LoginMethods {
+                        click,
+                        password,
+                        ..Default::default()
+                    })
+                    .into(),
+                    ..Default::default()
+                },
+                &session,
+                &mut stream,
+            )
+            .await;
+            assert_eq!(keep_alive, click || password);
+            client::handle_login_from_ui(
+                session.lc.clone(),
+                String::new(),
+                String::new(),
+                "manual password".into(),
+                false,
+                &mut stream,
+            )
+            .await;
+            assert!(peer.next_timeout(50).await.is_none());
+        }
     }
 }

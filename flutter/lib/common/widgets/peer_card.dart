@@ -547,7 +547,7 @@ abstract class BasePeerCard extends StatelessWidget {
     bool isRDP = false,
     bool isTerminal = false,
     bool isTerminalRunAsAdmin = false,
-    bool skipSavedPassword = false,
+    String loginMethod = '',
   }) {
     return MenuEntryButton<String>(
       childBuilder: (TextStyle? style) => Text(
@@ -567,7 +567,7 @@ abstract class BasePeerCard extends StatelessWidget {
           isTcpTunneling: isTcpTunneling,
           isRDP: isRDP,
           isTerminal: isTerminal || isTerminalRunAsAdmin,
-          skipSavedPassword: skipSavedPassword,
+          loginMethod: loginMethod,
         );
       },
       padding: menuPadding,
@@ -577,6 +577,13 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _connectAction(BuildContext context) {
+    if (isDesktop) {
+      return _connectWithMethodsAction(
+          context,
+          peer.alias.isEmpty
+              ? translate('Connect')
+              : '${translate('Connect')} ${peer.id}');
+    }
     return _connectCommonAction(
       context,
       (peer.alias.isEmpty
@@ -587,6 +594,10 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _transferFileAction(BuildContext context) {
+    if (isDesktop) {
+      return _connectWithMethodsAction(context, translate('Transfer file'),
+          isFileTransfer: true);
+    }
     return _connectCommonAction(
       context,
       translate('Transfer file'),
@@ -594,18 +605,26 @@ abstract class BasePeerCard extends StatelessWidget {
     );
   }
 
-  MenuEntryBase<String> _connectWithoutSavedPasswordAction(
-      BuildContext context) {
+  MenuEntryBase<String> _connectWithMethodsAction(
+    BuildContext context,
+    String title, {
+    bool isFileTransfer = false,
+    bool isTerminal = false,
+  }) {
     return MenuEntrySubMenu<String>(
-      text: translate('Connect without saved password'),
+      text: title,
       padding: menuPadding,
       entries: [
-        _connectCommonAction(context, translate('Control Remote Desktop'),
-            skipSavedPassword: true),
-        _connectCommonAction(context, translate('Transfer file'),
-            isFileTransfer: true, skipSavedPassword: true),
-        _connectCommonAction(context, translate('Terminal'),
-            isTerminal: true, skipSavedPassword: true),
+        _connectCommonAction(context, translate('Default connection'),
+            isFileTransfer: isFileTransfer, isTerminal: isTerminal),
+        _connectCommonAction(context, translate('Request consent'),
+            isFileTransfer: isFileTransfer,
+            isTerminal: isTerminal,
+            loginMethod: 'consent'),
+        _connectCommonAction(context, translate('Enter password manually'),
+            isFileTransfer: isFileTransfer,
+            isTerminal: isTerminal,
+            loginMethod: 'password'),
       ],
     );
   }
@@ -621,6 +640,10 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _terminalAction(BuildContext context) {
+    if (isDesktop) {
+      return _connectWithMethodsAction(context, '${translate('Terminal')} (beta)',
+          isTerminal: true);
+    }
     return _connectCommonAction(
       context,
       '${translate('Terminal')} (beta)',
@@ -986,7 +1009,6 @@ class RecentPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
-      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1052,7 +1074,6 @@ class FavoritePeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
-      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1113,7 +1134,6 @@ class DiscoveredPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
-      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1173,7 +1193,6 @@ class AddressBookPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
-      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1331,7 +1350,6 @@ class MyGroupPeerCard extends BasePeerCard {
       BuildContext context) async {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
-      if (isDesktop) _connectWithoutSavedPasswordAction(context),
       _transferFileAction(context),
       _viewCameraAction(context),
       _terminalAction(context),
@@ -1567,7 +1585,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     bool isTcpTunneling = false,
     bool isRDP = false,
     bool isTerminal = false,
-    bool skipSavedPassword = false}) async {
+    String loginMethod = ''}) async {
   var password = '';
   bool isSharedPassword = false;
   if (tab == PeerTabIndex.ab) {
@@ -1580,7 +1598,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
         alias: peer.alias,
       );
     }
-    if (!skipSavedPassword && !gFFI.abModel.current.isPersonal()) {
+    if (loginMethod.isEmpty && !gFFI.abModel.current.isPersonal()) {
       if (peer.password.isNotEmpty) {
         password = peer.password;
         isSharedPassword = true;
@@ -1595,7 +1613,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     }
   }
   connect(context, peer.id,
-      skipSavedPassword: skipSavedPassword,
+      loginMethod: loginMethod,
       password: password,
       isSharedPassword: isSharedPassword,
       isFileTransfer: isFileTransfer,
