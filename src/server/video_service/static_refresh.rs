@@ -217,6 +217,12 @@ impl<'a> StaticRefresh<'a> {
         };
         #[cfg(all(windows, feature = "vram"))]
         let frame = frame.or_else(|| self.has_texture.then_some(EncodeInput::Repeat));
+        #[cfg(feature = "hwcodec")]
+        let frame = if encoder.input_pixelbuffer() {
+            Some(EncodeInput::Repeat)
+        } else {
+            frame
+        };
         if let Some(frame) = frame {
             self.sp.snapshot(|sps| {
                 if sps.has_subscribes() {
@@ -322,7 +328,7 @@ mod tests {
         )
     }
 
-    struct CountingEncoder(Rc<Cell<usize>>);
+    struct CountingEncoder(Rc<Cell<usize>>, bool);
 
     impl EncoderApi for CountingEncoder {
         fn new(_: EncoderCfg, _: bool) -> ResultType<Self> {
@@ -332,7 +338,7 @@ mod tests {
         fn encode_to_message(&mut self, frame: EncodeInput, _: i64) -> ResultType<VideoFrame> {
             match frame {
                 EncodeInput::YUV(yuv) => assert_eq!(yuv, &[1]),
-                #[cfg(all(windows, feature = "vram"))]
+                #[cfg(any(feature = "hwcodec", all(windows, feature = "vram")))]
                 EncodeInput::Repeat => {}
                 _ => panic!("unexpected encoder input"),
             }
@@ -344,6 +350,11 @@ mod tests {
 
         fn yuvfmt(&self) -> EncodeYuvFormat {
             unreachable!()
+        }
+
+        #[cfg(feature = "hwcodec")]
+        fn input_pixelbuffer(&self) -> bool {
+            self.1
         }
 
         #[cfg(feature = "vram")]
@@ -383,7 +394,7 @@ mod tests {
         spf: Duration,
     ) {
         let mut encoder = Encoder {
-            codec: Box::new(CountingEncoder(Rc::clone(calls))),
+            codec: Box::new(CountingEncoder(Rc::clone(calls), false)),
         };
         refresh
             .try_encode(
@@ -396,6 +407,45 @@ mod tests {
                 &mut VideoFrameController::new(0),
             )
             .unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "hwcodec")]
+    fn owned_ram_frames_repeat_without_a_caller_yuv_buffer() {
+        let sp = GenericService::new("static-refresh-owned-ram-test".to_owned(), false);
+        let recorder = Arc::new(Mutex::new(None));
+        let mut refresh = new_refresh(
+            VideoSource::Monitor,
+            CodecFormat::H264,
+            &sp,
+            &recorder,
+            0,
+            1,
+            1,
+        );
+        let calls = Rc::new(Cell::new(0));
+        let mut encoder = Encoder {
+            codec: Box::new(CountingEncoder(Rc::clone(&calls), true)),
+        };
+        for ready in [false, true, false, true] {
+            refresh.on_frame(&EncodeInput::Repeat);
+            refresh.on_encoded(ready);
+            refresh.elapsed_since_encode = Duration::from_secs(1);
+            let before = calls.get();
+            refresh
+                .try_encode(
+                    &[],
+                    Duration::from_millis(33),
+                    BR_BALANCED,
+                    Instant::now(),
+                    33,
+                    &mut encoder,
+                    &mut VideoFrameController::new(0),
+                )
+                .unwrap();
+            assert_eq!(calls.get() - before, usize::from(ready));
+        }
+        assert_eq!(calls.get(), 2);
     }
 
     #[test]
@@ -564,7 +614,7 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel();
         sp.on_subscribe(ConnInner::new(1, None, Some(tx)));
         let mut encoder = Encoder {
-            codec: Box::new(CountingEncoder(Rc::new(Cell::new(0)))),
+            codec: Box::new(CountingEncoder(Rc::new(Cell::new(0)), false)),
         };
         refresh.on_frame(&EncodeInput::YUV(&[1]));
         refresh.on_encoded(true);

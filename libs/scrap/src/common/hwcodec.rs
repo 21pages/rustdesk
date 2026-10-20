@@ -25,6 +25,7 @@ use hwcodec::{
     },
 };
 
+mod input;
 #[cfg(all(test, windows, feature = "vram"))]
 mod tests;
 
@@ -58,6 +59,7 @@ pub struct HwRamEncoder {
     pub pixfmt: AVPixelFormat,
     bitrate: u32, //kbs
     config: HwRamEncoderConfig,
+    conversion_scratch: Vec<u8>,
 }
 
 impl EncoderApi for HwRamEncoder {
@@ -103,6 +105,7 @@ impl EncoderApi for HwRamEncoder {
                         pixfmt: ctx.pixfmt,
                         bitrate,
                         config,
+                        conversion_scratch: Vec::new(),
                     }),
                     Err(_) => Err(anyhow!(format!("Failed to create encoder"))),
                 }
@@ -114,10 +117,26 @@ impl EncoderApi for HwRamEncoder {
     fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
         let mut vf = VideoFrame::new();
         let mut frames = Vec::new();
-        for frame in self
-            .encode(input.yuv()?, ms)
-            .with_context(|| "Failed to encode")?
-        {
+        let encoded = match input {
+            EncodeInput::PixelBuffer(pixels) => {
+                let mut frame = self
+                    .encoder
+                    .prepare_frame()
+                    .map_err(|code| anyhow!("RAM prepare frame failed: {code}"))?;
+                input::convert(pixels, &mut frame, &mut self.conversion_scratch)?;
+                frame
+                    .encode(ms)
+                    .map(std::mem::take)
+                    .map_err(|code| anyhow!("RAM encode failed: {code}"))
+            }
+            EncodeInput::Repeat => self
+                .encoder
+                .reencode(ms)
+                .map(std::mem::take)
+                .map_err(|code| anyhow!("RAM repeat encode failed: {code}")),
+            _ => self.encode(input.yuv()?, ms),
+        };
+        for frame in encoded.with_context(|| "Failed to encode")? {
             frames.push(EncodedVideoFrame {
                 data: Bytes::from(frame.data),
                 pts: frame.pts,
@@ -171,6 +190,10 @@ impl EncoderApi for HwRamEncoder {
     #[cfg(feature = "vram")]
     fn input_texture(&self) -> bool {
         false
+    }
+
+    fn input_pixelbuffer(&self) -> bool {
+        true
     }
 
     fn set_quality(&mut self, ratio: f32) -> ResultType<()> {

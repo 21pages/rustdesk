@@ -866,6 +866,14 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
 
+                    #[cfg(feature = "hwcodec")]
+                    let frame = match &frame {
+                        scrap::Frame::PixelBuffer(pixels) if encoder.input_pixelbuffer() => {
+                            EncodeInput::PixelBuffer(pixels)
+                        }
+                        _ => frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?,
+                    };
+                    #[cfg(not(feature = "hwcodec"))]
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
                     static_refresh.on_frame(&frame);
                     let result = handle_one_frame(
@@ -930,14 +938,20 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
                 }
-                if !encoder.latency_free() && yuv.len() > 0 {
-                    // yun.len() > 0 means the frame is not texture.
+                let repeat_frame = (!yuv.is_empty()).then_some(EncodeInput::YUV(&yuv));
+                #[cfg(feature = "hwcodec")]
+                let repeat_frame = if encoder.input_pixelbuffer() && !first_frame {
+                    Some(EncodeInput::Repeat)
+                } else {
+                    repeat_frame
+                };
+                if let Some(frame) = repeat_frame.filter(|_| !encoder.latency_free()) {
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
                         let send_conn_ids = handle_one_frame(
                             display_idx,
                             &sp,
-                            EncodeInput::YUV(&yuv),
+                            frame,
                             ms,
                             &mut encoder,
                             recorder.clone(),

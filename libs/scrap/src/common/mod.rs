@@ -209,7 +209,9 @@ impl Frame<'_> {
 pub enum EncodeInput<'a> {
     YUV(&'a [u8]),
     Texture((*mut c_void, usize)),
-    #[cfg(all(windows, feature = "vram"))]
+    #[cfg(feature = "hwcodec")]
+    PixelBuffer(&'a dyn TraitPixelBuffer),
+    #[cfg(any(feature = "hwcodec", all(windows, feature = "vram")))]
     Repeat,
 }
 

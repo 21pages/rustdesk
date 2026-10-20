@@ -66,6 +66,11 @@ pub trait EncoderApi {
 
     fn yuvfmt(&self) -> EncodeYuvFormat;
 
+    #[cfg(feature = "hwcodec")]
+    fn input_pixelbuffer(&self) -> bool {
+        false
+    }
+
     #[cfg(feature = "vram")]
     fn input_texture(&self) -> bool;
 
