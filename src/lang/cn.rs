@@ -815,5 +815,9 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Off", "关"),
         ("api_server_connection_tip", "自定义服务器正在使用未加密的 HTTP。请联系管理员启用 HTTPS。"),
         ("api_server_empty_tip", "API 服务器留空时，自定义服务器默认使用 HTTP。请联系管理员启用 HTTPS。"),
+        ("Close the existing connection before choosing another authentication method.", "请先关闭现有连接，再选择其他认证方式。"),
+        ("Without password", "不使用密码"),
+        ("Connect without password", "免密连接"),
+        ("Skip saved passwords and ask the remote user to accept the connection.", "不使用已保存的密码，请求对方接受连接。"),
     ].iter().cloned().collect();
 }

@@ -4123,6 +4123,7 @@ class FFI {
     int? tabWindowId,
     int? display,
     List<int>? displays,
+    String loginMethod = '',
   }) {
     closed = false;
     if (isMobile) mobileReset();
@@ -4169,6 +4170,10 @@ class FFI {
         isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,
       );
+      if (loginMethod.isNotEmpty &&
+          !bind.sessionSetLoginMethod(sessionId: sessionId, method: loginMethod)) {
+        throw StateError('Failed to initialize connection method');
+      }
     } else if (display != null) {
       if (displays == null) {
         debugPrint(

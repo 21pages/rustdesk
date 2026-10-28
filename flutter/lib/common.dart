@@ -2531,33 +2531,66 @@ connectMainDesktop(String id,
     bool? forceRelay,
     String? password,
     String? connToken,
-    bool? isSharedPassword}) async {
+    bool? isSharedPassword,
+    String loginMethod = ''}) async {
+  if (loginMethod.isNotEmpty) {
+    final connType = isFileTransfer
+        ? ConnType.fileTransfer
+        : isViewCamera
+            ? ConnType.viewCamera
+            : isRDP
+                ? ConnType.rdp
+                : isTcpTunneling
+                    ? ConnType.portForward
+                    : isTerminal
+                        ? ConnType.terminal
+                        : ConnType.defaultConn;
+    if (bind.peerGetSessionsCount(id: id, connType: connType.index) > 0 ||
+        ((isTcpTunneling || isRDP) &&
+            bind.peerGetSessionsCount(
+                    id: id,
+                    connType:
+                        (isRDP ? ConnType.portForward : ConnType.rdp).index) >
+                0)) {
+      if (isTerminal) {
+        bind.mainSetEnv(key: 'IS_TERMINAL_ADMIN', value: '');
+      }
+      showToast(translate(
+          'Close the existing connection before choosing another authentication method.'));
+      return;
+    }
+  }
   if (isFileTransfer) {
     await rustDeskWinManager.newFileTransfer(id,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
         forceRelay: forceRelay);
   } else if (isViewCamera) {
     await rustDeskWinManager.newViewCamera(id,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
         forceRelay: forceRelay);
   } else if (isTcpTunneling || isRDP) {
     await rustDeskWinManager.newPortForward(id, isRDP,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
         forceRelay: forceRelay);
   } else if (isTerminal) {
     await rustDeskWinManager.newTerminal(id,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken,
         forceRelay: forceRelay);
   } else {
     await rustDeskWinManager.newRemoteDesktop(id,
+        loginMethod: loginMethod,
         password: password,
         isSharedPassword: isSharedPassword,
         forceRelay: forceRelay);
@@ -2578,7 +2611,8 @@ connect(BuildContext context, String id,
     bool forceRelay = false,
     String? password,
     String? connToken,
-    bool? isSharedPassword}) async {
+    bool? isSharedPassword,
+    String loginMethod = ''}) async {
   if (id == '') return;
   if (!isDesktop || desktopType == DesktopType.main) {
     try {
@@ -2603,6 +2637,7 @@ connect(BuildContext context, String id,
     if (desktopType == DesktopType.main) {
       await connectMainDesktop(
         id,
+        loginMethod: loginMethod,
         isFileTransfer: isFileTransfer,
         isViewCamera: isViewCamera,
         isTerminal: isTerminal,
@@ -2624,6 +2659,7 @@ connect(BuildContext context, String id,
         'isSharedPassword': isSharedPassword,
         'forceRelay': forceRelay,
         'connToken': connToken,
+        'loginMethod': loginMethod,
       });
     }
   } else {
@@ -2635,6 +2671,7 @@ connect(BuildContext context, String id,
             builder: (BuildContext context) =>
                 desktop_file_manager.FileManagerPage(
                     id: id,
+                    loginMethod: loginMethod,
                     password: password,
                     isSharedPassword: isSharedPassword),
           ),
@@ -2645,6 +2682,7 @@ connect(BuildContext context, String id,
           MaterialPageRoute(
             builder: (BuildContext context) => FileManagerPage(
                 id: id,
+                loginMethod: loginMethod,
                 password: password,
                 isSharedPassword: isSharedPassword,
                 forceRelay: forceRelay),
@@ -2660,6 +2698,7 @@ connect(BuildContext context, String id,
                 desktop_view_camera.ViewCameraPage(
               key: ValueKey(id),
               id: id,
+              loginMethod: loginMethod,
               toolbarState: ToolbarState(),
               password: password,
               isSharedPassword: isSharedPassword,
@@ -2672,6 +2711,7 @@ connect(BuildContext context, String id,
           MaterialPageRoute(
             builder: (BuildContext context) => ViewCameraPage(
                 id: id,
+                loginMethod: loginMethod,
                 password: password,
                 isSharedPassword: isSharedPassword,
                 forceRelay: forceRelay),
@@ -2684,6 +2724,7 @@ connect(BuildContext context, String id,
         MaterialPageRoute(
           builder: (BuildContext context) => TerminalPage(
             id: id,
+            loginMethod: loginMethod,
             password: password,
             isSharedPassword: isSharedPassword,
             forceRelay: forceRelay,
@@ -2698,6 +2739,7 @@ connect(BuildContext context, String id,
             builder: (BuildContext context) => desktop_remote.RemotePage(
               key: ValueKey(id),
               id: id,
+              loginMethod: loginMethod,
               toolbarState: ToolbarState(),
               password: password,
               isSharedPassword: isSharedPassword,
@@ -2710,6 +2752,7 @@ connect(BuildContext context, String id,
           MaterialPageRoute(
             builder: (BuildContext context) => RemotePage(
                 id: id,
+                loginMethod: loginMethod,
                 password: password,
                 isSharedPassword: isSharedPassword,
                 forceRelay: forceRelay),

@@ -14,6 +14,7 @@ import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
 import '../../desktop/widgets/popup_menu.dart';
+import 'connection_method_menu.dart';
 import 'dart:math' as math;
 
 typedef PopupMenuEntryBuilder = Future<List<mod_menu.PopupMenuEntry<String>>>
@@ -538,7 +539,7 @@ abstract class BasePeerCard extends StatelessWidget {
   @protected
   Future<List<MenuEntryBase<String>>> _buildMenuItems(BuildContext context);
 
-  MenuEntryBase<String> _connectCommonAction(
+  MenuEntryButton<String> _connectCommonAction(
     BuildContext context,
     String title, {
     bool isFileTransfer = false,
@@ -547,12 +548,16 @@ abstract class BasePeerCard extends StatelessWidget {
     bool isRDP = false,
     bool isTerminal = false,
     bool isTerminalRunAsAdmin = false,
+    String loginMethod = '',
   }) {
     return MenuEntryButton<String>(
-      childBuilder: (TextStyle? style) => Text(
-        title,
-        style: style,
-      ),
+      childBuilder: (TextStyle? style) => loginMethod == 'consent'
+          ? Tooltip(
+              message: translate(
+                  'Skip saved passwords and ask the remote user to accept the connection.'),
+              child: Text(title, style: style),
+            )
+          : Text(title, style: style),
       proc: () {
         if (isTerminalRunAsAdmin) {
           setEnvTerminalAdmin();
@@ -566,6 +571,7 @@ abstract class BasePeerCard extends StatelessWidget {
           isTcpTunneling: isTcpTunneling,
           isRDP: isRDP,
           isTerminal: isTerminal || isTerminalRunAsAdmin,
+          loginMethod: loginMethod,
         );
       },
       padding: menuPadding,
@@ -575,26 +581,54 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _connectAction(BuildContext context) {
-    return _connectCommonAction(
+    return _connectWithMethodsAction(
       context,
-      (peer.alias.isEmpty
+      peer.alias.isEmpty
           ? translate('Connect')
-          : '${translate('Connect')} ${peer.id}'),
+          : '${translate('Connect')} ${peer.id}',
     );
   }
 
   @protected
   MenuEntryBase<String> _transferFileAction(BuildContext context) {
-    return _connectCommonAction(
+    return _connectWithMethodsAction(
       context,
       translate('Transfer file'),
       isFileTransfer: true,
     );
   }
 
+  MenuEntryBase<String> _connectWithMethodsAction(
+    BuildContext context,
+    String title, {
+    bool isFileTransfer = false,
+    bool isViewCamera = false,
+    bool isTcpTunneling = false,
+    bool isRDP = false,
+    bool isTerminal = false,
+    bool isTerminalRunAsAdmin = false,
+    MenuEntryButton<String>? defaultEntry,
+  }) {
+    MenuEntryButton<String> action(String text, String method) =>
+        _connectCommonAction(context, text,
+            isFileTransfer: isFileTransfer,
+            isViewCamera: isViewCamera,
+            isTcpTunneling: isTcpTunneling,
+            isRDP: isRDP,
+            isTerminal: isTerminal,
+            isTerminalRunAsAdmin: isTerminalRunAsAdmin,
+            loginMethod: method);
+    return ConnectionMethodMenu(
+      defaultEntry: defaultEntry ?? action(title, ''),
+      methods: [
+        action(translate('Without password'), 'consent'),
+      ],
+    );
+  }
+
   @protected
   MenuEntryBase<String> _viewCameraAction(BuildContext context) {
-    return _connectCommonAction(
+    return _connectWithMethodsAction(
       context,
       translate('View camera'),
       isViewCamera: true,
@@ -603,7 +637,7 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _terminalAction(BuildContext context) {
-    return _connectCommonAction(
+    return _connectWithMethodsAction(
       context,
       '${translate('Terminal')} (beta)',
       isTerminal: true,
@@ -612,7 +646,7 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _terminalRunAsAdminAction(BuildContext context) {
-    return _connectCommonAction(
+    return _connectWithMethodsAction(
       context,
       '${translate('Terminal (Run as administrator)')} (beta)',
       isTerminalRunAsAdmin: true,
@@ -621,7 +655,7 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _tcpTunnelingAction(BuildContext context) {
-    return _connectCommonAction(
+    return _connectWithMethodsAction(
       context,
       translate('TCP tunneling'),
       isTcpTunneling: true,
@@ -630,7 +664,7 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   MenuEntryBase<String> _rdpAction(BuildContext context, String id) {
-    return MenuEntryButton<String>(
+    final action = MenuEntryButton<String>(
       childBuilder: (TextStyle? style) => Container(
           alignment: AlignmentDirectional.center,
           height: CustomPopupMenuTheme.height,
@@ -664,6 +698,8 @@ abstract class BasePeerCard extends StatelessWidget {
       padding: menuPadding,
       dismissOnClicked: true,
     );
+    return _connectWithMethodsAction(context, translate('RDP'),
+        isRDP: true, defaultEntry: action);
   }
 
   @protected
@@ -1543,7 +1579,8 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     bool isViewCamera = false,
     bool isTcpTunneling = false,
     bool isRDP = false,
-    bool isTerminal = false}) async {
+    bool isTerminal = false,
+    String loginMethod = ''}) async {
   var password = '';
   bool isSharedPassword = false;
   if (tab == PeerTabIndex.ab) {
@@ -1571,6 +1608,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     }
   }
   connect(context, peer.id,
+      loginMethod: loginMethod,
       password: password,
       isSharedPassword: isSharedPassword,
       isFileTransfer: isFileTransfer,

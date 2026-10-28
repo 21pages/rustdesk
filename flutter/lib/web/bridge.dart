@@ -186,6 +186,13 @@ class RustdeskImpl {
         () => js.context.callMethod('getByName', ['remember']) == 'true');
   }
 
+  bool sessionSetLoginMethod(
+      {required UuidValue sessionId, required String method, dynamic hint}) {
+    return js.context
+            .callMethod('setByName', ['session_set_login_method', method]) ==
+        true;
+  }
+
   Future<bool?> sessionGetToggleOption(
       {required UuidValue sessionId, required String arg, dynamic hint}) {
     return Future(

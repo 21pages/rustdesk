@@ -238,6 +238,14 @@ pub fn session_get_cursor_shape(session_id: SessionID, id: String) -> Option<Cur
     }
 }
 
+pub fn session_set_login_method(session_id: SessionID, method: String) -> SyncReturn<bool> {
+    SyncReturn(
+        sessions::get_session_by_session_id(&session_id)
+            .map(|session| session.lc.write().unwrap().set_login_method(&method))
+            .unwrap_or(false),
+    )
+}
+
 pub fn session_get_remember(session_id: SessionID) -> Option<bool> {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         Some(session.get_remember())
