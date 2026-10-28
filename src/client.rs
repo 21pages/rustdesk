@@ -3868,7 +3868,13 @@ impl LoginConfigHandler {
             avatar,
             ..Default::default()
         };
-        if self.skips_saved_password() {
+        if self.skips_saved_password()
+            && !self
+                .hash
+                .login_methods
+                .as_ref()
+                .is_some_and(|m| !m.click && m.password)
+        {
             lr.password.clear();
         }
         match self.conn_type {
@@ -4516,6 +4522,11 @@ pub fn handle_login_error(
     err: &str,
     interface: &impl Interface,
 ) -> bool {
+    if lc.read().unwrap().skips_saved_password() {
+        if let Some(result) = login_method::handle_login_error(&lc, err, interface) {
+            return result;
+        }
+    }
     if err == LOGIN_MSG_PASSWORD_EMPTY {
         lc.write().unwrap().password = Default::default();
         interface.msgbox("input-password", "Password Required", "", "");
@@ -4691,6 +4702,19 @@ pub async fn handle_hash(
             return false;
         }
     }
+    if hash
+        .login_methods
+        .as_ref()
+        .is_some_and(|m| !m.click && !m.password)
+    {
+        interface.msgbox(
+            "error",
+            "Connection Error",
+            "Unable to connect. The remote device cannot accept sessions via click or password.",
+            "",
+        );
+        return false;
+    }
     // last password
     let mut password = lc.read().unwrap().password.clone();
     // preset password
@@ -4744,13 +4768,16 @@ pub async fn handle_hash(
     lc.write().unwrap().password = password.clone();
 
     let request_consent = lc.read().unwrap().skips_saved_password();
+    if request_consent {
+        if let Some(result) = login_method::handle_hash(&lc, interface) {
+            return result;
+        }
+    }
 
     let is_terminal_admin = lc.read().unwrap().is_terminal_admin;
     let is_terminal = lc.read().unwrap().conn_type.eq(&ConnType::TERMINAL);
     if is_terminal && is_terminal_admin {
-        if request_consent {
-            interface.msgbox("terminal-admin-login-consent", "", "", "");
-        } else if password.is_empty() {
+        if password.is_empty() {
             interface.msgbox("terminal-admin-login-password", "", "", "");
         } else {
             interface.msgbox("terminal-admin-login", "", "", "");
@@ -4771,15 +4798,6 @@ pub async fn handle_hash(
         hasher.update(&hash.challenge);
         hasher.finalize()[..].into()
     };
-
-    if request_consent {
-        interface.msgbox(
-            "wait-remote-accept-nook",
-            "Prompt",
-            "Please wait for the remote side to accept your session request...",
-            "",
-        );
-    }
 
     send_login(lc.clone(), String::new(), String::new(), password, peer).await;
     lc.write().unwrap().hash = hash;
@@ -4852,6 +4870,10 @@ pub async fn handle_login_from_ui(
     remember: bool,
     peer: &mut Stream,
 ) {
+    if lc.read().unwrap().skips_saved_password() {
+        login_method::handle_login_from_ui(lc, os_username, os_password, password, peer).await;
+        return;
+    }
     let mut hash_password = if password.is_empty() {
         let mut password2 = lc.read().unwrap().password.clone();
         if password2.is_empty() {
@@ -5198,6 +5220,9 @@ lazy_static::lazy_static! {
 pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: bool) -> bool {
     msgtype == "error"
         && title == "Connection Error"
+        && !text
+            .to_lowercase()
+            .contains("cannot accept sessions via click or password")
         && ((text.contains("10054") || text.contains("104")) && retry_for_relay
             || (!text.to_lowercase().contains("offline")
                 && !text.to_lowercase().contains("not exist")
@@ -5227,6 +5252,18 @@ mod retry_tests {
             "Incoming only mode",
             false,
         ));
+    }
+
+    #[test]
+    fn unavailable_login_methods_are_not_retryable() {
+        for retry_for_relay in [false, true] {
+            assert!(!check_if_retry(
+                "error",
+                "Connection Error",
+                "Unable to connect. The remote device cannot accept sessions via click or password.",
+                retry_for_relay,
+            ));
+        }
     }
 }
 

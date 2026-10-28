@@ -328,6 +328,12 @@ message CursorPosition {
 message Hash {
   string salt = 1;
   string challenge = 2;
+  LoginMethods login_methods = 3;
+}
+
+message LoginMethods {
+  bool click = 1;
+  bool password = 2;
 }
 
 enum ClipboardFormat {

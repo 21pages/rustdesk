@@ -937,15 +937,13 @@ void enterPasswordDialog(
 }
 
 void enterUserLoginDialog(SessionID sessionId,
-    OverlayDialogManager dialogManager, String osAccountDescTip,
-    {bool waitForAccept = false}) async {
+    OverlayDialogManager dialogManager, String osAccountDescTip) async {
   await _connectDialog(
     sessionId,
     dialogManager,
     osUsernameController: TextEditingController(),
     osPasswordController: TextEditingController(),
     osAccountDescTip: osAccountDescTip,
-    waitForAccept: waitForAccept,
   );
 }
 
@@ -968,7 +966,6 @@ _connectDialog(
   TextEditingController? osPasswordController,
   TextEditingController? passwordController,
   String? osAccountDescTip,
-  bool waitForAccept = false,
 }) async {
   final errUsername = ''.obs;
   var rememberPassword = false;
@@ -1011,17 +1008,8 @@ _connectDialog(
         rememberPassword,
       );
       close();
-      if (waitForAccept) {
-        showWaitAcceptDialog(
-            sessionId,
-            'wait-remote-accept-nook',
-            'Prompt',
-            'Please wait for the remote side to accept your session request...',
-            dialogManager);
-      } else {
-        dialogManager.showLoading(translate('Logging in...'),
-            onCancel: closeConnection);
-      }
+      dialogManager.showLoading(translate('Logging in...'),
+          onCancel: closeConnection);
     }
 
     descWidget(String text) {

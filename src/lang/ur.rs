@@ -815,9 +815,12 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Off", ""),
         ("api_server_connection_tip", ""),
         ("api_server_empty_tip", ""),
+        ("consent-method-unknown-tip", ""),
         ("Without password", ""),
         ("Connect without password", ""),
         ("Skip saved passwords and ask the remote user to accept the connection.", ""),
+        ("The remote device only allows password connections. Enter the password to connect.", ""),
+        ("Unable to connect. The remote device cannot accept sessions via click or password.", ""),
     ].iter().cloned().collect();
 }
 
