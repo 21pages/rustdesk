@@ -290,5 +290,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("shortcut-key-not-supported", "\"{}\" can't be used as a shortcut."),
         ("api_server_connection_tip", "Your custom server uses unencrypted HTTP. Contact your administrator to enable HTTPS."),
         ("api_server_empty_tip", "With API Server empty, your custom server defaults to HTTP. Contact your administrator to enable HTTPS."),
+        ("consent-method-unknown-tip", "The request was sent, but the remote version does not report whether it allows consent. If it cannot be accepted, use a password."),
     ].iter().cloned().collect();
 }

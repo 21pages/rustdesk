@@ -1,4 +1,11 @@
-use super::LoginConfigHandler;
+use super::{send_login, Interface, LoginConfigHandler};
+use base::message_proto::LoginMethods;
+use hbb_common::{
+    sha2::{Digest, Sha256},
+    Stream,
+};
+use serde_json::json;
+use std::sync::{Arc, RwLock};
 
 #[derive(Default, PartialEq, Eq)]
 pub(super) enum LoginMethod {
@@ -21,13 +28,114 @@ impl LoginConfigHandler {
     }
 }
 
+fn show_dialog(lc: &Arc<RwLock<LoginConfigHandler>>, interface: &impl Interface, error: &str) {
+    let data = {
+        let lc = lc.read().unwrap();
+        let methods = lc.hash.login_methods.as_ref();
+        json!({
+            "click": methods.map(|m| m.click),
+            "password": methods.map(|m| m.password),
+            "os_account_required": lc.is_terminal_admin && error != super::LOGIN_MSG_NO_PASSWORD_ACCESS,
+            "error": if error == super::LOGIN_MSG_NO_PASSWORD_ACCESS { "" } else { error },
+        })
+    };
+    interface.msgbox("login-method", "Connect", &data.to_string(), "");
+}
+
+pub(super) fn handle_hash(
+    lc: &Arc<RwLock<LoginConfigHandler>>,
+    interface: &impl Interface,
+) -> Option<bool> {
+    let (send, available) = {
+        let lc = lc.read().unwrap();
+        let methods = lc.hash.login_methods.as_ref();
+        (
+            methods.map_or(true, |m| m.click) && !lc.is_terminal_admin,
+            methods.map_or(true, |m| m.click || m.password),
+        )
+    };
+    if !available {
+        interface.msgbox(
+            "error",
+            "Connection Error",
+            "Unable to connect. The remote device cannot accept sessions via click or password.",
+            "",
+        );
+        return Some(false);
+    }
+    show_dialog(lc, interface, "");
+    if send {
+        None
+    } else {
+        Some(true)
+    }
+}
+
+pub(super) async fn handle_login_from_ui(
+    lc: Arc<RwLock<LoginConfigHandler>>,
+    os_username: String,
+    os_password: String,
+    password: String,
+    peer: &mut Stream,
+) {
+    let password = {
+        let lc = lc.read().unwrap();
+        let methods = lc.hash.login_methods.as_ref();
+        if lc.login_method != LoginMethod::Consent {
+            return;
+        }
+        let mut challenge = Sha256::new();
+        if methods.is_some_and(|m| !m.click) {
+            if !methods.is_some_and(|m| m.password) || password.is_empty() {
+                return;
+            }
+            let mut hasher = Sha256::new();
+            hasher.update(password);
+            hasher.update(&lc.hash.salt);
+            challenge.update(hasher.finalize());
+        } else {
+            challenge.update(&lc.password);
+        }
+        challenge.update(&lc.hash.challenge);
+        challenge.finalize().to_vec()
+    };
+    send_login(lc, os_username, os_password, password, peer).await;
+}
+
+pub(super) fn handle_login_error(
+    lc: &Arc<RwLock<LoginConfigHandler>>,
+    err: &str,
+    interface: &impl Interface,
+) -> Option<bool> {
+    {
+        let mut lc = lc.write().unwrap();
+        match err {
+            super::LOGIN_MSG_NO_PASSWORD_ACCESS => {
+                lc.set_login_method("consent");
+                lc.hash.login_methods = Some(LoginMethods {
+                    click: true,
+                    ..Default::default()
+                })
+                .into();
+            }
+            super::LOGIN_MSG_PASSWORD_WRONG | super::LOGIN_MSG_PASSWORD_EMPTY => {
+                lc.password.clear()
+            }
+            _ => return None,
+        }
+    }
+    show_dialog(lc, interface, err);
+    Some(true)
+}
+
 #[cfg(all(test, feature = "flutter"))]
 mod tests {
+    use super::*;
     use crate::{client, flutter::FlutterHandler, ui_session_interface::Session};
     use base::message_proto::{Hash, Message, PeerInfo};
     use hbb_common::{
         config::PeerConfig, protobuf::Message as _, rendezvous_proto::ConnType, tcp::FramedStream,
-        tokio, Stream,
+        tokio,
     };
 
     async fn connection() -> (Stream, Stream) {
@@ -85,6 +193,12 @@ mod tests {
                         Hash {
                             salt: "salt".into(),
                             challenge: "challenge".into(),
+                            login_methods: Some(LoginMethods {
+                                click: true,
+                                password: true,
+                                ..Default::default()
+                            })
+                            .into(),
                             ..Default::default()
                         },
                         &session,
@@ -178,5 +292,69 @@ mod tests {
         let saved = PeerConfig::load(&id).password;
         PeerConfig::remove(&id);
         assert_eq!(saved, config.password);
+    }
+
+    #[tokio::test]
+    async fn password_only_peer_requires_an_explicit_password() {
+        for password in [true, false] {
+            let session = Session::<FlutterHandler>::default();
+            {
+                let mut lc = session.lc.write().unwrap();
+                lc.id = format!("password-only-test-{}", uuid::Uuid::new_v4());
+                lc.config.password = vec![1; 32];
+                assert!(lc.set_login_method("consent"));
+            }
+            let (mut stream, mut peer) = connection().await;
+            let keep_alive = client::handle_hash(
+                session.lc.clone(),
+                "preset password",
+                Hash {
+                    salt: "salt".into(),
+                    challenge: "challenge".into(),
+                    login_methods: Some(LoginMethods {
+                        password,
+                        ..Default::default()
+                    })
+                    .into(),
+                    ..Default::default()
+                },
+                &session,
+                &mut stream,
+            )
+            .await;
+            assert_eq!(keep_alive, password);
+            assert!(peer.next_timeout(50).await.is_none());
+            client::handle_login_from_ui(
+                session.lc.clone(),
+                String::new(),
+                String::new(),
+                String::new(),
+                false,
+                &mut stream,
+            )
+            .await;
+            assert!(peer.next_timeout(50).await.is_none());
+            client::handle_login_from_ui(
+                session.lc.clone(),
+                String::new(),
+                String::new(),
+                "manual password".into(),
+                false,
+                &mut stream,
+            )
+            .await;
+            if password {
+                let salted = Sha256::digest(b"manual passwordsalt");
+                let mut expected = Sha256::new();
+                expected.update(salted);
+                expected.update(b"challenge");
+                assert_eq!(
+                    received_password(&mut peer).await,
+                    expected.finalize().to_vec()
+                );
+            } else {
+                assert!(peer.next_timeout(50).await.is_none());
+            }
+        }
     }
 }

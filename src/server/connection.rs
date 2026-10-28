@@ -543,6 +543,7 @@ impl Connection {
         let hash = Hash {
             salt,
             challenge: Config::get_auto_password(6),
+            login_methods: Some(available_login_methods()).into(),
             ..Default::default()
         };
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
@@ -3014,33 +3015,9 @@ impl Connection {
                 self.try_start_cm_ipc();
             }
 
-            // https://github.com/rustdesk/rustdesk-server-pro/discussions/646
-            // `is_logon` is used to check login with `OPTION_ALLOW_LOGON_SCREEN_PASSWORD` == "Y".
-            // `is_logon_ui()` is a fallback for logon UI detection on Windows.
-            #[cfg(target_os = "windows")]
-            let is_logon = || {
-                crate::platform::is_prelogin() || crate::platform::is_locked() || {
-                    match crate::platform::is_logon_ui() {
-                        Ok(result) => result,
-                        Err(e) => {
-                            log::error!("Failed to detect logon UI: {:?}", e);
-                            false
-                        }
-                    }
-                }
-            };
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            let is_logon = || crate::platform::is_prelogin() || crate::platform::is_locked();
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            let is_logon = || crate::platform::is_prelogin();
+            let allow_logon_screen_password = allow_logon_screen_password();
 
-            let allow_logon_screen_password =
-                crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
-                    && is_logon();
-
-            if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
-                || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
-            {
+            if requires_click(allow_logon_screen_password) {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
                     if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await
@@ -7168,6 +7145,46 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
         pi += 1;
     }
     pi == p.len()
+}
+
+fn is_logon() -> bool {
+    let at_logon = crate::platform::is_prelogin();
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    let at_logon = at_logon || crate::platform::is_locked();
+    #[cfg(target_os = "windows")]
+    let at_logon = at_logon
+        || crate::platform::is_logon_ui().unwrap_or_else(|err| {
+            hbb_common::throttled_log!(
+                Duration::from_secs(30),
+                error,
+                "Failed to detect logon UI: {err}"
+            );
+            false
+        });
+    at_logon
+}
+
+fn allow_logon_screen_password() -> bool {
+    crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y" && is_logon()
+}
+
+fn requires_click(allow_logon_screen_password: bool) -> bool {
+    let mode = password::approve_mode();
+    (mode == ApproveMode::Click && !allow_logon_screen_password)
+        || mode == ApproveMode::Both && !password::has_valid_password()
+}
+
+fn available_login_methods() -> LoginMethods {
+    let at_logon = is_logon();
+    let allow_logon_screen_password =
+        at_logon && crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y";
+    LoginMethods {
+        click: password::approve_mode() != ApproveMode::Password && !at_logon,
+        password: !requires_click(allow_logon_screen_password)
+            && (password::has_valid_password()
+                || allow_logon_screen_password && Config::has_permanent_password()),
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]
