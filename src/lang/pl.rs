@@ -815,5 +815,8 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Off", "Wyłączone"),
         ("api_server_connection_tip", ""),
         ("api_server_empty_tip", ""),
+        ("Without password", ""),
+        ("Connect without password", ""),
+        ("Skip saved passwords and ask the remote user to accept the connection.", ""),
     ].iter().cloned().collect();
 }
