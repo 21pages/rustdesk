@@ -6,6 +6,7 @@ import 'package:draggable_float_widget/draggable_float_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
+import 'package:flutter_hbb/desktop/widgets/cm_window_dock.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/mobile/pages/home_page.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
@@ -281,6 +282,7 @@ class ChatModel with ChangeNotifier {
   showChatPage(MessageKey key) async {
     if (isDesktop) {
       if (isConnManager) {
+        if (cmWindowDock.value) await cmWindowDock.expand();
         if (!_isShowCMSidePage) {
           await toggleCMChatPage(key);
         }

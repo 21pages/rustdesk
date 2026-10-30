@@ -157,6 +157,7 @@ pub const OPTION_FLUTTER_PEER_TAB_VISIBLE: &str = "peer-tab-visible";
 pub const OPTION_FLUTTER_PEER_CARD_UI_TYLE: &str = "peer-card-ui-type";
 pub const OPTION_FLUTTER_CURRENT_AB_NAME: &str = "current-ab-name";
 pub const OPTION_ALLOW_REMOTE_CM_MODIFICATION: &str = "allow-remote-cm-modification";
+pub const OPTION_ALLOW_DOCK_CM: &str = "allow-dock-cm";
 pub const OPTION_ALLOW_SYNC_CLIPBOARD_BETWEEN_SESSIONS: &str =
     "allow-sync-clipboard-between-sessions";
 
@@ -271,6 +272,7 @@ pub const KEYS_LOCAL_SETTINGS: &[&str] = &[
 ];
 // DEFAULT_SETTINGS, OVERWRITE_SETTINGS
 pub const KEYS_SETTINGS: &[&str] = &[
+    OPTION_ALLOW_DOCK_CM,
     OPTION_ACCESS_MODE,
     OPTION_ENABLE_KEYBOARD,
     OPTION_ENABLE_CLIPBOARD,
