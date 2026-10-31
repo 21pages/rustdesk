@@ -202,6 +202,23 @@ mod tests {
         assert_eq!(login.os_login.password, "os password");
     }
 
+    #[test]
+    fn consent_does_not_save_personal_ab_password() {
+        for consent in [false, true] {
+            let mut lc = client::LoginConfigHandler::default();
+            lc.id = format!("consent-ab-password-test-{}", uuid::Uuid::new_v4());
+            lc.password = vec![3; 32];
+            lc.password_source = client::PasswordSource::PersonalAb(lc.password.clone());
+            if consent {
+                assert!(lc.set_login_method("consent"));
+            }
+            lc.handle_peer_info(&PeerInfo::default());
+            let saved = PeerConfig::load(&lc.id).password;
+            PeerConfig::remove(&lc.id);
+            assert_eq!(saved, if consent { Vec::new() } else { lc.password });
+        }
+    }
+
     #[tokio::test]
     async fn consent_preserves_saved_password() {
         let (mut stream, mut peer) = connection().await;

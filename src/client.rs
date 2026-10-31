@@ -3679,7 +3679,7 @@ impl LoginConfigHandler {
         let password0 = config.password.clone();
         let remember = self.remember;
         let hash = self.hash.clone();
-        if remember {
+        if remember && !self.skips_saved_password() {
             // remember is true: use PeerConfig password or ui login
             // not sync shared password to recent
             if !password.is_empty()
@@ -3689,7 +3689,7 @@ impl LoginConfigHandler {
                 config.password = password.clone();
                 log::debug!("remember password of {}", self.id);
             }
-        } else {
+        } else if !self.skips_saved_password() {
             if self.password_source.is_personal_ab(&password) {
                 // sync personal ab password to recent automatically
                 config.password = password.clone();
@@ -3716,7 +3716,8 @@ impl LoginConfigHandler {
         #[cfg(feature = "flutter")]
         {
             // sync connected password to personal ab automatically if it is not shared password
-            if !config.password.is_empty()
+            if !self.skips_saved_password()
+                && !config.password.is_empty()
                 && !self.password_source.is_shared_ab(&password, &hash)
                 && !self.password_source.is_personal_ab(&password)
             {
