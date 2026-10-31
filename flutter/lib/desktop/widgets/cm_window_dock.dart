@@ -12,15 +12,20 @@ class CmWindowDock extends ValueNotifier<bool> {
 
   static const size = Size(36, 80);
   static const bottomInset = 64.0;
+  static final compactSize =
+      Size(kConnectionManagerWindowSizeClosedChat.width, 320);
   Future<void>? _transition;
 
   bool get enabled =>
       !kUseCompatibleUiMode &&
       bind.mainGetOptionSync(key: kOptionAllowDockCm) == 'Y';
 
-  Size get expandedSize => gFFI.chatModel.isShowCMSidePage
-      ? kConnectionManagerWindowSizeOpenChat
-      : kConnectionManagerWindowSizeClosedChat;
+  Size get expandedSize {
+    final contentSize = gFFI.chatModel.isShowCMSidePage
+        ? kConnectionManagerWindowSizeOpenChat
+        : kConnectionManagerWindowSizeClosedChat;
+    return enabled ? Size(contentSize.width, compactSize.height) : contentSize;
+  }
 
   Future<void> syncMinimizable() async {
     final minimizable = !enabled;
@@ -34,7 +39,7 @@ class CmWindowDock extends ValueNotifier<bool> {
   }
 
   Future<void> resizeExpanded(Size contentSize, {bool align = false}) async {
-    final windowSize = Size(contentSize.width + size.width, contentSize.height);
+    final windowSize = Size(contentSize.width + size.width, compactSize.height);
     if (isMacOS) {
       await windowManager.setTitleBarStyle(TitleBarStyle.hidden,
           windowButtonVisibility: false);

@@ -66,7 +66,7 @@ void main() {
   });
 
   test(
-      'expanding the dock and opening chat keep the same right edge and tab height',
+      'opening chat or file transfers only widens compact CM',
       () async {
     const channel = MethodChannel('window_manager');
     var bounds = const Rect.fromLTWH(1884, 856, 36, 80);
@@ -93,11 +93,14 @@ void main() {
     addTearDown(dock.dispose);
     await dock.resizeExpanded(kConnectionManagerWindowSizeClosedChat);
     expect(await windowManager.getBounds(),
-        const Rect.fromLTWH(1584, 510, 336, 490));
+        const Rect.fromLTWH(1584, 680, 336, 320));
     dock.value = false;
     await dock.resizeExpanded(kConnectionManagerWindowSizeOpenChat);
     expect(await windowManager.getBounds(),
-        const Rect.fromLTWH(1184, 510, 736, 490));
+        const Rect.fromLTWH(1184, 680, 736, 320));
+    await dock.resizeExpanded(kConnectionManagerWindowSizeClosedChat);
+    expect(await windowManager.getBounds(),
+        const Rect.fromLTWH(1584, 680, 336, 320));
   });
 
   testWidgets(
@@ -109,10 +112,10 @@ void main() {
         builder: (context, setState) => Align(
             alignment: Alignment.bottomRight,
             child: SizedBox.fromSize(
-              size: docked ? CmWindowDock.size : const Size(336, 490),
+              size: docked ? CmWindowDock.size : const Size(336, 320),
               child: CmDockLayout(
                 docked: docked,
-                contentSize: kConnectionManagerWindowSizeClosedChat,
+                contentSize: CmWindowDock.compactSize,
                 onToggle: () => setState(() => docked = !docked),
                 child: const Material(child: TextField()),
               ),
