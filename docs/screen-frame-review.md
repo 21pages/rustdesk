@@ -9,7 +9,7 @@
 | 精确窗口过滤 | 已删除应用级兜底；临时过滤对象验证覆盖部分匹配、空列表及未匹配 ID，修复前失败、修复后通过；Objective-C 语法检查通过。 |
 | 过滤更新失败处理 | 已改为受控日志后继续取帧，每代仅尝试一次；隔离故障注入验证帧可继续返回、停止错误仍传播，修复前失败、修复后通过；macOS 编译检查通过。 |
 | 窗口 ID 与版本号快照 | 已保持同一锁直到取得两者；原逻辑并发验证出现错配，修复后 499999 次并发更新中读取 560254 次快照均一致；macOS 会话边框单测通过。 |
-| Windows 旧系统排除属性 | 已仅对排除 API 增加 Windows 10 2004 能力门槛，继续正常画框；Rust 语法解析通过，当前没有 Windows 编译目标，Windows 编译和实机验证待完成。 |
+| Windows 旧系统排除属性 | 已仅对排除 API 增加 Windows 10 2004 能力门槛；Windows 编译、会话边框单测及双屏 CM 进程验证通过，8 个窗口的排除属性均为 `0x11`；旧系统降级仍待实机验证。 |
 | macOS 原生源码增量构建 | 已补充 `sck_capture.m` 的变更追踪；更新时间戳后 Cargo 重新编译并更新 `.o` / `.a`，macOS 编译检查及会话边框单测通过。 |
 
 **继续评审（2026-10-31，代码截至 `a3479fb33`）。** 相对 `master` 核对新增代码及上述六个修复，发现一项需要补齐的构建问题。
@@ -29,6 +29,24 @@ println!("cargo:rerun-if-changed=src/quartz/sck_capture.m");
 **已知性能限制。** [common/quartz.rs](../libs/scrap/src/common/quartz.rs) 的 `frame()` 仍同步调用过滤更新；[sck_capture.m](../libs/scrap/src/quartz/sck_capture.m) 的内容枚举和过滤更新各有最长 10 秒等待。系统回调迟迟不返回时，视频线程也会停在这里，两步连续变慢时累计可接近 20 秒。临时原生故障注入让内容枚举不回调，实际调用阻塞了 10.005 秒后返回超时。现有修复保证返回错误后继续取帧，每代只尝试一次；它没有消除单次等待。尚未实机复现正常使用中的长停顿，本轮记录为已知限制，未为异常路径增加新的异步状态或重试机制。
 
 本轮 Windows 静态复查未发现新的明确问题；当前环境没有 Windows 编译目标，也未完成 Windows 实机、多屏和全屏验证。macOS 编译检查通过，以上临时原生验证直接编译当前 Objective-C 文件，不依赖 Cargo 缓存。本轮只更新评审文档，不改变运行时路径。
+
+**Windows 进程验证（2026-10-31，运行时代码 `9de9d4782`）。** 已通过 SSH 将 `192.168.10.117` 的 `E:/rustdesk/rustdesk` 切换至 `border-notification-native`，保留原有未跟踪文件并对齐子模块。使用已安装的 Rust 1.93 工具链完成 `cargo test --locked --lib --features flutter ui_cm_interface::tests::screen_frame_tracks_only_active_screen_sessions -- --exact`（1 项通过）及 `cargo build --locked --offline --lib --features flutter`。
+
+该机忽略的 `src/bridge_generated.rs` 仍按旧接口包装返回值；备份后手工对齐了 5 处已经返回 `Result` 的调用，未运行 codegen，也未将这些生成文件纳入提交。进程验证复用该机现有 Flutter Debug runner 和资源，加载本分支新构建的 `librustdesk.dll`，复制前后 SHA-256 一致。该机现有本地依赖覆盖还使 `flutter/pubspec.lock` 的 `desktop_multi_window` 指向 `../../multi-window-pr38`；此环境差异保留，未纳入提交。
+
+在 `sun` 的交互桌面会话中启动同一测试目录的 `--server` 和 `--cm`，核对 CM 命名管道的进程 ID 后发送模拟会话 IPC。实际有两台 1920×1080 显示器，验证结果如下：
+
+| 场景 | 边框窗口数 |
+| --- | --- |
+| 未授权桌面、仅已授权文件传输 | 均为 0 |
+| 一个或两个已授权桌面会话 | 均为 8 |
+| 关闭一个桌面会话，另一个仍在 | 8 |
+| 关闭最后一个桌面会话 | 0 |
+| 重新连接桌面会话，再断开 | 8 → 0 |
+
+8 个窗口均可见，位置覆盖两台显示器的四条边，厚度为 6 像素；透明度为 191，具有置顶、不激活、分层及鼠标穿透样式，`WM_NCHITTEST` 返回 `HTTRANSPARENT`，`WM_MOUSEACTIVATE` 返回 `MA_NOACTIVATE`，采集排除属性均为 `WDA_EXCLUDEFROMCAPTURE (0x11)`。
+
+测试目录与安装目录不同，现有主 IPC 路径校验会拒绝混用两者，因此验证时短暂停止原服务，结束后已恢复安装版 `RustDesk` 服务及 `--server`；测试进程和临时计划任务已清理，没有卸载或替换安装版文件。报告保存在 Windows 的 `target/screen-frame-review/process-result.json`，测试用程序保存在同目录的 `app/`。本次覆盖真实 CM 进程及窗口行为，未建立真实远控视频会话，尚未验证 DXGI/GDI 的最终远端画面、旧 Windows、全屏切换或显示器热插拔。
 
 以下保留实施前的评审与方案记录，当前完成状态以上表为准。
 
