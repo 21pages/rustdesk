@@ -126,29 +126,11 @@ static NSArray<SCWindow *> *ScrapSckFindWindows(
     return windows;
 }
 
-static NSArray<SCRunningApplication *> *ScrapSckFindOwnApplications(
-    SCShareableContent *content) {
-    NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
-    NSString *processName = NSProcessInfo.processInfo.processName;
-    NSMutableArray<SCRunningApplication *> *applications = [NSMutableArray array];
-    for (SCRunningApplication *application in content.applications) {
-        BOOL sameBundle = bundleID.length > 0 &&
-            [application.bundleIdentifier isEqualToString:bundleID];
-        BOOL sameName = processName.length > 0 &&
-            [application.applicationName isEqualToString:processName];
-        if (sameBundle || sameName) {
-            [applications addObject:application];
-        }
-    }
-    return applications;
-}
-
 static SCContentFilter *ScrapSckBuildFilter(
     SCShareableContent *content,
     CGDirectDisplayID displayID,
     const uint32_t *windowIDs,
     size_t windowCount,
-    BOOL initial,
     NSError **outputError) {
     SCDisplay *display = ScrapSckFindDisplay(content, displayID);
     if (display == nil) {
@@ -167,20 +149,7 @@ static SCContentFilter *ScrapSckBuildFilter(
     }
 
     NSArray<SCWindow *> *windows = ScrapSckFindWindows(content, windowIDs, windowCount);
-    if (windowCount > 0 && windows.count == windowCount) {
-        return [[filterClass alloc] initWithDisplay:display excludingWindows:windows];
-    }
-
-    if (initial || windowCount > 0) {
-        NSArray<SCRunningApplication *> *applications =
-            ScrapSckFindOwnApplications(content);
-        return [[filterClass alloc]
-            initWithDisplay:display
-            excludingApplications:applications
-                 exceptingWindows:@[]];
-    }
-
-    return [[filterClass alloc] initWithDisplay:display excludingWindows:@[]];
+    return [[filterClass alloc] initWithDisplay:display excludingWindows:windows];
 }
 
 @interface ScrapSckCapture : NSObject
@@ -225,7 +194,7 @@ static SCContentFilter *ScrapSckBuildFilter(
         return NO;
     }
     SCContentFilter *filter = ScrapSckBuildFilter(
-        content, displayID, windowIDs, windowCount, YES, &error);
+        content, displayID, windowIDs, windowCount, &error);
     if (filter == nil) {
         if (outputError != NULL) {
             *outputError = error;
@@ -307,7 +276,7 @@ static SCContentFilter *ScrapSckBuildFilter(
         return NO;
     }
     SCContentFilter *filter = ScrapSckBuildFilter(
-        content, self.displayID, windowIDs, windowCount, NO, &error);
+        content, self.displayID, windowIDs, windowCount, &error);
     if (filter == nil) {
         if (outputError != NULL) {
             *outputError = error;
