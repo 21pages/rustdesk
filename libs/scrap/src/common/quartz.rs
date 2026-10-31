@@ -118,7 +118,13 @@ impl crate::TraitCapturer for Capturer {
             }
             let (window_ids, generation) = quartz::excluded_window_ids();
             if generation != self.excluded_window_ids_generation {
-                capturer.update_excluded_window_ids(&window_ids)?;
+                if let Err(err) = capturer.update_excluded_window_ids(&window_ids) {
+                    hbb_common::throttled_log!(
+                        std::time::Duration::from_secs(5),
+                        warn,
+                        "Failed to exclude screen frame windows from capture: {err}"
+                    );
+                }
                 self.excluded_window_ids_generation = generation;
             }
         }
