@@ -11,6 +11,24 @@
 | 窗口 ID 与版本号快照 | 已保持同一锁直到取得两者；原逻辑并发验证出现错配，修复后 499999 次并发更新中读取 560254 次快照均一致；macOS 会话边框单测通过。 |
 | Windows 旧系统排除属性 | 已仅对排除 API 增加 Windows 10 2004 能力门槛，继续正常画框；Rust 语法解析通过，当前没有 Windows 编译目标，Windows 编译和实机验证待完成。 |
 
+**继续评审（2026-10-31，代码截至 `a3479fb33`）。** 相对 `master` 核对新增代码及上述六个修复，发现一项需要补齐的构建问题。
+
+**[P2] 原生源码修改不会触发增量重编译。** [libs/scrap/build.rs](../libs/scrap/build.rs) 第 236–242 行使用 `cc` 编译 `src/quartz/sck_capture.m`，但没有输出对应的 `cargo:rerun-if-changed`。当前构建指纹只包含环境变量追踪，`cc` 不会替调用者注册这个源文件。因此修改 Objective-C 实现后，增量构建仍可能链接旧的原生库，使修复没有进入本地产物；干净构建不受影响。
+
+已在当前工作区复现：先完成 `cargo check --locked --offline --lib --features flutter -vv`，再仅更新时间戳并重复检查，Cargo 输出 `Fresh scrap`，所有 `sck_capture.o` / `libscrap_sck_capture.a` 的修改时间保持不变。验证后已恢复源文件时间戳，未修改源码内容。本轮检查成功不能作为最新 Objective-C 源码已经参与 Cargo 构建的证据。
+
+建议在 macOS 编译分支增加一行：
+
+```rust
+println!("cargo:rerun-if-changed=src/quartz/sck_capture.m");
+```
+
+修复后重复上述增量验证，应当重新执行原生编译；随后重新运行相关测试。变更追踪规则参见 [Cargo Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#change-detection)。这项尚未实施，适合独立提交。
+
+**已知性能限制。** [common/quartz.rs](../libs/scrap/src/common/quartz.rs) 的 `frame()` 仍同步调用过滤更新；[sck_capture.m](../libs/scrap/src/quartz/sck_capture.m) 的内容枚举和过滤更新各有最长 10 秒等待。系统回调迟迟不返回时，视频线程也会停在这里，两步连续变慢时累计可接近 20 秒。临时原生故障注入让内容枚举不回调，实际调用阻塞了 10.005 秒后返回超时。现有修复保证返回错误后继续取帧，每代只尝试一次；它没有消除单次等待。尚未实机复现正常使用中的长停顿，本轮记录为已知限制，未为异常路径增加新的异步状态或重试机制。
+
+本轮 Windows 静态复查未发现新的明确问题；当前环境没有 Windows 编译目标，也未完成 Windows 实机、多屏和全屏验证。macOS 编译检查通过，以上临时原生验证直接编译当前 Objective-C 文件，不依赖 Cargo 缓存。本轮只更新评审文档，不改变运行时路径。
+
 以下保留实施前的评审与方案记录，当前完成状态以上表为准。
 
 `Cargo.lock` 中 `scrap` 对 `cc` 的构建依赖记录已在上一轮补齐，与 `libs/scrap/Cargo.toml` 保持一致，没有升级依赖版本。本轮只更新评审文档。
