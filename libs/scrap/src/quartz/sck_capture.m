@@ -338,6 +338,11 @@ static SCContentFilter *ScrapSckBuildFilter(
 }
 
 - (void)stopSynchronously {
+    @synchronized(self) {
+        self.frameCallback = NULL;
+        self.errorCallback = NULL;
+        self.callbackContext = NULL;
+    }
     if (self.stream == nil) {
         return;
     }
@@ -370,14 +375,18 @@ static SCContentFilter *ScrapSckBuildFilter(
         return;
     }
     IOSurfaceRef surface = CVPixelBufferGetIOSurface(pixelBuffer);
-    if (surface != NULL && self.frameCallback != NULL) {
-        self.frameCallback(self.callbackContext, surface);
+    @synchronized(self) {
+        if (surface != NULL && self.frameCallback != NULL) {
+            self.frameCallback(self.callbackContext, surface);
+        }
     }
 }
 
 - (void)stream:(__unused SCStream *)stream didStopWithError:(NSError *)error {
-    if (self.errorCallback != NULL) {
-        self.errorCallback(self.callbackContext, error.localizedDescription.UTF8String);
+    @synchronized(self) {
+        if (self.errorCallback != NULL) {
+            self.errorCallback(self.callbackContext, error.localizedDescription.UTF8String);
+        }
     }
 }
 
@@ -417,6 +426,7 @@ void *scrap_sck_create(uint32_t displayID,
                        excludedWindowIDs:windowIDs
                              windowCount:windowCount
                                    error:&error]) {
+            [capture stopSynchronously];
             ScrapSckSetError(outputError, error, @"Failed to start screen capture");
             return NULL;
         }
@@ -451,8 +461,6 @@ void scrap_sck_destroy(void *handle) {
     }
     @autoreleasepool {
         ScrapSckCapture *capture = (__bridge ScrapSckCapture *)handle;
-        capture.frameCallback = NULL;
-        capture.errorCallback = NULL;
         [capture stopSynchronously];
         CFBridgingRelease(handle);
     }
