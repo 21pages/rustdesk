@@ -527,6 +527,14 @@ class _GeneralState extends State<_General> {
     final showAutoUpdate = (isWindows && bind.mainIsInstalled()) ||
     (isMacOS && bind.mainIsInstalled() && bind.mainIsInstalledDaemon(prompt: false) && !bind.isCustomClient());
     final children = <Widget>[
+      if (!incomingOnly)
+        _OptionCheckBox(
+          context,
+          'Show “Without password” in connection menus',
+          kOptionShowPasswordFreeConnectionMenus,
+          isServer: false,
+          optGetter: shouldShowPasswordFreeConnectionMenus,
+        ),
       if (!isWeb && !incomingOnly)
         _OptionCheckBox(context, 'Confirm before closing multiple tabs',
             kOptionEnableConfirmClosingTabs,

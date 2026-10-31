@@ -24,6 +24,7 @@ pub const OPTION_REMOTE_MENUBAR_DRAG_RIGHT: &str = "remote-menubar-drag-right";
 pub const OPTION_HIDE_AB_TAGS_PANEL: &str = "hideAbTagsPanel";
 pub const OPTION_ENABLE_CONFIRM_CLOSING_TABS: &str = "enable-confirm-closing-tabs";
 pub const OPTION_ENABLE_OPEN_NEW_CONNECTIONS_IN_TABS: &str = "enable-open-new-connections-in-tabs";
+pub const OPTION_SHOW_PASSWORD_FREE_CONNECTION_MENUS: &str = "show-password-free-connection-menus";
 pub const OPTION_TEXTURE_RENDER: &str = "use-texture-render";
 // Internal health record written by the texture-render watchdog/probe;
 // "failed-*" flips the texture-render default to opt-in on this machine.
@@ -222,6 +223,7 @@ pub const KEYS_LOCAL_SETTINGS: &[&str] = &[
     OPTION_LANGUAGE,
     OPTION_ENABLE_CONFIRM_CLOSING_TABS,
     OPTION_ENABLE_OPEN_NEW_CONNECTIONS_IN_TABS,
+    OPTION_SHOW_PASSWORD_FREE_CONNECTION_MENUS,
     OPTION_TEXTURE_RENDER,
     OPTION_ALLOW_D3D_RENDER,
     OPTION_SYNC_AB_WITH_RECENT_SESSIONS,

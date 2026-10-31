@@ -558,11 +558,12 @@ class _ConnectionPageState extends State<ConnectionPage>
                                   context: context,
                                   position: RelativeRect.fromLTRB(x, y, x, y),
                                   items: [
-                                    (
-                                      'Connect without password',
-                                      () => connect(context, _idController.id,
-                                          loginMethod: 'consent')
-                                    ),
+                                    if (shouldShowPasswordFreeConnectionMenus())
+                                      (
+                                        'Connect without password',
+                                        () => connect(context, _idController.id,
+                                            loginMethod: 'consent')
+                                      ),
                                     (
                                       'Transfer file',
                                       () => onConnect(isFileTransfer: true)

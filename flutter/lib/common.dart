@@ -1669,6 +1669,9 @@ bool mainGetLocalBoolOptionSync(String key) {
   return option2bool(key, bind.mainGetLocalOption(key: key));
 }
 
+bool shouldShowPasswordFreeConnectionMenus() =>
+    bind.mainGetLocalOption(key: kOptionShowPasswordFreeConnectionMenus) == 'Y';
+
 bool mainGetPeerBoolOptionSync(String id, String key) {
   return option2bool(key, bind.mainGetPeerOptionSync(id: id, key: key));
 }

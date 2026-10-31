@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Without password", "不使用密码"),
         ("Connect without password", "免密连接"),
         ("Skip saved passwords and ask the remote user to accept the connection.", "不使用已保存的密码，请求对方接受连接。"),
+        ("Show “Without password” in connection menus", "在连接菜单中显示“不使用密码”"),
     ].iter().cloned().collect();
 }

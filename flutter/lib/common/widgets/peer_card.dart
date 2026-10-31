@@ -611,6 +611,9 @@ abstract class BasePeerCard extends StatelessWidget {
       padding: menuPadding,
       dismissOnClicked: true,
     );
+    if (!shouldShowPasswordFreeConnectionMenus()) {
+      return defaultEntry ?? action(title, '');
+    }
     return LoginMethodMenu(
       defaultEntry: defaultEntry ?? action(title, ''),
       methods: [

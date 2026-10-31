@@ -897,6 +897,19 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                       });
                     },
             ),
+          if (!incomingOnly && !disabledSettings)
+            SettingsTile.switchTile(
+              title:
+                  Text(translate('Show “Without password” in connection menus')),
+              initialValue: shouldShowPasswordFreeConnectionMenus(),
+              onToggle: isOptionFixed(kOptionShowPasswordFreeConnectionMenus)
+                  ? null
+                  : (v) async {
+                      await mainSetLocalBoolOption(
+                          kOptionShowPasswordFreeConnectionMenus, v);
+                      if (mounted) setState(() {});
+                    },
+            ),
           SettingsTile(
               title: Text(translate('Language')),
               leading: Icon(Icons.translate),
