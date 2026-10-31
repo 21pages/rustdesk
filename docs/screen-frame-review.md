@@ -10,6 +10,7 @@
 | 过滤更新失败处理 | 已改为受控日志后继续取帧，每代仅尝试一次；隔离故障注入验证帧可继续返回、停止错误仍传播，修复前失败、修复后通过；macOS 编译检查通过。 |
 | 窗口 ID 与版本号快照 | 已保持同一锁直到取得两者；原逻辑并发验证出现错配，修复后 499999 次并发更新中读取 560254 次快照均一致；macOS 会话边框单测通过。 |
 | Windows 旧系统排除属性 | 已仅对排除 API 增加 Windows 10 2004 能力门槛，继续正常画框；Rust 语法解析通过，当前没有 Windows 编译目标，Windows 编译和实机验证待完成。 |
+| macOS 原生源码增量构建 | 已补充 `sck_capture.m` 的变更追踪；更新时间戳后 Cargo 重新编译并更新 `.o` / `.a`，macOS 编译检查及会话边框单测通过。 |
 
 **继续评审（2026-10-31，代码截至 `a3479fb33`）。** 相对 `master` 核对新增代码及上述六个修复，发现一项需要补齐的构建问题。
 
@@ -23,7 +24,7 @@
 println!("cargo:rerun-if-changed=src/quartz/sck_capture.m");
 ```
 
-修复后重复上述增量验证，应当重新执行原生编译；随后重新运行相关测试。变更追踪规则参见 [Cargo Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#change-detection)。这项尚未实施，适合独立提交。
+此项已按上述一行改动修复。重复增量验证后，Cargo 明确报告 `sck_capture.m` 变化，并重新生成原生 `.o` / `.a`；`cargo check --locked --offline --lib --features flutter` 及会话边框单测通过。影响范围仅为 macOS 构建脚本的重跑条件，不改变运行时行为。变更追踪规则参见 [Cargo Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#change-detection)。
 
 **已知性能限制。** [common/quartz.rs](../libs/scrap/src/common/quartz.rs) 的 `frame()` 仍同步调用过滤更新；[sck_capture.m](../libs/scrap/src/quartz/sck_capture.m) 的内容枚举和过滤更新各有最长 10 秒等待。系统回调迟迟不返回时，视频线程也会停在这里，两步连续变慢时累计可接近 20 秒。临时原生故障注入让内容枚举不回调，实际调用阻塞了 10.005 秒后返回超时。现有修复保证返回错误后继续取帧，每代只尝试一次；它没有消除单次等待。尚未实机复现正常使用中的长停顿，本轮记录为已知限制，未为异常路径增加新的异步状态或重试机制。
 
