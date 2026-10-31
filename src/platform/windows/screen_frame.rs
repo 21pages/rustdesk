@@ -256,7 +256,9 @@ unsafe fn create_window(instance: HINSTANCE, rect: RECT) -> Option<HWND> {
         destroy_window(window);
         return None;
     }
-    if SetWindowDisplayAffinity(window, WDA_EXCLUDEFROMCAPTURE) == FALSE {
+    if base::platform::windows::is_windows_version_or_greater(10, 0, 19041, 0, 0)
+        && SetWindowDisplayAffinity(window, WDA_EXCLUDEFROMCAPTURE) == FALSE
+    {
         log::debug!(
             "Failed to exclude a screen frame window from capture: {}",
             GetLastError()
