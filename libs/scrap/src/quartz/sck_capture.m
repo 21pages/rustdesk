@@ -10,7 +10,7 @@
 #include <string.h>
 
 typedef void (*ScrapSckFrameCallback)(void *context, void *surface);
-typedef void (*ScrapSckErrorCallback)(void *context, const char *message);
+typedef void (*ScrapSckErrorCallback)(void *context, const char *message, bool fatal);
 
 typedef struct {
     int32_t code;
@@ -156,6 +156,7 @@ static SCContentFilter *ScrapSckBuildFilter(
 
 @property(nonatomic, strong) SCStream *stream;
 @property(nonatomic, strong) dispatch_queue_t queue;
+@property(nonatomic, strong) dispatch_queue_t filterQueue;
 @property(nonatomic, assign) CGDirectDisplayID displayID;
 @property(nonatomic, assign) ScrapSckFrameCallback frameCallback;
 @property(nonatomic, assign) ScrapSckErrorCallback errorCallback;
@@ -261,12 +262,20 @@ static SCContentFilter *ScrapSckBuildFilter(
         [self stopSynchronously];
         return NO;
     }
+    // Filter waits must not block frame delivery.
+    self.filterQueue = dispatch_queue_create("com.rustdesk.scrap.screencapturekit.filter",
+                                             DISPATCH_QUEUE_SERIAL);
     return YES;
 }
 
 - (BOOL)updateExcludedWindowIDs:(const uint32_t *)windowIDs
                     windowCount:(size_t)windowCount
                           error:(NSError **)outputError {
+    @synchronized(self) {
+        if (self.stream == nil) {
+            return YES;
+        }
+    }
     NSError *error = nil;
     SCShareableContent *content = ScrapSckGetShareableContent(&error);
     if (content == nil) {
@@ -286,10 +295,15 @@ static SCContentFilter *ScrapSckBuildFilter(
 
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     __block NSError *updateError = nil;
-    [self.stream updateContentFilter:filter completionHandler:^(NSError *valueError) {
-        updateError = valueError;
-        dispatch_semaphore_signal(semaphore);
-    }];
+    @synchronized(self) {
+        if (self.stream == nil) {
+            return YES;
+        }
+        [self.stream updateContentFilter:filter completionHandler:^(NSError *valueError) {
+            updateError = valueError;
+            dispatch_semaphore_signal(semaphore);
+        }];
+    }
     if (!ScrapSckWait(semaphore)) {
         if (outputError != NULL) {
             *outputError = ScrapSckErrorWithMessage(
@@ -307,27 +321,31 @@ static SCContentFilter *ScrapSckBuildFilter(
 }
 
 - (void)stopSynchronously {
+    SCStream *stream;
     @synchronized(self) {
         self.frameCallback = NULL;
         self.errorCallback = NULL;
         self.callbackContext = NULL;
+        // Pending filter work may outlive the Rust context.
+        stream = self.stream;
+        self.stream = nil;
+        self.filterQueue = nil;
     }
-    if (self.stream == nil) {
+    if (stream == nil) {
         return;
     }
     if (self.started) {
         dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-        [self.stream stopCaptureWithCompletionHandler:^(__unused NSError *error) {
+        [stream stopCaptureWithCompletionHandler:^(__unused NSError *error) {
             dispatch_semaphore_signal(semaphore);
         }];
         ScrapSckWait(semaphore);
         self.started = NO;
     }
     NSError *removeError = nil;
-    [self.stream removeStreamOutput:(id)self
+    [stream removeStreamOutput:(id)self
                                type:SCStreamOutputTypeScreen
                               error:&removeError];
-    self.stream = nil;
     self.queue = nil;
 }
 
@@ -354,7 +372,7 @@ static SCContentFilter *ScrapSckBuildFilter(
 - (void)stream:(__unused SCStream *)stream didStopWithError:(NSError *)error {
     @synchronized(self) {
         if (self.errorCallback != NULL) {
-            self.errorCallback(self.callbackContext, error.localizedDescription.UTF8String);
+            self.errorCallback(self.callbackContext, error.localizedDescription.UTF8String, true);
         }
     }
 }
@@ -413,12 +431,29 @@ bool scrap_sck_update_excluded_windows(void *handle,
     }
     @autoreleasepool {
         ScrapSckCapture *capture = (__bridge ScrapSckCapture *)handle;
-        NSError *error = nil;
-        if (![capture updateExcludedWindowIDs:windowIDs
-                                  windowCount:windowCount
-                                        error:&error]) {
-            ScrapSckSetError(outputError, error, @"Failed to update screen capture filter");
-            return false;
+        // The caller's slice expires before the background work runs.
+        NSData *windows = [NSData dataWithBytes:windowIDs length:windowCount * sizeof(uint32_t)];
+        @synchronized(capture) {
+            if (capture.filterQueue == nil) {
+                ScrapSckSetError(outputError, nil, @"Screen capture is unavailable");
+                return false;
+            }
+            dispatch_async(capture.filterQueue, ^{
+                @autoreleasepool {
+                    NSError *error = nil;
+                    if (![capture updateExcludedWindowIDs:windows.bytes
+                                              windowCount:windowCount
+                                                    error:&error]) {
+                        @synchronized(capture) {
+                            if (capture.errorCallback != NULL) {
+                                NSString *message = error.localizedDescription
+                                    ?: @"Failed to update screen capture filter";
+                                capture.errorCallback(capture.callbackContext, message.UTF8String, false);
+                            }
+                        }
+                    }
+                }
+            });
         }
         return true;
     }

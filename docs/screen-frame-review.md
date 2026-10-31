@@ -11,6 +11,7 @@
 | 窗口 ID 与版本号快照 | 已保持同一锁直到取得两者；原逻辑并发验证出现错配，修复后 499999 次并发更新中读取 560254 次快照均一致；macOS 会话边框单测通过。 |
 | Windows 旧系统排除属性 | 已仅对排除 API 增加 Windows 10 2004 能力门槛；Windows 编译、会话边框单测及双屏 CM 进程验证通过，8 个窗口的排除属性均为 `0x11`；旧系统降级仍待实机验证。 |
 | macOS 原生源码增量构建 | 已补充 `sck_capture.m` 的变更追踪；更新时间戳后 Cargo 重新编译并更新 `.o` / `.a`，macOS 编译检查及会话边框单测通过。 |
+| macOS 后台更新排除名单 | 已改为独立串行队列；故障注入确认等待及超时期间帧仍可交付，调用方立即返回，销毁期间的延迟工作通过 AddressSanitizer 验证。 |
 
 **继续评审（2026-10-31，代码截至 `a3479fb33`）。** 相对 `master` 核对新增代码及上述六个修复，发现一项需要补齐的构建问题。
 
@@ -26,7 +27,13 @@ println!("cargo:rerun-if-changed=src/quartz/sck_capture.m");
 
 此项已按上述一行改动修复。重复增量验证后，Cargo 明确报告 `sck_capture.m` 变化，并重新生成原生 `.o` / `.a`；`cargo check --locked --offline --lib --features flutter` 及会话边框单测通过。影响范围仅为 macOS 构建脚本的重跑条件，不改变运行时行为。变更追踪规则参见 [Cargo Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#change-detection)。
 
-**已知性能限制。** [common/quartz.rs](../libs/scrap/src/common/quartz.rs) 的 `frame()` 仍同步调用过滤更新；[sck_capture.m](../libs/scrap/src/quartz/sck_capture.m) 的内容枚举和过滤更新各有最长 10 秒等待。系统回调迟迟不返回时，视频线程也会停在这里，两步连续变慢时累计可接近 20 秒。临时原生故障注入让内容枚举不回调，实际调用阻塞了 10.005 秒后返回超时。现有修复保证返回错误后继续取帧，每代只尝试一次；它没有消除单次等待。尚未实机复现正常使用中的长停顿，本轮记录为已知限制，未为异常路径增加新的异步状态或重试机制。
+**排除名单更新造成的等待已修复。** 原先 [common/quartz.rs](../libs/scrap/src/common/quartz.rs) 的 `frame()` 同步调用过滤更新，内容枚举和过滤更新各可能等待 10 秒。现在 [sck_capture.m](../libs/scrap/src/quartz/sck_capture.m) 复制窗口 ID 并投递到独立串行队列后立即返回，等待只发生在后台，不占用取帧线程或帧回调队列。更新期间继续采集，允许主控看到尚未排除的边框；失败保留现有过滤器，每代仍只尝试一次。
+
+后台更新失败通过 [sck.rs](../libs/scrap/src/quartz/sck.rs) 的非致命错误分支输出受控日志；只有真实的流停止错误才设置 `stream_error()`。销毁时先在现有同步保护下断开回调、清空活动流，再停止流；已排队工作持有原生对象及自己的 ID 副本，不能再访问已释放的 Rust context，也不会在停止后提交新的过滤器。代码注释说明了不能阻塞出帧、异步参数所有权和回调生命周期的原因。
+
+临时原生回归程序直接编译当前 Objective-C 源码并注入系统回调延迟：修复前调用方阻塞 10.006 秒，修复后约 15 微秒返回；内容枚举等待、过滤更新等待及 10 秒超时之后均能继续交付帧，调用方复用 ID 缓冲区不影响后台请求。分别在枚举和过滤更新未完成时销毁，AddressSanitizer 检查通过，延迟完成不访问释放后的 context。另用包含实际 `sck.rs` 的隔离验证确认非致命错误后 `stream_error()` 仍为空，真实流错误仍可读取。macOS `cargo check --locked --offline --lib --features flutter` 和会话边框单测通过。
+
+本项生产代码仅修改 `sck_capture.m` 的更新调度及相关销毁同步、`sck.rs` 的错误回调分类。初始建流仍走原来的同步初始化，未改变 CGDisplayStream 回退、Windows 路径、会话判断或 IPC。尚未进行真实 macOS 远控会话的显示器热插拔长稳测试。
 
 本轮 Windows 静态复查未发现新的明确问题；当前环境没有 Windows 编译目标，也未完成 Windows 实机、多屏和全屏验证。macOS 编译检查通过，以上临时原生验证直接编译当前 Objective-C 文件，不依赖 Cargo 缓存。本轮只更新评审文档，不改变运行时路径。
 

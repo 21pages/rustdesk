@@ -24,7 +24,7 @@ impl Default for SckError {
 }
 
 type FrameCallback = unsafe extern "C" fn(*mut c_void, *mut c_void);
-type ErrorCallback = unsafe extern "C" fn(*mut c_void, *const c_char);
+type ErrorCallback = unsafe extern "C" fn(*mut c_void, *const c_char, bool);
 
 extern "C" {
     fn scrap_sck_is_available() -> bool;
@@ -194,16 +194,25 @@ unsafe extern "C" fn frame_callback(context: *mut c_void, surface: *mut c_void) 
     (state.handler)(Frame::new(surface));
 }
 
-unsafe extern "C" fn error_callback(context: *mut c_void, message: *const c_char) {
+unsafe extern "C" fn error_callback(context: *mut c_void, message: *const c_char, fatal: bool) {
     if context.is_null() || message.is_null() {
         return;
     }
-    let state = &*(context as *const CallbackState);
-    *state
-        .error
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-        Some(CStr::from_ptr(message).to_string_lossy().into_owned());
+    let message = CStr::from_ptr(message).to_string_lossy().into_owned();
+    if fatal {
+        let state = &*(context as *const CallbackState);
+        *state
+            .error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message);
+    } else {
+        // Exclusion failures must not terminate a healthy capture stream.
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            warn,
+            "Failed to exclude screen frame windows from capture: {message}"
+        );
+    }
 }
 
 #[cfg(test)]
