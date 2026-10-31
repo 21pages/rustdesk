@@ -1669,8 +1669,8 @@ bool mainGetLocalBoolOptionSync(String key) {
   return option2bool(key, bind.mainGetLocalOption(key: key));
 }
 
-bool shouldShowPasswordFreeConnectionMenus() =>
-    bind.mainGetLocalOption(key: kOptionShowPasswordFreeConnectionMenus) == 'Y';
+bool shouldShowRequestApprovalMenus() =>
+    bind.mainGetLocalOption(key: kOptionShowRequestApprovalMenus) == 'Y';
 
 bool mainGetPeerBoolOptionSync(String id, String key) {
   return option2bool(key, bind.mainGetPeerOptionSync(id: id, key: key));
@@ -2333,8 +2333,8 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
         password = args[i + 1];
         i++;
         break;
-      case '--without-password':
-        loginMethod = 'consent';
+      case '--request-approval':
+        loginMethod = 'request-approval';
         break;
       case '--switch_uuid':
         switchUuid = args[i + 1];
@@ -2347,7 +2347,7 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
         break;
     }
   }
-  if (loginMethod == 'consent') {
+  if (loginMethod == 'request-approval') {
     password = null;
   }
   if (type != null && id != null) {
@@ -2489,8 +2489,8 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
 
   var queryParameters =
       uri.queryParameters.map((k, v) => MapEntry(k.toLowerCase(), v));
-  final withoutPassword = queryParameters['without-password'] == 'true';
-  if (withoutPassword) {
+  final requestApproval = queryParameters['request-approval'] == 'true';
+  if (requestApproval) {
     queryParameters.remove('password');
   }
 
@@ -2504,7 +2504,7 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
   if (isMobile && id != null) {
     final forceRelay = queryParameters["relay"] != null;
     final password = queryParameters["password"];
-    final loginMethod = withoutPassword ? 'consent' : '';
+    final loginMethod = requestApproval ? 'request-approval' : '';
 
     // Determine connection type based on command
     if (command == '--file-transfer') {
@@ -2539,7 +2539,7 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
     var param = queryParameters;
     String? password = param["password"];
     if (password != null) args.addAll(['--password', password]);
-    if (withoutPassword) args.add('--without-password');
+    if (requestApproval) args.add('--request-approval');
     String? switch_uuid = param["switch_uuid"];
     if (switch_uuid != null) args.addAll(['--switch_uuid', switch_uuid]);
     if (param["relay"] != null) args.add("--relay");

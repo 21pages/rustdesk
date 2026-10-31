@@ -22,11 +22,11 @@ Future<void> openMenu(WidgetTester tester, List<String> actions) async {
             items: [
               LoginMethodMenu(
                 defaultEntry: entry('Connect'),
-                methods: [entry('Without password')],
+                methods: [entry('Request approval')],
               ),
               LoginMethodMenu(
                 defaultEntry: entry('View camera'),
-                methods: [entry('Without password')],
+                methods: [entry('Request approval')],
               ),
               LoginMethodMenu(
                 defaultEntry: MenuEntryButton<String>(
@@ -43,7 +43,7 @@ Future<void> openMenu(WidgetTester tester, List<String> actions) async {
                   ]),
                   proc: () => actions.add('RDP'),
                 ),
-                methods: [entry('Without password')],
+                methods: [entry('Request approval')],
               ),
               entry('Rename'),
             ]
@@ -73,25 +73,25 @@ void main() {
       await tester.tap(find.text(title));
       await tester.pumpAndSettle();
       expect(actions, [title]);
-      expect(find.text('Without password'), findsNothing);
+      expect(find.text('Request approval'), findsNothing);
       expect(find.text('Rename'), findsNothing);
     }
   });
 
   testWidgets(
-      'arrow offers connection without password and dismisses both menus',
+      'arrow offers approval request and dismisses both menus',
       (tester) async {
     final actions = <String>[];
     await openMenu(tester, actions);
     await tester.tap(find.byIcon(Icons.keyboard_arrow_right).first);
     await tester.pumpAndSettle();
     expect(actions, isEmpty);
-    expect(find.text('Without password'), findsOneWidget);
+    expect(find.text('Request approval'), findsOneWidget);
     expect(find.text('Enter password manually'), findsNothing);
-    await tester.tap(find.text('Without password'));
+    await tester.tap(find.text('Request approval'));
     await tester.pumpAndSettle();
-    expect(actions, ['Without password']);
-    expect(find.text('Without password'), findsNothing);
+    expect(actions, ['Request approval']);
+    expect(find.text('Request approval'), findsNothing);
     expect(find.text('Rename'), findsNothing);
   },
       variant: TargetPlatformVariant({
@@ -134,10 +134,10 @@ void main() {
       await tester.tapAt(corner.withinRect(target.deflate(2)));
       await tester.pumpAndSettle();
       expect(actions, isEmpty);
-      expect(find.text('Without password'), findsOneWidget);
-      await tester.tap(find.text('Without password'));
+      expect(find.text('Request approval'), findsOneWidget);
+      await tester.tap(find.text('Request approval'));
       await tester.pumpAndSettle();
-      expect(actions, ['Without password']);
+      expect(actions, ['Request approval']);
       expect(find.text('Rename'), findsNothing);
     }
   },

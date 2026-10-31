@@ -823,9 +823,9 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Please select Android → media.", "Seleziona Android → media."),
         ("Trust duration (days)", "Durata attendibilità (giorni)"),
         ("Renew trust", "Rinnova attendibilità"),
-        ("Without password", ""),
-        ("Connect without password", ""),
+        ("Request approval", ""),
+        ("Connect (Request approval)", ""),
         ("Skip saved passwords and ask the remote user to accept the connection.", ""),
-        ("Show “Without password” in connection menus", ""),
+        ("Show request approval menus", ""),
     ].iter().cloned().collect();
 }

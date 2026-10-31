@@ -585,7 +585,7 @@ abstract class BasePeerCard extends StatelessWidget {
     MenuEntryButton<String>? defaultEntry,
   }) {
     action(String text, String loginMethod) => MenuEntryButton<String>(
-      childBuilder: (TextStyle? style) => loginMethod == 'consent'
+      childBuilder: (TextStyle? style) => loginMethod == 'request-approval'
           ? Tooltip(
               message: translate(
                   'Skip saved passwords and ask the remote user to accept the connection.'),
@@ -611,13 +611,13 @@ abstract class BasePeerCard extends StatelessWidget {
       padding: menuPadding,
       dismissOnClicked: true,
     );
-    if (!shouldShowPasswordFreeConnectionMenus()) {
+    if (!shouldShowRequestApprovalMenus()) {
       return defaultEntry ?? action(title, '');
     }
     return LoginMethodMenu(
       defaultEntry: defaultEntry ?? action(title, ''),
       methods: [
-        action(translate('Without password'), 'consent'),
+        action(translate('Request approval'), 'request-approval'),
       ],
     );
   }

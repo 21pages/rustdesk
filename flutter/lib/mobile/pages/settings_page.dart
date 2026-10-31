@@ -900,13 +900,13 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
           if (!incomingOnly && !disabledSettings)
             SettingsTile.switchTile(
               title:
-                  Text(translate('Show “Without password” in connection menus')),
-              initialValue: shouldShowPasswordFreeConnectionMenus(),
-              onToggle: isOptionFixed(kOptionShowPasswordFreeConnectionMenus)
+                  Text(translate('Show request approval menus')),
+              initialValue: shouldShowRequestApprovalMenus(),
+              onToggle: isOptionFixed(kOptionShowRequestApprovalMenus)
                   ? null
                   : (v) async {
                       await mainSetLocalBoolOption(
-                          kOptionShowPasswordFreeConnectionMenus, v);
+                          kOptionShowRequestApprovalMenus, v);
                       if (mounted) setState(() {});
                     },
             ),
