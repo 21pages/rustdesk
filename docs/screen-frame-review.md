@@ -35,6 +35,8 @@ println!("cargo:rerun-if-changed=src/quartz/sck_capture.m");
 
 本项生产代码仅修改 `sck_capture.m` 的更新调度及相关销毁同步、`sck.rs` 的错误回调分类。初始建流仍走原来的同步初始化，未改变 CGDisplayStream 回退、Windows 路径、会话判断或 IPC。尚未进行真实 macOS 远控会话的显示器热插拔长稳测试。
 
+**后台更新复查（代码 `609143911`）。** 核对了参数所有权、回调 ABI、流访问同步和销毁顺序，未发现新的必须修复问题。临时原生验证补充连续提交多个名单、空名单清除，以及销毁时另有 8 个请求排队的场景；已覆盖场景的 AddressSanitizer 和 ThreadSanitizer 检查均通过，后台等待及超时期间帧仍能交付，停止后排队请求不再提交过滤器。以上仍是受控故障注入，真实 macOS 远控及显示器热插拔验证的缺口保留。本次仅追加评审记录。
+
 本轮 Windows 静态复查未发现新的明确问题；当前环境没有 Windows 编译目标，也未完成 Windows 实机、多屏和全屏验证。macOS 编译检查通过，以上临时原生验证直接编译当前 Objective-C 文件，不依赖 Cargo 缓存。本轮只更新评审文档，不改变运行时路径。
 
 **Windows 进程验证（2026-10-31，运行时代码 `9de9d4782`）。** 已通过 SSH 将 `192.168.10.117` 的 `E:/rustdesk/rustdesk` 切换至 `border-notification-native`，保留原有未跟踪文件并对齐子模块。使用已安装的 Rust 1.93 工具链完成 `cargo test --locked --lib --features flutter ui_cm_interface::tests::screen_frame_tracks_only_active_screen_sessions -- --exact`（1 项通过）及 `cargo build --locked --offline --lib --features flutter`。
