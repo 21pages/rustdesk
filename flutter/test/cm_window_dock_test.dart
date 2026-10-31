@@ -54,6 +54,7 @@ void main() {
         minimizable = call.arguments['isMinimizable'] as bool;
         return null;
       }
+      if (call.method == 'setTitleBarStyle') return null;
       throw UnsupportedError(call.method);
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
@@ -64,18 +65,58 @@ void main() {
     }
   });
 
-  testWidgets('compact CM shows the app icon and expands without tooltips',
+  test(
+      'expanding the dock and opening chat keep the same right edge and tab height',
+      () async {
+    const channel = MethodChannel('window_manager');
+    var bounds = const Rect.fromLTWH(1884, 856, 36, 80);
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'getBounds') {
+        return {
+          'x': bounds.left,
+          'y': bounds.top,
+          'width': bounds.width,
+          'height': bounds.height
+        };
+      }
+      if (call.method == 'setBounds') {
+        final args = call.arguments;
+        bounds =
+            Rect.fromLTWH(args['x'], args['y'], args['width'], args['height']);
+        return null;
+      }
+      if (call.method == 'setTitleBarStyle') return null;
+      throw UnsupportedError(call.method);
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    final dock = CmWindowDock()..value = true;
+    addTearDown(dock.dispose);
+    await dock.resizeExpanded(kConnectionManagerWindowSizeClosedChat);
+    expect(await windowManager.getBounds(),
+        const Rect.fromLTWH(1584, 510, 336, 490));
+    dock.value = false;
+    await dock.resizeExpanded(kConnectionManagerWindowSizeOpenChat);
+    expect(await windowManager.getBounds(),
+        const Rect.fromLTWH(1184, 510, 736, 490));
+  });
+
+  testWidgets(
+      'the app tab opens CM and the side arrow folds it without tooltips',
       (tester) async {
-    var expanded = false;
+    var docked = true;
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: SizedBox(
-            width: CmWindowDock.size.width - 2,
-            height: CmWindowDock.size.height - 2,
-            child: CmDockIndicator(onExpand: () => expanded = true),
-          ),
-        ),
+      home: StatefulBuilder(
+        builder: (context, setState) => Align(
+            alignment: Alignment.bottomRight,
+            child: SizedBox.fromSize(
+              size: docked ? CmWindowDock.size : const Size(336, 490),
+              child: CmDockLayout(
+                docked: docked,
+                contentSize: kConnectionManagerWindowSizeClosedChat,
+                onToggle: () => setState(() => docked = !docked),
+                child: const Material(child: TextField()),
+              ),
+            )),
       ),
     ));
 
@@ -83,7 +124,22 @@ void main() {
     expect(find.image(const AssetImage('assets/icon.png')), findsOneWidget);
     expect(find.byType(Tooltip), findsNothing);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.byIcon(Icons.chevron_left));
-    expect(expanded, isTrue);
+    expect(find.byType(TextField), findsNothing);
+    await tester.tapAt(
+        tester.getTopLeft(find.byType(CmDockTab)) + const Offset(18, 58));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(tester.getTopLeft(find.byType(TextField)).dx,
+        tester.getTopLeft(find.byType(CmDockTab)).dx + 36);
+    await tester.enterText(find.byType(TextField), 'Connection details');
+    await tester.tap(find.byIcon(Icons.chevron_right));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.byType(CmDockTab));
+    await tester.pumpAndSettle();
+    expect(find.text('Connection details'), findsOneWidget);
+    expect(find.byType(Tooltip), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

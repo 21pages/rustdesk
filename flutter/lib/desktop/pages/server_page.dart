@@ -96,8 +96,17 @@ class _DesktopServerPageState extends State<DesktopServerPage>
         builder: (context, serverModel, child) {
           final body = Scaffold(
             backgroundColor: Theme.of(context).colorScheme.background,
-            body: CmWindowDockView(child: ConnectionManager()),
+            body: ConnectionManager(),
           );
+          if (cmWindowDock.enabled || cmWindowDock.value) {
+            return CmWindowDockView(
+              child: Container(
+                decoration: BoxDecoration(
+                    border: Border.all(color: MyTheme.color(context).border!)),
+                child: body,
+              ),
+            );
+          }
           return isLinux
               ? buildVirtualWindowFrame(context, body)
               : workaroundWindowBorder(
@@ -207,11 +216,12 @@ class ConnectionManagerState extends State<ConnectionManager>
               controller: serverModel.tabController,
               selectedBorderColor: MyTheme.accent,
               maxLabelWidth: 100,
-              tail: cmWindowDock.enabled
+              tail: cmWindowDock.enabled && isMacOS
                   ? ActionIcon(
-                      message: 'Dock connection manager to the right',
-                      icon: Icons.keyboard_tab,
-                      onTap: cmWindowDock.dock,
+                      message: 'Close',
+                      icon: IconFont.close,
+                      isClose: true,
+                      onTap: handleWindowCloseButton,
                     )
                   : null,
               tabBuilder: (key, icon, label, themeConf) {

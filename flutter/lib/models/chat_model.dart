@@ -319,8 +319,12 @@ class ChatModel with ChangeNotifier {
       _isShowCMSidePage = !_isShowCMSidePage;
       notifyListeners();
       await windowManager.show();
-      await windowManager.setSizeAlignment(
-          kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
+      if (cmWindowDock.enabled) {
+        await cmWindowDock.resizeExpanded(kConnectionManagerWindowSizeClosedChat);
+      } else {
+        await windowManager.setSizeAlignment(
+            kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
+      }
     } else {
       final currentSelectedTab =
           gFFI.serverModel.tabController.state.value.selectedTabInfo;
@@ -331,8 +335,12 @@ class ChatModel with ChangeNotifier {
       }
       requestChatInputFocus();
       await windowManager.show();
-      await windowManager.setSizeAlignment(
-          kConnectionManagerWindowSizeOpenChat, Alignment.topRight);
+      if (cmWindowDock.enabled) {
+        await cmWindowDock.resizeExpanded(kConnectionManagerWindowSizeOpenChat);
+      } else {
+        await windowManager.setSizeAlignment(
+            kConnectionManagerWindowSizeOpenChat, Alignment.topRight);
+      }
       _isShowCMSidePage = !_isShowCMSidePage;
       notifyListeners();
     }

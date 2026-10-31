@@ -317,16 +317,26 @@ showCmWindow({bool isStartup = false}) async {
       windowManager.setOpacity(1)
     ]);
     // ensure initial window size to be changed
-    await windowManager.setSizeAlignment(
-        kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
+    if (cmWindowDock.enabled) {
+      await cmWindowDock.resizeExpanded(
+          kConnectionManagerWindowSizeClosedChat, align: true);
+    } else {
+      await windowManager.setSizeAlignment(
+          kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
+    }
     _isCmReadyToShow = true;
   } else if (_isCmReadyToShow) {
     if (await windowManager.getOpacity() != 1) {
       await windowManager.setOpacity(1);
       await windowManager.focus();
       await windowManager.minimize(); //needed
-      await windowManager.setSizeAlignment(
-          kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
+      if (cmWindowDock.enabled) {
+        await cmWindowDock.resizeExpanded(
+            kConnectionManagerWindowSizeClosedChat, align: true);
+      } else {
+        await windowManager.setSizeAlignment(
+            kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
+      }
       windowOnTop(null);
     }
   }
