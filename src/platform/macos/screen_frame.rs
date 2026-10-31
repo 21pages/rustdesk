@@ -43,7 +43,6 @@ extern "C" {
 }
 
 pub(crate) fn set_visible(visible: bool) {
-    let visible = visible && scrap::uses_screen_capture_kit();
     if visible {
         register_display_callback();
     }
