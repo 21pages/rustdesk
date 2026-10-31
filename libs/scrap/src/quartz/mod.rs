@@ -40,8 +40,7 @@ pub fn set_excluded_window_ids(mut window_ids: Vec<u32>) {
 pub(crate) fn excluded_window_ids() -> (Vec<u32>, u64) {
     let window_ids = EXCLUDED_WINDOW_IDS
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone();
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let generation = EXCLUDED_WINDOW_IDS_GENERATION.load(Ordering::Acquire);
-    (window_ids, generation)
+    (window_ids.clone(), generation)
 }
