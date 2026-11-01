@@ -69,6 +69,18 @@ fn rdp_display_name(lc: &Arc<RwLock<LoginConfigHandler>>, id: &str) -> String {
     }
 }
 
+fn claim_tunnel(tunnel: &Tunnel, lc: &LoginConfigHandler) -> Claim {
+    // Each request-approval connection must log in instead of sharing authorization.
+    if lc.skips_saved_password() {
+        return Claim::Legacy;
+    }
+    if lc.port_forward_mux {
+        tunnel.claim()
+    } else {
+        Claim::Legacy
+    }
+}
+
 pub async fn listen(
     id: String,
     password: String,
@@ -100,7 +112,7 @@ pub async fn listen(
                 // tunnel, or probes for one on its first accept. Everything
                 // else, the setting off or a peer without the feature, is the
                 // raw pipe below, as it always was.
-                let claim = if lc.read().unwrap().port_forward_mux { tunnel.claim() } else { Claim::Legacy };
+                let claim = claim_tunnel(&tunnel, &lc.read().unwrap());
                 match claim {
                     Claim::Muxed(handle) => {
                         if let Err(e) = handle.open(&remote_host, remote_port, forward, Vec::new()) {
@@ -701,6 +713,29 @@ mod login_tests {
         h2.update(&salted[..]);
         h2.update(challenge);
         h2.finalize()[..].to_vec()
+    }
+
+    #[tokio::test]
+    async fn request_approval_tunnels_require_a_new_login() {
+        for conn_type in [ConnType::RDP, ConnType::PORT_FORWARD] {
+            let ui = window();
+            {
+                let mut lc = ui.lc.write().unwrap();
+                lc.conn_type = conn_type;
+                lc.port_forward_mux = true;
+            }
+            let tunnel = Tunnel::new();
+            let (stream, _peer) = loopback().await;
+            tunnel.set_muxed(stream, ui.clone());
+            assert!(matches!(claim_tunnel(&tunnel, &ui.lc.read().unwrap()), Claim::Muxed(_)));
+            assert!(ui.lc.write().unwrap().set_login_method("request-approval"));
+            assert!(matches!(claim_tunnel(&tunnel, &ui.lc.read().unwrap()), Claim::Legacy));
+            let (mut stream, mut peer) = loopback().await;
+            assert!(login_with_hash(&ui, "pw", hash("new-connection"), "localhost", 3389, false, &mut Default::default(), &mut stream).await);
+            let login = login_at(&mut peer).await;
+            assert!(login.password.is_empty());
+            assert!(!login.port_forward().multiplex);
+        }
     }
 
     #[test]
