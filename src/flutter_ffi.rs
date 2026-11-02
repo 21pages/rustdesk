@@ -2743,12 +2743,9 @@ pub fn session_request_new_display_init_msgs(session_id: SessionID, display: usi
 pub fn main_audio_support_loopback() -> SyncReturn<bool> {
     #[cfg(target_os = "windows")]
     let is_surpport = true;
-    #[cfg(all(target_os = "macos", feature = "screencapturekit"))]
+    #[cfg(feature = "screencapturekit")]
     let is_surpport = crate::audio_service::is_screen_capture_kit_available();
-    #[cfg(not(any(
-        target_os = "windows",
-        all(target_os = "macos", feature = "screencapturekit")
-    )))]
+    #[cfg(not(any(target_os = "windows", feature = "screencapturekit")))]
     let is_surpport = false;
     SyncReturn(is_surpport)
 }

@@ -181,9 +181,8 @@ mod pa_impl {
     }
 }
 
-// Cargo defaults also enable this feature on non-macOS targets, where this host does not exist.
 #[inline]
-#[cfg(all(target_os = "macos", feature = "screencapturekit"))]
+#[cfg(feature = "screencapturekit")]
 pub fn is_screen_capture_kit_available() -> bool {
     cpal::available_hosts()
         .iter()
@@ -213,7 +212,7 @@ mod cpal_impl {
 
     const AUDIO_PACKETS_PER_SECOND: usize = 100;
 
-    #[cfg(all(target_os = "macos", feature = "screencapturekit"))]
+    #[cfg(feature = "screencapturekit")]
     lazy_static::lazy_static! {
         static ref HOST_SCREEN_CAPTURE_KIT: Result<Host, cpal::HostUnavailable> = cpal::host_from_id(cpal::HostId::ScreenCaptureKit);
     }
@@ -376,7 +375,7 @@ mod cpal_impl {
         Ok((frames, samples))
     }
 
-    #[cfg(all(target_os = "macos", feature = "screencapturekit"))]
+    #[cfg(feature = "screencapturekit")]
     fn get_device() -> ResultType<(Device, SupportedStreamConfig)> {
         let audio_input = super::get_audio_input();
         if !audio_input.is_empty() {
@@ -427,7 +426,7 @@ mod cpal_impl {
         Ok((device, format))
     }
 
-    #[cfg(not(any(windows, all(target_os = "macos", feature = "screencapturekit"))))]
+    #[cfg(not(any(windows, feature = "screencapturekit")))]
     fn get_device() -> ResultType<(Device, SupportedStreamConfig)> {
         let audio_input = super::get_audio_input();
         get_audio_input(&audio_input)
@@ -435,7 +434,7 @@ mod cpal_impl {
 
     fn get_audio_input(audio_input: &str) -> ResultType<(Device, SupportedStreamConfig)> {
         let mut device = None;
-        #[cfg(all(target_os = "macos", feature = "screencapturekit"))]
+        #[cfg(feature = "screencapturekit")]
         if !audio_input.is_empty() && is_screen_capture_kit_available() {
             for d in HOST_SCREEN_CAPTURE_KIT
                 .as_ref()?

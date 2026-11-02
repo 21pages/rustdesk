@@ -1077,7 +1077,8 @@ jobs:
 
       - name: Build rustdesk
         run: |
-          if [[ ",$(./build.py --flutter ${{ matrix.job.extra-build-args }} --print-features)," == *",screencapturekit,"* ]]; then
+          FEATURES=$(./build.py --flutter ${{ matrix.job.extra-build-args }} --print-features)
+          if [[ ",$FEATURES," == *",screencapturekit,"* ]]; then
             MIN_MACOS_VERSION="12.3"
             sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
             sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
@@ -1085,6 +1086,14 @@ jobs:
             echo "MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}" >> "$GITHUB_ENV"
           fi
           ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
+          # Video-only builds must load on systems without ScreenCaptureKit.
+          if [[ ",$FEATURES," != *",screencapturekit,"* ]]; then
+            LIBRARY_DEPENDENCIES=$(otool -L target/release/liblibrustdesk.dylib)
+            if [[ "$LIBRARY_DEPENDENCIES" == *"/ScreenCaptureKit.framework/"* ]]; then
+              echo "::error::Video capture must not require ScreenCaptureKit at load time"
+              exit 1
+            fi
+          fi
 
       - name: Test verified updates
         if: env.PUBLISH_UPDATE_METADATA == 'true'

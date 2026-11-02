@@ -168,16 +168,21 @@ def make_parser():
         type=str
     )
     if osx:
-        capture = parser.add_mutually_exclusive_group()
-        capture.add_argument(
+        parser.add_argument(
             '--screencapturekit',
             action='store_true',
+            help='Enable ScreenCaptureKit system audio (requires macOS 12.3+)'
+        )
+        capture = parser.add_mutually_exclusive_group()
+        capture.add_argument(
+            '--screencapturekit-video',
+            action='store_true',
             default=True,
-            help='Enable ScreenCaptureKit audio and video capture (default)'
+            help='Enable ScreenCaptureKit video with legacy fallback (default)'
         )
         capture.add_argument(
-            '--no-screencapturekit',
-            dest='screencapturekit',
+            '--no-screencapturekit-video',
+            dest='screencapturekit_video',
             action='store_false',
             help='Use legacy capture. With --print-features, also pass --no-default-features to Cargo.'
         )
@@ -357,6 +362,8 @@ def get_features(args):
     if osx:
         if args.screencapturekit:
             features.append('screencapturekit')
+        if args.screencapturekit_video:
+            features.append('screencapturekit-video')
         else:
             # Disabling Cargo defaults must retain the existing audio resampler.
             features.append('use_dasp')
@@ -943,12 +950,12 @@ def build_deb_from_folder(version, binary_folder, want_drm=False):
 
 
 def build_flutter_dmg(version, features):
-    sck_enabled = 'screencapturekit' in features.split(',')
+    sck_audio_enabled = 'screencapturekit' in features.split(',')
     if not skip_cargo:
         # Omitting a feature no longer disables it once Cargo enables it by default.
-        cargo_defaults = '' if sck_enabled else '--no-default-features'
+        cargo_defaults = '' if 'screencapturekit-video' in features.split(',') else '--no-default-features'
         # SCK audio links the framework directly; video fallback cannot lower this minimum.
-        deployment_target = '12.3' if sck_enabled else '10.14'
+        deployment_target = '12.3' if sck_audio_enabled else '10.14'
         system2(
             f'MACOSX_DEPLOYMENT_TARGET={deployment_target} cargo build --locked {cargo_defaults} --features {features} --release')
     # copy dylib
@@ -959,7 +966,7 @@ def build_flutter_dmg(version, features):
     # so the universal-by-default ARCHS_STANDARD doesn't try to link a missing slice.
     # FLUTTER_XCODE_* env vars are forwarded to xcodebuild as build settings.
     mac_arch = 'arm64' if platform.machine().lower() in ('arm64', 'aarch64') else 'x86_64'
-    macos_deployment = 'FLUTTER_XCODE_MACOSX_DEPLOYMENT_TARGET=12.3 ' if sck_enabled else ''
+    macos_deployment = 'FLUTTER_XCODE_MACOSX_DEPLOYMENT_TARGET=12.3 ' if sck_audio_enabled else ''
     system2(
         f'{macos_deployment}FLUTTER_XCODE_ARCHS={mac_arch} FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES flutter build macos --release')
     system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/')
@@ -1122,7 +1129,7 @@ def main():
                 #     'mv target/release/bundle/deb/rustdesk*.deb ./flutter/rustdesk.deb')
                 build_flutter_deb(version, features)
         else:
-            cargo_defaults = ' --no-default-features' if osx and not args.screencapturekit else ''
+            cargo_defaults = ' --no-default-features' if osx and not args.screencapturekit_video else ''
             system2('cargo --locked bundle --release' + cargo_defaults + ' --features ' + features)
             if osx:
                 if args.screencapturekit:

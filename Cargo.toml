@@ -26,7 +26,7 @@ use_samplerate = ["samplerate", "libsamplerate-sys"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge"]
-default = ["use_dasp", "screencapturekit"]
+default = ["use_dasp", "screencapturekit-video"]
 hwcodec = ["scrap/hwcodec"]
 vram = ["scrap/vram"]
 mediacodec = ["scrap/mediacodec"]
@@ -45,7 +45,9 @@ unix-file-copy-paste = [
     "dep:once_cell",
     "clipboard/unix-file-copy-paste",
 ]
-screencapturekit = ["cpal/screencapturekit", "scrap/screencapturekit"]
+# Keep audio opt-in: its framework dependency prevents launch on older macOS.
+screencapturekit = ["cpal/screencapturekit"]
+screencapturekit-video = ["scrap/screencapturekit"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
