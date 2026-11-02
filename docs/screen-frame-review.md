@@ -13,6 +13,39 @@
 | macOS 原生源码增量构建 | 已补充 `sck_capture.m` 的变更追踪；更新时间戳后 Cargo 重新编译并更新 `.o` / `.a`，macOS 编译检查及会话边框单测通过。 |
 | macOS 后台更新排除名单 | 已改为独立串行队列；故障注入确认等待及超时期间帧仍可交付，调用方立即返回，销毁期间的延迟工作通过 AddressSanitizer 验证。 |
 
+**完整复评（2026-11-02，代码截至 `11e680979`）。** 当前分支没有关联 PR，因此以本地 `master`（`eab27cc24`）到 HEAD 的完整 diff 核对归属，覆盖全部 15 个变更文件及授权、断开、原生窗口、采集后端、过滤更新和销毁的调用链。以下均来自本分支新增或修改的代码；没有把原有问题或已接受的回退行为列为缺陷。本轮发现 1 个运行时问题，以及 3 项低优先级的诊断、最小化和 CI 问题，尚未修改实现。
+
+1. **[P2] macOS / Windows：旧会话状态可能覆盖新状态，导致正在远控却没有本地边框。** [src/ui_cm_interface.rs](../src/ui_cm_interface.rs) 第 417–423 行先在 `CLIENTS` 读锁内计算 `visible`，释放锁后才提交给平台。Flutter 授权入口和 CM IPC 清理运行在不同线程，允许以下交错：A 断开，IPC 线程算出 `false` 后暂停；用户授权等待中的 B，授权线程计算并提交 `true`；旧 IPC 调用恢复并提交 `false`。此时 B 仍然是有效桌面会话，两端平台却都保存了隐藏请求。没有后续会话状态变化时，这个结果可持续存在；反向交错也可能留下多余边框。
+
+   已用隔离程序直接提取当前 `update_screen_frame()` 和会话判断函数，在平台提交入口控制线程调度，得到 `active desktop session: true; final requested frame visibility: false`。这证明状态提交存在竞态，不等于已在真实远控 UI 中复现。原有单测只检查会话筛选条件，无法发现这个时序。
+
+   建议串行执行“读取当前会话状态并提交显示”，不新增版本号或重试状态：macOS 可以在现有主队列中重新读取状态并应用；Windows 可以让现有读锁覆盖只写原子状态和通知窗口线程的平台调用。macOS 不能简单把 `CLIENTS` 读锁持有到 `exec_sync` 返回，因为主线程更新窗口后还会读取 `CLIENTS` 广播 ID，等待中的写线程可能使它们相互等待。保留 CM 判断，无需迁移到服务端。
+
+2. **[P3] macOS：停止采集失败和超时被静默丢弃。** [libs/scrap/src/quartz/sck_capture.m](../libs/scrap/src/quartz/sck_capture.m) 第 337–348 行忽略停止回调的 `NSError`、`ScrapSckWait()` 的返回值，以及移除输出的返回值和 `removeError`。因此停止操作即使等待 10 秒超时，也没有对应诊断；这也遗漏了前文修复方案中“停止超时及移除输出失败必须记录”的要求。
+
+   当前销毁代码已先在同步保护下注销 Rust 回调和 context，本项不能据此推断存在崩溃或已释放内存访问。建议只补充受控的停止、超时和移除输出错误记录，保持现有销毁顺序；不要为了记录错误重新调用已经注销的 Rust context。
+
+3. **[P3] macOS：旧 CGDisplayStream 路径包含与功能无关的行为修改。** [libs/scrap/src/common/quartz.rs](../libs/scrap/src/common/quartz.rs) 第 70–73、88–90 行将旧回调的 `if let Ok(mut f) = f.lock()` 改为恢复 poisoned mutex 后继续写帧。SCK 不可用的旧系统也会走这个修改后的路径。正常情况下行为相同，未观察到实际故障，但改变锁中毒策略并不是接入新采集器所需，违反保留旧路径、最小化回归面的要求。
+
+   建议仅恢复两个 CGDisplayStream 分支原有的锁处理方式，不抽取新的共享回调，不借此重构采集接口。
+
+4. **[P3] 新增 SCK 冒烟测试没有接入 macOS CI。** [libs/scrap/src/quartz/sck.rs](../libs/scrap/src/quartz/sck.rs) 第 218–231 行的测试属于 `scrap` 的 macOS 模块；当前 [flutter-build.yml](../.github/workflows/flutter-build.yml) 的 macOS 作业只运行根包 `cargo test --lib` 及 `-p clipboard`。根包依赖 `scrap` 不会执行其单测，Linux 的 workspace 测试也不会编译 quartz 模块，因此此测试没有持续验证入口。
+
+   本机显式执行 `cargo test --locked --offline -p scrap quartz::sck::tests::screen_capture_kit_availability_can_be_queried -- --exact`，1 项通过。若保留该测试，建议在现有 macOS 测试步骤增加对应的 `-p scrap` 命令，并沿用构建特性；无需另建测试框架。该测试只覆盖能力查询及 FFI 链接，不能代替真实采集或并发回归验证。
+
+**本轮验证与限制。** macOS 会话边框单测 1 项通过；上述 `scrap` 测试 1 项通过；当前 Objective-C 文件的 `clang -fobjc-arc -fblocks -Werror -Wno-unguarded-availability-new -fsyntax-only` 通过；`git diff --check` 通过。并发探针位于本机忽略目录 `target/screen-frame-full-review/`，未向生产代码加入测试钩子。本轮未重跑 Windows 编译或双向真实远控，也未重跑前轮的 AddressSanitizer / ThreadSanitizer 故障注入；下文既有实机记录仍是此前验证结果，未测 TODO 仍未勾选。
+
+**回归面最小化检查。** 本轮只更新本文档，无运行时行为变化。对整个分支中被修改的既有文件及路径逐项核对如下：
+
+| 既有文件 | 改变的路径及必要性 |
+| --- | --- |
+| `src/ui_cm_interface.rs` | macOS / Windows 会话增加、授权、移除及 CM 退出时驱动边框；macOS 手动授权先更新边框、再发送授权消息。复用 CM 状态是当前设计所需，但状态提交竞态见第 1 项。 |
+| `src/ipc.rs`、`src/server/connection.rs` | 仅 macOS 增加边框窗口 ID 消息及采集排除列表更新；跨进程精确排除所需。没有增加采集能力握手。 |
+| `src/platform/macos.rs`、`src/platform/windows.rs` | 接入各自新增的原生边框模块，属于必要的平台入口。 |
+| `libs/scrap/src/common/quartz.rs` | macOS 新采集器选择、初始化失败回退、取帧时提交异步过滤更新；为排除原生窗口所需。两个旧后端回调的锁中毒处理不必要，见第 3 项。Windows 原有采集路径未改。 |
+| `libs/scrap/src/quartz/mod.rs` | 接入 SCK 模块并保存窗口 ID 与一致版本快照；只供 macOS 采集使用。 |
+| `libs/scrap/build.rs`、`libs/scrap/Cargo.toml`、`Cargo.lock` | 编译及链接 macOS 原生桥接、追踪源文件变更和记录 `cc` 构建依赖；属于构建所需，锁文件已同步。 |
+
 **双向真实远控验证（2026-10-31，分支 `4e73ed3be`，最新运行时代码 `609143911`）。** macOS 14.5（Apple Silicon，一块 3840×2160、2 倍缩放屏幕）与 Windows build 26200.9711（两块 1920×1080 屏幕）通过局域网 TCP 直连，分别作为主控和被控，使用真实连接请求和 CM 手动授权。两端均重新执行 `cargo build --locked --offline --lib --features flutter`，没有发送模拟会话 IPC。
 
 测试复用现有 Flutter Debug 外壳与资源，替换当前分支的 Rust 核心库。macOS 外壳原有绝对链接指向另一工作目录的旧库，已在临时测试包中改为包内路径并重新签名；修正前的反向连接不计入结果。最终以运行进程的库映射和 Mach-O UUID 核对 macOS 产物，以进程模块路径和 SHA-256 核对 Windows 产物，确认客户端、服务端和 CM 加载当前核心库。
