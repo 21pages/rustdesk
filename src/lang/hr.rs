@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Odabrana mapa nije prazna. Instalacija može izbrisati postojeće podatke. Razmislite o odabiru druge mape."),
         ("Request approval", "Zatraži odobrenje"),
         ("Forever", "Zauvijek"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

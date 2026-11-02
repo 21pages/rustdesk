@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Folderul selectat nu este gol. Instalarea poate șterge datele existente. Ia în considerare alegerea altui folder."),
         ("Request approval", "Solicită aprobarea"),
         ("Forever", "Pentru totdeauna"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Вибрана тека не порожня. Встановлення може видалити наявні дані. Радимо вибрати іншу теку."),
         ("Request approval", "Запросити схвалення"),
         ("Forever", "Назавжди"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

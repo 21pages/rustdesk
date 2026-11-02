@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "โฟลเดอร์ที่เลือกไม่ว่างเปล่า การติดตั้งอาจลบข้อมูลที่มีอยู่ ควรพิจารณาเลือกโฟลเดอร์อื่น"),
         ("Request approval", "ขออนุมัติ"),
         ("Forever", "ตลอดไป"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

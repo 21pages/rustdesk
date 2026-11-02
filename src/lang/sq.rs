@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Dosja e zgjedhur nuk është bosh. Instalimi mund të fshijë të dhënat ekzistuese. Konsideroni të zgjidhni një dosje tjetër."),
         ("Request approval", "Kërko miratim"),
         ("Forever", "Përgjithmonë"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

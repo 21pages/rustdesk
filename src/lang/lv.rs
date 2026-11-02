@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Izvēlētā mape nav tukša. Instalēšana var izdzēst esošos datus. Apsveriet iespēju izvēlēties citu mapi."),
         ("Request approval", "Pieprasīt apstiprinājumu"),
         ("Forever", "Uz visiem laikiem"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

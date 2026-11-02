@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Pasirinktas aplankas nėra tuščias. Diegimas gali ištrinti esamus duomenis. Apsvarstykite galimybę pasirinkti kitą aplanką."),
         ("Request approval", "Prašyti patvirtinimo"),
         ("Forever", "Visam laikui"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

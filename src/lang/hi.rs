@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "चयनित फ़ोल्डर खाली नहीं है। इंस्टॉलेशन से मौजूदा डेटा हट सकता है। कोई दूसरा फ़ोल्डर चुनने पर विचार करें।"),
         ("Request approval", "स्वीकृति का अनुरोध करें"),
         ("Forever", "हमेशा के लिए"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

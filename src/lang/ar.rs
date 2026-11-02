@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "المجلد المحدد ليس فارغًا. قد يؤدي التثبيت إلى حذف البيانات الموجودة. يُنصح باختيار مجلد آخر."),
         ("Request approval", "طلب الموافقة"),
         ("Forever", "إلى الأبد"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

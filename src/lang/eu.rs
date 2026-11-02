@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Hautatutako karpeta ez dago hutsik. Instalazioak lehendik dauden datuak ezaba ditzake. Beste karpeta bat aukeratzea gomendatzen da."),
         ("Request approval", "Eskatu onespena"),
         ("Forever", "Betiko"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

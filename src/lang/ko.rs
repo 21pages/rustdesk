@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "선택한 폴더가 비어 있지 않습니다. 설치 시 기존 데이터가 삭제될 수 있습니다. 다른 폴더를 선택하는 것이 좋습니다."),
         ("Request approval", "승인 요청"),
         ("Forever", "영구"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

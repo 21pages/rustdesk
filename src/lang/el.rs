@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Ο επιλεγμένος φάκελος δεν είναι κενός. Η εγκατάσταση ενδέχεται να διαγράψει υπάρχοντα δεδομένα. Εξετάστε το ενδεχόμενο να επιλέξετε διαφορετικό φάκελο."),
         ("Request approval", "Αίτημα έγκρισης"),
         ("Forever", "Για πάντα"),
+        ("Screen frame color", ""),
+        ("Width", ""),
+        ("Opacity", ""),
+        ("Enable screen frame", ""),
+        ("Viewed", ""),
+        ("Unviewed", ""),
+        ("Privacy", ""),
+        ("Viewed display frame color", ""),
+        ("Unviewed display frame color", ""),
     ].iter().cloned().collect();
 }

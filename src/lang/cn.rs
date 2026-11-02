@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "所选文件夹不为空。安装可能删除现有数据。建议选择其他文件夹。"),
         ("Request approval", "请求批准"),
         ("Forever", "永久"),
+        ("Screen frame color", "边框颜色"),
+        ("Width", "宽度"),
+        ("Opacity", "不透明度"),
+        ("Enable screen frame", "启用屏幕边框"),
+        ("Viewed", "被查看"),
+        ("Unviewed", "未被查看"),
+        ("Privacy", "隐私"),
+        ("Viewed display frame color", "被查看显示器的边框颜色"),
+        ("Unviewed display frame color", "未被查看显示器的边框颜色"),
     ].iter().cloned().collect();
 }
