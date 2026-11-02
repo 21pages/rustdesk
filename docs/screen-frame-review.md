@@ -13,18 +13,31 @@
 | macOS 原生源码增量构建 | 已补充 `sck_capture.m` 的变更追踪；更新时间戳后 Cargo 重新编译并更新 `.o` / `.a`，macOS 编译检查及会话边框单测通过。 |
 | macOS 后台更新排除名单 | 已改为独立串行队列；故障注入确认等待及超时期间帧仍可交付，调用方立即返回，销毁期间的延迟工作通过 AddressSanitizer 验证。 |
 
-**macOS 视频采集接入编译开关（2026-11-02）。** 按最新要求，现有 `screencapturekit` feature 现在同时传递给 `cpal` 和 `scrap`，控制 SCK 系统音频及视频采集。它是编译选项，不是界面中的运行时设置，也不是边框显示开关。
+**macOS 视频采集编译开关及默认开启（2026-11-02）。** 现有 `screencapturekit` feature 同时传递给 `cpal` 和 `scrap`，控制 SCK 系统音频及视频采集；按最新要求，Cargo 和 macOS `build.py` 均默认开启。它是编译选项，不是界面中的运行时设置，也不是边框显示开关。
 
 | 构建配置 | macOS 视频采集行为 |
 | --- | --- |
 | 不启用 `screencapturekit` | 直接使用旧 CGDisplayStream；不编译 SCK 视频 Rust 模块及 Objective-C 桥接，也不执行 SCK 排除更新。 |
-| 启用 `screencapturekit` | 系统支持时优先使用 SCK；不支持或初始化失败时仍回退 CGDisplayStream。 |
+| 启用 `screencapturekit`（默认） | 优先使用 SCK；采集器不可用或初始化失败时仍回退 CGDisplayStream。完整程序的系统要求见下文。 |
 
-Cargo 默认 feature 只有 `use_dasp`，`build.py --screencapturekit` 也默认关闭。需要区分现有 CI 的显式参数：macOS ARM64 构建传入了 `--screencapturekit`，因此仍启用 SCK；Intel 构建没有传入，改动后使用旧截屏。此次没有改变两种架构已有的构建参数或音频配置。使用旧截屏时，本地边框照常显示，允许主控看到红框。
+Cargo 默认 feature 为 `use_dasp` 和 `screencapturekit`，直接 `cargo build` 即包含 SCK；`python3 build.py --flutter` 也无需额外传入 `--screencapturekit`。现有显式开启参数继续兼容。macOS ARM64 CI 原本显式开启，Intel CI 现在也会随默认值开启；Windows、Linux 的 SCK 音频代码加上 macOS 条件，保持它们原来的音频路径。
 
-验证：`scrap` 在 `--features hwcodec` 和 `--features hwcodec,screencapturekit` 下各有 2 项测试通过，分别覆盖禁用开关时能力查询返回 false，以及启用时的 SCK 冒烟测试。检查对应测试产物，关闭配置没有 `scrap_sck_*` 桥接符号，开启配置包含这些符号。根包 `cargo check --locked --offline --lib --features flutter` 及启用 `flutter,screencapturekit`（部署目标 12.3）的检查均通过；Cargo feature 树确认根包开关传递至 `scrap`。`build.py --print-features` 确认不传参数时没有该 feature，显式传入时包含它。macOS CI 已添加开、关两种配置的 `scrap` 测试，工作流解析通过；未执行 GitHub CI。本次未新增依赖，`Cargo.lock` 无需修改。
+需要旧截屏时显式关闭：
 
-回归面：根目录及 `libs/scrap/Cargo.toml` 只接通 feature；`libs/scrap/build.rs`、`quartz/mod.rs` 只为 SCK 模块和原生构建加条件；`common/quartz.rs` 为关闭配置保留旧构造路径，并将 SCK 分支、状态和取帧更新限制在开启配置内；工作流覆盖两种配置，本文档同步行为及验证。没有改动 CM、窗口或 IPC，也没有重写旧截屏实现。下文真实远控记录对应接入开关前的版本；本轮开、关配置均未重跑真实远控，相关 TODO 继续保留。
+```sh
+python3 build.py --flutter --no-screencapturekit
+cargo build --no-default-features --features use_dasp,flutter
+```
+
+关闭时保留原有 `use_dasp` 音频重采样。若用 `--print-features --no-screencapturekit` 获取列表后自行执行 Cargo，还必须传入 `--no-default-features`；仅从列表省略该 feature 不会覆盖 Cargo 默认值。使用旧截屏时，本地边框照常显示，允许主控看到红框。
+
+**兼容性限制：** 本机实际构建的完整动态库对 `ScreenCaptureKit.framework` 含有 `LC_LOAD_DYLIB` 强链接，来自现有 `cpal` / `cidre` 系统音频依赖。因此默认开启的完整程序需要 macOS 12.3 或更新系统；视频桥接自身的动态加载和 CGDisplayStream 回退不能解决旧系统在程序加载阶段缺少框架的问题。面向低于 12.3 的系统必须使用上述关闭配置。`build.py` 开启时同步设置 Rust / Flutter 的最低版本为 12.3，旧版 Sciter 打包同步更新应用的最低版本标记；关闭时保留原来的版本设置。CI 也按实际 feature 调整最低版本，不再只对 ARM64 设置 12.3。
+
+本轮验证：构建参数回归测试 2 项通过，覆盖默认开启、兼容显式开启、关闭时实际 Cargo 命令包含 `--no-default-features`，以及开、关配置对应的 Rust / Flutter 最低版本参数；已加入 macOS CI。根包 `cargo build --locked --offline` 和 `cargo build --locked --offline --lib --features flutter` 均通过，未显式传入 SCK，默认可执行文件包含 SCK 桥接符号；关闭配置的 `cargo check --locked --offline --lib --no-default-features --features flutter,use_dasp` 通过。Cargo feature 树确认默认传递至 `scrap`，显式关闭后不再传递；Windows、Linux 目标的依赖树均不包含 macOS 专用 `cidre`，这不是两个平台的完整编译验证。工作流 YAML、macOS 构建步骤的 shell 语法及 `git diff --check` 通过；未执行 GitHub CI 或重新打包，Sciter 的 `cargo bundle` 命令未执行。本次没有新增依赖，`Cargo.lock` 无需修改。
+
+此前接通开关时（`a634237b8`）已验证：`scrap` 在 `--features hwcodec` 和 `--features hwcodec,screencapturekit` 下各有 2 项测试通过；关闭配置无 `scrap_sck_*` 桥接符号，开启配置包含这些符号。`scrap` 自身的默认 feature 不变，现有 CI 仍分别测试开、关两种配置。
+
+本轮回归面：`Cargo.toml` 只增加默认 feature；`build.py` 改 macOS 默认值并将显式关闭传递给 Cargo，保留旧重采样配置，开启时同步最低系统版本以匹配现有依赖；`src/server/audio_service.rs` 和 `src/flutter_ffi.rs` 只补 macOS 编译条件，避免默认 feature 在其他平台选中不存在的 SCK 音频实现；工作流让 Intel 的最低版本设置也匹配默认 feature，并运行新增的 `res/test_build_features.py`；本文档同步行为与限制。没有改动 CM、窗口、IPC 或采集器实现。下文真实远控记录对应接入开关前的版本；本轮开、关配置均未重跑真实远控，相关 TODO 继续保留。
 
 **修复后完整复评（2026-11-02，代码截至 `80b79a85e`）。** 当前分支仍无关联 PR，以本地 `master`（`eab27cc24`）为基线复查全部 16 个变更文件及相关调用链，未发现新的、需要修复的明确问题。上一轮四项问题均已处理；本轮没有修改运行时代码。
 
@@ -115,13 +128,13 @@ Windows 最新修复尚未实机验证：上一轮发现的 SSH 主机密钥不�
 **待验证 TODO：真实远控边界场景。** 以下项目均待执行；完成后记录系统版本、代码提交、实际采集后端、操作次数、截图或日志及结果，再勾选。测试中同时观察被控端边框和主控端画面，使用动态时钟与专用输入框验证视频、鼠标和键盘；结束后恢复临时设置及原进程状态。
 
 - [ ] **旧 Windows。** 在客户端仍支持、且低于 build 19041 的系统上建立远控，检查跳过排除 API 后本地仍显示正常红框、远端没有因该属性产生的黑边，视频及输入正常；断开后清理，重连后恢复。允许主控看到红框。需要对应系统的测试机或虚拟机。
-- [ ] **旧 macOS。** 在客户端仍支持、且低于 12.3 的系统上建立远控，确认使用 CGDisplayStream，本地仍显示边框，视频、输入及断开重连正常。允许主控看到红框。需要对应系统的测试机或虚拟机。
+- [ ] **旧 macOS。** 使用显式关闭 `screencapturekit` 的产物，在客户端仍支持、且低于 12.3 的系统上建立远控，确认使用 CGDisplayStream，本地仍显示边框，视频、输入及断开重连正常。允许主控看到红框。核对打包最低系统版本与实际构建配置一致；默认开启产物不适用于此项。需要对应系统的测试机或虚拟机。
 - [ ] **Windows 热插拔。** 保持远控，接入第二块屏幕、拔掉正在观看的屏幕，再插回，重复多轮并记录次数。检查边框按实际屏幕数量及位置重建、旧窗口清理、主控能继续观看和切换屏幕，记录最长停帧时间。物理拔插需要现场操作，软件禁用显示器只能作为补测。
 - [ ] **macOS 热插拔。** 执行同样的接入、拔出、插回操作，额外核对边框窗口 ID 更新和采集排除效果。区分采集器重建造成的中断与排除名单更新造成的等待；不能因后者拖住正常出帧。物理拔插需要现场操作。
 - [ ] **Windows 锁屏及安全桌面。** 使用当前版本的服务模式，测试连接中锁屏再解锁、锁屏时断开后解锁重连，以及触发 UAC 后返回普通桌面。解锁或返回后视频、输入和边框应恢复，断开后无边框残留。安全桌面本身能否显示边框单独记录并与 master 对照；普通用户启动的测试进程不能代替服务模式验证。
 - [ ] **macOS 锁屏。** 测试连接中锁屏再解锁，以及锁屏时断开、解锁后重连。确认解锁后视频、输入和边框正常，断开后无残留；锁屏期间的表现单独记录，并与 master 对照。
 - [ ] **Windows 强制 GDI。** 关闭现有“使用 DirectX 捕获屏幕”选项，重新连接，通过日志确认 `gdi: true`，再验证视频、输入、边框及断开重连。GDI 不必然采集到红框；无法排除时允许出现正常红框，不能因此隐藏本地提示或停止采集。
-- [ ] **macOS：关闭编译开关。** 不传入 `--screencapturekit` / `--features screencapturekit` 构建，核对实际运行产物，建立真实远控并确认旧 CGDisplayStream 能正常传送动态画面、响应输入及断开重连；本地边框仍显示，允许主控看到红框。此项区别于开启 feature 后的运行时回退。
+- [ ] **macOS：关闭编译开关。** 使用 `build.py --flutter --no-screencapturekit` 或 `cargo build --no-default-features --features use_dasp,flutter` 构建，核对实际运行产物，建立真实远控并确认旧 CGDisplayStream 能正常传送动态画面、响应输入及断开重连；本地边框仍显示，允许主控看到红框。此项区别于开启 feature 后的运行时回退。
 - [ ] **macOS：SCK 不可用。** 在启用 `screencapturekit` 的隔离临时构建中模拟 SCK 能力检查返回不可用，确认进入 CGDisplayStream。保留屏幕录制权限，验证本地边框、视频、输入及断开重连；远端允许看到红框。当前没有运行时强制切换配置项，临时注入不纳入生产提交。
 - [ ] **macOS：SCK 初始化失败。** 在启用 `screencapturekit` 的临时构建中保留能力检查成功、让 SCK 初始化返回失败，以回退日志及实际画面确认进入 CGDisplayStream。通过标准同上一项，结束后还原临时注入。
 - [ ] **Windows 排除 API 失败。** 在支持该 API 的系统上，通过临时测试构建注入 `SetWindowDisplayAffinity` 失败，验证本地边框仍完整显示，远端允许看到红框，正常视频和输入不受影响，断开后清理。

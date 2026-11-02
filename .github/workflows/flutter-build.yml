@@ -1077,9 +1077,8 @@ jobs:
 
       - name: Build rustdesk
         run: |
-          if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]; then
+          if [[ ",$(./build.py --flutter ${{ matrix.job.extra-build-args }} --print-features)," == *",screencapturekit,"* ]]; then
             MIN_MACOS_VERSION="12.3"
-            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
             sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
             sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
             sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
@@ -1098,6 +1097,7 @@ jobs:
       - name: Run the Rust tests
         if: ${{ !inputs.upload-artifact && matrix.job.arch == 'aarch64' }}
         run: |
+          python3 -m unittest discover -s res -p test_build_features.py
           # The build's own features, so the tests see the code that ships. MACOSX_DEPLOYMENT_TARGET
           # comes from the build step's export.
           FEATURES=$(./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }} --print-features)
