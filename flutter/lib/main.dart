@@ -308,32 +308,38 @@ showCmWindow({bool isStartup = false}) async {
   if (isMacOS || isWindows) await cmWindowDock.syncMinimizable();
   if (isStartup) {
     WindowOptions windowOptions = getHiddenTitleBarWindowOptions(
-        size: kConnectionManagerWindowSizeClosedChat, alwaysOnTop: true);
+        size: cmWindowDock.enabled
+            ? Size(CmWindowDock.compactSize.width + CmWindowDock.size.width,
+                cmWindowDock.expandedHeight)
+            : kConnectionManagerWindowSizeClosedChat,
+        alwaysOnTop: true);
     await windowManager.waitUntilReadyToShow(windowOptions, null);
     bind.mainHideDock();
+    if (cmWindowDock.enabled) {
+      await cmWindowDock.resizeExpanded(
+          kConnectionManagerWindowSizeClosedChat, align: true);
+    }
     await Future.wait([
       windowManager.show(),
       windowManager.focus(),
       windowManager.setOpacity(1)
     ]);
     // ensure initial window size to be changed
-    if (cmWindowDock.enabled) {
-      await cmWindowDock.resizeExpanded(
-          kConnectionManagerWindowSizeClosedChat, align: true);
-    } else {
+    if (!cmWindowDock.enabled) {
       await windowManager.setSizeAlignment(
           kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
     }
     _isCmReadyToShow = true;
   } else if (_isCmReadyToShow) {
     if (await windowManager.getOpacity() != 1) {
-      await windowManager.setOpacity(1);
-      await windowManager.focus();
-      await windowManager.minimize(); //needed
       if (cmWindowDock.enabled) {
         await cmWindowDock.resizeExpanded(
             kConnectionManagerWindowSizeClosedChat, align: true);
-      } else {
+      }
+      await windowManager.setOpacity(1);
+      await windowManager.focus();
+      await windowManager.minimize(); //needed
+      if (!cmWindowDock.enabled) {
         await windowManager.setSizeAlignment(
             kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
       }

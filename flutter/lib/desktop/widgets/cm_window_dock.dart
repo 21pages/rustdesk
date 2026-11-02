@@ -1,30 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:window_size/window_size.dart' as window_size;
 
 import '../../common.dart';
 import '../../consts.dart';
 import '../../models/platform_model.dart';
+import '../../models/server_model.dart';
 
 final cmWindowDock = CmWindowDock();
 
 class CmWindowDock extends ValueNotifier<bool> {
-  CmWindowDock() : super(false);
+  CmWindowDock()
+      : enabled = !kUseCompatibleUiMode &&
+            bind.mainGetOptionSync(key: kOptionAllowDockCm) == 'Y',
+        super(false);
 
   static const size = Size(36, 80);
   static const bottomInset = 64.0;
   static final compactSize =
-      Size(kConnectionManagerWindowSizeClosedChat.width, 320);
+      Size(kConnectionManagerWindowSizeClosedChat.width, 280);
   Future<void>? _transition;
 
-  bool get enabled =>
-      !kUseCompatibleUiMode &&
-      bind.mainGetOptionSync(key: kOptionAllowDockCm) == 'Y';
+  // Keep the mode fixed for the lifetime of this CM process.
+  final bool enabled;
 
   Size get expandedSize {
     final contentSize = gFFI.chatModel.isShowCMSidePage
         ? kConnectionManagerWindowSizeOpenChat
         : kConnectionManagerWindowSizeClosedChat;
-    return enabled ? Size(contentSize.width, compactSize.height) : contentSize;
+    return enabled ? Size(contentSize.width, expandedHeight) : contentSize;
+  }
+
+  double get expandedHeight {
+    if (!enabled) return compactSize.height;
+    final model = gFFI.serverModel;
+    var extraRows = 0;
+    for (final client in model.clients.where((client) => !client.disconnected)) {
+      final elevate = model.showElevation &&
+          client.type_() == ClientType.remote &&
+          bind.cmCanElevate();
+      var rows = 0;
+      if (client.authorized) {
+        rows = (client.inVoiceCall ? 1 : 0) +
+            (client.incomingVoiceCall ? 1 : 0) +
+            (client.fromSwitch ? 1 : 0) +
+            (elevate ? 1 : 0);
+      } else if (elevate &&
+          model.approveMode != 'password' &&
+          bind.mainGetBuildinOption(
+                  key: kOptionHideElevateButtonInAcceptWindow) !=
+              'Y') {
+        rows = 1;
+      }
+      if (rows > extraRows) extraRows = rows;
+    }
+    // Button rows are 28 high, with a 4-pixel margin above and below.
+    return compactSize.height + extraRows * 36;
+  }
+
+  Future<void> syncExpandedHeight() async {
+    if (!enabled || value) return;
+    final bounds = await windowManager.getBounds();
+    if (value) return;
+    final height = expandedHeight;
+    if (bounds.height == height) return;
+    await windowManager.setBounds(Rect.fromLTWH(
+        bounds.left, bounds.bottom - height, bounds.width, height));
   }
 
   Future<void> syncMinimizable() async {
@@ -39,10 +80,12 @@ class CmWindowDock extends ValueNotifier<bool> {
   }
 
   Future<void> resizeExpanded(Size contentSize, {bool align = false}) async {
-    final windowSize = Size(contentSize.width + size.width, compactSize.height);
+    final windowSize = Size(contentSize.width + size.width, expandedHeight);
     if (isMacOS) {
       await windowManager.setTitleBarStyle(TitleBarStyle.hidden,
           windowButtonVisibility: false);
+    } else if (isWindows) {
+      await windowManager.setAsFrameless();
     }
     if (align) {
       await windowManager.setSizeAlignment(windowSize, Alignment.bottomRight);
@@ -64,7 +107,8 @@ class CmWindowDock extends ValueNotifier<bool> {
     final connected = model.clients.where((client) => !client.disconnected);
     if (model.hideCm ||
         connected.isEmpty ||
-        connected.any((client) => !client.authorized)) return;
+        connected.any((client) =>
+            !client.authorized || client.incomingVoiceCall)) return;
     model.cmHiddenTimer?.cancel();
     model.cmHiddenTimer = null;
     _transition = _dock();
@@ -80,12 +124,19 @@ class CmWindowDock extends ValueNotifier<bool> {
     // Hide the full layout before the native window becomes smaller.
     await WidgetsBinding.instance.endOfFrame;
     final bounds = await windowManager.getBounds();
+    final window = await window_size.getWindowInfo();
+    final screen = window.screen;
+    final right = screen == null
+        ? bounds.right
+        : screen.visibleFrame.right / (isWindows ? window.scaleFactor : 1);
     if (isMacOS) {
       await windowManager.setTitleBarStyle(TitleBarStyle.hidden,
           windowButtonVisibility: false);
+    } else if (isWindows) {
+      await windowManager.setAsFrameless();
     }
     await windowManager.setBounds(Rect.fromLTWH(
-      bounds.right - size.width,
+      right - size.width,
       bounds.bottom - bottomInset - size.height,
       size.width,
       size.height,

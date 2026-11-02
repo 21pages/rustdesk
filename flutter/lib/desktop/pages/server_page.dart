@@ -53,12 +53,18 @@ class _DesktopServerPageState extends State<DesktopServerPage>
   @override
   void initState() {
     windowManager.addListener(this);
+    if (cmWindowDock.enabled) {
+      gFFI.serverModel.addListener(cmWindowDock.syncExpandedHeight);
+    }
     super.initState();
   }
 
   @override
   void dispose() {
     windowManager.removeListener(this);
+    if (cmWindowDock.enabled) {
+      gFFI.serverModel.removeListener(cmWindowDock.syncExpandedHeight);
+    }
     super.dispose();
   }
 
@@ -396,7 +402,8 @@ Widget buildConnectionCard(Client client) {
             alignment: Alignment.bottomCenter,
             child: cmWindowDock.enabled
                 ? SingleChildScrollView(
-                    reverse: true, child: _CmControlPanel(client: client))
+                    reverse: !client.incomingVoiceCall,
+                    child: _CmControlPanel(client: client))
                 : _CmControlPanel(client: client),
           ),
         )
@@ -691,7 +698,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
             'N';
     return Container(
       width: double.infinity,
-      height: compact ? 112 : 160,
+      height: compact ? (client.type_() == ClientType.camera ? 72 : 112) : 160,
       margin: EdgeInsets.all(compact ? 3 : 5),
       padding: EdgeInsets.all(5.0),
       decoration: BoxDecoration(

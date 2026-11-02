@@ -778,7 +778,8 @@ class ServerModel with ChangeNotifier {
             showVoiceCallDialog(client);
           } else {
             // Has incoming phone call, let's set the window on top.
-            Future.delayed(Duration.zero, () {
+            Future.delayed(Duration.zero, () async {
+              if (cmWindowDock.value) await cmWindowDock.expand();
               windowOnTop(null);
             });
           }
