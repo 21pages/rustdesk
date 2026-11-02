@@ -12,4 +12,4 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "border-notification-native-nightly-20261102"
+      upload-tag: "border-notification-native-nightly-20261102-r2"
