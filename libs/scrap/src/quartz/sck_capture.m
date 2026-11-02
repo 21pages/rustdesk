@@ -417,7 +417,10 @@ static SCContentFilter *ScrapSckBuildFilter(
 @end
 
 bool scrap_sck_is_available(void) {
-    if (@available(macOS 12.3, *)) {
+    // @available needs a compiler-rt helper when targeting older Intel macOS,
+    // but Rust links with -nodefaultlibs. This Foundation API works on 10.10+.
+    if ([NSProcessInfo.processInfo
+            isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion){12, 3, 0}]) {
         return ScrapSckLoadClass(@"SCStream") != Nil;
     }
     return false;
