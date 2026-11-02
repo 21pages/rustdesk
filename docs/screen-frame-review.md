@@ -13,6 +13,16 @@
 | macOS 原生源码增量构建 | 已补充 `sck_capture.m` 的变更追踪；更新时间戳后 Cargo 重新编译并更新 `.o` / `.a`，macOS 编译检查及会话边框单测通过。 |
 | macOS 后台更新排除名单 | 已改为独立串行队列；故障注入确认等待及超时期间帧仍可交付，调用方立即返回，销毁期间的延迟工作通过 AddressSanitizer 验证。 |
 
+**Intel nightly 链接修复（2026-11-02）。** [首次 nightly 的 Intel job](https://github.com/21pages/rustdesk/actions/runs/41401602118/job/125136831602) 在最终链接时缺少 `___isPlatformVersionAtLeast`。新增的 `@available(macOS 12.3, *)` 在 Intel / macOS 10.14 目标下需要 compiler-rt 的辅助函数，而 Rust 的 `-nodefaultlibs` 链接没有带入该实现。此前仅编译 Intel 目标文件，没有执行最终链接，未能发现此问题；同次 nightly 的 macOS ARM64 和 Windows 构建均成功。
+
+改为 Foundation 的 `-[NSProcessInfo isOperatingSystemAtLeastVersion:]`，该方法从 macOS 10.10 起可用，保留 12.3 版本门槛、动态加载和类存在检查。代码注释记录了避免编译器辅助符号的原因，不提高最低系统版本，也不增加框架依赖。
+
+- 本机以 `x86_64-apple-macos10.14` 编译完整原生桥接源码并使用 `-nodefaultlibs` 链接：修复前复现相同未定义符号，修复后链接成功；产物最低版本仍为 10.14，没有 SCK 加载依赖。
+- Intel 原生验证程序通过 Rosetta 在本机 macOS 14.5 执行，真实可用性检查返回 true；临时替换 Foundation 版本检查以模拟低于 12.3 的系统后返回 false。这不代替旧系统实机验证。
+- `cargo test --locked --offline -p scrap --lib --features hwcodec,screencapturekit` 在本机 ARM64 运行 2 项测试，全部通过；`cargo build --locked --offline --lib --features flutter` 构建通过。现有 Intel nightly 的完整构建会直接覆盖此次链接回归，无需新增测试框架。
+
+回归面仅为 `libs/scrap/src/quartz/sck_capture.m` 的 SCK 视频可用性版本查询；`docs/screen-frame-review.md` 记录原因与验证。音频、旧采集实现、边框、会话和 IPC 的行为没有改动。新提交的完整 Intel DMG 构建仍待 CI 验证，旧系统实机 TODO 保留。
+
 **单份 macOS 产物兼容新旧系统（2026-11-02）。** 同一份、架构匹配的安装包在运行时选择采集后端，不要求用户按系统版本更换安装包。以下覆盖项目原有支持范围，不代表支持任意更旧系统。
 
 | 运行环境 | 视频与边框 | SCK 系统音频（编译时已启用） |
