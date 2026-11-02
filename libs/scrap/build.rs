@@ -233,7 +233,7 @@ fn main() {
     // there is problem with cfg(target_os) in build.rs, so use our workaround
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
 
-    if target_os == "macos" {
+    if target_os == "macos" && cfg!(feature = "screencapturekit") {
         println!("cargo:rerun-if-changed=src/quartz/sck_capture.m");
         cc::Build::new()
             .file("src/quartz/sck_capture.m")

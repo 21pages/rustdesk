@@ -3,6 +3,7 @@ pub use self::config::Config;
 pub use self::display::Display;
 pub use self::ffi::{CGError, PixelFormat};
 pub use self::frame::Frame;
+#[cfg(feature = "screencapturekit")]
 pub use self::sck::Capturer as SckCapturer;
 
 mod capturer;
@@ -10,6 +11,7 @@ mod config;
 mod display;
 pub mod ffi;
 mod frame;
+#[cfg(feature = "screencapturekit")]
 mod sck;
 
 use std::sync::{
@@ -37,6 +39,7 @@ pub fn set_excluded_window_ids(mut window_ids: Vec<u32>) {
     EXCLUDED_WINDOW_IDS_GENERATION.fetch_add(1, Ordering::AcqRel);
 }
 
+#[cfg(feature = "screencapturekit")]
 pub(crate) fn excluded_window_ids() -> (Vec<u32>, u64) {
     let window_ids = EXCLUDED_WINDOW_IDS
         .lock()

@@ -13,6 +13,19 @@
 | macOS 原生源码增量构建 | 已补充 `sck_capture.m` 的变更追踪；更新时间戳后 Cargo 重新编译并更新 `.o` / `.a`，macOS 编译检查及会话边框单测通过。 |
 | macOS 后台更新排除名单 | 已改为独立串行队列；故障注入确认等待及超时期间帧仍可交付，调用方立即返回，销毁期间的延迟工作通过 AddressSanitizer 验证。 |
 
+**macOS 视频采集接入编译开关（2026-11-02）。** 按最新要求，现有 `screencapturekit` feature 现在同时传递给 `cpal` 和 `scrap`，控制 SCK 系统音频及视频采集。它是编译选项，不是界面中的运行时设置，也不是边框显示开关。
+
+| 构建配置 | macOS 视频采集行为 |
+| --- | --- |
+| 不启用 `screencapturekit` | 直接使用旧 CGDisplayStream；不编译 SCK 视频 Rust 模块及 Objective-C 桥接，也不执行 SCK 排除更新。 |
+| 启用 `screencapturekit` | 系统支持时优先使用 SCK；不支持或初始化失败时仍回退 CGDisplayStream。 |
+
+Cargo 默认 feature 只有 `use_dasp`，`build.py --screencapturekit` 也默认关闭。需要区分现有 CI 的显式参数：macOS ARM64 构建传入了 `--screencapturekit`，因此仍启用 SCK；Intel 构建没有传入，改动后使用旧截屏。此次没有改变两种架构已有的构建参数或音频配置。使用旧截屏时，本地边框照常显示，允许主控看到红框。
+
+验证：`scrap` 在 `--features hwcodec` 和 `--features hwcodec,screencapturekit` 下各有 2 项测试通过，分别覆盖禁用开关时能力查询返回 false，以及启用时的 SCK 冒烟测试。检查对应测试产物，关闭配置没有 `scrap_sck_*` 桥接符号，开启配置包含这些符号。根包 `cargo check --locked --offline --lib --features flutter` 及启用 `flutter,screencapturekit`（部署目标 12.3）的检查均通过；Cargo feature 树确认根包开关传递至 `scrap`。`build.py --print-features` 确认不传参数时没有该 feature，显式传入时包含它。macOS CI 已添加开、关两种配置的 `scrap` 测试，工作流解析通过；未执行 GitHub CI。本次未新增依赖，`Cargo.lock` 无需修改。
+
+回归面：根目录及 `libs/scrap/Cargo.toml` 只接通 feature；`libs/scrap/build.rs`、`quartz/mod.rs` 只为 SCK 模块和原生构建加条件；`common/quartz.rs` 为关闭配置保留旧构造路径，并将 SCK 分支、状态和取帧更新限制在开启配置内；工作流覆盖两种配置，本文档同步行为及验证。没有改动 CM、窗口或 IPC，也没有重写旧截屏实现。下文真实远控记录对应接入开关前的版本；本轮开、关配置均未重跑真实远控，相关 TODO 继续保留。
+
 **修复后完整复评（2026-11-02，代码截至 `80b79a85e`）。** 当前分支仍无关联 PR，以本地 `master`（`eab27cc24`）为基线复查全部 16 个变更文件及相关调用链，未发现新的、需要修复的明确问题。上一轮四项问题均已处理；本轮没有修改运行时代码。
 
 - **会话与窗口生命周期：** 核对新增、授权、断开、删除和 CM 退出入口。macOS 在主队列读取并提交当前会话状态，调用 AppKit 前释放 `CLIENTS`；Windows 持锁直到提交请求，窗口线程不反向读取该锁。未发现新的锁等待环。窗口重建及退出清理继续使用原有平台路径。
@@ -43,9 +56,7 @@ Windows 最新修复尚未实机验证：上一轮发现的 SSH 主机密钥不�
 | 旧采集路径最小化 | 已恢复两个 CGDisplayStream 分支原有的 `if let Ok(mut f) = f.lock()` 回调，逐段核对与 master 一致；没有抽取共享回调或修改 SCK 回调。`scrap` 编译及 SCK 冒烟测试通过，旧系统和强制回退实机验证仍保留在 TODO。 |
 | macOS CI 执行 SCK 测试 | 已在现有 macOS Rust 测试步骤追加 `cargo test --locked --release -p scrap --lib --features hwcodec`，沿用该平台构建的 `scrap` 特性，不使用可能匹配零项的测试名过滤。本机以相同特性运行 debug 测试，2 项通过，包含 SCK 测试；工作流 YAML 解析及步骤检查通过。本轮未在本机重新执行 release 构建或运行 GitHub CI。 |
 
-当前分支没有红色边框配置开关；符合条件的会话会自动显示边框。macOS 采集后端也没有按边框选项切换：系统支持时优先使用 ScreenCaptureKit，不支持或初始化失败才回退 CGDisplayStream。即使排除列表为空，也优先使用 SCK。本轮不新增开关或改变后端选择策略。
-
-现有 `--screencapturekit` 编译选项对应根包 `screencapturekit = ["cpal/screencapturekit"]`，控制的是系统音频采集。它不控制 `scrap` 的视频后端；未启用该编译选项时，macOS 视频仍然优先尝试新的 SCK。本轮根包测试只额外启用了 `flutter`，没有启用这个音频 feature。
+**历史行为（截至 `80b79a85e`，已由上文的编译开关改动更新）：** 当时没有红色边框配置开关，符合条件的会话会自动显示边框；视频在系统支持时始终优先使用 SCK。`--screencapturekit` 当时只传给 `cpal`，控制系统音频采集，未传给 `scrap`。因此此前只启用 `flutter` 的测试也会使用 SCK 视频采集；这一行为已按最新要求改变。
 
 **本轮修复回归面。** `src/ui_cm_interface.rs` 只调整边框状态读取和提交的同步顺序；`libs/scrap/src/quartz/sck.rs`、`sck_capture.m` 只增加停止失败诊断，保留回调注销及资源清理顺序；两个平台的 `screen_frame.rs` 只对既有错误日志限流；`libs/scrap/src/common/quartz.rs` 只恢复旧回调及限流初始化回退日志；`.github/workflows/flutter-build.yml` 只补 macOS 测试命令；本文档记录结果。以上均对应本次明确要求，没有修改连接授权规则、后端选择或采集排除语义。
 
@@ -110,8 +121,9 @@ Windows 最新修复尚未实机验证：上一轮发现的 SSH 主机密钥不�
 - [ ] **Windows 锁屏及安全桌面。** 使用当前版本的服务模式，测试连接中锁屏再解锁、锁屏时断开后解锁重连，以及触发 UAC 后返回普通桌面。解锁或返回后视频、输入和边框应恢复，断开后无边框残留。安全桌面本身能否显示边框单独记录并与 master 对照；普通用户启动的测试进程不能代替服务模式验证。
 - [ ] **macOS 锁屏。** 测试连接中锁屏再解锁，以及锁屏时断开、解锁后重连。确认解锁后视频、输入和边框正常，断开后无残留；锁屏期间的表现单独记录，并与 master 对照。
 - [ ] **Windows 强制 GDI。** 关闭现有“使用 DirectX 捕获屏幕”选项，重新连接，通过日志确认 `gdi: true`，再验证视频、输入、边框及断开重连。GDI 不必然采集到红框；无法排除时允许出现正常红框，不能因此隐藏本地提示或停止采集。
-- [ ] **macOS：SCK 不可用。** 使用隔离的临时测试构建模拟 SCK 能力检查返回不可用，确认进入 CGDisplayStream。保留屏幕录制权限，验证本地边框、视频、输入及断开重连；远端允许看到红框。当前没有强制切换配置项，临时注入不纳入生产提交。
-- [ ] **macOS：SCK 初始化失败。** 使用临时测试构建保留能力检查成功、让 SCK 初始化返回失败，以回退日志及实际画面确认进入 CGDisplayStream。通过标准同上一项，结束后还原临时注入。
+- [ ] **macOS：关闭编译开关。** 不传入 `--screencapturekit` / `--features screencapturekit` 构建，核对实际运行产物，建立真实远控并确认旧 CGDisplayStream 能正常传送动态画面、响应输入及断开重连；本地边框仍显示，允许主控看到红框。此项区别于开启 feature 后的运行时回退。
+- [ ] **macOS：SCK 不可用。** 在启用 `screencapturekit` 的隔离临时构建中模拟 SCK 能力检查返回不可用，确认进入 CGDisplayStream。保留屏幕录制权限，验证本地边框、视频、输入及断开重连；远端允许看到红框。当前没有运行时强制切换配置项，临时注入不纳入生产提交。
+- [ ] **macOS：SCK 初始化失败。** 在启用 `screencapturekit` 的临时构建中保留能力检查成功、让 SCK 初始化返回失败，以回退日志及实际画面确认进入 CGDisplayStream。通过标准同上一项，结束后还原临时注入。
 - [ ] **Windows 排除 API 失败。** 在支持该 API 的系统上，通过临时测试构建注入 `SetWindowDisplayAffinity` 失败，验证本地边框仍完整显示，远端允许看到红框，正常视频和输入不受影响，断开后清理。
 - [ ] **macOS 排除更新失败。** 在已开始出帧的真实会话中注入过滤更新失败并触发窗口 ID 变化。检查本地边框保留、普通应用窗口没有被整体排除、视频及输入继续工作，日志受控且不会每帧重复尝试同一代名单；远端允许看到尚未排除的红框。
 - [ ] **Windows 全屏。** 在被控端让应用进入、退出全屏，检查边框覆盖正确屏幕、不抢焦点、不挡点击，退出全屏及断开后没有重复或残留窗口；记录实际应用及其全屏模式。

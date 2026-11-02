@@ -45,7 +45,7 @@ unix-file-copy-paste = [
     "dep:once_cell",
     "clipboard/unix-file-copy-paste",
 ]
-screencapturekit = ["cpal/screencapturekit"]
+screencapturekit = ["cpal/screencapturekit", "scrap/screencapturekit"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
