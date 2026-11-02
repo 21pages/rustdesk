@@ -823,5 +823,12 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Please select Android → media.", "لطفاً Android → media را انتخاب کنید."),
         ("Trust duration (days)", "مدت اعتماد (روز)"),
         ("Renew trust", "تمدید اعتماد"),
+        ("Privacy", ""),
+        ("Allow screen frame", ""),
+        ("Screen frame color", ""),
+        ("Screen frame width", ""),
+        ("Screen frame transparency", ""),
+        ("Viewed screen frame color", ""),
+        ("Unviewed screen frame color", ""),
     ].iter().cloned().collect();
 }
