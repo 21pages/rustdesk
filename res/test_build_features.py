@@ -46,12 +46,11 @@ class MacCaptureFeaturesTests(unittest.TestCase):
                              if "cargo build" in call[0][0])
                 self.assertEqual("--no-default-features" in shlex.split(cargo), disabled)
                 self.assertIn(features, shlex.split(cargo))
-                target = "12.3" if audio else "10.14"
-                self.assertIn("MACOSX_DEPLOYMENT_TARGET=" + target, shlex.split(cargo))
+                self.assertIn("MACOSX_DEPLOYMENT_TARGET=10.14", shlex.split(cargo))
                 flutter = next(call[0][0] for call in run.call_args_list
                                if "flutter build macos" in call[0][0])
-                self.assertEqual("FLUTTER_XCODE_MACOSX_DEPLOYMENT_TARGET=12.3" in
-                                 shlex.split(flutter), audio)
+                self.assertNotIn("FLUTTER_XCODE_MACOSX_DEPLOYMENT_TARGET=12.3",
+                                 shlex.split(flutter))
 
 
 if __name__ == "__main__":

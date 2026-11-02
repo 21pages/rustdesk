@@ -45,7 +45,7 @@ unix-file-copy-paste = [
     "dep:once_cell",
     "clipboard/unix-file-copy-paste",
 ]
-# Keep audio opt-in: its framework dependency prevents launch on older macOS.
+# Preserve the existing audio opt-in independently of the default video backend.
 screencapturekit = ["cpal/screencapturekit"]
 screencapturekit-video = ["scrap/screencapturekit"]
 
