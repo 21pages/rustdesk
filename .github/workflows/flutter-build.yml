@@ -1102,6 +1102,9 @@ jobs:
           # comes from the build step's export.
           FEATURES=$(./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }} --print-features)
           cargo test --locked --release --lib --features "$FEATURES"
+          # Root-package tests do not run scrap's macOS capture tests; cover both backends.
+          cargo test --locked --release -p scrap --lib --features hwcodec
+          cargo test --locked --release -p scrap --lib --features hwcodec,screencapturekit
           # Opt-in, and its macOS tests run nowhere else.
           cargo test --locked --release -p clipboard --features unix-file-copy-paste
 

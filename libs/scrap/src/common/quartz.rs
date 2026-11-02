@@ -3,35 +3,139 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
 use std::{io, mem};
 
+pub fn uses_screen_capture_kit() -> bool {
+    #[cfg(feature = "screencapturekit")]
+    {
+        quartz::SckCapturer::is_available()
+    }
+    #[cfg(not(feature = "screencapturekit"))]
+    {
+        false
+    }
+}
+
+enum Backend {
+    #[cfg(feature = "screencapturekit")]
+    ScreenCaptureKit(quartz::SckCapturer),
+    DisplayStream(quartz::Capturer),
+}
+
+impl Backend {
+    fn width(&self) -> usize {
+        match self {
+            #[cfg(feature = "screencapturekit")]
+            Self::ScreenCaptureKit(capturer) => capturer.width(),
+            Self::DisplayStream(capturer) => capturer.width(),
+        }
+    }
+
+    fn height(&self) -> usize {
+        match self {
+            #[cfg(feature = "screencapturekit")]
+            Self::ScreenCaptureKit(capturer) => capturer.height(),
+            Self::DisplayStream(capturer) => capturer.height(),
+        }
+    }
+}
+
 pub struct Capturer {
-    inner: quartz::Capturer,
+    inner: Backend,
     frame: Arc<Mutex<Option<quartz::Frame>>>,
     saved_raw_data: Vec<u8>, // for faster compare and copy
+    #[cfg(feature = "screencapturekit")]
+    excluded_window_ids_generation: u64,
 }
 
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
         let frame = Arc::new(Mutex::new(None));
 
-        let f = frame.clone();
-        let inner = quartz::Capturer::new(
-            display.0,
-            display.width(),
-            display.height(),
-            quartz::PixelFormat::Argb8888,
-            Default::default(),
-            move |inner| {
-                if let Ok(mut f) = f.lock() {
-                    *f = Some(inner);
+        // Keep the legacy capture path independent of SCK when the build opts out.
+        #[cfg(not(feature = "screencapturekit"))]
+        let inner = {
+            let f = frame.clone();
+            Backend::DisplayStream(
+                quartz::Capturer::new(
+                    display.0,
+                    display.width(),
+                    display.height(),
+                    quartz::PixelFormat::Argb8888,
+                    Default::default(),
+                    move |inner| {
+                        if let Ok(mut f) = f.lock() {
+                            *f = Some(inner);
+                        }
+                    },
+                )
+                .map_err(|_| io::Error::from(io::ErrorKind::Other))?,
+            )
+        };
+        #[cfg(feature = "screencapturekit")]
+        let (excluded_window_ids, excluded_window_ids_generation) = quartz::excluded_window_ids();
+        #[cfg(feature = "screencapturekit")]
+        let inner = if uses_screen_capture_kit() {
+            let f = frame.clone();
+            match quartz::SckCapturer::new(
+                display.0,
+                display.width(),
+                display.height(),
+                quartz::PixelFormat::Argb8888,
+                false,
+                &excluded_window_ids,
+                move |inner| {
+                    *f.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(inner);
+                },
+            ) {
+                Ok(capturer) => Backend::ScreenCaptureKit(capturer),
+                Err(err) => {
+                    hbb_common::throttled_log!(
+                        std::time::Duration::from_secs(5),
+                        warn,
+                        "Failed to start ScreenCaptureKit, falling back to CGDisplayStream: {err}"
+                    );
+                    let f = frame.clone();
+                    Backend::DisplayStream(
+                        quartz::Capturer::new(
+                            display.0,
+                            display.width(),
+                            display.height(),
+                            quartz::PixelFormat::Argb8888,
+                            Default::default(),
+                            move |inner| {
+                                if let Ok(mut f) = f.lock() {
+                                    *f = Some(inner);
+                                }
+                            },
+                        )
+                        .map_err(|_| io::Error::from(io::ErrorKind::Other))?,
+                    )
                 }
-            },
-        )
-        .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
+            }
+        } else {
+            let f = frame.clone();
+            Backend::DisplayStream(
+                quartz::Capturer::new(
+                    display.0,
+                    display.width(),
+                    display.height(),
+                    quartz::PixelFormat::Argb8888,
+                    Default::default(),
+                    move |inner| {
+                        if let Ok(mut f) = f.lock() {
+                            *f = Some(inner);
+                        }
+                    },
+                )
+                .map_err(|_| io::Error::from(io::ErrorKind::Other))?,
+            )
+        };
 
         Ok(Capturer {
             inner,
             frame,
             saved_raw_data: Vec::new(),
+            #[cfg(feature = "screencapturekit")]
+            excluded_window_ids_generation,
         })
     }
 
@@ -46,6 +150,23 @@ impl Capturer {
 
 impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
+        #[cfg(feature = "screencapturekit")]
+        if let Backend::ScreenCaptureKit(capturer) = &self.inner {
+            if let Some(error) = capturer.stream_error() {
+                return Err(io::Error::new(io::ErrorKind::Other, error));
+            }
+            let (window_ids, generation) = quartz::excluded_window_ids();
+            if generation != self.excluded_window_ids_generation {
+                if let Err(err) = capturer.update_excluded_window_ids(&window_ids) {
+                    hbb_common::throttled_log!(
+                        std::time::Duration::from_secs(5),
+                        warn,
+                        "Failed to exclude screen frame windows from capture: {err}"
+                    );
+                }
+                self.excluded_window_ids_generation = generation;
+            }
+        }
         match self.frame.try_lock() {
             Ok(mut handle) => {
                 let mut frame = None;
@@ -71,6 +192,18 @@ impl crate::TraitCapturer for Capturer {
 
             Err(TryLockError::Poisoned(..)) => Err(io::ErrorKind::Other.into()),
         }
+    }
+}
+
+pub fn set_excluded_window_ids(window_ids: Vec<u32>) {
+    quartz::set_excluded_window_ids(window_ids);
+}
+
+#[cfg(all(test, not(feature = "screencapturekit")))]
+mod tests {
+    #[test]
+    fn screen_capture_kit_is_disabled_without_feature() {
+        assert!(!super::uses_screen_capture_kit());
     }
 }
 
