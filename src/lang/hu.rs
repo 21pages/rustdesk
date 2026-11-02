@@ -823,5 +823,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Please select Android → media.", "Válassza az Android → media mappát."),
         ("Trust duration (days)", "Megbízhatóság időtartama (nap)"),
         ("Renew trust", "Megbízhatóság megújítása"),
+        ("Dock connection manager to the right", ""),
     ].iter().cloned().collect();
 }
