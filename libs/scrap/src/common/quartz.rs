@@ -69,8 +69,9 @@ impl Capturer {
                             quartz::PixelFormat::Argb8888,
                             Default::default(),
                             move |inner| {
-                                *f.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                                    Some(inner);
+                                if let Ok(mut f) = f.lock() {
+                                    *f = Some(inner);
+                                }
                             },
                         )
                         .map_err(|_| io::Error::from(io::ErrorKind::Other))?,
@@ -87,7 +88,9 @@ impl Capturer {
                     quartz::PixelFormat::Argb8888,
                     Default::default(),
                     move |inner| {
-                        *f.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(inner);
+                        if let Ok(mut f) = f.lock() {
+                            *f = Some(inner);
+                        }
                     },
                 )
                 .map_err(|_| io::Error::from(io::ErrorKind::Other))?,
