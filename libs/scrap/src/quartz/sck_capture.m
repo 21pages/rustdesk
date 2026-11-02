@@ -12,6 +12,9 @@
 typedef void (*ScrapSckFrameCallback)(void *context, void *surface);
 typedef void (*ScrapSckErrorCallback)(void *context, const char *message, bool fatal);
 
+// Teardown diagnostics must not use the already detached callback context.
+extern void scrap_sck_log_teardown_error(const char *message);
+
 typedef struct {
     int32_t code;
     char message[512];
@@ -336,16 +339,28 @@ static SCContentFilter *ScrapSckBuildFilter(
     }
     if (self.started) {
         dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-        [stream stopCaptureWithCompletionHandler:^(__unused NSError *error) {
+        __block NSError *stopError = nil;
+        [stream stopCaptureWithCompletionHandler:^(NSError *error) {
+            stopError = error;
             dispatch_semaphore_signal(semaphore);
         }];
-        ScrapSckWait(semaphore);
+        if (!ScrapSckWait(semaphore)) {
+            scrap_sck_log_teardown_error("Timed out while stopping screen capture");
+        } else if (stopError != nil) {
+            scrap_sck_log_teardown_error(
+                [NSString stringWithFormat:@"Failed to stop screen capture: %@",
+                    stopError.localizedDescription].UTF8String);
+        }
         self.started = NO;
     }
     NSError *removeError = nil;
-    [stream removeStreamOutput:(id)self
+    if (![stream removeStreamOutput:(id)self
                                type:SCStreamOutputTypeScreen
-                              error:&removeError];
+                              error:&removeError]) {
+        scrap_sck_log_teardown_error(
+            [NSString stringWithFormat:@"Failed to remove screen capture output: %@",
+                removeError.localizedDescription ?: @"unknown error"].UTF8String);
+    }
     self.queue = nil;
 }
 

@@ -3,7 +3,6 @@ use cocoa::{
     foundation::{NSPoint, NSRect, NSSize},
 };
 use dispatch::Queue;
-use hbb_common::log;
 use objc::{class, msg_send, sel, sel_impl};
 use std::{
     ffi::c_void,
@@ -76,7 +75,11 @@ fn register_display_callback() {
     };
     if result != 0 {
         DISPLAY_CALLBACK_REGISTERED.store(false, Ordering::Release);
-        log::error!("Failed to monitor display changes for screen frame: {result}");
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to monitor display changes for screen frame: {result}"
+        );
     }
 }
 
@@ -108,12 +111,20 @@ fn apply_requested_state() {
 unsafe fn create_windows() {
     let screens: id = msg_send![class!(NSScreen), screens];
     if screens == nil {
-        log::error!("Failed to get displays for screen frame");
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to get displays for screen frame"
+        );
         return;
     }
     let count: usize = msg_send![screens, count];
     if count == 0 {
-        log::warn!("No display is available for screen frame");
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            warn,
+            "No display is available for screen frame"
+        );
         return;
     }
 
@@ -165,7 +176,11 @@ unsafe fn create_windows() {
 unsafe fn create_window(rect: NSRect, level: i64) -> Option<ScreenFrameWindow> {
     let panel: id = msg_send![class!(NSPanel), alloc];
     if panel == nil {
-        log::error!("Failed to allocate screen frame window");
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to allocate screen frame window"
+        );
         return None;
     }
     let panel: id = msg_send![panel,
@@ -175,7 +190,11 @@ unsafe fn create_window(rect: NSRect, level: i64) -> Option<ScreenFrameWindow> {
         defer: NO
     ];
     if panel == nil {
-        log::error!("Failed to initialize screen frame window");
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to initialize screen frame window"
+        );
         return None;
     }
 
@@ -201,7 +220,11 @@ unsafe fn create_window(rect: NSRect, level: i64) -> Option<ScreenFrameWindow> {
     let _: () = msg_send![panel, orderFrontRegardless];
     let window_id: isize = msg_send![panel, windowNumber];
     if window_id <= 0 || window_id > u32::MAX as isize {
-        log::error!("Failed to get a valid screen frame window number");
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to get a valid screen frame window number"
+        );
         let _: () = msg_send![panel, orderOut: nil];
         let _: () = msg_send![panel, release];
         return None;

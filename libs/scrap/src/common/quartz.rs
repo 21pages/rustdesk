@@ -1,5 +1,4 @@
 use crate::{quartz, Frame, Pixfmt};
-use hbb_common::log;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
 use std::{io, mem};
@@ -56,7 +55,9 @@ impl Capturer {
             ) {
                 Ok(capturer) => Backend::ScreenCaptureKit(capturer),
                 Err(err) => {
-                    log::warn!(
+                    hbb_common::throttled_log!(
+                        std::time::Duration::from_secs(5),
+                        warn,
                         "Failed to start ScreenCaptureKit, falling back to CGDisplayStream: {err}"
                     );
                     let f = frame.clone();

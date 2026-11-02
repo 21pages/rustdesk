@@ -215,6 +215,20 @@ unsafe extern "C" fn error_callback(context: *mut c_void, message: *const c_char
     }
 }
 
+#[no_mangle]
+unsafe extern "C" fn scrap_sck_log_teardown_error(message: *const c_char) {
+    if message.is_null() {
+        return;
+    }
+    // Repeated capture restarts can fail even after the Rust context is detached.
+    hbb_common::throttled_log!(
+        std::time::Duration::from_secs(5),
+        warn,
+        "ScreenCaptureKit teardown failed: {}",
+        CStr::from_ptr(message).to_string_lossy()
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::{scrap_sck_create, scrap_sck_destroy, scrap_sck_update_excluded_windows, Capturer};

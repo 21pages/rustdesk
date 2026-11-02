@@ -1,4 +1,3 @@
-use hbb_common::log;
 use std::{
     mem,
     ptr::{null, null_mut},
@@ -63,7 +62,11 @@ fn ensure_worker() {
         .spawn(worker_main)
     {
         WORKER_RUNNING.store(false, Ordering::Release);
-        log::error!("Failed to start screen frame thread: {err}");
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to start screen frame thread: {err}"
+        );
     }
 }
 
@@ -73,9 +76,12 @@ fn notify_worker(message: UINT) -> bool {
         return false;
     }
     if unsafe { PostThreadMessageW(thread_id, message, 0, 0) } == FALSE {
-        log::debug!("Failed to notify screen frame thread: {}", unsafe {
-            GetLastError()
-        });
+        let error = unsafe { GetLastError() };
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            debug,
+            "Failed to notify screen frame thread: {error}"
+        );
         return false;
     }
     true
@@ -105,7 +111,12 @@ fn worker_main() {
             let result = GetMessageW(&mut message, null_mut(), 0, 0);
             if result <= 0 {
                 if result < 0 {
-                    log::error!("Screen frame message loop failed: {}", GetLastError());
+                    let error = GetLastError();
+                    hbb_common::throttled_log!(
+                        std::time::Duration::from_secs(5),
+                        error,
+                        "Screen frame message loop failed: {error}"
+                    );
                 }
                 break;
             }
@@ -133,7 +144,12 @@ fn worker_main() {
 unsafe fn register_window_class() -> Option<HINSTANCE> {
     let instance = GetModuleHandleW(null());
     if instance.is_null() {
-        log::error!("Failed to get the screen frame module: {}", GetLastError());
+        let error = GetLastError();
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to get the screen frame module: {error}"
+        );
         return None;
     }
     let mut window_class: WNDCLASSW = mem::zeroed();
@@ -143,7 +159,11 @@ unsafe fn register_window_class() -> Option<HINSTANCE> {
     if RegisterClassW(&window_class) == 0 {
         let error = GetLastError();
         if error != ERROR_CLASS_ALREADY_EXISTS {
-            log::error!("Failed to register the screen frame window: {error}");
+            hbb_common::throttled_log!(
+                std::time::Duration::from_secs(5),
+                error,
+                "Failed to register the screen frame window: {error}"
+            );
             return None;
         }
     }
@@ -166,9 +186,11 @@ unsafe fn create_windows(instance: HINSTANCE, windows: &mut Vec<HWND>) {
         &mut monitors as *mut Vec<RECT> as LPARAM,
     ) == FALSE
     {
-        log::error!(
-            "Failed to enumerate displays for screen frame: {}",
-            GetLastError()
+        let error = GetLastError();
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to enumerate displays for screen frame: {error}"
         );
         return;
     }
@@ -248,20 +270,32 @@ unsafe fn create_window(instance: HINSTANCE, rect: RECT) -> Option<HWND> {
         null_mut(),
     );
     if window.is_null() {
-        log::error!("Failed to create a screen frame window: {}", GetLastError());
+        let error = GetLastError();
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to create a screen frame window: {error}"
+        );
         return None;
     }
     if SetLayeredWindowAttributes(window, 0, 191, LWA_ALPHA) == FALSE {
-        log::error!("Failed to paint a screen frame window: {}", GetLastError());
+        let error = GetLastError();
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to paint a screen frame window: {error}"
+        );
         destroy_window(window);
         return None;
     }
     if base::platform::windows::is_windows_version_or_greater(10, 0, 19041, 0, 0)
         && SetWindowDisplayAffinity(window, WDA_EXCLUDEFROMCAPTURE) == FALSE
     {
-        log::debug!(
-            "Failed to exclude a screen frame window from capture: {}",
-            GetLastError()
+        let error = GetLastError();
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            debug,
+            "Failed to exclude a screen frame window from capture: {error}"
         );
     }
     if SetWindowPos(
@@ -274,7 +308,12 @@ unsafe fn create_window(instance: HINSTANCE, rect: RECT) -> Option<HWND> {
         SWP_NOACTIVATE | SWP_SHOWWINDOW,
     ) == FALSE
     {
-        log::error!("Failed to show a screen frame window: {}", GetLastError());
+        let error = GetLastError();
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            error,
+            "Failed to show a screen frame window: {error}"
+        );
         destroy_window(window);
         return None;
     }
@@ -289,9 +328,11 @@ unsafe fn destroy_windows(windows: &mut Vec<HWND>) {
 
 unsafe fn destroy_window(window: HWND) {
     if DestroyWindow(window) == FALSE {
-        log::debug!(
-            "Failed to destroy a screen frame window: {}",
-            GetLastError()
+        let error = GetLastError();
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(5),
+            debug,
+            "Failed to destroy a screen frame window: {error}"
         );
     }
 }
