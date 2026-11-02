@@ -20,10 +20,15 @@
 | 会话状态提交竞态 | 已修复。macOS 在主队列读取当前会话状态再应用，Windows 持有既有读锁直到提交显示请求，不增加状态。隔离交错程序直接提取修复前后函数：两个平台分支修复前均得到“有效会话但边框隐藏”，修复后均保持显示；macOS 使用真实主队列，Windows 分支在本机验证同步逻辑，不等同于 Windows 实机测试。macOS 既有会话边框单测通过。 |
 | 停止采集诊断及错误日志限流 | 已补充停止失败、10 秒停止超时及移除输出失败的诊断。通过不依赖采集 context 的原生到 Rust 日志入口调用 `hbb_common::throttled_log!`；本功能中可能反复触发的两端窗口错误、SCK 初始化回退日志也按原有级别每处 5 秒限流，Windows 先保存错误码再进入限流宏。ASan 原生故障注入覆盖正常停止、停止及移除失败、超时和迟到回调，全部通过；实际 Rust 日志入口连续接收 100 次错误只输出 1 条，间隔后输出包含 `(x100)` 的汇总。macOS 会话单测、SCK 冒烟测试及严格原生编译通过。 |
 | 旧采集路径最小化 | 已恢复两个 CGDisplayStream 分支原有的 `if let Ok(mut f) = f.lock()` 回调，逐段核对与 master 一致；没有抽取共享回调或修改 SCK 回调。`scrap` 编译及 SCK 冒烟测试通过，旧系统和强制回退实机验证仍保留在 TODO。 |
+| macOS CI 执行 SCK 测试 | 已在现有 macOS Rust 测试步骤追加 `cargo test --locked --release -p scrap --lib --features hwcodec`，沿用该平台构建的 `scrap` 特性，不使用可能匹配零项的测试名过滤。本机以相同特性运行 debug 测试，2 项通过，包含 SCK 测试；工作流 YAML 解析及步骤检查通过。本轮未在本机重新执行 release 构建或运行 GitHub CI。 |
 
 当前分支没有红色边框配置开关；符合条件的会话会自动显示边框。macOS 采集后端也没有按边框选项切换：系统支持时优先使用 ScreenCaptureKit，不支持或初始化失败才回退 CGDisplayStream。即使排除列表为空，也优先使用 SCK。本轮不新增开关或改变后端选择策略。
 
-现有 `--screencapturekit` 编译选项对应根包 `screencapturekit = ["cpal/screencapturekit"]`，控制的是系统音频采集。它不控制 `scrap` 的视频后端；未启用该编译选项时，macOS 视频仍然优先尝试新的 SCK。当前 macOS 测试命令只启用了 `flutter`，没有启用这个音频 feature。
+现有 `--screencapturekit` 编译选项对应根包 `screencapturekit = ["cpal/screencapturekit"]`，控制的是系统音频采集。它不控制 `scrap` 的视频后端；未启用该编译选项时，macOS 视频仍然优先尝试新的 SCK。本轮根包测试只额外启用了 `flutter`，没有启用这个音频 feature。
+
+**本轮修复回归面。** `src/ui_cm_interface.rs` 只调整边框状态读取和提交的同步顺序；`libs/scrap/src/quartz/sck.rs`、`sck_capture.m` 只增加停止失败诊断，保留回调注销及资源清理顺序；两个平台的 `screen_frame.rs` 只对既有错误日志限流；`libs/scrap/src/common/quartz.rs` 只恢复旧回调及限流初始化回退日志；`.github/workflows/flutter-build.yml` 只补 macOS 测试命令；本文档记录结果。以上均对应本次明确要求，没有修改连接授权规则、后端选择或采集排除语义。
+
+本轮 Windows 编译及实机验证未执行：SSH 报告 `192.168.10.117` 的主机密钥与已有记录不符，未修改信任记录或发送密码。两个平台分支的隔离并发验证不替代 Windows 实机验证；双向真实远控及下文边界 TODO 本轮也未重跑。
 
 **完整复评（2026-11-02，代码截至 `11e680979`）。** 当前分支没有关联 PR，因此以本地 `master`（`eab27cc24`）到 HEAD 的完整 diff 核对归属，覆盖全部 15 个变更文件及授权、断开、原生窗口、采集后端、过滤更新和销毁的调用链。以下均来自本分支新增或修改的代码；没有把原有问题或已接受的回退行为列为缺陷。本轮发现 1 个运行时问题，以及 3 项低优先级的诊断、最小化和 CI 问题，尚未修改实现。
 
