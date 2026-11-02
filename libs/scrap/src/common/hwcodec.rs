@@ -86,7 +86,7 @@ impl EncoderApi for HwRamEncoder {
                     gop,
                     quality: DEFAULT_HW_QUALITY,
                     rc,
-                    q: if config.name.contains("vaapi") {
+                    q: if config.name.contains("vaapi") && rc == RC_CQ {
                         Self::vaapi_qp(config.quality)
                     } else {
                         -1
@@ -255,7 +255,15 @@ impl HwRamEncoder {
             return RC_VBR;
         }
         if config.name.contains("vaapi") {
-            return RC_CQ;
+            if let Some(codec) = HwCodecConfig::get()
+                .ram_encode
+                .iter()
+                .find(|codec| codec.name == config.name)
+            {
+                if !codec.rc.contains(&RC_CBR) && codec.rc.contains(&RC_CQ) {
+                    return RC_CQ;
+                }
+            }
         }
         RC_CBR
     }
@@ -613,6 +621,7 @@ impl HwCodecConfig {
                             format: t.data_format,
                             hwdevice: hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_NONE,
                             priority: 0,
+                            ..Default::default()
                         });
                     }
                 });
@@ -787,7 +796,7 @@ pub fn start_check_process() {
 }
 
 #[cfg(test)]
-mod tests {
+mod vaapi_tests {
     use super::*;
     use crate::codec::{BR_BEST, BR_SPEED};
 
