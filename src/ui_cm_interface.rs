@@ -415,8 +415,17 @@ pub fn remove(id: i32) {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn update_screen_frame() {
+    #[cfg(target_os = "macos")]
+    if unsafe { hbb_common::libc::pthread_main_np() } == 0 {
+        // Read on the window thread so an older snapshot cannot overwrite a newer update.
+        dispatch::Queue::main().exec_sync(update_screen_frame);
+        return;
+    }
     let clients = CLIENTS.read().unwrap();
     let visible = should_show_screen_frame(&clients);
+    // AppKit broadcasts window IDs through CLIENTS; Windows only notifies its worker,
+    // so keep the read lock there until the visibility request has been submitted.
+    #[cfg(target_os = "macos")]
     drop(clients);
     crate::platform::set_screen_frame_visible(visible);
     #[cfg(target_os = "macos")]
