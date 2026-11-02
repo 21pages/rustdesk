@@ -826,5 +826,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Pasirinktas aplankas nėra tuščias. Diegimas gali ištrinti esamus duomenis. Apsvarstykite galimybę pasirinkti kitą aplanką."),
         ("Request approval", "Prašyti patvirtinimo"),
         ("Forever", "Visam laikui"),
+        ("Dock connection manager to the right", ""),
+        ("Use banner mode for the accept window", ""),
     ].iter().cloned().collect();
 }

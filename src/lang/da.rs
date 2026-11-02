@@ -826,5 +826,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Den valgte mappe er ikke tom. Installationen kan slette eksisterende data. Overvej at vælge en anden mappe."),
         ("Request approval", "Anmod om godkendelse"),
         ("Forever", "For evigt"),
+        ("Dock connection manager to the right", ""),
+        ("Use banner mode for the accept window", ""),
     ].iter().cloned().collect();
 }

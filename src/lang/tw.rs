@@ -826,5 +826,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "所選資料夾不是空的。安裝可能刪除現有資料。建議選擇其他資料夾。"),
         ("Request approval", "請求批准"),
         ("Forever", "永久"),
+        ("Dock connection manager to the right", "將連線管理視窗收合到右側"),
+        ("Use banner mode for the accept window", "連線請求視窗橫幅模式"),
     ].iter().cloned().collect();
 }

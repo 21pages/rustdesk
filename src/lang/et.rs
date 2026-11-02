@@ -826,5 +826,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Valitud kaust ei ole tühi. Paigaldamine võib olemasolevad andmed kustutada. Kaalu teise kausta valimist."),
         ("Request approval", "Küsi heakskiitu"),
         ("Forever", "Igavesti"),
+        ("Dock connection manager to the right", ""),
+        ("Use banner mode for the accept window", ""),
     ].iter().cloned().collect();
 }
