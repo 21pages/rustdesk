@@ -171,7 +171,20 @@ def make_parser():
         parser.add_argument(
             '--screencapturekit',
             action='store_true',
-            help='Enable feature screencapturekit'
+            help='Enable ScreenCaptureKit system audio when supported'
+        )
+        capture = parser.add_mutually_exclusive_group()
+        capture.add_argument(
+            '--screencapturekit-video',
+            action='store_true',
+            default=True,
+            help='Enable ScreenCaptureKit video with legacy fallback (default)'
+        )
+        capture.add_argument(
+            '--no-screencapturekit-video',
+            dest='screencapturekit_video',
+            action='store_false',
+            help='Use legacy capture. With --print-features, also pass --no-default-features to Cargo.'
         )
     return parser
 
@@ -349,6 +362,11 @@ def get_features(args):
     if osx:
         if args.screencapturekit:
             features.append('screencapturekit')
+        if args.screencapturekit_video:
+            features.append('screencapturekit-video')
+        else:
+            # Disabling Cargo defaults must retain the existing audio resampler.
+            features.append('use_dasp')
     print("features:", features)
     return features
 
@@ -933,9 +951,11 @@ def build_deb_from_folder(version, binary_folder, want_drm=False):
 
 def build_flutter_dmg(version, features):
     if not skip_cargo:
-        # set minimum osx build target, now is 10.14, which is the same as the flutter xcode project
+        # Omitting a feature no longer disables it once Cargo enables it by default.
+        cargo_defaults = '' if 'screencapturekit-video' in features.split(',') else '--no-default-features'
+        # Keep the legacy deployment target; SCK is optional at runtime.
         system2(
-            f'MACOSX_DEPLOYMENT_TARGET=10.14 cargo build --locked --features {features} --release')
+            f'MACOSX_DEPLOYMENT_TARGET=10.14 cargo build --locked {cargo_defaults} --features {features} --release')
     # copy dylib
     system2(
         "cp target/release/liblibrustdesk.dylib target/release/librustdesk.dylib")
@@ -1106,7 +1126,8 @@ def main():
                 #     'mv target/release/bundle/deb/rustdesk*.deb ./flutter/rustdesk.deb')
                 build_flutter_deb(version, features)
         else:
-            system2('cargo --locked bundle --release --features ' + features)
+            cargo_defaults = ' --no-default-features' if osx and not args.screencapturekit_video else ''
+            system2('cargo --locked bundle --release' + cargo_defaults + ' --features ' + features)
             if osx:
                 system2(
                     'strip target/release/bundle/osx/RustDesk.app/Contents/MacOS/rustdesk')
