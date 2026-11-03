@@ -27,6 +27,7 @@ Future<void> openMenu(WidgetTester tester, List<String> actions,
     {ThemeData? theme,
     EdgeInsets? padding,
     bool includeRelay = false,
+    List<MenuEntryBase<String>> extraEntries = const [],
     RelativeRect position = const RelativeRect.fromLTRB(20, 20, 780, 580)}) async {
   MenuEntryButton<String> entry(String title, {bool requestApproval = false}) =>
       MenuEntryButton<String>(
@@ -83,6 +84,7 @@ Future<void> openMenu(WidgetTester tester, List<String> actions,
                   dismissOnClicked: true,
                 ),
               entry('Rename'),
+              ...extraEntries,
             ]
                 .expand((entry) => entry.build(context,
                     const MenuConfig(commonColor: Colors.black, height: 20)))
