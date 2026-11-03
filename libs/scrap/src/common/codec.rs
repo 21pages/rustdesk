@@ -73,6 +73,10 @@ pub trait EncoderApi {
 
     fn bitrate(&self) -> u32;
 
+    fn is_cqp(&self) -> bool {
+        false
+    }
+
     fn support_changing_quality(&self) -> bool;
 
     fn latency_free(&self) -> bool;

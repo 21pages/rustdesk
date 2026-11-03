@@ -199,6 +199,10 @@ impl EncoderApi for HwRamEncoder {
         self.bitrate
     }
 
+    fn is_cqp(&self) -> bool {
+        self.encoder.ctx.rc == RC_CQ
+    }
+
     fn support_changing_quality(&self) -> bool {
         ["vaapi"].iter().all(|&x| !self.config.name.contains(x))
     }
