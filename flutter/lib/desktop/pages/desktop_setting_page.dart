@@ -1043,10 +1043,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 _Card(title: '2FA', children: [tfa()]),
                 if (!isChangeIdDisabled())
                   _Card(title: 'ID', children: [changeId()]),
-                if (!isWeb &&
-                    (isWindows ||
-                        isMacOS ||
-                        (isLinux && !bind.mainCurrentIsWayland())))
+                if (!isWeb && (isWindows || isMacOS || isLinux))
                   privacy(context),
                 more(context),
               ]),

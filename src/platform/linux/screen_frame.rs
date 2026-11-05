@@ -8,6 +8,10 @@ use std::{
     },
 };
 
+#[path = "screen_frame_wayland.rs"]
+mod wayland;
+pub(crate) use wayland::dispatch as dispatch_wayland_screen_frame;
+
 static VISIBLE: AtomicBool = AtomicBool::new(false);
 static UPDATE_QUEUED: AtomicBool = AtomicBool::new(false);
 static DISPLAY_SIGNALS: Once = Once::new();
@@ -32,6 +36,10 @@ pub(crate) fn refresh() {
 
 pub(crate) fn refresh_colors() {
     if !VISIBLE.load(Ordering::Acquire) {
+        return;
+    }
+    if !super::is_x11_or_headless() {
+        queue_update();
         return;
     }
     glib::idle_add_once(|| {
@@ -60,6 +68,10 @@ fn queue_update() {
 }
 
 fn apply_state() {
+    if !super::is_x11_or_headless() {
+        wayland::update(VISIBLE.load(Ordering::Acquire));
+        return;
+    }
     WINDOWS.with(|windows| {
         for window in windows.borrow_mut().drain(..) {
             unsafe { window.destroy() };
@@ -85,9 +97,7 @@ fn apply_state() {
         );
         return;
     };
-    // Wayland does not offer the X11 global positioning used below. Do not put
-    // misleading frames around XWayland's virtual screen in a Wayland session.
-    if !super::is_x11_or_headless() || screen.display().type_().name() != "GdkX11Display" {
+    if screen.display().type_().name() != "GdkX11Display" {
         return;
     }
     DISPLAY_SIGNALS.call_once(|| {
