@@ -18,6 +18,7 @@ enum Outcome {
 
 struct State {
     outcomes: VecDeque<Outcome>,
+    cqp: bool,
     calls: usize,
     disabled: usize,
     inputs: Vec<Vec<u8>>,
@@ -59,6 +60,9 @@ impl EncoderApi for ScriptedEncoder {
     fn bitrate(&self) -> u32 {
         0
     }
+    fn is_cqp(&self) -> bool {
+        self.0.borrow().cqp
+    }
     fn support_changing_quality(&self) -> bool {
         false
     }
@@ -76,6 +80,7 @@ impl EncoderApi for ScriptedEncoder {
 fn encoder(outcomes: &[Outcome]) -> (Encoder, Rc<RefCell<State>>) {
     let state = Rc::new(RefCell::new(State {
         outcomes: outcomes.iter().copied().collect(),
+        cqp: false,
         calls: 0,
         disabled: 0,
         inputs: Vec::new(),
@@ -101,6 +106,23 @@ fn attempt(refresh: &mut StaticRefresh<'_>, encoder: &mut Encoder) {
             &mut VideoFrameController::new(0),
         )
         .unwrap();
+}
+
+#[test]
+fn cqp_does_not_repeat_static_frames() {
+    let sp = GenericService::new("repeat-cqp-test".to_owned(), false);
+    let (tx, rx) = mpsc::unbounded_channel();
+    sp.on_subscribe(ConnInner::new(1, None, Some(tx)));
+    let recorder = Arc::new(Mutex::new(None));
+    let (mut encoder, state) = encoder(&[Outcome::Frame; 2]);
+    state.borrow_mut().cqp = true;
+    for codec in [CodecFormat::H264, CodecFormat::H265] {
+        let mut refresh = new_refresh(VideoSource::Monitor, codec, &sp, &recorder, 0, 1, 1);
+        refresh.on_encoded(true);
+        attempt(&mut refresh, &mut encoder);
+    }
+    assert_eq!(rx.len(), 0);
+    sp.on_unsubscribe(1);
 }
 
 #[test]

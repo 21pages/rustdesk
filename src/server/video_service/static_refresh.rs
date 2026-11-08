@@ -188,6 +188,10 @@ impl<'a> StaticRefresh<'a> {
         encoder: &mut Encoder,
         frame_controller: &mut VideoFrameController,
     ) -> ResultType<()> {
+        if encoder.is_cqp() {
+            return Ok(());
+        }
+
         let spf = spf.max(Duration::from_secs(1) / MAX_REPEAT_FPS);
         self.repeat_output_limit = self.repeat_output_limit.max(max_repeat_frames(
             self.codec_format,
