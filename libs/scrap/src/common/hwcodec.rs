@@ -243,10 +243,21 @@ impl HwRamEncoder {
         }
     }
 
-    fn rate_control(_config: &HwRamEncoderConfig) -> RateControl {
+    fn rate_control(config: &HwRamEncoderConfig) -> RateControl {
         #[cfg(target_os = "android")]
-        if _config.name.contains("mediacodec") {
+        if config.name.contains("mediacodec") {
             return RC_VBR;
+        }
+        if config.name.contains("vaapi") {
+            if let Some(codec) = HwCodecConfig::get()
+                .ram_encode
+                .iter()
+                .find(|codec| codec.name == config.name)
+            {
+                if !codec.rc.contains(&RC_CBR) && codec.rc.contains(&RC_CQ) {
+                    return RC_CQ;
+                }
+            }
         }
         RC_CBR
     }
@@ -592,6 +603,7 @@ impl HwCodecConfig {
                             format: t.data_format,
                             hwdevice: hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_NONE,
                             priority: 0,
+                            ..Default::default()
                         });
                     }
                 });
