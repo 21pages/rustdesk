@@ -114,7 +114,7 @@ void main() {
     }
   });
 
-  test('native minimization follows the docking option', () async {
+  test('only banner mode changes native minimization', () async {
     const channel = MethodChannel('window_manager');
     var minimizable = true;
     messenger.setMockMethodCallHandler(channel, (call) async {
@@ -134,7 +134,7 @@ void main() {
       final dock = CmWindowDock();
       addTearDown(dock.dispose);
       await dock.syncMinimizable();
-      expect(await windowManager.isMinimizable(), option != 'Y');
+      expect(await windowManager.isMinimizable(), isFalse);
     }
   });
 
@@ -198,7 +198,14 @@ void main() {
     var bounds = const Rect.fromLTWH(1620, 0, 300, 490);
     final visibleBounds = <Rect>[];
     final visibleTaskbarEntries = <bool>[];
+    final visibleBannerStyles = <bool>[];
     var skipTaskbar = false;
+    var bannerConfigured = false;
+    messenger.setMockMethodCallHandler(
+        const MethodChannel('org.rustdesk.rustdesk/host'), (call) async {
+      if (call.method == 'setCmBannerWindow') bannerConfigured = true;
+      return null;
+    });
     messenger.setMockMethodCallHandler(screenChannel, (call) async {
       if (call.method == 'getCursorScreenPoint') return {'x': 0.0, 'y': 0.0};
       if (call.method == 'getAllDisplays') return {'displays': [display]};
@@ -222,6 +229,7 @@ void main() {
           (call.method == 'setOpacity' && call.arguments['opacity'] == 1)) {
         visibleBounds.add(bounds);
         visibleTaskbarEntries.add(!skipTaskbar);
+        visibleBannerStyles.add(bannerConfigured);
       }
       return null;
     });
@@ -233,6 +241,7 @@ void main() {
     await showCmWindow(isStartup: true);
 
     expect(visibleBounds, isNotEmpty);
+    expect(visibleBannerStyles, everyElement(isTrue));
     expect(visibleTaskbarEntries, everyElement(!(isWindows || isLinux)));
     expect(visibleBounds,
         everyElement(const Rect.fromLTWH(1584, 800, 336, 280)));

@@ -4,6 +4,7 @@ import 'package:window_size/window_size.dart' as window_size;
 
 import '../../common.dart';
 import '../../consts.dart';
+import '../../main.dart' show getHiddenTitleBarWindowOptions;
 import '../../models/platform_model.dart';
 import '../../models/server_model.dart';
 import '../../utils/platform_channel.dart';
@@ -24,6 +25,29 @@ class CmWindowDock extends ValueNotifier<bool> {
 
   // Keep the mode fixed for the lifetime of this CM process.
   final bool enabled;
+
+  Future<void> show({bool isStartup = false}) async {
+    if (isMacOS || isWindows) await syncMinimizable();
+    if (isStartup) {
+      final windowOptions = getHiddenTitleBarWindowOptions(
+          size: Size(compactSize.width + size.width, expandedHeight),
+          alwaysOnTop: true);
+      await windowManager.waitUntilReadyToShow(windowOptions, null);
+      bind.mainHideDock();
+      await resizeExpanded(kConnectionManagerWindowSizeClosedChat, align: true);
+      await Future.wait([
+        windowManager.show(),
+        windowManager.focus(),
+        windowManager.setOpacity(1)
+      ]);
+    } else if (await windowManager.getOpacity() != 1) {
+      await resizeExpanded(kConnectionManagerWindowSizeClosedChat, align: true);
+      await windowManager.setOpacity(1);
+      await windowManager.focus();
+      await windowManager.minimize(); //needed
+      windowOnTop(null);
+    }
+  }
 
   Size get expandedSize {
     final contentSize = gFFI.chatModel.isShowCMSidePage
@@ -70,22 +94,20 @@ class CmWindowDock extends ValueNotifier<bool> {
   }
 
   Future<void> syncMinimizable() async {
-    final minimizable = !enabled;
-    if (await windowManager.isMinimizable() != minimizable) {
-      await windowManager.setMinimizable(minimizable);
+    if (!enabled) return;
+    if (await windowManager.isMinimizable()) {
+      await windowManager.setMinimizable(false);
       if (isMacOS) {
-        if (enabled) {
-          await windowManager.setAsFrameless();
-        } else {
-          await windowManager.setTitleBarStyle(TitleBarStyle.hidden,
-              windowButtonVisibility: minimizable);
-        }
+        await windowManager.setAsFrameless();
       }
     }
   }
 
   Future<void> resizeExpanded(Size contentSize, {bool align = false}) async {
     final windowSize = Size(contentSize.width + size.width, expandedHeight);
+    if (isMacOS && enabled) {
+      await RdPlatformChannel.instance.setCmBannerWindow();
+    }
     if ((isWindows || isLinux) && enabled) {
       await RdPlatformChannel.instance.setCmBannerWindow();
       await windowManager.setSkipTaskbar(true);
