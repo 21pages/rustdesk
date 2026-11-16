@@ -13,7 +13,7 @@ use hbb_common::{
     anyhow::anyhow, bail, config::LocalConfig, get_version_number, log,
     rendezvous_proto::ConnType, ResultType,
 };
-use base::message_proto::*;
+use base::{config::keys, message_proto::*};
 use serde::Serialize;
 use serde_json::json;
 #[cfg(target_os = "windows")]
@@ -2112,6 +2112,20 @@ pub mod sessions {
         SESSIONS.read().unwrap().get(&(peer_id, conn_type)).cloned()
     }
 
+    pub fn disconnect_file_transfer_on_remote_desktop_window_close(desktop: &FlutterSession) {
+        if !LocalConfig::get_bool_option(
+            keys::OPTION_ALLOW_DISCONNECT_FILE_TRANSFER_ON_REMOTE_DESKTOP_WINDOW_CLOSE,
+        ) || !desktop.is_default()
+        {
+            return;
+        }
+        if let Some(session) = get_session_by_peer_id(desktop.get_id(), ConnType::FILE_TRANSFER) {
+            session
+                .ui_handler
+                .push_event::<&str>("close_file_transfer", &[], &[]);
+        }
+    }
+
     #[inline]
     pub fn remove_session_by_session_id(id: &SessionID) -> Option<FlutterSession> {
         let mut remove_peer_key = None;
@@ -2359,6 +2373,75 @@ pub mod sessions {
                 && s.session_handlers.read().unwrap().len() != 0
                 && s.connection_round_state.lock().unwrap().is_connected()
         })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use hbb_common::{config::OVERWRITE_LOCAL_SETTINGS, tokio::sync::mpsc};
+
+        #[test]
+        fn closing_desktop_window_leaves_file_transfer_for_ui_cleanup() {
+            let mut receivers = Vec::new();
+            let (desktop_id, display_id) = (SessionID::new_v4(), SessionID::new_v4());
+            for (id, kind) in [
+                ("close-test-a", ConnType::DEFAULT_CONN),
+                ("close-test-a", ConnType::FILE_TRANSFER),
+                ("close-test-a", ConnType::PORT_FORWARD),
+                ("close-test-b", ConnType::FILE_TRANSFER),
+            ] {
+                let session = FlutterSession::default();
+                let mut lc = session.lc.write().unwrap();
+                lc.initialize(id.into(), kind, None, false, None, None, None, "");
+                drop(lc);
+                let (tx, rx) = mpsc::unbounded_channel();
+                *session.sender.write().unwrap() = Some(tx);
+                if kind == ConnType::DEFAULT_CONN {
+                    let mut handlers = session.session_handlers.write().unwrap();
+                    handlers.insert(desktop_id, Default::default());
+                    handlers.insert(display_id, Default::default());
+                }
+                SESSIONS.write().unwrap().insert((id.into(), kind), session);
+                receivers.push((id, kind, rx));
+            }
+            let option = keys::OPTION_ALLOW_DISCONNECT_FILE_TRANSFER_ON_REMOTE_DESKTOP_WINDOW_CLOSE;
+            let previous = OVERWRITE_LOCAL_SETTINGS
+                .read()
+                .unwrap()
+                .get(option)
+                .cloned();
+            let desktop = get_session_by_session_id(&desktop_id).unwrap();
+            for value in ["", "N"] {
+                OVERWRITE_LOCAL_SETTINGS
+                    .write()
+                    .unwrap()
+                    .insert(option.into(), value.into());
+                disconnect_file_transfer_on_remote_desktop_window_close(&desktop);
+                assert!(receivers
+                    .iter_mut()
+                    .all(|(_, _, rx)| rx.try_recv().is_err()));
+            }
+            OVERWRITE_LOCAL_SETTINGS
+                .write()
+                .unwrap()
+                .insert(option.into(), "Y".into());
+            crate::flutter_ffi::session_close(display_id);
+            for (_, kind, rx) in &mut receivers {
+                assert!(*kind == ConnType::DEFAULT_CONN || rx.try_recv().is_err());
+            }
+            crate::flutter_ffi::session_close(desktop_id);
+            for (id, kind, mut rx) in receivers {
+                let closed = matches!(rx.try_recv(), Ok(Data::Close));
+                assert_eq!(closed, kind == ConnType::DEFAULT_CONN);
+                SESSIONS.write().unwrap().remove(&(id.into(), kind));
+            }
+            let mut options = OVERWRITE_LOCAL_SETTINGS.write().unwrap();
+            if let Some(previous) = previous {
+                options.insert(option.into(), previous);
+            } else {
+                options.remove(option);
+            }
+        }
     }
 }
 

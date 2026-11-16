@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Sa cartella seletzionada non est bòida. S'installatzione diat pòdere iscantzellare sos datos chi bi sunt. Ti cussigiamus de isseberare un'àtera cartella."),
         ("Request approval", "Pedi s'aprovatzione"),
         ("Forever", "Pro semper"),
+        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Serra su tramudòngiu de documentos cando si serrat sa ventana de s'elaboradore remotu"),
     ].iter().cloned().collect();
 }

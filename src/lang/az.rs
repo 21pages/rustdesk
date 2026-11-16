@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Seçilmiş qovluq boş deyil. Quraşdırma mövcud məlumatları silə bilər. Başqa qovluq seçməyiniz tövsiyə olunur."),
         ("Request approval", "Təsdiq istə"),
         ("Forever", "Həmişəlik"),
+        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Uzaq masaüstü pəncərəsini bağlayarkən fayl ötürülməsini də bağla"),
     ].iter().cloned().collect();
 }

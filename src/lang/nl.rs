@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "De geselecteerde map is niet leeg. De installatie kan bestaande gegevens verwijderen. Overweeg een andere map te kiezen."),
         ("Request approval", "Goedkeuring aanvragen"),
         ("Forever", "Voor altijd"),
+        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Bestandsoverdracht sluiten bij het sluiten van het externe bureaubladvenster"),
     ].iter().cloned().collect();
 }

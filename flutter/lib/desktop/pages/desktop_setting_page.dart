@@ -531,6 +531,13 @@ class _GeneralState extends State<_General> {
         _OptionCheckBox(context, 'Confirm before closing multiple tabs',
             kOptionEnableConfirmClosingTabs,
             isServer: false),
+      if (!isWeb && !incomingOnly)
+        _OptionCheckBox(
+          context,
+          'disconnect-file-transfer-on-remote-desktop-window-close-tip',
+          kOptionAllowDisconnectFileTransferOnRemoteDesktopWindowClose,
+          isServer: false,
+        ),
       if (!incomingOnly)
         _OptionCheckBox(
           context,
