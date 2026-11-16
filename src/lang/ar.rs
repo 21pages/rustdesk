@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "المجلد المحدد ليس فارغًا. قد يؤدي التثبيت إلى حذف البيانات الموجودة. يُنصح باختيار مجلد آخر."),
         ("Request approval", "طلب الموافقة"),
         ("Forever", "إلى الأبد"),
+        ("close-other-connections-on-remote-desktop-window-close-tip", "إغلاق الاتصالات الأخرى عند إغلاق نافذة سطح المكتب البعيد"),
     ].iter().cloned().collect();
 }

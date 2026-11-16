@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "選択したフォルダーは空ではありません。インストールにより既存のデータが削除される可能性があります。別のフォルダーを選択することをおすすめします。"),
         ("Request approval", "承認を要求"),
         ("Forever", "無期限"),
+        ("close-other-connections-on-remote-desktop-window-close-tip", "リモートデスクトップのウィンドウを閉じる際に他の接続も閉じる"),
     ].iter().cloned().collect();
 }

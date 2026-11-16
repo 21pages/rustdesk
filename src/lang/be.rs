@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Выбраная папка не пустая. Усталёўванне можа выдаліць наяўныя даныя. Лепш выберыце іншую папку."),
         ("Request approval", "Запытаць дазвол"),
         ("Forever", "Назаўсёды"),
+        ("close-other-connections-on-remote-desktop-window-close-tip", "Закрываць іншыя злучэнні пры закрыцці акна аддаленага працоўнага стала"),
     ].iter().cloned().collect();
 }

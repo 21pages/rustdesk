@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Seçilen klasör boş değil. Kurulum mevcut verileri silebilir. Farklı bir klasör seçmeyi düşünün."),
         ("Request approval", "Onay iste"),
         ("Forever", "Sonsuza dek"),
+        ("close-other-connections-on-remote-desktop-window-close-tip", "Uzak masaüstü penceresi kapatıldığında diğer bağlantıları da kapat"),
     ].iter().cloned().collect();
 }

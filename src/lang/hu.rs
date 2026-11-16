@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "A kiválasztott mappa nem üres. A telepítés törölheti a meglévő adatokat. Fontolja meg egy másik mappa kiválasztását."),
         ("Request approval", "Jóváhagyás kérése"),
         ("Forever", "Örökre"),
+        ("close-other-connections-on-remote-desktop-window-close-tip", "A többi kapcsolat bezárása a távoli asztal ablakának bezárásakor"),
     ].iter().cloned().collect();
 }

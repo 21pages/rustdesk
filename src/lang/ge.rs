@@ -826,5 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "არჩეული საქაღალდე ცარიელი არ არის. ინსტალაციამ შეიძლება წაშალოს არსებული მონაცემები. რეკომენდებულია სხვა საქაღალდის არჩევა."),
         ("Request approval", "დამტკიცების მოთხოვნა"),
         ("Forever", "სამუდამოდ"),
+        ("close-other-connections-on-remote-desktop-window-close-tip", "დისტანციური სამუშაო მაგიდის ფანჯრის დახურვისას სხვა კავშირებიც დაიხუროს"),
     ].iter().cloned().collect();
 }

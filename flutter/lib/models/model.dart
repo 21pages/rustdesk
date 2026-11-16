@@ -333,6 +333,8 @@ class FfiModel with ChangeNotifier {
       var name = evt['name'];
       if (name == 'msgbox') {
         handleMsgBox(evt, sessionId, peerId);
+      } else if (name == 'close_connection') {
+        closeConnection(id: peerId);
       } else if (name == 'toast') {
         handleToast(evt, sessionId, peerId);
       } else if (name == 'set_multiple_windows_session') {
