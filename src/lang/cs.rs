@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Vybraná složka není prázdná. Instalace může odstranit existující data. Zvažte výběr jiné složky."),
         ("Request approval", "Požádat o schválení"),
         ("Forever", "Navždy"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Při zavření okna vzdálené plochy zavřít i přenos souborů"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "Při ručním zavření vzdálené plochy zavřít i přenos souborů"),
     ].iter().cloned().collect();
 }

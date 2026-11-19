@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "La elektita dosierujo ne estas malplena. La instalado povas forigi ekzistantajn datumojn. Konsideru elekti alian dosierujon."),
         ("Request approval", "Peti aprobon"),
         ("Forever", "Por ĉiam"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Fermi dosiertransigon kiam la fenestro de la fora labortablo fermiĝas"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "Fermi dosiertransigon kiam la fora labortablo estas fermita permane"),
     ].iter().cloned().collect();
 }

@@ -102,6 +102,8 @@ pub struct Remote<T: InvokeUiSession> {
     chroma: Arc<RwLock<Option<Chroma>>>,
     last_record_state: bool,
     sent_close_reason: bool,
+    #[cfg(feature = "flutter")]
+    peer_closed_manually: bool,
     cursor_dedupe: CursorDedupe,
     trusted_device: crate::trusted_devices::client::Session,
 }
@@ -156,6 +158,8 @@ impl<T: InvokeUiSession> Remote<T> {
             chroma: Default::default(),
             last_record_state: false,
             sent_close_reason: false,
+            #[cfg(feature = "flutter")]
+            peer_closed_manually: false,
             cursor_dedupe: Default::default(),
             trusted_device: Default::default(),
         }
@@ -471,6 +475,11 @@ impl<T: InvokeUiSession> Remote<T> {
             .lock()
             .unwrap()
             .set_disconnected(round);
+
+        #[cfg(feature = "flutter")]
+        if self.peer_closed_manually {
+            crate::flutter::sessions::close_file_transfer_for_remote_desktop(&self.handler);
+        }
 
         #[cfg(not(target_os = "ios"))]
         if self.handler.is_default() && _set_disconnected_ok {
@@ -2354,6 +2363,13 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(misc::Union::CloseReason(c)) => {
+                        #[cfg(feature = "flutter")]
+                        if self.is_connected {
+                            self.peer_closed_manually = matches!(
+                                c.as_str(),
+                                "Closed manually by the peer" | "Closed manually by web console"
+                            );
+                        }
                         self.sent_close_reason = true; // The controlled end will close, no need to send close reason
                         self.handler.msgbox("error", "Connection Error", &c, "");
                         return false;

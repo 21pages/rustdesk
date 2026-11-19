@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", ""),
         ("Request approval", ""),
         ("Forever", ""),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", ""),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", ""),
     ].iter().cloned().collect();
 }

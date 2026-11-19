@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Valitud kaust ei ole tühi. Paigaldamine võib olemasolevad andmed kustutada. Kaalu teise kausta valimist."),
         ("Request approval", "Küsi heakskiitu"),
         ("Forever", "Igavesti"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Sulge failiedastus kaugtöölaua akna sulgemisel"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "Sulge failiedastus kaugtöölaua käsitsi sulgemisel"),
     ].iter().cloned().collect();
 }

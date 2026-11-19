@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Таңдалған бума бос емес. Орнату бар деректерді жоюы мүмкін. Басқа буманы таңдаған жөн."),
         ("Request approval", "Мақұлдауды сұрау"),
         ("Forever", "Мәңгі"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Қашықтағы жұмыс үстелі терезесін жапқанда файл тасымалын да жабу"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "Қашықтағы жұмыс үстелі қолмен жабылғанда файл тасымалын да жабу"),
     ].iter().cloned().collect();
 }

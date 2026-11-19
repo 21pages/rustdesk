@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Pasirinktas aplankas nėra tuščias. Diegimas gali ištrinti esamus duomenis. Apsvarstykite galimybę pasirinkti kitą aplanką."),
         ("Request approval", "Prašyti patvirtinimo"),
         ("Forever", "Visam laikui"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Uždaryti failų perdavimą uždarant nuotolinio darbalaukio langą"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "Uždaryti failų perdavimą rankiniu būdu uždarius nuotolinį darbalaukį"),
     ].iter().cloned().collect();
 }

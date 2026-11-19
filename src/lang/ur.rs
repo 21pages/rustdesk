@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "منتخب فولڈر خالی نہیں ہے۔ انسٹالیشن موجودہ ڈیٹا کو حذف کر سکتی ہے۔ کوئی دوسرا فولڈر منتخب کرنے پر غور کریں۔"),
         ("Request approval", "منظوری کی درخواست کریں"),
         ("Forever", "ہمیشہ کے لیے"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "ریموٹ ڈیسک ٹاپ ونڈو بند کرتے وقت فائل ٹرانسفر بھی بند کریں"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "ریموٹ ڈیسک ٹاپ کو دستی طور پر بند کرنے پر فائل ٹرانسفر بھی بند کریں"),
     ].iter().cloned().collect();
 }

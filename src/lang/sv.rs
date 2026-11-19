@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "Den valda mappen är inte tom. Installationen kan radera befintliga data. Överväg att välja en annan mapp."),
         ("Request approval", "Begär godkännande"),
         ("Forever", "För alltid"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "Stäng filöverföring när fjärrskrivbordsfönstret stängs"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "Stäng filöverföring när fjärrskrivbordet stängs manuellt"),
     ].iter().cloned().collect();
 }

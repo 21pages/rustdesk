@@ -826,6 +826,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("install-directory-not-empty-tip", "התיקייה שנבחרה אינה ריקה. ההתקנה עלולה למחוק נתונים קיימים. מומלץ לבחור תיקייה אחרת."),
         ("Request approval", "בקש אישור"),
         ("Forever", "לתמיד"),
-        ("disconnect-file-transfer-on-remote-desktop-window-close-tip", "סגור גם את העברת הקבצים בעת סגירת חלון שולחן העבודה המרוחק"),
+        ("disconnect-file-transfer-on-remote-desktop-close-tip", "סגור גם את העברת הקבצים כששולחן העבודה המרוחק נסגר ידנית"),
     ].iter().cloned().collect();
 }

@@ -534,8 +534,8 @@ class _GeneralState extends State<_General> {
       if (!isWeb && !incomingOnly)
         _OptionCheckBox(
           context,
-          'disconnect-file-transfer-on-remote-desktop-window-close-tip',
-          kOptionAllowDisconnectFileTransferOnRemoteDesktopWindowClose,
+          'disconnect-file-transfer-on-remote-desktop-close-tip',
+          kOptionAllowDisconnectFileTransferOnRemoteDesktopClose,
           isServer: false,
         ),
       if (!incomingOnly)

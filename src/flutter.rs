@@ -2112,9 +2112,9 @@ pub mod sessions {
         SESSIONS.read().unwrap().get(&(peer_id, conn_type)).cloned()
     }
 
-    pub fn disconnect_file_transfer_on_remote_desktop_window_close(desktop: &FlutterSession) {
+    pub fn close_file_transfer_for_remote_desktop<T: InvokeUiSession>(desktop: &Session<T>) {
         if !LocalConfig::get_bool_option(
-            keys::OPTION_ALLOW_DISCONNECT_FILE_TRANSFER_ON_REMOTE_DESKTOP_WINDOW_CLOSE,
+            keys::OPTION_ALLOW_DISCONNECT_FILE_TRANSFER_ON_REMOTE_DESKTOP_CLOSE,
         ) || !desktop.is_default()
         {
             return;
@@ -2404,7 +2404,7 @@ pub mod sessions {
                 SESSIONS.write().unwrap().insert((id.into(), kind), session);
                 receivers.push((id, kind, rx));
             }
-            let option = keys::OPTION_ALLOW_DISCONNECT_FILE_TRANSFER_ON_REMOTE_DESKTOP_WINDOW_CLOSE;
+            let option = keys::OPTION_ALLOW_DISCONNECT_FILE_TRANSFER_ON_REMOTE_DESKTOP_CLOSE;
             let previous = OVERWRITE_LOCAL_SETTINGS
                 .read()
                 .unwrap()
@@ -2416,7 +2416,7 @@ pub mod sessions {
                     .write()
                     .unwrap()
                     .insert(option.into(), value.into());
-                disconnect_file_transfer_on_remote_desktop_window_close(&desktop);
+                close_file_transfer_for_remote_desktop(&desktop);
                 assert!(receivers
                     .iter_mut()
                     .all(|(_, _, rx)| rx.try_recv().is_err()));
@@ -2425,6 +2425,10 @@ pub mod sessions {
                 .write()
                 .unwrap()
                 .insert(option.into(), "Y".into());
+            close_file_transfer_for_remote_desktop(&desktop);
+            assert!(receivers
+                .iter_mut()
+                .all(|(_, _, rx)| rx.try_recv().is_err()));
             crate::flutter_ffi::session_close(display_id);
             for (_, kind, rx) in &mut receivers {
                 assert!(*kind == ConnType::DEFAULT_CONN || rx.try_recv().is_err());
