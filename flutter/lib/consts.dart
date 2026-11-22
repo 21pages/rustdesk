@@ -212,6 +212,7 @@ const String kOptionHideToolbarSendClipboardKeystrokes =
 const String kOptionHideToolbarViewCamera = "hide-toolbar-view-camera";
 const String kOptionHideToolbarTerminal = "hide-toolbar-terminal";
 const String kOptionHideToolbarTcpTunneling = "hide-toolbar-tcp-tunneling";
+const String kOptionDisableToolbarSwitchSides = "disable-toolbar-switch-sides";
 const String kOptionQuitButtonText = "quit-button-text";
 const String kOptionHideRemotePrinterSetting = "hide-remote-printer-settings";
 const String kOptionHideGeneralSetting = "hide-general-settings";

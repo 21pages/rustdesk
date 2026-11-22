@@ -130,6 +130,7 @@ pub const OPTION_HIDE_TOOLBAR_SEND_CLIPBOARD_KEYSTROKES: &str =
 pub const OPTION_HIDE_TOOLBAR_VIEW_CAMERA: &str = "hide-toolbar-view-camera";
 pub const OPTION_HIDE_TOOLBAR_TERMINAL: &str = "hide-toolbar-terminal";
 pub const OPTION_HIDE_TOOLBAR_TCP_TUNNELING: &str = "hide-toolbar-tcp-tunneling";
+pub const OPTION_DISABLE_TOOLBAR_SWITCH_SIDES: &str = "disable-toolbar-switch-sides";
 pub const OPTION_QUIT_BUTTON_TEXT: &str = "quit-button-text";
 pub const OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED: &str =
     "allow-command-line-settings-when-settings-disabled";
@@ -365,6 +366,7 @@ pub const KEYS_BUILDIN_SETTINGS: &[&str] = &[
     OPTION_HIDE_TOOLBAR_VIEW_CAMERA,
     OPTION_HIDE_TOOLBAR_TERMINAL,
     OPTION_HIDE_TOOLBAR_TCP_TUNNELING,
+    OPTION_DISABLE_TOOLBAR_SWITCH_SIDES,
     OPTION_HIDE_USERNAME_ON_CARD,
     OPTION_HIDE_HELP_CARDS,
     OPTION_DEFAULT_CONNECT_PASSWORD,

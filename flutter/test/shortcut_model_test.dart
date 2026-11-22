@@ -243,6 +243,23 @@ void main() {
     });
   }
 
+  for (final (option, action) in [
+    (kOptionDisableToolbarSwitchSides, kShortcutActionSwitchSides),
+  ]) {
+    testWidgets('disabling $action leaves its menu entry inactive', (tester) async {
+      final binding = _ToolbarBinding();
+      platformFFI.setBindingForTesting(binding);
+      await tester.pumpWidget(const SizedBox());
+      final context = tester.element(find.byType(SizedBox));
+      TTextMenu entry() => toolbarControls(context, session.id, session)
+          .singleWhere((item) => item.actionId == action);
+
+      expect(entry().onPressed, isNotNull);
+      binding.option = option;
+      expect(entry().onPressed, isNull);
+    });
+  }
+
   test('fresh Chat shortcut sends through its outgoing session', () async {
     final binding = _ChatBinding();
     platformFFI.setBindingForTesting(binding);

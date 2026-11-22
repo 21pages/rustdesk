@@ -710,8 +710,10 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
       bind.peerGetSessionsCount(id: id, connType: ffi.connType.index) == 1) {
     v.add(TTextMenu(
         child: Text(translate('Switch Sides')),
-        onPressed: () =>
-            showConfirmSwitchSidesDialog(sessionId, id, ffi.dialogManager),
+        onPressed: bind.mainGetBuildinOption(key: kOptionDisableToolbarSwitchSides) ==
+                'Y'
+            ? null
+            : () => showConfirmSwitchSidesDialog(sessionId, id, ffi.dialogManager),
         actionId: kShortcutActionSwitchSides));
   }
   // refresh
