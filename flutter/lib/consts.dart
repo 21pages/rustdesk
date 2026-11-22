@@ -207,6 +207,8 @@ const String kOptionHideWebSocketSetting = "hide-websocket-settings";
 const String kOptionHideStopService = "hide-stop-service";
 const String kOptionHideAccountPasswordLogin = "hide-account-password-login";
 const String kOptionHideToolbarOsPassword = "hide-toolbar-os-password";
+const String kOptionHideToolbarSendClipboardKeystrokes =
+    "hide-toolbar-send-clipboard-keystrokes";
 const String kOptionQuitButtonText = "quit-button-text";
 const String kOptionHideRemotePrinterSetting = "hide-remote-printer-settings";
 const String kOptionHideGeneralSetting = "hide-general-settings";

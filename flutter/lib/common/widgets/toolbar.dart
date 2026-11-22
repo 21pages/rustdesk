@@ -503,7 +503,9 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
   // paste
   if (isDefaultConn &&
       pi.platform != kPeerPlatformAndroid &&
-      perms['keyboard'] != false) {
+      perms['keyboard'] != false &&
+      bind.mainGetBuildinOption(key: kOptionHideToolbarSendClipboardKeystrokes) !=
+          'Y') {
     v.add(TTextMenu(
         child: Text(translate('Send clipboard keystrokes')),
         onPressed: () async {

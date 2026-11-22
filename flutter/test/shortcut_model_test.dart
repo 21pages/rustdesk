@@ -217,6 +217,7 @@ void main() {
 
   for (final (option, label) in [
     (kOptionHideToolbarOsPassword, 'OS Password'),
+    (kOptionHideToolbarSendClipboardKeystrokes, 'Send clipboard keystrokes'),
   ]) {
     testWidgets('hiding $label leaves file transfer available', (tester) async {
       final binding = _ToolbarBinding();
