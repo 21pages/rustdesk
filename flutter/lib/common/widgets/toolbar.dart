@@ -476,7 +476,9 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
     );
   }
   // osPassword
-  if (isDefaultConn && perms['keyboard'] != false) {
+  if (isDefaultConn &&
+      perms['keyboard'] != false &&
+      bind.mainGetBuildinOption(key: kOptionHideToolbarOsPassword) != 'Y') {
     v.add(
       TTextMenu(
         child: Row(children: [

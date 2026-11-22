@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dash_chat_2/dash_chat_2.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_hbb/common.dart' show SessionID;
 import 'package:flutter_hbb/common/widgets/keyboard_shortcuts/shortcut_constants.dart';
+import 'package:flutter_hbb/common/widgets/toolbar.dart';
 import 'package:flutter_hbb/generated_bridge.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
@@ -38,6 +40,28 @@ class _ChatBinding extends Fake implements RustdeskImpl {
       {required int connId, required String msg, dynamic hint}) async {
     cmSent.add((connId, msg));
   }
+}
+
+class _ToolbarBinding extends _ChatBinding {
+  String option = '';
+  @override
+  String mainGetBuildinOption({required String key, dynamic hint}) =>
+      key == option ? 'Y' : '';
+  @override
+  bool isDisableAccount({dynamic hint}) => false;
+  @override
+  int versionToNumber({required String v, dynamic hint}) => 1;
+  @override
+  int peerGetSessionsCount(
+          {required String id, required int connType, dynamic hint}) =>
+      1;
+  @override
+  String? sessionGetCommonSync(
+          {required SessionID sessionId,
+          required String key,
+          required String param,
+          dynamic hint}) =>
+      key == 'is_screenshot_supported' ? 'true' : null;
 }
 
 class _Chat extends ChatModel {
@@ -120,6 +144,8 @@ class _Session extends Fake implements FFI {
   @override
   late final _Chat chatModel = _Chat(this);
   @override
+  late final ElevationModel elevationModel = ElevationModel(WeakReference(this));
+  @override
   late ShortcutModel shortcutModel;
   @override
   ConnType get connType => ConnType.defaultConn;
@@ -187,6 +213,30 @@ void main() {
         expect(binding.keys.where((key) => key.$1 == 'VK_S'), isEmpty);
       });
     }
+  }
+
+  for (final (option, label) in [
+    (kOptionHideToolbarOsPassword, 'OS Password'),
+  ]) {
+    testWidgets('hiding $label leaves file transfer available', (tester) async {
+      final binding = _ToolbarBinding();
+      platformFFI.setBindingForTesting(binding);
+      Future<void> showControls() => tester.pumpWidget(MaterialApp(
+            home: Builder(builder: (context) {
+              return Column(children: [
+                for (final item in toolbarControls(context, session.id, session))
+                  item.getChild(),
+              ]);
+            }),
+          ));
+
+      await showControls();
+      expect(find.text(label), findsOneWidget);
+      binding.option = option;
+      await showControls();
+      expect(find.text(label), findsNothing);
+      expect(find.text('Transfer file'), findsOneWidget);
+    });
   }
 
   test('fresh Chat shortcut sends through its outgoing session', () async {

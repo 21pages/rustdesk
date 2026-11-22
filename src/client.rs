@@ -3038,6 +3038,9 @@ impl LoginConfigHandler {
     /// Check if the client should auto login.
     /// Return password if the client should auto login, otherwise return empty string.
     pub fn should_auto_login(&self) -> String {
+        if get_builtin_option(keys::OPTION_HIDE_TOOLBAR_OS_PASSWORD) == "Y" {
+            return String::new();
+        }
         let l = self.lock_after_session_end.v;
         let a = !self.get_option("auto-login").is_empty();
         let p = self.get_option("os-password");
@@ -5798,6 +5801,33 @@ mod webrtc_race_tests {
 #[cfg(test)]
 #[path = "client/tests/trusted_devices_tests.rs"]
 mod trusted_devices_tests;
+
+#[cfg(test)]
+mod auto_login_tests {
+    use super::*;
+
+    #[test]
+    fn hidden_os_password_skips_auto_login_with_a_saved_password() {
+        let mut login = LoginConfigHandler::default();
+        login.config.lock_after_session_end.v = true;
+        let options = &mut login.config.options;
+        options.insert("auto-login".into(), "Y".into());
+        options.insert("os-password".into(), "saved".into());
+
+        let key = keys::OPTION_HIDE_TOOLBAR_OS_PASSWORD;
+        let settings = &config::BUILTIN_SETTINGS;
+        let previous = settings.write().unwrap().insert(key.into(), "Y".into());
+        let hidden = login.should_auto_login();
+        settings.write().unwrap().remove(key);
+        let visible = login.should_auto_login();
+        if let Some(value) = previous {
+            settings.write().unwrap().insert(key.into(), value);
+        }
+
+        assert!(hidden.is_empty());
+        assert_eq!(visible, "saved");
+    }
+}
 
 #[cfg(test)]
 mod kx_tests {

@@ -508,6 +508,7 @@ impl sciter::EventHandler for SciterSession {
         fn get_default_pi();
         fn get_option(String);
         fn get_local_option(String);
+        fn get_builtin_option(String);
         fn t(String);
         fn set_option(String, String);
         fn input_os_password(String, bool);
@@ -644,6 +645,10 @@ impl SciterSession {
 
     pub fn get_local_option(&self, key: String) -> String {
         crate::ui_interface::get_local_option(key)
+    }
+
+    fn get_builtin_option(&self, key: String) -> String {
+        crate::ui_interface::get_builtin_option(&key)
     }
 
     pub fn get_icon(&self) -> String {

@@ -228,7 +228,7 @@ class Header: Reactor.Component {
     function renderActionPop() {
         return <popup>
             <menu.context #action-options>
-                {keyboard_enabled ? <li #os-password>{translate('OS Password')}<EditOsPassword /></li> : ""}
+                {keyboard_enabled && handler.get_builtin_option("hide-toolbar-os-password") != "Y" ? <li #os-password>{translate('OS Password')}<EditOsPassword /></li> : ""}
                 <li #transfer-file>{translate('Transfer file')}</li> 
                 <li #tunnel>{translate('TCP tunneling')}</li> 
                 {handler.get_audit_server("conn") && <li #note>{translate('Note')}</li>}
