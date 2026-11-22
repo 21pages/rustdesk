@@ -220,6 +220,7 @@ void main() {
     (kOptionHideToolbarSendClipboardKeystrokes, 'Send clipboard keystrokes'),
     (kOptionHideToolbarViewCamera, 'View camera'),
     (kOptionHideToolbarTerminal, 'Terminal (beta)'),
+    (kOptionHideToolbarTcpTunneling, 'TCP tunneling'),
   ]) {
     testWidgets('hiding $label leaves file transfer available', (tester) async {
       final binding = _ToolbarBinding();

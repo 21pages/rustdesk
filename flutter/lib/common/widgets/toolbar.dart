@@ -613,11 +613,13 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
             onPressed: () => connectWithToken(isTerminal: true)),
       );
     }
-    v.add(
-      TTextMenu(
-          child: Text(translate('TCP tunneling')),
-          onPressed: () => connectWithToken(isTcpTunneling: true)),
-    );
+    if (bind.mainGetBuildinOption(key: kOptionHideToolbarTcpTunneling) != 'Y') {
+      v.add(
+        TTextMenu(
+            child: Text(translate('TCP tunneling')),
+            onPressed: () => connectWithToken(isTcpTunneling: true)),
+      );
+    }
   }
   // note
   if (isDefaultConn && !bind.isDisableAccount()) {
