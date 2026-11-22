@@ -84,6 +84,9 @@ class _Chat extends ChatModel {
 }
 
 class _LegacyBinding extends _ChatBinding {
+  @override
+  String mainGetBuildinOption({required String key, dynamic hint}) => '';
+
   final keys = <(String, bool, bool)>[];
 
   @override
@@ -271,6 +274,26 @@ void main() {
         binding.option = '';
         expect(entry().onPressed, isNotNull);
       }
+    });
+  }
+
+  for (final (option, action) in [
+    (kOptionDisableToolbarDisplaySettings, kShortcutActionToggleMute),
+  ]) {
+    test('$option blocks $action but allows text chat',
+        () async {
+      final binding = _ToolbarBinding();
+      platformFFI.setBindingForTesting(binding);
+      final calls = <String>[];
+      model.register(action, () => calls.add(action));
+      model.register(kShortcutActionToggleChat, () => calls.add('chat'));
+      model.onTriggered(action);
+      await pumpEventQueue();
+      binding.option = option;
+      model.onTriggered(action);
+      model.onTriggered(kShortcutActionToggleChat);
+      await pumpEventQueue();
+      expect(calls, [action, 'chat']);
     });
   }
 

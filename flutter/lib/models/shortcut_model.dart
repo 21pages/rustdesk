@@ -21,6 +21,16 @@ import '../models/state_model.dart';
 
 typedef ShortcutCallback = FutureOr<void> Function();
 
+Iterable<String> _actionsInGroup(String titleKey) {
+  final groups = kKeyboardShortcutActionGroups.where((g) => g.titleKey == titleKey);
+  return allActionEntries(groups).map((entry) => entry.id);
+}
+
+final _toolbarOptionForShortcut = {
+  for (final id in _actionsInGroup('Display'))
+    id: kOptionDisableToolbarDisplaySettings,
+};
+
 /// Per-session shortcut dispatcher. Attached to FFI when a session is created.
 ///
 /// The Rust matcher (src/keyboard/shortcuts.rs) emits `shortcut_triggered`
@@ -82,6 +92,10 @@ class ShortcutModel {
   /// belongs to RustDesk and is never forwarded to the remote.
   void onTriggered(String actionId) {
     if (parent.target?.closed != false) return;
+    final option = _toolbarOptionForShortcut[actionId];
+    if (option != null && bind.mainGetBuildinOption(key: option) == 'Y') {
+      return;
+    }
     unawaited(Future.sync(() async {
       final refresh = _refreshers[actionId];
       if (refresh != null) {

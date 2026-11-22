@@ -295,6 +295,9 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   }
 
   Widget getBottomAppBar() {
+    final disableDisplaySettings =
+        bind.mainGetBuildinOption(key: kOptionDisableToolbarDisplaySettings) ==
+            'Y';
     return BottomAppBar(
       elevation: 10,
       color: MyTheme.accent,
@@ -314,10 +317,12 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                     IconButton(
                       color: Colors.white,
                       icon: Icon(Icons.tv),
-                      onPressed: () {
-                        setState(() => _showEdit = false);
-                        showOptions(context, widget.id, gFFI.dialogManager);
-                      },
+                      onPressed: disableDisplaySettings
+                          ? null
+                          : () {
+                              setState(() => _showEdit = false);
+                              showOptions(context, widget.id, gFFI.dialogManager);
+                            },
                     )
                   ] +
                   (isWeb

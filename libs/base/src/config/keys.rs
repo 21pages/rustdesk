@@ -133,6 +133,7 @@ pub const OPTION_HIDE_TOOLBAR_TCP_TUNNELING: &str = "hide-toolbar-tcp-tunneling"
 pub const OPTION_DISABLE_TOOLBAR_SWITCH_SIDES: &str = "disable-toolbar-switch-sides";
 pub const OPTION_DISABLE_TOOLBAR_SCREENSHOT: &str = "disable-toolbar-screenshot";
 pub const OPTION_HIDE_TOOLBAR_VOICE_CALL: &str = "hide-toolbar-voice-call";
+pub const OPTION_DISABLE_TOOLBAR_DISPLAY_SETTINGS: &str = "disable-toolbar-display-settings";
 pub const OPTION_QUIT_BUTTON_TEXT: &str = "quit-button-text";
 pub const OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED: &str =
     "allow-command-line-settings-when-settings-disabled";
@@ -371,6 +372,7 @@ pub const KEYS_BUILDIN_SETTINGS: &[&str] = &[
     OPTION_DISABLE_TOOLBAR_SWITCH_SIDES,
     OPTION_DISABLE_TOOLBAR_SCREENSHOT,
     OPTION_HIDE_TOOLBAR_VOICE_CALL,
+    OPTION_DISABLE_TOOLBAR_DISPLAY_SETTINGS,
     OPTION_HIDE_USERNAME_ON_CARD,
     OPTION_HIDE_HELP_CARDS,
     OPTION_DEFAULT_CONNECT_PASSWORD,

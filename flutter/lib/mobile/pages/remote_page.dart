@@ -603,6 +603,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   Widget getBottomAppBar() {
+    final disableDisplaySettings =
+        bind.mainGetBuildinOption(key: kOptionDisableToolbarDisplaySettings) ==
+            'Y';
     final ffiModel = Provider.of<FfiModel>(context);
     return BottomAppBar(
       elevation: 10,
@@ -623,10 +626,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                     IconButton(
                       color: Colors.white,
                       icon: Icon(Icons.tv),
-                      onPressed: () {
-                        setState(() => _showEdit = false);
-                        showOptions(context, widget.id, gFFI.dialogManager);
-                      },
+                      onPressed: disableDisplaySettings
+                          ? null
+                          : () {
+                              setState(() => _showEdit = false);
+                              showOptions(context, widget.id, gFFI.dialogManager);
+                            },
                     )
                   ] +
                   (isWebDesktop || ffiModel.viewOnly || !ffiModel.keyboard

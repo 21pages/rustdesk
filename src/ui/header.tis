@@ -149,7 +149,7 @@ class Header: Reactor.Component {
             </div>
             <span #chat>{svg_chat}</span>
             <span #action>{svg_action}</span>
-            <span #display>{svg_display}</span>
+            <span #display disabled={handler.get_builtin_option("disable-toolbar-display-settings") == "Y" ? "true" : "false"}>{svg_display}</span>
             <span #keyboard>{svg_keyboard}</span>
             {recording_enabled && show_recording_button ? <span #recording>{recording ? svg_recording_on : svg_recording_off}</span> : ""}
             {this.renderKeyboardPop()}
@@ -305,7 +305,7 @@ class Header: Reactor.Component {
         me.popup(menu);
     }
 
-    event click $(#display) (_, me) {
+    event click $(#display[disabled=false]) (_, me) {
         var menu = $(menu#display-options);
         me.popup(menu);
     }

@@ -91,7 +91,7 @@ span#fullscreen.active {
   border: color(border) solid 1px;
 }
 
-button:disabled, #take-screenshot[disabled=true] {
+button:disabled, #take-screenshot[disabled=true], #display[disabled=true] {
   opacity: 0.3;
 }
 

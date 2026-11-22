@@ -1756,6 +1756,10 @@ class _DisplayMenuState extends State<_DisplayMenu> {
 
   @override
   Widget build(BuildContext context) {
+    if (bind.mainGetBuildinOption(key: kOptionDisableToolbarDisplaySettings) ==
+        'Y') {
+      return _disabledSettingsButton('Display Settings', 'assets/display.svg');
+    }
     final colorScheme = Theme.of(context).colorScheme;
     menuChildrenGetter(_IconSubmenuButtonState state) {
       final menuChildren = <Widget>[
@@ -3022,6 +3026,15 @@ class _CloseMenu extends StatelessWidget {
     );
   }
 }
+
+Widget _disabledSettingsButton(String tooltip, String assetName) =>
+    _IconMenuButton(
+      tooltip: tooltip,
+      assetName: assetName,
+      color: Colors.grey,
+      hoverColor: Colors.grey,
+      onPressed: null,
+    );
 
 class _IconMenuButton extends StatefulWidget {
   final String? assetName;
