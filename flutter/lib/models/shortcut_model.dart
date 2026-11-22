@@ -29,6 +29,8 @@ Iterable<String> _actionsInGroup(String titleKey) {
 final _toolbarOptionForShortcut = {
   for (final id in _actionsInGroup('Display'))
     id: kOptionDisableToolbarDisplaySettings,
+  for (final id in _actionsInGroup('Keyboard'))
+    id: kOptionDisableToolbarKeyboardSettings,
 };
 
 /// Per-session shortcut dispatcher. Attached to FFI when a session is created.

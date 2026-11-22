@@ -2563,6 +2563,11 @@ class _KeyboardMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     var ffiModel = Provider.of<FfiModel>(context);
     if (!ffiModel.keyboard) return Offstage();
+    if (bind.mainGetBuildinOption(key: kOptionDisableToolbarKeyboardSettings) ==
+        'Y') {
+      return _disabledSettingsButton(
+          'Keyboard Settings', 'assets/keyboard_mouse.svg');
+    }
     toolbarToggles() {
       final toggles = toolbarKeyboardToggles(ffi)
           .map((e) => CkbMenuButton(

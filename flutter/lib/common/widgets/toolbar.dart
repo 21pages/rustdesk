@@ -1216,12 +1216,16 @@ Future<List<TToggleMenu>> toolbarDisplayToggle(
         child: Text(translate('True color (4:4:4)'))));
   }
 
-  if (isDefaultConn && isMobile) {
+  final showMobileKeyboardSettings = isDefaultConn &&
+      isMobile &&
+      bind.mainGetBuildinOption(key: kOptionDisableToolbarKeyboardSettings) !=
+          'Y';
+  if (showMobileKeyboardSettings) {
     v.addAll(toolbarKeyboardToggles(ffi));
   }
 
   // view mode (mobile only, desktop is in keyboard menu)
-  if (isDefaultConn && isMobile && versionCmp(pi.version, '1.2.0') >= 0) {
+  if (showMobileKeyboardSettings && versionCmp(pi.version, '1.2.0') >= 0) {
     v.add(TToggleMenu(
         value: ffiModel.viewOnly,
         onChanged: (value) async {

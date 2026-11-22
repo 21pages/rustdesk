@@ -603,6 +603,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   Widget getBottomAppBar() {
+    final disableKeyboardSettings =
+        bind.mainGetBuildinOption(key: kOptionDisableToolbarKeyboardSettings) ==
+            'Y';
     final disableDisplaySettings =
         bind.mainGetBuildinOption(key: kOptionDisableToolbarDisplaySettings) ==
             'Y';
@@ -659,8 +662,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                 icon: Icon(gFFI.ffiModel.touchMode
                                     ? Icons.touch_app
                                     : Icons.mouse),
-                                onPressed: () => setState(
-                                    () => _showGestureHelp = !_showGestureHelp),
+                                onPressed: disableKeyboardSettings
+                                    ? null
+                                    : () => setState(() =>
+                                        _showGestureHelp = !_showGestureHelp),
                               ),
                             ]) +
                   (isWeb

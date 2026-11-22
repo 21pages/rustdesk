@@ -279,6 +279,7 @@ void main() {
 
   for (final (option, action) in [
     (kOptionDisableToolbarDisplaySettings, kShortcutActionToggleMute),
+    (kOptionDisableToolbarKeyboardSettings, kShortcutActionKeyboardModeMap),
   ]) {
     test('$option blocks $action but allows text chat',
         () async {

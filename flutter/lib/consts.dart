@@ -217,6 +217,8 @@ const String kOptionDisableToolbarScreenshot = "disable-toolbar-screenshot";
 const String kOptionHideToolbarVoiceCall = "hide-toolbar-voice-call";
 const String kOptionDisableToolbarDisplaySettings =
     "disable-toolbar-display-settings";
+const String kOptionDisableToolbarKeyboardSettings =
+    "disable-toolbar-keyboard-settings";
 const String kOptionQuitButtonText = "quit-button-text";
 const String kOptionHideRemotePrinterSetting = "hide-remote-printer-settings";
 const String kOptionHideGeneralSetting = "hide-general-settings";
