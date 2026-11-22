@@ -2836,7 +2836,8 @@ class _ChatMenuState extends State<_ChatMenu> {
 
   @override
   Widget build(BuildContext context) {
-    if (isWeb) {
+    if (isWeb ||
+        bind.mainGetBuildinOption(key: kOptionHideToolbarVoiceCall) == 'Y') {
       return buildTextChatButton();
     } else {
       return _IconSubmenuButton(

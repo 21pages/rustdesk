@@ -467,7 +467,8 @@ void registerSessionShortcutActions(
       if (status == VoiceCallStatus.connected ||
           status == VoiceCallStatus.waitingForResponse) {
         bind.sessionCloseVoiceCall(sessionId: sessionId);
-      } else {
+      } else if (bind.mainGetBuildinOption(key: kOptionHideToolbarVoiceCall) !=
+          'Y') {
         bind.sessionRequestVoiceCall(sessionId: sessionId);
       }
     });

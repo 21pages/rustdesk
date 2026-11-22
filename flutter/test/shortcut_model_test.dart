@@ -44,6 +44,13 @@ class _ChatBinding extends Fake implements RustdeskImpl {
 
 class _ToolbarBinding extends _ChatBinding {
   String option = '';
+  int voiceCallRequests = 0;
+  @override
+  Future<void> sessionRequestVoiceCall(
+      {required SessionID sessionId, dynamic hint}) async {
+    voiceCallRequests++;
+  }
+
   @override
   String mainGetBuildinOption({required String key, dynamic hint}) =>
       key == option ? 'Y' : '';
@@ -266,6 +273,19 @@ void main() {
       }
     });
   }
+
+  test('the voice call shortcut respects the toolbar option', () async {
+    final binding = _ToolbarBinding();
+    platformFFI.setBindingForTesting(binding);
+    registerSessionShortcutActions(session);
+    model.onTriggered(kShortcutActionToggleVoiceCall);
+    await pumpEventQueue();
+    expect(binding.voiceCallRequests, 1);
+    binding.option = kOptionHideToolbarVoiceCall;
+    model.onTriggered(kShortcutActionToggleVoiceCall);
+    await pumpEventQueue();
+    expect(binding.voiceCallRequests, 1);
+  });
 
   test('fresh Chat shortcut sends through its outgoing session', () async {
     final binding = _ChatBinding();

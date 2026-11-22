@@ -899,6 +899,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       VoiceCallStatus.waitingForResponse,
       VoiceCallStatus.connected
     ].contains(gFFI.chatModel.voiceCallStatus.value);
+    if (!isInVoice &&
+        bind.mainGetBuildinOption(key: kOptionHideToolbarVoiceCall) == 'Y') {
+      onPressedTextChat(id);
+      return;
+    }
     final menus = [
       makeTextMenu('Text chat', Icon(Icons.message, color: MyTheme.accent),
           () => onPressedTextChat(widget.id)),
