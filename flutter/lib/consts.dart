@@ -209,6 +209,7 @@ const String kOptionHideAccountPasswordLogin = "hide-account-password-login";
 const String kOptionHideToolbarOsPassword = "hide-toolbar-os-password";
 const String kOptionHideToolbarSendClipboardKeystrokes =
     "hide-toolbar-send-clipboard-keystrokes";
+const String kOptionHideToolbarViewCamera = "hide-toolbar-view-camera";
 const String kOptionQuitButtonText = "quit-button-text";
 const String kOptionHideRemotePrinterSetting = "hide-remote-printer-settings";
 const String kOptionHideGeneralSetting = "hide-general-settings";
