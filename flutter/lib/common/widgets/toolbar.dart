@@ -759,7 +759,9 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
         child: Text(ffi.ffiModel.timerScreenshot != null
             ? '${translate('Taking screenshot')} ...'
             : translate('Take screenshot')),
-        onPressed: ffi.ffiModel.timerScreenshot != null
+        onPressed: ffi.ffiModel.timerScreenshot != null ||
+                bind.mainGetBuildinOption(key: kOptionDisableToolbarScreenshot) ==
+                    'Y'
             ? null
             : () {
                 // Live cooldown check: the menu rebuilds onPressed=null

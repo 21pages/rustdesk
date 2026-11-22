@@ -148,7 +148,7 @@ class _Session extends Fake implements FFI {
   @override
   late ShortcutModel shortcutModel;
   @override
-  ConnType get connType => ConnType.defaultConn;
+  ConnType connType = ConnType.defaultConn;
 }
 
 void main() {
@@ -245,6 +245,7 @@ void main() {
 
   for (final (option, action) in [
     (kOptionDisableToolbarSwitchSides, kShortcutActionSwitchSides),
+    (kOptionDisableToolbarScreenshot, kShortcutActionScreenshot),
   ]) {
     testWidgets('disabling $action leaves its menu entry inactive', (tester) async {
       final binding = _ToolbarBinding();
@@ -257,6 +258,12 @@ void main() {
       expect(entry().onPressed, isNotNull);
       binding.option = option;
       expect(entry().onPressed, isNull);
+      if (action == kShortcutActionScreenshot) {
+        session.connType = ConnType.viewCamera;
+        expect(entry().onPressed, isNull);
+        binding.option = '';
+        expect(entry().onPressed, isNotNull);
+      }
     });
   }
 
