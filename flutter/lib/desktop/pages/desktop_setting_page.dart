@@ -2149,8 +2149,9 @@ class _DisplayState extends State<_Display> {
   Widget keyboardMode() {
     return _Card(title: 'Keyboard mode', children: [
       ComboBox(
-        keys: [kKeyMapMode, kKeyTranslateMode, kKeyLegacyMode],
+        keys: ['', kKeyMapMode, kKeyTranslateMode, kKeyLegacyMode],
         values: [
+          translate('Default'),
           translate('Map mode'),
           translate('Translate mode'),
           translate('Legacy mode'),
